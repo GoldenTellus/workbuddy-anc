@@ -1,342 +1,362 @@
 # workbuddy-anc — 架构规范(SPEC)
 
-版本:0.1(2026-07-24,立项稿)
-状态:Draft。基于 Climax Racing reference deployment 的生产经验(markdown vault 13+ 周、6-bot 矩阵 8 周、现行 gateway 形态 5 周)+ 六路调研(见 [docs/RESEARCH.md](./docs/RESEARCH.md));2026-09 起并入第二个 reference deployment(制造企业四部门试点,Linux 服务器 + 全员 Windows 个人 agent + 第三方模型,见 [docs/LESSONS-MANUFACTURING-PILOT.md](./docs/LESSONS-MANUFACTURING-PILOT.md))的裁决,下文以「试点」指代。
+版本:0.1-fork(2026-10-27)
+状态:Draft。基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2` 二次开发,执行引擎、IM 与主机已整体替换,本文件取代上游 SPEC。上游与运行时无关的部分(vault 规范、persona 七段式、skill 闭环、问题模型)继承下来,见 §12。标「待验证」的条目是尚未实测的假设,实现前先验证(§14)。
 
 ---
 
 ## 1. 愿景与设计原则
 
-**一句话:让任何小团队在一台 Mac mini 上,部署出「每个人都有一个自己的 AI bot、全公司共享一个 markdown 知识库」的运行时,并且系统随日常使用不断变强。**
+**一句话:让 5 人左右的小团队,用一台常开的 Windows 专业版主机,给每个人配一个自己的 WorkBuddy,在企业微信里随时找它干活;全公司共享一个 markdown 知识库;全部用免费、开源或系统自带的组件搭起来。**
 
-六条设计原则,每条都有生产或行业证据背书:
-
-| # | 原则 | 依据 |
+| # | 原则 | 说明 |
 |---|---|---|
-| P1 | **一人一 bot,增强而非替代**。bot 的单位是「人」不是「角色」;两个经理 = 两个 bot。bot 的 manager 天然是它对应的那个真人。 | 全生态无人做此模型(gap 矩阵);所有「AI 员工」产品都在替代人头 |
-| P2 | **文件系统当数据库(零 token 设计)**。「零 token」指检索路径零额外模型开销:原件入库时一次性结构化成 markdown,回答时 agentic search(Read/Grep)直读盘,不做 embedding、不重复解析原件。 | Anthropic 自己从 Claude Code 移除向量检索改 grep;Cursor/Windsurf/Cline/Devin 全部跟进 |
-| P3 | **官方 CLI 当 harness,订阅制供 token**。驱动 Claude Code / Codex CLI 本体,不自研 agent loop。 | OpenClaw 自研 loop 蹭订阅 → 2026-04 被 Anthropic 切断;官方 CLI 路径是被明确放行的合规正门 |
-| P4 | **chat 原生**。bot 住在团队已有 IM 里,不新开 dashboard。国内三大平台全部提供免公网 IP 的长连接,天然适配单机部署。 | 飞书 6 bot 生产验证;钉钉 Stream Mode / 企微长连接与飞书同构 |
-| P5 | **git 是同步与发布总线**。vault、persona、skill 的真相源全在 git;生产机是 ff-only auto-pull 的只读副本;落盘即生效。 | 生产验证:push → 15 分钟内全 bot 读到最新,零部署 |
-| P6 | **compound engineering:系统能力从使用中长出**。skill 由使用者在日常磨合中迭代,事故驱动立项。 | reference deployment 的 10+ skill 全部来自真实事故/需求;Every/Dan Shipper 的理论同构 |
+| P1 | **一人一账号,增强而非替代** | 单位是人不是岗位:每个员工一个 WorkBuddy 账号、一个 Windows 用户;岗位只是 persona 模板来源(继承上游 P1) |
+| P2 | **账号只在主机上登录** | 所有 WorkBuddy 账号与内容只存在主机;员工电脑只当「屏幕」,不装也不登 WorkBuddy。同一账号永远只有一处在线,企微消息只会落到主机 |
+| P3 | **不写 agent,不写 IM 网关** | 执行引擎 = WorkBuddy,IM 通道 = WorkBuddy 自带的企微机器人。本库只做它们之外的部分:主机搭建、隔离与锁定、公司知识层、运维 |
+| P4 | **文件系统当数据库(零 token 设计)** | 继承上游:原件入库时一次性结构化成 markdown,回答时直读文件,不做 embedding、不建向量库 |
+| P5 | **零采购** | 不依赖需要购买的授权或服务。合规但需购买的替代路径(Windows Server + RDS)写进文档,不作为默认 |
+| P6 | **能力从使用中长出** | 继承上游:skill 由使用者在日常磨合中迭代,答错一次就长出一个校验 skill |
 
-**非目标(v1 明确不做)**:敌意多租户(信任模型=同公司互信圈)、公网 SaaS 化、替代型 AI 员工、向量知识库、K8s/集群部署。
+**非目标(v1 不做)**:公司外网访问、多台主机、敌意多租户(信任模型 = 同公司互信圈)、主机重启后无人值守自动恢复、向量知识库、员工本机运行 WorkBuddy。
 
 ---
 
-## 2. 核心概念模型
+## 2. 拓扑与核心概念
+
+### 2.1 总拓扑
 
 ```
-Company 1 ── 1 Vault(共享知识库,git repo)
-Company 1 ── N Member(真人)
-Member  1 ── 1 Bot(一一对应;离职回收,入职开通)
-Bot     N ── 1 Role(角色模板:persona 骨架 + 默认 skill 集 + 数据视野)
-Bot     1 ── 1 cwd(bot 家目录:persona + session scope + 沙箱边界)
-Company 1 ── 1 devbot(公司的开发运维 bot,cwd=仓库本体,仅创始人可用)
-Skill   N ── N Role(按角色分发;个人可加载额外 skill)
-Bot     1 ── N Platform 绑定(一个 bot 可绑多平台账号)
+员工电脑(公司内网)
+   │ 双击自己的 .rdp 文件(系统自带远程桌面客户端)
+   ▼
+Windows 专业版主机(常开)
+   ├─ 多会话层:RDP Wrapper,允许多人同时远程(§3.1)
+   ├─ 单应用发布:RemoteApp Tool,只发布 WorkBuddy(§3.2)
+   ├─ Windows 用户 alice / bob / …   ← 每人一个,互相隔离
+   │     └─ 该用户自己的 WorkBuddy 账号 + 工作区
+   └─ 公司 vault:C:\anc\vault\(员工只读,入库单写者,§5)
+
+企业微信 ←→ 每个人的 WorkBuddy(WorkBuddy 自带企微机器人,§4)
 ```
 
-### 2.1 Member 与 Bot:为什么单位是人
+员工有两种用法:**日常在企微里找自己的 WorkBuddy**,不需要远程;**需要看界面、调设置时远程进主机**,只看到自己的 WorkBuddy 窗口。
 
-- 每个 Member 有独立的:会话历史、skill 加载集、IM 绑定(open_id 等)、（可选）自己的订阅凭据。
-- Role 只是模板:新经理入职 = 从 `roles/manager/` 实例化一个新 bot,再叠加个人定制(称谓、语言、关注面)。
-- 同角色多人的 bot 各自演化:A 经理常问酒店 → 她的 bot 长出 hotel skill;B 经理管媒体 → 他的 bot 长出 pr-plan skill。skill 沉淀回 role 模板由 devbot 周期性 triage。
-
-### 2.2 每 bot 一个 cwd:全系统的枢轴
-
-「bot 家目录」一个概念同时承担四件事,且在两个 harness 上语义完全一致:
-
-1. **persona 真相源挂载点**:cwd 里的 `CLAUDE.md`(Claude Code)/ `AGENTS.md`(Codex)自动加载。*注(M1 裁决):此语义用于直驱 harness 形态;经 gateway(cc-connect)部署时,persona 由渲染管线内联进 gateway 配置(生产验证形态,避免双注入),cwd 挂载路径 M3 与 Codex 后端一起落地——见 docs/M1-DESIGN.md 裁决 2。*
-2. **session scope**:两个 harness 的会话续接都按 cwd 隔离(`--resume` / `exec resume` 均是 cwd-scoped)。
-3. **沙箱边界**:角色 bot 的 cwd 是空沙箱目录,vault 数据以显式白名单授予只读视野;仓库的 `.env`、`scripts/`、`.git` 天然不在视野内。devbot 的 cwd 是仓库本体。注意:v1 默认 provider(cc-connect)对 claudecode 无任意 CLI flag 透传,`--add-dir` 仅在直驱 harness 时可用——cc-connect 路径下视野白名单靠「persona 里的绝对路径路由表 + harness 权限规则」实现(见 §3.1 上游缺口)。
-4. **附件落盘点**:IM 收到的图片/文件落进 `cwd/attachments/`,路径传给 harness。
-
-### 2.3 Vault:公司共享知识库
+### 2.2 概念模型
 
 ```
-company-vault/
-├── CLAUDE.md + AGENTS.md      # 根路由:问题类型 → 目录(双文件 = 双 harness 兼容)
+Company 1 ── 1 Host(一台 Windows 专业版主机)
+Company 1 ── 1 Vault(共享知识库:主机本地目录 + git)
+Company 1 ── N Member(真人,v1 约 5 人)
+Member  1 ── 1 Windows 用户 ── 1 WorkBuddy 账号 ── 1 企微机器人绑定
+Member  1 ── 1 Workspace(C:\anc\workspaces\<member>\)
+Member  N ── 1 Role(岗位模板:persona 骨架 + 默认 skill 集)
+Company 1 ── 1 Admin(Windows 管理员 + 唯一的 vault 写者)
+```
+
+### 2.3 隔离单位是 Windows 用户
+
+- 每个员工一个 **Windows 标准用户**(非管理员),员工的 WorkBuddy 只在自己的用户里登录。
+- Windows 用户之间的文件、进程、凭据天然隔离,这是「员工只能看到自己的账号」的**真正安全边界**。界面锁定(§3.2)是第二层,用来防误操作、保持界面干净,不当作安全边界。
+- WorkBuddy 能执行命令,相当于拥有该用户的权限。所以员工用户一律不进 Administrators 组,磁盘权限按 §5.1 的 ACL 收紧。
+
+### 2.4 每人一个工作区
+
+`C:\anc\workspaces\<member>\` 是该员工 WorkBuddy 的本地工作区(上游「每 bot 一个 cwd」的 Windows 版),同时承担三件事:
+
+1. **persona 挂载点**:工作区指令文件由渲染管线生成(§6),员工用户对它只读;
+2. **会话与记忆的作用域**:每个人的上下文互不干扰;
+3. **附件落盘点**:企微里收到的文件落在工作区内(落盘位置待验证,§14)。
+
+ACL:只有该员工用户与 Admin 可访问,其他员工无权限。
+
+---
+
+## 3. 接入层:员工怎么连进主机
+
+### 3.1 多会话层(可替换)
+
+Windows 10/11 专业版默认同一时间只允许 1 个远程会话。多人同时远程由一个可替换的「多会话层」提供:
+
+| provider | 说明 | 定位 |
+|---|---|---|
+| `rdpwrap` | RDP Wrapper,在 Service Control Manager 与远程桌面服务之间加一层,不改 `termsrv.dll` 本体 | **v1 默认**(零采购) |
+| `single` | 不装任何东西,同一时间 1 人远程。会话断开不注销,所有人的 WorkBuddy 照常在后台回企微 | 合规免费的退路 |
+| `rds` | Windows Server + 远程桌面服务 + 按人数购买 User CAL | 合规正规路径,公司想正规化时替换 |
+
+**rdpwrap 的已知风险**(部署方已知情接受,文档与 onboarding 里必须原样呈现,不淡化):
+
+1. 违反微软授权协议;公司被查正版化时有风险。
+2. 杀毒软件会把它报为黑客工具(HackTool / PUA),需要对安装目录加排除项。
+3. 系统更新替换 `termsrv.dll` 后会失效。原版 stascorp/rdpwrap 已停更,要用社区维护的 fork 或配置文件(`rdpwrap.ini`),具体选哪个按主机系统版本号实测决定。
+
+**运维约束**(rdpwrap 下必须遵守):
+
+- 通过组策略延迟功能更新;质量更新(每月累积更新)也要先暂停,确认新的 `termsrv.dll` 版本已有 `rdpwrap.ini` 支持后再放行。
+- 每次更新后运行 RDPConf 检查状态,确认多会话恢复正常(`anc doctor` 把这一步做成检查项,§9)。
+- 失效期间自动退化为 `single` 行为:员工仍可逐个远程,企微侧不受影响。
+
+### 3.2 单应用发布与界面锁定
+
+目标:员工远程进来只看到 WorkBuddy 窗口,看不到桌面和其他程序。分三层:
+
+1. **RemoteApp 发布**:用开源的 RemoteApp Tool(kimmknight/remoteapptool)在专业版上把 WorkBuddy 发布为 RemoteApp,为每个员工生成 `.rdp` 文件(`remoteapplicationmode:i:1`)。员工连上后只弹出一个 WorkBuddy 窗口,就像在本机打开了一个程序。
+2. **完整桌面兜底**:`.rdp` 是文本文件,员工改一行就能请求完整桌面。所以员工用户的会话本身也要锁住:组策略隐藏桌面图标、开始菜单、各个盘符,禁用任务管理器、命令提示符、注册表编辑器、控制面板。
+3. **AppLocker 白名单**:员工用户只允许运行 WorkBuddy 及其子进程需要的程序。依据 KB5024351,Windows 10 2004 及以上和所有 Windows 11 版本已不限制版本,专业版也会执行 AppLocker 策略(需启用 Application Identity 服务)。WorkBuddy 要执行命令,所以白名单具体放行哪些程序要实测确定(§14)。
+
+这三层是**尽力而为**:WorkBuddy 本身能执行命令、能打开文件对话框,有心人可以借它绕出界面锁定。真正的安全边界是 §2.3 的 Windows 用户隔离加 §5.1 的磁盘 ACL。
+
+### 3.3 员工接入方式
+
+- **v1**:管理员把每个员工专属的 `.rdp` 文件发给他本人,员工双击,用自己的 Windows 用户名和密码登录。员工电脑用系统自带的远程桌面客户端,不装任何东西。
+- **可选**:以后需要浏览器访问、统一登录或双因素认证时,再加 Apache Guacamole。它对主机是透明的,只是多了一个入口。
+
+### 3.4 会话保持策略
+
+员工的 WorkBuddy 必须在员工断开以后照常运行,企微才能随时找到它。约定:
+
+- 员工离开时**断开**连接,不要**注销**。WorkBuddy 点 × 是最小化到托盘、程序继续运行(部署方已实测,普通桌面模式下)。
+- 组策略(计算机配置 → 管理模板 → Windows 组件 → 远程桌面服务 → 远程桌面会话主机):
+  - **会话时间限制**:「已断开会话的时间限制」设为「永不」;「活动但空闲的会话时间限制」设为「永不」;「达到时间限制时结束会话」设为禁用。
+  - **连接**:「将远程桌面服务用户限制到单独的远程桌面服务会话」设为启用,保证员工重连时回到自己原来的会话,而不是新开一个、导致两个 WorkBuddy 实例。
+- 电源计划:主机永不睡眠、永不休眠;网卡关闭节能断开。
+
+### 3.5 网络边界
+
+- **只在公司内网使用**。路由器不得把 3389(或任何远程桌面端口)映射到外网,`anc audit` 检查这一项(能检查到的范围内)。
+- 主机防火墙:远程桌面入站规则只放行公司内网网段。
+- 员工 Windows 密码要求足够强度,并开启账户锁定策略(连续输错锁定),防内网暴力破解。
+
+---
+
+## 4. 执行层:WorkBuddy + 企业微信
+
+- **执行引擎**:腾讯 WorkBuddy 桌面客户端,每个员工在自己的 Windows 用户里登录自己的账号。本库不封装、不修改、不提取 WorkBuddy 的凭据或内部数据,只通过它公开的能力(工作区、Skill、MCP、企微机器人)对接。
+- **IM 通道**:WorkBuddy 自带的企微机器人。每个员工把自己的 WorkBuddy 绑定到企微,之后在企微里单聊或群里找它,任务在主机上执行、结果回到企微。本库不写 IM 网关。
+- **为什么只在主机登录**:WorkBuddy 支持多台电脑同时登录同一账号,但那样企微消息会落到哪台电脑不确定,上下文也会分裂成两份。P2 规定账号只在主机登录,员工电脑只用远程桌面看画面,问题从根上消失。
+- **版本**:个人版还是 Enterprise 版,v1 不做绑定。Enterprise 版的 Skill 管理、Connector 管理、模型按人配置能简化 §6、§7 的分发;用个人版时,分发走本库的渲染管线(§6.2)。具体用哪个是开放问题(§13)。
+- **数据流向**:模型推理和账号数据经过腾讯云,这是选 WorkBuddy 的固有代价。公司如果对数据出境或数据合规有要求,onboarding 时作为明确的决策项呈现;vault 里的内容被员工问到时,也会作为上下文发给模型。
+
+---
+
+## 5. Vault:公司共享知识库
+
+### 5.1 位置与权限
+
+单主机下,vault 就是主机上的一个本地目录,不需要上游轻形态的云端 vault 服务:
+
+```
+C:\anc\
+├── vault\            # 公司知识库(git repo),Admin 读写,员工组只读
+├── workspaces\
+│   ├── alice\        # 仅 alice + Admin 可访问
+│   └── bob\
+└── inbox\
+    ├── alice\        # 员工可写自己的子目录,作为入库投递口
+    └── bob\
+```
+
+- 建一个本地组 `anc-members`,所有员工用户加入。`vault\` 对该组只读;`inbox\<member>\` 只对本人可写。
+- 员工的 WorkBuddy 通过工作区指令里的绝对路径读 vault(读取方式待验证:WorkBuddy 能否读工作区外的路径;不能的话,在每个工作区里建指向 vault 的目录联接,§14)。
+
+### 5.2 目录规范(继承上游)
+
+```
+vault\
+├── 路由文件(问题类型 → 目录;文件名按 WorkBuddy 读取的指令文件约定,待验证)
 ├── CONTRIBUTING.md            # 入库规范(frontmatter schema、目录约定、命名)
-├── <domain>/                  # 业务数据目录(公司自定义,onboarding 生成)
-│   ├── CLAUDE.md              # 目录级路由
-│   ├── *.md                   # 结构化数据,带 frontmatter(title/source_file/updated)
-│   └── _originals/            # 原件(PDF/图片),markdown 指回它
-├── templates/                 # 数据录入脚手架(给非技术同事:复制→填→push)
-├── roles/<role>/persona.md    # 角色 persona 模板
-├── members/<name>/persona.md  # 成员个性化叠加层
-├── skills/<name>/SKILL.md     # skill 真相源
-├── company/                   # 公司自描述(onboarding 访谈产物):简介、名单、术语表
-└── scripts/                   # 部署与运维脚本(由本库生成/更新)
+├── <domain>\                  # 业务数据目录(onboarding 生成)
+│   ├── *.md                   # 结构化数据,带 frontmatter(title / source_file / updated)
+│   └── _originals\            # 原件(PDF / 图片),markdown 指回它
+├── roles\<role>\persona.md    # 岗位 persona 模板
+├── members\<name>\persona.md  # 成员个性化叠加层
+├── skills\<name>\SKILL.md     # skill 真相源
+└── company\                   # 公司自描述:简介、名单、术语表、problem-model.md
 ```
 
-**数据规范要点**(从生产提炼):
+数据纪律原样继承:
 
-- 每个数据 `.md` 带 frontmatter,`source_file` 指回 `_originals/` 原件——可溯源是信任的基础。
-- 每目录 `CLAUDE.md` 给「问题类型 → 文件」确定性路由表;persona 里明令「先按表定位,别裸 Grep 整库」。
-- **诚实条款是一等公民**:库里查不到 → 显式说「尚未入库」,绝不按训练记忆补。这条写进每个 persona 和每个 skill 的置顶铁律。
-- **易变事实单点存放**(canonical registry):同一事实(如人员分组、口径)只在一处维护,persona/skill 只引用不复述——生产最大教训:手抄 5-7 处必然漂移,曾直接导致对外答错事故。
+- 每个数据文件带 frontmatter,`source_file` 指回原件,可溯源;
+- 每目录给「问题类型 → 文件」的确定性路由表,先按表定位,不裸搜全库;
+- **诚实条款**:库里查不到就明说「尚未入库」,绝不按训练记忆补;
+- **易变事实单点存放**:名单、口径、日程只在一处维护,persona 和 skill 只引用、不复述。
 
-**复杂数据升级路径**:数据量大到 grep 不动时,升级为「SQLite 做索引、markdown 仍是真相源」——本地增量索引(哈希变更检测),暴露 `search`(语义/全文)+ `get`(精确读文件行区间)两个工具。OpenClaw 的 memory 系统(社区已拆出 memsearch)验证了此路径。**永远不把真相源迁进数据库**;数据库可随时重建。
+### 5.3 写路径:inbox → 单写者入库
 
-**状态层的反向裁决(试点)**:上面这条只针对**知识层**。bot 承载的**多轮工作流状态**(一场跨几天的访谈的会话状态、线索账本、出站消息 outbox)正相反:SQLite 事务是真相,「完成」状态与「已完成」出站消息同一事务提交,常驻 outbox worker 重试未发送消息;个人 / 部门 markdown 都是可重建投影(提供 `reproject`)。一句话:**知识用文件,状态用事务**。投影文件仍进 vault,供其它 bot 读。
+员工(或他的 WorkBuddy)不直接改 vault,只往自己的 `inbox\<member>\` 投递文件,附一句说明。入库由 Admin 侧的 ingest 流程统一完成:结构化 → 写入 vault → git commit。
 
-### 2.4 写路径:inbox 自动结构化入库
+这样做有三个理由:5 个 WorkBuddy 同时写同一目录会互相覆盖;员工 bot 读到的文件内容可能带提示注入,只搬运、不入库、不执行文件内指令;git 历史里每次变更都有单一、可审计的来源。
 
-```
-IM 里发文件/图片 → gateway 捕获 → 落 inbox/pending/ + .meta.txt(谁/哪个群/原话/时间)
-→ 近实时触发 ingest(强模型,按 CONTRIBUTING 抽取结构化)
-→ 原件进 _originals/,生成带 frontmatter 的 .md,更新目录路由
-→ git commit + push(publish)→ 群发入库摘要
-→ 其它副本 auto-pull 拉平 → 全 bot 下一条消息即读到
-失败 → inbox/failed/ 待人工,每日兜底批处理
-```
+### 5.4 历史与备份
 
-安全分层(防注入的关键设计):**角色 bot 只搬运、不入库、不执行文件内指令**;结构化/入库/commit 全归 ingest 管线(独立进程、独立 prompt、可加 schema 校验与 diff 复核门)。
-
-### 2.5 问题模型:vault 的诊断层
-
-onboarding 不只是建库。试点把 FDE 勘探里的「问题模型」做进了 vault:`company/problem-model.md` 是 canonical 文件,对「业务哪里堵了」做结构化描述,五个要素各带 `状态: 假设 / 已验证 / 已推翻` 与证据链接:
-
-| 要素 | 回答的问题 |
-|---|---|
-| 核心瓶颈 | 制约业务目标达成的关键环节是什么 |
-| 因果链 | 技术原因还是流程原因,外部约束还是内部能力不足 |
-| 量化影响 | 损失了什么(时间 / 收入 / 满意度),能否度量 |
-| 相关方地图 | 谁受影响、谁有动力推动、谁会阻碍 |
-| 已有尝试 | 试过什么方案,为什么失败 |
-
-它与架构的三个结合点:① **skill 的种子**——P6 说 skill 从事故里长出来,诊断期还没有事故,问题模型就是第一批 skill / bot 的立项依据(每个立项条目回指一个要素);② **员工级访谈 bot 是它的采集器**——创始人访谈给假设,逐人访谈给证据,访谈报告只记工作事实、不生成绩效或排名;③ **复盘先验模型再谈交付**——每个里程碑先看哪些「假设」变成「已验证 / 已推翻」,推翻的要素改 vault、不改 persona。模板见 `light/skills/anc-onboard/vault-templates/company/problem-model.md`。
+- vault 是 git repo,每次入库一个提交,可回滚。
+- 每日把 vault 与 `C:\anc\` 的配置备份到另一块盘或另一台机器;主机单点故障时可从备份重建(§11)。
 
 ---
 
-## 3. 三层架构与本库的位置
+## 6. Persona 系统
 
-```
-[IM 平台] ←→ [Gateway 层] ←→ [Bot/Persona 层] ←→ [Harness 层] ←→ [Vault 数据层]
-                  ↑                ↑                                    ↑
-                  └────────────────┴── workbuddy-anc ───────────────────┘
-                       (编排层:org 模型 → 渲染 → 部署 → 运维 → 迭代闭环)
-```
+### 6.1 七段式模板(继承上游)
 
-**本库不写 gateway、不写 agent loop。** 它是编排层/约定层/installer:持有 org 真相源,把它渲染进 gateway 配置,装好常驻服务,维护数据管线与迭代闭环。
-
-### 3.1 Gateway 层:cc-connect 为默认 provider
-
-调研裁决(详见 RESEARCH §cc-connect):**(a) 构建其上,不 fork、不自研。**
-
-- cc-connect(MIT,Go 单二进制,14.3k stars,143 contributors):13+ IM 平台(飞书/钉钉/企微/微信个人号/QQ/Telegram/Slack/Discord/Matrix…)× 12+ agent 后端(claudecode/codex/opencode/ACP…)。其 `[[projects]]` 配置模型与「一人一 bot」一一同构,我们的 6-bot 生产形态就是上游一等公民。
-- **pin 版本**,升级前过回归清单(已知雷:#1562 同实例多飞书 app 共享 WebSocket 丢消息;1.4.0 重构 agent 选项字段)。
-- 定义薄的 `GatewayProvider` 抽象(v1 只有 cc-connect 实现),保留未来接 Claude Code Channels 官方插件 / OpenACP 的插槽;cc-connect 死亡或改 license 时 MIT 允许 hard fork(灾备预案,不是计划)。
-- **上游缺口做进本库约定层**,同时逐个提上游 PR:上下文阈值治理(上游 #1111 deferred)、群文件捕获 sidecar(#1560)、launchd 修法(#752)、卡片降级时走平台官方 API 手搓发送、claudecode 任意 flag 透传(`--add-dir` 等,上游无此机制)、provider 额度触顶自动兜底(上游仅手动 `/provider switch`);试点补三条:**交互卡片回调转发**(卡片按钮 / 量表的回调在 gateway 内部消费,业务进程拿不到;试点以补丁按 action 前缀 POST 到本机 HTTP 服务,可泛化为 `card_action_webhook` 配置项上游)、**工具轮次叙述不可隐藏**(`display.mode = "quiet"` 关掉的是工具消息,关不掉含 tool_use 轮次里的「让我先查一下」,见 §3.2 边界代理)、**面向员工的工作流 bot 需要 `reset_on_idle_mins = 0` 与 `filter_external_sessions = false`**(访谈跨天、服务重启后必须能续接,渲染器不得把 idle 重置写成常量)。
-
-平台接入优先级:
-
-| 优先级 | 平台 | 依据 |
-|---|---|---|
-| P0 | 飞书 | 生产验证 13 周;driver 从现有实现抽出 |
-| P1 | 钉钉、企业微信 | 长连接模式与飞书同构(免公网 IP);企微正对小团队开放智能机器人,窗口期 |
-| P2 | Slack、Telegram | 海外团队;自建 internal app 不受 Slack 限流新政影响 |
-| P3 | 微信 iLink、Discord | iLink 是官方个人微信 Bot API 但仅单聊+扫码续命,标 experimental;自研零依赖 client 已有 |
-
-### 3.2 Harness 层:统一接口,双后端
-
-```ts
-interface Harness {
-  id: "claude-code" | "codex";
-  capabilities: { tokenStreaming: boolean; residentProcess: boolean; imageInput: boolean };
-  runTurn(opts: {
-    cwd: string;                 // bot 家目录(枢轴,见 §2.2)
-    sessionId?: string;          // 无则新开,返回新 id;续接按 cwd scope
-    prompt: string;
-    attachments?: string[];      // 落盘路径
-    personaAppend?: string;      // 追加注入;主 persona 走 cwd 的 CLAUDE.md/AGENTS.md
-    policy: "readonly" | "workspace" | "full";
-    outputSchema?: object;
-    model?: string;
-  }): AsyncIterable<HarnessEvent>;   // message/result 保底;delta 是 Claude 增强
-  interrupt(sessionId: string): void;
-}
-
-type HarnessEvent =
-  | { type: "delta"; text: string }                                  // 仅 tokenStreaming 后端
-  | { type: "tool"; name: string; detail?: string }
-  | { type: "message"; text: string }
-  | { type: "result"; sessionId: string; usage: { input: number; output: number; cached?: number }; costUsd?: number };
-```
-
-- **Claude Code 一等公民**(能力超集:token 级流式、`--input-format stream-json` 常驻会话、原生 auto-compact、权限六档);**Codex CLI 第二后端**(回合制 `exec` + `resume`,验证抽象层健壮性,也是单一厂商政策风险的对冲)。试点实证:第一版员工面向 bot 就跑在 Codex CLI 上(Windows 本机,经 cc-connect 飞书长连接),后切换到 Claude Code + 第三方端点——双 harness 是已经发生的切换,不是设想。
-- 进程模型默认「每回合一进程 + resume」(两后端通吃、崩溃隔离);Claude 可选升级为常驻进程池(低延迟 + auto-compact)。
-- **上下文治理做在 harness 层之上**:超阈值先压缩再续接(生产教训:headless `-p /compact` 是 no-op,只有持久会话才有真 compact)。
-- 权限:角色 bot 一律不授予 bypassPermissions,用 `dontAsk`/`auto` + 工具白名单(典型反模式:bypass + 访问白名单全开 = 提示注入即 RCE);devbot 才给 full。
-- 鉴权做成配置项而非硬编码:订阅 OAuth(默认)/ API key(fallback)。两家计费政策 2026 年都在动荡(Anthropic credit 池方案官宣暂停、Codex 与 web 共享 5h 窗),必须假设会变。
-- **第三方模型下 persona 注入不可靠(试点)**:走 Anthropic 兼容端点(如 DeepSeek)时,Claude Code 自带的 system prompt 携带「Claude Code」身份,非 Claude 模型倾向服从它而非 `append_system_prompt` 里的 persona——bot 自称 Claude Code、向员工罗列终端能力。裁决:第三方模型一律经 **harness 边界代理**(`tools/harness-proxy/`,loopback 监听、不持凭据)在 `/v1/messages` 整段替换 system,并在响应侧丢弃含 tool_use 轮次的叙述文本;官方 Claude 模型不需要。
-- **批量 provisioning 是第三条接入路径(试点)**:全员 Windows、零 agent 起步的公司,靠一条 PowerShell 离线安装 Codex、内网中转站按「姓名-部门」签发 key(同人跨机复用同一 key、设备绑定首次凭据、停用的 key 不自动重建)、导入本地端点切换器。它不是 light 也不是 PRO,是**制造 light 前提**的那一步;登记为开放问题 5。
-- **合规红线写死**:只驱动官方 CLI 本体;绝不提取 OAuth token 给第三方 SDK。为规避「多真人共享一个订阅」被厂商重新解释的风险,架构原生支持 **per-member credential**(每人绑自己的订阅)并推荐为默认——既合规最稳,又与一人一 bot 同构,成本还核算到人头。
-
-### 3.3 部署层:一台常驻机的工程学
-
-两个 reference deployment 分别跑在 Mac mini(launchd)与 Ubuntu 服务器(systemd user units)上。与 OS 无关的三件事:**要认证的进程必须跑在持有凭据的用户会话里、非交互 shell 的 PATH 必须显式写全、配置变更走「备份 → 原子写 → 校验 → 重启 → 探针 → 失败还原」**。installer 需要 launchd / systemd 两个后端,下面分列。
-
-**macOS(launchd)**,生产 13 周沉淀的硬知识,installer 必须内建:
-
-- **一切要认证的进程必须跑在 GUI(Aqua)会话的 launchd LaunchAgent 里**(`gui/<uid>`):Claude 订阅凭据在 login keychain,SSH 上下文里 claude/git 网络操作全废;plist 严禁 `SessionCreate`(会丢 keychain)。
-- 非交互 shell PATH 不含 node/claude,**每个 plist 显式写完整 PATH**。
-- 常驻集(installer 生成,名字按公司前缀):gateway(KeepAlive)、inbox-watcher(KeepAlive sidecar)、vault-sync(15min ff-only pull)、ingest(每日兜底)、watchdog(30min)。
-- config 修改约定:时间戳备份 → 原子写(temp + rename)→ 结构校验(行数/项目数/secret 完整性)→ kickstart → 功能级探针验证,失败即还原。
-- 重启自愈需要开自动登录(GUI 会话才有 keychain)——onboarding 里作为明确的决策项呈现给用户。
-
-**Linux(systemd user units,试点)**:
-
-- 全部单元装在 `systemctl --user`,`loginctl enable-linger <user>` 保证无登录会话也常驻;`Environment=HOME=...` 显式写,不依赖登录 shell。
-- 一个 `.path` 单元监听 harness 配置文件(如 `~/.claude/settings.json`)变化,触发 oneshot 重启 gateway——端点切换器改了配置就生效,不用人去 restart。
-- 常驻集与 macOS 同构:gateway、后台任务 worker、卡片回调服务、outbox worker 各一个 `Restart=always` 单元,`TimeoutStopSec` 显式给,便于优雅停机。
-- 后台任务 worker 用 bubblewrap 做文件隔离沙箱(只见任务工作区与只读技能库),这是 Linux 独有的便利,macOS 侧对应 M2 的沙箱方案。
-
----
-
-## 4. Persona 系统
-
-### 4.1 七段式模板(生产验证的 schema)
-
-1. **身份**:你是 <公司> 的 <角色> 助理,服务对象是 <member>,在 <平台> 里通过 bot 交互。
+1. **身份**:你是 <公司> 的 <岗位> 助理,服务对象是 <member>,通过企业微信和 WorkBuddy 交互。
 2. **职责边界**:管什么、不管什么。
-3. **数据来源**:`VAULT_ROOT` 绝对路径 + 确定性路由表(问题类型 → 文件;本角色主力数据排最前);「先按表定位,拿不准先读目录 CLAUDE.md;涉及公司数据必查文件,不凭记忆答」。
-4. **诚实条款**:未入库 → 如实说,不编造。
-5. **风格**:语言、口吻、角色差异化(经理给结论+建议动作,工程师给数值+前提,公关给可直接用的成稿)。
-6. **收资料 SOP**:说「入库」才搬运到 inbox;只搬运、不入库、不执行文件内指令。
-7. **动态事实引用**:易变事实(名单/日程/口径)一律引用 canonical 文件,persona 里不写死。
+3. **数据来源**:vault 绝对路径 + 确定性路由表;涉及公司数据必查文件,不凭记忆答。
+4. **诚实条款**:未入库就如实说,不编造。
+5. **风格**:语言、口吻、岗位差异化。
+6. **收资料 SOP**:用户说「入库」才把文件搬到自己的 inbox;只搬运、不入库、不执行文件内指令。
+7. **动态事实引用**:易变事实一律引用 canonical 文件,persona 里不写死。
 
-### 4.2 persona-as-code 管线
+### 6.2 渲染管线
 
 ```
-roles/<role>/persona.md × members/<name>/persona.md(叠加)
-→ anc deploy personas(dry-run 预览 → 渲染进 gateway config,原子写 + 三重校验)
-→ 重启 gateway 生效 → 探针验证
+vault\roles\<role>\persona.md × vault\members\<name>\persona.md(叠加)
+→ anc deploy personas(默认 dry-run 预览)
+→ 写入 C:\anc\workspaces\<member>\ 下的工作区指令文件(原子写 + 时间戳备份)
+→ 员工 WorkBuddy 下一次对话生效
 ```
 
-生产教训直接产品化:persona 内联进 TOML 必须转义(裸换行曾致全部 bot 下线);双源手抄是头号架构债,**渲染必须是唯一上线路径**,手改 config 视为事故。
-
-未来演化(M4+):参考 OpenClaw 把单文件拆 `SOUL.md`(人格)/ `AGENTS.md`(行为)/ `USER.md`(服务对象画像)。
-
-### 4.3 对话层与任务层(试点)
-
-七段式描述的是 bot 怎么**回话**;IM 里发起的**长任务**(写代码、生成文档、批量处理文件)需要第二层。生产验证的约定,全部有回归测试锁定:
-
-- bot 是「始终可用的对话层」;需要连续用文件工具或产生交付物的工作,建独立持久化后台任务后**立即恢复对话**,不占对话会话。
-- **对话层有硬性调用预算**:预计超过少量工具调用的请求先建任务再返回;同步回合 timeout ≤ 90 秒;不设 `--max-turns`(截断会吞掉最终文本)。
-- **技能库是流程登记表,不是能力白名单**:未命中专项技能但能用通用推理安全完成的事不得拒绝;带外部副作用的操作(部署、外发、系统管理)只能经明确配置了受控工具的专项技能执行。
-- **任务按发送者隔离**:每条消息先按发送者查其任务;恰有一个 `waiting_input` 且当前消息是在回答才续入;无关闲聊不劫持、不擅自结束;多个候选先用短编号确认;`needs_review`(执行器异常中断)只有任务所有者明确确认才重排队。
-- 后台 worker 跑在文件隔离沙箱;回传有策略层——普通任务摘要 + 产物发回原会话,敏感类任务只落内部目录。
-- 对外表达:不向用户展示模型、子 agent、队列、上下文余量、内部路径与任务状态。
+- 渲染是唯一上线路径;手改工作区指令文件视为漂移,`anc doctor` 会检出。
+- 工作区指令文件对员工用户只读,员工的 WorkBuddy 无法改写自己的 persona。
+- WorkBuddy 读取哪个文件名作为工作区指令(以及是否需要重新打开工作区才生效)待验证(§14)。
 
 ---
 
-## 5. Skill 系统
+## 7. Skill 系统
 
-- **格式与 Claude Code / Codex / OpenClaw 跨兼容**:`skills/<name>/SKILL.md`,YAML frontmatter(name + 中英双语触发词穷举的 description)+ 正文(数据源表、步骤、输出格式、失败排查)。
-- **三个结构约定**:置顶铁律段(不编造/TBC/查不到就明说)、「事实 → 绝对路径文件」数据源表、skill 间衔接显式声明(A skill 先调 B skill 取数)。
-- **部署**:vault `skills/` 为真相源 → `anc deploy skills` 同步到 `~/.claude/skills/`(幂等 rsync,非破坏);merge 后自动部署 + 漂移检测(生产痛点:最后一公里手动,merged ≠ live)。
-- **迭代闭环(本库的灵魂)**:使用/事故 → 聊天挖掘(每日分析对话,发现答错/新需求)→ 问题池 triage(聚类去重、频率信号)→ issue → devbot 实现 → review → merge → 自动部署 → eval 回归。目标:从「答错一次」到「校验 skill 上线」在一天内闭环。
-- **会话内规则冻结(试点)**:「改一次即时生效」对多轮工作流是事故源——一场跨几天的访谈,规则半途被改,前后口径不一致。路由策略与线索规格带 `version` / `approved_by` / `effective_at` / 内容 hash,每次工作流开始时冻结 `policy_version` 与 `rule_content_hash`,新规则只对新开的工作流生效。
-- **供应链安全**(用 OpenClaw 的事故付学费:ClawHub 12% skill 恶意率、SKILL.md 发木马):公司场景默认**只信 org 内部 registry(vault 里的 skills/)**;未来跨公司分发必须签名 + 静态扫描(含提示注入模式)+ 版本 pin + 安装前 diff 展示。
+- **真相源**:`vault\skills\<name>\SKILL.md`,YAML frontmatter(name + 中英双语触发词)+ 正文(数据源表、步骤、输出格式、失败排查)。格式与 WorkBuddy 的 Skill 是否直接兼容待验证(§14)。
+- **分发**:两条路径,一份正文。
+  - Enterprise 版:用管理后台的 Skill 管理统一下发,本库提供把 vault skill 打包成后台可导入格式的工具;
+  - 个人版或后台不可用时:`anc deploy skills` 把 skill 同步到每个员工用户的 WorkBuddy skill 目录(幂等,非破坏)。
+- **三个结构约定**(继承上游):置顶铁律段(不编造、查不到就明说)、「事实 → 文件」数据源表、skill 间衔接显式声明。
+- **迭代闭环**:使用中答错或出现新需求 → Admin 收集 → 改 vault 里的 skill 正文 → 重新分发 → 下一次使用即生效。
+- **供应链**:只信 vault 里的 skill;不从公共市场直接安装到员工账号,引入前先由 Admin 审阅并放进 vault。
 
 ---
 
-## 6. Onboarding:对话式冷启动
+## 8. 安全模型
 
-本体是一个 skill(`anc onboard` 唤起或在 Claude Code 里直接触发)。**安装不是填配置文件,是一场访谈**——创始人可以全程语音输入。
+信任模型:**一台主机 = 一个互信的公司**,不支持敌意多租户。防线由外到内:
+
+1. **网络**:只在内网;3389 不出公网;防火墙只放行内网网段(§3.5)。
+2. **身份**:每个员工一个 Windows 标准用户,强密码 + 账户锁定;企微侧只有本人能找到自己的 WorkBuddy(企微机器人的可见范围待验证,§14)。
+3. **隔离**:Windows 用户隔离 + 磁盘 ACL 是真正的边界(§2.3、§5.1);员工用户不进管理员组。
+4. **界面锁定**:RemoteApp + 组策略 + AppLocker(§3.2),尽力而为,不当作安全边界。
+5. **模型会被操纵**:提示注入没有模型级的解。员工 WorkBuddy 读到的文件、网页按不可信内容对待;只搬运不入库,入库走单写者(§5.3);带外部副作用的操作(外发、删除、系统管理)要求本人在企微里明确确认。
+6. **多会话层的附带风险**:RDP Wrapper 需要杀毒排除项,排除范围只限其安装目录,不扩大(§3.1)。
+
+**默认值即安全策略**:新建员工用户默认标准用户、默认无权访问他人工作区、默认 vault 只读;`anc audit` 一键体检这些默认值(§9)。
+
+---
+
+## 9. 运维与命令面
+
+### 9.1 运维约定
+
+- **重启恢复**:主机重启后,每个员工远程连一次自己的 `.rdp`,WorkBuddy 随会话启动,企微恢复在线。不做无人值守自动恢复(非目标)。管理员负责在重启后通知员工。
+- **WorkBuddy 自启**:每个员工用户的启动项里加入 WorkBuddy,保证会话一建立就拉起。
+- **更新纪律**:Windows 更新先暂停 → 管理员确认 rdpwrap 兼容 → 放行 → `anc doctor` 复查(§3.1)。WorkBuddy 自身更新同样先在一个账号上验证。
+- **在线巡检**:`anc status` 列出每个员工的会话状态(活动 / 断开 / 不存在)与 WorkBuddy 进程是否在运行,让管理员一眼看到谁的 bot 不在线。
+- **配置变更**:时间戳备份 → 原子写 → 校验 → 生效 → 检查,失败即还原(继承上游)。
+
+### 9.2 命令面(规划)
+
+本库交付形态为 PowerShell 脚本 + 一个 `anc` 命令入口,在主机上以管理员身份运行:
 
 ```
-阶段 1 访谈     「你们公司是做什么的?」→ 追问业务域、术语、数据类型
-                产出:company/profile.md、术语表、vault 目录设计稿
-阶段 1b 问题模型 「哪里堵了?」→ 核心瓶颈 / 因果链 / 量化影响 / 相关方 / 已有尝试(§2.5)
-                产出:company/problem-model.md(要素全标「假设」)+ 第一批 skill/bot 立项候选
-阶段 2 名单     要人员名单(口述/表格/照片都行)→ 每人:姓名、角色、IM 账号
-                产出:members/、roles/(从内置角色模板库匹配 + 定制)
-阶段 3 资料     「把手头的资料发我」(PDF/Excel/照片)→ 走 ingest 管线首跑
-                产出:vault 数据目录 + _originals/ + 路由 CLAUDE.md
-阶段 4 装机     生成 gateway config + launchd plist;引导走无法自动化的步骤:
-                ① IM 后台建 N 个应用拿凭据(逐平台图文 checklist)
-                ② Claude Code / Codex 登录(GUI 会话)
-                ③ 自动登录/防休眠决策
-阶段 5 验证     健康探针全绿 → 每人 IM 里收到自己的 bot 的自我介绍
-                → anc audit 安全体检(默认值检查、权限白名单、密钥文件权限)
-阶段 6 诊断期   员工级访谈 bot 逐人采集(只记工作事实,不评绩效)→ 回填问题模型证据
-                → 里程碑复盘先验模型(假设 → 已验证 / 已推翻)再谈交付
+anc init                    # 建目录结构、本地组、ACL、vault git repo
+anc host setup              # 组策略、电源、防火墙、会话保持策略(§3.4、§3.5)
+anc host multisession <provider>   # 安装/切换多会话层:rdpwrap | single | rds
+anc member add <name> --role <role>  # 建 Windows 用户 + 工作区 + inbox + ACL + .rdp 文件
+anc member remove <name>    # 回收:禁用用户、归档工作区、撤销 .rdp
+anc deploy personas|skills  # vault 真相源 → 各员工工作区,默认 dry-run
+anc ingest                  # 处理各 inbox,入库并 commit
+anc status                  # 会话 / WorkBuddy 进程 / rdpwrap 状态一览
+anc doctor                  # 环境诊断:rdpwrap 兼容性、组策略、ACL、persona 漂移
+anc audit [--fix]           # 安全体检:管理员组成员、ACL、端口暴露、默认值
 ```
 
-关键设计:**「向导 + 体检」成对出现**(OpenClaw 的标杆经验);无法自动化的步骤(建应用、OAuth、自动登录)不假装能自动化,做成引导式 checklist,状态可断点续走。
+具体实现语言与目录结构在 M1 技术设计中裁决(§13)。
 
 ---
 
-## 7. 安全模型
+## 10. Onboarding
 
-信任模型:**一个部署 = 一个互信的公司**,明确不支持敌意多租户。三层防线(采 OpenClaw 官方哲学,其为 4 万台裸奔实例付过学费):
+安装依然是一场对话(继承上游),只是落地步骤换成 Windows 主机:
 
-1. **Identity first(谁能说话)**:平台白名单(`allow_from`)默认关闭注册、陌生人走配对码;`admin_from` 独立管特权命令;devbot 仅创始人。
-2. **Scope next(能动什么)**:角色 bot = 空沙箱 cwd + 只读数据白名单 + `dontAsk`/工具白名单;ingest 独立进程不 bypass;devbot 才有 full,且 cwd 天然是 git(改坏可回滚)。
-3. **Model last(假设模型会被操纵)**:提示注入无模型级解(业界实测成功率 >79%),入站文件/网页内容按敌意处理——角色 bot 只搬运不执行;高危操作(exec/外发/部署)过 IM 按钮人审。
-4. **出站凭据检查(试点)**:任何 agent → IM 的结构化内容,发送前本机先做确定性凭据扫描(app secret / api key / bearer / cookie / 私钥 / 含密码连接串 / 各家 token 前缀),命中即替换后重扫,扫描器不可用则不发;只过滤凭据,不因为内容是代码而过滤。成员个人 agent 经 IM 与公司 bot 做 A2A 时(最小信封:`protocol` / `survey_id` / `message_id` / `reply_to` / `type` / `rule_version` / `payload`,靠 message_id 去重、survey_id 隔离),「完成」只允许服务端判定器发出,bot 对话层无权宣布。
-
-**默认值即安全策略**:绝不默认 0.0.0.0;secret 文件 600/目录 700;secret 永不进 git;bind loopback + 鉴权缺一不启动。`anc audit` 一键体检 + `--fix`。
-
----
-
-## 8. 运维与可观测
-
-- **防假绿探针**:进程活 ≠ 能回话。健康 = launchd running + 进程存在 + 日志功能级就绪标志,三重交叉。
-- **watchdog**:独立 launchd(绝不挂在被监控进程自己的调度里),查 cron 产物新鲜度 + 探针,异常主动喊运维群(带冷却)。「没消息 = 没事」是反模式,所有定时任务遵守「输出新鲜度 + 成功标记」探测协议。
-- **日报**:token 用量(按 bot / 按 provider)、活跃度(不做个人排名,保护使用意愿)、聊天问题挖掘,发进 IM。
-- **成本策略**:角色 bot 用中档模型,devbot/ingest 用强模型;订阅池共享时防「devbot 重任务饿死同事」;支持第三方 Anthropic 兼容端点做兜底 provider(如 DeepSeek),额度触顶手动切换(自动兜底为规划项,依赖上游或 wrapper 实现,已登记 §3.1 缺口清单)。
-- **回滚**:一切配置变更带时间戳备份;git 是万能回滚;旧栈保留可 bootout/bootstrap 切换。
+1. **访谈**:公司做什么、谁在用、最常被问的问题 → 生成 `company\problem-model.md`(问题模型,继承上游 LESSONS)与 vault 初始结构。
+2. **名单**:约 5 个员工,每人一个岗位 → 生成 roles 与 members 的 persona。
+3. **决策项**(onboarding 必须明确呈现、由公司拍板):多会话层选 `rdpwrap` / `single` / `rds` 及其风险(§3.1);WorkBuddy 个人版或 Enterprise 版;数据经腾讯云的合规影响(§4)。
+4. **主机搭建**:`anc init` → `anc host setup` → `anc host multisession <provider>`。
+5. **逐个员工**:`anc member add` → 管理员把 `.rdp` 发给本人 → 员工首次远程进来,登录自己的 WorkBuddy、绑定企微机器人(无法自动化,checklist 引导)。
+6. **分发**:`anc deploy personas` + `anc deploy skills`。
+7. **验收**:每个员工在企微里问一个 vault 里有答案的问题、一个没有答案的问题(验证诚实条款);断开远程后再问一次(验证会话保持);`anc doctor` 与 `anc audit` 全绿。
 
 ---
-
-## 9. 包形态与命令面
-
-- npm:`@goldentellus/workbuddy-anc`,bin 名 **`anc`**;同时以 **skill** 形态分发(onboarding 即 skill,呼应「本体是一个 skill」)。
-- TypeScript,零/极少运行时依赖(遵循 ha7ch 工具链习惯);gateway 与 harness 是外部二进制,本库只编排。
-
-```
-anc onboard              # 对话式冷启动(§6)
-anc init                 # 非对话式:从模板生成 vault + config 骨架(M1 先行)
-anc deploy personas|skills|config   # 真相源 → 线上,dry-run 默认
-anc status               # 一键状态(launchd/探针/同步/额度)
-anc audit [--fix]        # 安全体检
-anc member add|remove    # 入职开 bot / 离职回收(凭据、白名单、会话归档)
-anc doctor               # 环境诊断(keychain/PATH/GUI 会话/版本 pin)
-```
-
----
-
-## 10. 与先例的关系(定位声明)
-
-- **OpenClaw**(384k stars):个人助理品类定义者,证明了「自托管 + IM + Mac mini」的需求量级(甚至带火 Mac mini 销量)。我们不与它竞争个人场景;我们补它没有的组织层(一人一 bot 映射真人、公司 vault、成本分账)与合规 token 层。可借鉴:bindings 声明式路由、HEARTBEAT.md 静默约定、memory 两层制、onboard+audit 成对。MIT,可参考。
-- **cc-connect**:默认 gateway provider(§3.1)。MIT,可依赖。
-- **agencycli**(cc-connect 作者的多 agent 组织编排):概念最近邻,**AGPL——只可参考设计,不可引代码**。
-- **Coze Studio(开源可私有化的 bot 工厂)/ 飞书 aily / 钉钉 AI 助理(云端)**:组织哲学(bot 工厂/数字员工)与数据模型(微服务 + DB + RAG)均不同,不构成同赛道。
-- **Claude Cowork / Managed Agents**:厂商自营「AI 同事」,单人 × Anthropic 云。差异化锚定厂商结构性不做的四点:中国 IM、双 harness、公司共享 vault、开源自托管。
 
 ## 11. 风险登记
 
-| 风险 | 等级 | 对策 |
+| 风险 | 影响 | 缓解 |
 |---|---|---|
-| Anthropic/OpenAI 订阅政策再收紧(credit 池重启、共享账号重新解释) | 高 | per-member credential 架构;API key fallback;双 harness 对冲 |
-| cc-connect 单人 BDFL、深度问题 deferred | 中 | pin 版本;缺口在约定层自补 + 上游 PR;MIT hard-fork 灾备 |
-| 升级雷(#1562 多飞书 bot 丢消息等) | 中 | 升级回归清单进 CI;不追新版 |
-| 提示注入 → 部署机 RCE | 高 | §7 三层防线;角色 bot 一律不授予 bypass;人审门 |
-| 微信 iLink 协议无契约、扫码续命 | 低 | 标 experimental,永不做主通道 |
-| 第三方模型下 harness 身份压过 persona(试点实证) | 中 | 边界代理整段替换 system(§3.2);校验器要求第三方端点必须配代理 |
-| 员工面向 bot 被配成 bypass + `allow_from = "*"`(试点观察到的反模式) | 高 | §7 红线无例外;渲染器拒绝 `"*"`、校验器拒绝角色 bot bypass;后台任务进沙箱 |
-| Claude Code Channels / Cowork 向公司场景渗透 | 中 | 盯平台扩张;差异化四锚点;GatewayProvider 插槽可反向接入 |
-| 单机单点(机器/进程/网络/运维人) | 中 | watchdog + 主动告警;配置/数据全可 git 重建;《重建 runbook》为 M4 交付物 |
+| rdpwrap 被系统更新打断 | 多人同时远程失效 | 更新纪律 + `anc doctor` 检查;失效时退化为 `single`,企微侧不受影响(§3.1) |
+| 授权合规(rdpwrap 违反 EULA) | 正版化检查时有风险 | 部署方知情接受;合规路径 `rds` 写在文档里,随时可替换 |
+| 杀软把 rdpwrap 报毒 | 被隔离、多会话失效 | 只对其安装目录加排除项 |
+| 依赖腾讯 WorkBuddy | 产品变更、收费、停服、接口改动 | 本库只依赖公开能力;vault、persona、skill 都是本地 markdown,可迁移到别的执行引擎 |
+| 单台主机 | 故障或重启期间全员 bot 离线 | 每日备份(§5.4);重启后员工各连一次即恢复;非目标里明确不做多机 |
+| WorkBuddy 登录态过期 | 某个员工的 bot 静默离线 | `anc status` 巡检;过期周期待验证(§14) |
+| 数据合规 | 公司数据作为上下文发给腾讯云模型 | onboarding 决策项;敏感目录不放进 vault |
+| 界面锁定被绕过 | 员工看到 WorkBuddy 以外的界面 | 尽力而为;真正边界是用户隔离 + ACL(§2.3) |
+| 提示注入 | bot 被文件内容操纵 | 只搬运不入库、单写者入库、副作用操作需确认(§8) |
 
-## 12. 开放问题(onboarding 访谈与 M1 实作中回答)
+---
 
-1. org 真相源的格式:纯 markdown(现状)vs `company.toml` 结构化清单——渲染管线需要机器可读,倾向「markdown 为主 + frontmatter 承载结构」。
-2. 多公司单机(一台 mini 跑两家公司)是否支持——v1 不支持,一机一公司。
-3. bot 间协作(群里互 @ 接力)——cc-connect 1.5 的 mention_map/inter-bot relay 落地后评估,v1 不做。
-4. 心跳/主动性(HEARTBEAT.md 模式)——多 bot 场景心跳成本 ×N,需全局错峰与预算闸,放 M4 评估。
-5. **批量 provisioning 形态**(试点)——全员 Windows、零 agent 的公司如何一条命令装好个人 agent 并拿到自己的 key(内网中转站按「姓名-部门」签发、设备绑定、停用不自动重建)。它制造的是 light 的前提;是否进本库、以 `anc provision` 还是独立 skill 交付,与 #8 一并裁决。
-6. **成员个人 agent 与公司 bot 的 A2A 通道**(试点)——通道就是 IM 本身(个人 agent 以本人身份发消息),协议是最小信封(§7)。是否标准化为 vault 规范的一部分,M3 与 Codex 后端一起评估。
+## 12. 与上游的关系
+
+**继承(运行时无关,原样或小改)**:
+
+- vault 目录规范、frontmatter、路由表、诚实条款、canonical 单点存放(§5.2);
+- inbox 单写者入库(§5.3);
+- persona 七段式与渲染管线思路(§6);
+- skill 格式、三个结构约定、迭代闭环(§7);
+- onboarding 访谈与问题模型(§10);
+- 配置变更「备份 → 原子写 → 校验 → 生效 → 检查」纪律(§9.1);
+- 泄密防线与 `scripts/check-public.sh`。
+
+**作废(被 WorkBuddy + 企微 + Windows 主机取代)**:
+
+- cc-connect gateway 与其配置渲染、上游补丁计划;
+- Harness 接口(Claude Code / Codex 官方 CLI 驱动)、订阅 OAuth 鉴权方式;
+- launchd / systemd installer、Mac mini 与 Linux 主机路径;
+- `tools/harness-proxy/`(第三方模型边界代理,WorkBuddy 下无用武之地);
+- `light/` 云端 vault 服务(单主机下 vault 是本地目录);
+- `docs/M1-DESIGN.md`、`docs/PLAN.md`、`docs/RESEARCH.md`、`docs/LIGHT-MVP.md`、`docs/LESSONS-MANUFACTURING-PILOT.md` 中与运行时相关的部分。
+
+作废的代码与文档暂时保留在仓库里作参考,不再维护;新的里程碑计划落地后统一清理。
+
+---
+
+## 13. 开放问题
+
+1. **WorkBuddy 版本**:个人版还是 Enterprise 版。Enterprise 版能统一管 Skill、Connector、模型,但可能涉及费用,与 P5 零采购冲突时以 P5 为准。
+2. **实现语言**:PowerShell 脚本为主,还是 TypeScript(Node)CLI 调 PowerShell。倾向前者(主机零额外运行时),M1 技术设计裁决。
+3. **ingest 的执行者**:由 Admin 自己的 WorkBuddy 在管理员会话里完成结构化,还是本库提供脚本 + 人工确认。
+4. **群聊形态**:是否需要一个公司公共 bot(挂在 Admin 用户下)在企微群里答公共问题,还是只做一人一 bot。
+5. **里程碑**:新的 M0-M5 计划(替换 `docs/PLAN.md`)待在本 SPEC 定稿后制定。
+
+---
+
+## 14. 待验证清单
+
+实现前逐条实测,结论回写本文件对应章节:
+
+| # | 假设 | 关联章节 | 验证方法 |
+|---|---|---|---|
+| V1 | AppLocker 白名单放行哪些程序后 WorkBuddy 仍能正常执行命令 | §3.2 | 在一个员工用户上先审计模式运行,收集事件日志后再强制 |
+| V2 | WorkBuddy 读取的工作区指令文件名,以及修改后何时生效 | §5.2、§6.2 | 在工作区放不同文件名的指令,观察是否被加载 |
+| V3 | WorkBuddy 能否读取工作区以外的绝对路径(vault) | §5.1 | 指令里给 `C:\anc\vault\` 路径提问;不行则改用目录联接 |
+| V4 | 企微里发给 WorkBuddy 的附件落盘位置 | §2.4 | 发一个文件,在主机上查找落盘路径 |
+| V5 | RemoteApp 模式下 WorkBuddy 点 × 后托盘是否可见、会话是否保持 | §3.4 | 用 RemoteApp `.rdp` 连入,点 × 后断开,再从企微发消息 |
+| V6 | WorkBuddy 登录态多久过期、过期后企微侧表现 | §11 | 长期观察一个账号并记录 |
+| V7 | 主机重启 + 员工重连后,企微机器人是否自动恢复在线 | §9.1 | 重启主机,员工连一次,企微发消息验证 |
+| V8 | vault `SKILL.md` 与 WorkBuddy Skill 格式是否兼容、skill 目录在哪 | §7 | 导入一个最小 skill 测试触发 |
+| V9 | 企微机器人的可见范围:其他员工能否找到并使用别人的 WorkBuddy | §8 | 用第二个企微账号尝试找到第一个员工的 bot |
+| V10 | rdpwrap 社区 fork / `rdpwrap.ini` 对主机当前系统版本的支持情况 | §3.1 | 安装后 RDPConf 显示全绿,两个用户同时远程 |

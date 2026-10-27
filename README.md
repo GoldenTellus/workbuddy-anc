@@ -2,110 +2,58 @@
 
 > 本仓库基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2` 二次开发（MIT 许可）。
 
-> 把你的团队变成 AI native company:公司知识全在 markdown 里,每个人都有自己的 AI。
+> 一台 Windows 主机,每个员工一个自己的 WorkBuddy,企业微信里随时找它干活;公司知识全在 markdown 里。
 >
-> Turn your team into an AI-native company — all company knowledge in markdown, one AI per person.
+> One Windows host, one WorkBuddy per employee, reachable from WeCom — all company knowledge in markdown.
 
-**状态:轻形态 MVP 已可用,托管形态设计完成。** 架构已在一支真实车队生产验证(markdown vault 13+ 周、6-bot 矩阵 8 周,见下)。详细设计见 [SPEC.md](./SPEC.md)(托管形态)与 [docs/LIGHT-MVP.md](./docs/LIGHT-MVP.md)(轻形态),实施计划见 [docs/PLAN.md](./docs/PLAN.md),调研依据见 [docs/RESEARCH.md](./docs/RESEARCH.md)。CLI bin 名为 `anc`(尚未发布)。
+**状态:设计阶段。** 架构规范见 [SPEC.md](./SPEC.md)(0.1-fork Draft),实现前先完成 SPEC §14 的待验证清单。命令入口名 `anc`(规划中)。
 
 ---
 
 ## 是什么
 
-一个开源 infra:公司的知识层(共享 vault + 角色 persona + skill 闭环)+ 按团队现状可选的运行层。按「团队里有没有人已经在用 Claude Code」分两种形态:
+给 5 人左右的小团队用的一套搭建与运维方案:
 
-| | 轻形态(`light/`,**MVP 已可用**) | 托管形态(SPEC 主线) |
-|---|---|---|
-| 假设 | 每人已有 Claude Code 等 agent 工作台 | 团队还没有 AI,从零拉起 |
-| 我们提供 | **云上唯一一份公司 vault**(Cloudflare Worker + R2)+ 一行接入 + 三个 skill,不部署任何 agent | 一台常开 Mac mini:一人一 bot 常驻公司 IM,vault + 网关 + 运维全托管 |
-| 接入 | `claude mcp add` 一行;onboarding 访谈建库(行业适配器) | `anc init` + 引导 checklist |
-| 覆盖 | 用 Claude Code 的人 | 全员(含不碰终端的同事,飞书/钉钉里 @ 即用) |
+- **一人一个 WorkBuddy。** 每个员工在主机上有自己的 Windows 用户和自己的 WorkBuddy 账号,上下文、记忆、skill 迭代轨迹按人隔离。bot 对应的是人,不是岗位;岗位只是 persona 的模板来源。
+- **在企业微信里用。** WorkBuddy 自带企微机器人,员工日常在企微里单聊或群里找自己的 WorkBuddy,任务在主机上执行、结果回到企微。
+- **账号只在主机上登录。** 员工电脑只当「屏幕」:需要看界面时用系统自带的远程桌面连进主机,只看到自己的 WorkBuddy 窗口。同一账号永远只有一处在线。
+- **公司知识 = 文件系统。** 主机上一个 git 管理的 markdown vault,员工只读;原件入库时一次性结构化,回答时直读文件,不做 embedding、不建向量库。
+- **零采购。** 全部用免费、开源或系统自带的组件:Windows 专业版 + RDP Wrapper(多人同时远程)+ RemoteApp Tool(只发布 WorkBuddy)+ 组策略 / AppLocker(界面锁定)。
 
-两种形态共享同一套 vault 规范与 skill 体系;托管形态的 IM bot 就是轻形态 vault 的另一个客户端,先轻后重、随时升级。
-
-## 托管形态:每个人都有一个自己的 AI bot
-
-- **一人一 bot,增强而非替代。** bot 对应的是「人」,不是「角色」——两个车队经理就是两个 bot,各自有自己的会话、自己的 skill 迭代轨迹。角色只是 persona 的模板来源。市面上所有「AI 员工」产品都在造新员工替代人头;这里的 bot 是给每个真人配的放大器。
-- **bot 住在你们已有的 IM 里。** 飞书、钉钉、企业微信、Slack、Telegram……不用打开新的 dashboard,私聊或群里 @ 就是全部交互。
-- **所有 bot 终端同构。** 每个 bot 底下都是同一套东西:官方 coding agent CLI(Claude Code 或 Codex)当 harness(执行引擎)和 token 供给 + 公司共享的 markdown vault(知识库)当数据层。差异只在 persona(bot 的人设:角色模板 × 个人定制)和加载的 skill。
-- **公司知识 = 文件系统。** 零 token 设计——指检索路径零额外模型开销:PDF 等原件在入库时**一次性**结构化成 markdown,回答时 bot 用 Read/Grep 直读盘,不做 embedding、不建向量库、不重复解析原件。数据可 git、可审计、可 grep,复杂了再升级 SQLite 索引(markdown 仍是真相源)。
-- **越用越 AI native。** 每个人在跟自己 bot 的日常磨合中沉淀 skill——答错一次就长出一个校验 skill,老板连问两次就长出一个规划 skill。系统的能力是用出来的,不是配出来的。
-
-## 为什么可信:已经真实跑着
-
-这套架构不是设想。它以 [Climax Racing 车队](https://climax-racing.com)(2026 GT World Challenge Asia)为 reference deployment 生产运行至今:
-
-- 6 个飞书 bot(车队经理/工程师/后勤/机械师/公关 + devbot)常驻一台 Mac mini
-- 数据层是一个结构化 markdown vault(规章/赛程/轮胎/名册),群里发个 PDF,几十秒内自动结构化入库、全 bot 可读
-- 10+ 个 skill 全部从真实使用事故和聊天需求里长出来
-- 比赛周实测:多角色并发答疑、日报定时推送、四天系统零宕机(期间 1 起数据口径事故,直接催生了 SPEC 的 canonical registry 设计)
-
-reference deployment 仓库含车队真实数据,为私有;M1 起其 generic 部分将陆续抽入本库。
-
-2026-09 起有了**第二个 reference deployment**:国内一家医疗器械制造企业的四部门 AI 试点——Linux 服务器上的常驻 bot、全员 Windows 电脑一条命令装好个人 Codex、第三方模型、员工个人 agent 与公司 bot 经 IM 做 A2A。它与车队部署互为对照,分出了哪些裁决是普适的、哪些只是第一个部署的局部经验;通用化的 lessons 见 [docs/LESSONS-MANUFACTURING-PILOT.md](./docs/LESSONS-MANUFACTURING-PILOT.md),其中的「问题模型」已并入 onboarding。
-
-本库做的事,就是把这套生产系统里 **generic 的部分**(三层架构、vault 规范、persona 管线、skill 闭环、运维工具箱)抽出来,变成任何团队 `npx` 一下就能拥有的东西。
+本库**不写 agent、不写 IM 网关**,只做 WorkBuddy 和企微之外的部分:主机搭建、多会话接入、隔离与锁定、vault / persona / skill 分发、运维体检。
 
 ## 架构
 
 ```
-[IM 平台]   飞书 / 钉钉 / 企业微信 / Slack / Telegram / 微信 iLink
-     │ 消息 / 文件(免公网 IP 长连接)
-     ▼
-[Bot 层]    Alice-bot   Bob-bot   Carol-bot   …   devbot(一人一 bot)
-            每个 bot = 一个 cwd:persona 文件 + 会话 + 沙箱边界
-            persona = 角色模板 × 个人定制,git 真相源渲染进 gateway 配置
-     │ 官方 CLI harness(订阅制 token)
-     ▼
-[Harness]   Claude Code(一等公民)/ Codex CLI(第二后端,可切换)
-     │ Read / Grep 直读盘(零 token 设计)
-     ▼
-[数据层]    公司 vault:结构化 markdown + 目录路由 + git 同步总线
-            inbox 自动入库:上传 → 结构化 → commit → 全 bot 可读
+员工电脑(公司内网)
+   │ 双击自己的 .rdp(系统自带远程桌面客户端)
+   ▼
+Windows 专业版主机(常开)
+   ├─ 多会话层:rdpwrap | single | rds(可替换)
+   ├─ RemoteApp:只发布 WorkBuddy 窗口
+   ├─ Windows 用户 alice / bob / …(每人一个,ACL 隔离)
+   │     └─ 自己的 WorkBuddy 账号 + 工作区(persona 由渲染管线生成)
+   └─ C:\anc\vault\(公司 markdown 知识库,员工只读;inbox → 单写者入库)
+
+企业微信 ←→ 每个人的 WorkBuddy(WorkBuddy 自带企微机器人)
 ```
 
-Gateway 默认基于 [cc-connect](https://github.com/chenhg5/cc-connect)(MIT,Go 单二进制,13+ IM 平台 × 12+ agent 后端)。**本库不写 gateway、不写 agent loop,只做它们之上的编排层**:org 模型 → 配置渲染 → 部署 → 运维 → 迭代闭环。
+## 已知取舍(详见 SPEC §3.1、§11)
 
-## Onboarding:安装是一场对话
-
-本体是一个 skill。冷启动不是填配置文件,是聊天:
-
-1. skill 问你「你们公司是做什么的」——语音随便说
-2. 要一份人员名单、一批初始资料(PDF、表格、照片都行)
-3. 自动生成 vault 结构、每个人的 persona、gateway 配置
-4. 引导你走完无法自动化的几步(IM 后台建应用、Claude 登录),装好常驻服务
-5. 每个人在 IM 里收到自己的 bot,开始用
-
-```bash
-# 目标形态(M2 交付,见 PLAN)
-npx @goldentellus/workbuddy-anc onboard
-```
-
-## 和现有方案的区别
-
-| | OpenClaw | Lindy / Dust / 飞书 aily 等 | CrewAI / MetaGPT 等 | **workbuddy-anc** |
-|---|---|---|---|---|
-| 部署 | 自托管 ✅ | SaaS 云端 ❌ | 库,自己搭 | 自托管,一台 Mac mini ✅ |
-| 组织哲学 | 个人助理 | AI 替代人头 | 模拟虚构公司 | **一人一 bot 增强真人** |
-| 公司共享知识库 | ❌ | 托管 RAG | ❌ | **markdown vault,git 可审计** |
-| token 供给 | 订阅路径已被切断 * | credit 制,不可预测 | 按量 API | **官方 CLI + 订阅,合规正门** |
-| 中国 IM | 二等公民 | 各绑各的云 | ❌ | 飞书生产验证,钉钉/企微同构接入 |
-
-\* Anthropic 2026-04 起封禁第三方自研 agent loop 复用 Claude 订阅;官方 CLI 路径被明确放行——详见 RESEARCH §4。
-
-完整 gap 矩阵(10 个维度 × 13 类方案)见 [docs/RESEARCH.md](./docs/RESEARCH.md)。结论:「自托管 + chat 原生 + 文件系统当数据库 + 一人一 bot 增强真人 + skill 使用者日常迭代 + 订阅制官方 harness」这个组合,目前无人占位。
+- **RDP Wrapper 违反微软授权协议**,会被杀软报为黑客工具,系统更新后可能失效。部署方知情接受;合规路径(Windows Server + RDS + User CAL)写在文档里,随时可替换。不装它也能用:同一时间 1 人远程,其他人的 WorkBuddy 照常在后台回企微。
+- **只在公司内网使用**,远程桌面端口不映射外网。
+- **单台主机**:重启后每个员工远程连一次即恢复,不做无人值守自动恢复。
+- **数据经腾讯云**:模型推理与账号数据经过 WorkBuddy 的云端,onboarding 时作为决策项呈现。
 
 ## Roadmap(摘要)
 
-- **轻形态 MVP** ✅:云上公司 vault(Worker + R2,MCP 五工具 + 版本历史)+ onboarding/join/ingest 三 skill,见 [`light/`](./light/)
-- **M0** 立项:调研 + SPEC ✅
-- **M1** 抽取:从 reference deployment 抽出 vault 模板、persona 渲染管线、launchd installer —— `anc init` 能在干净 Mac mini 上拉起「飞书 × Claude Code」的最小公司
-- **M2** 对话式 onboarding skill(含问题模型)+ 员工级访谈 bot + 资料自动结构化入库 + `anc audit` 安全体检初版
-- **M3** 钉钉 / 企业微信 driver + Codex CLI 第二 harness + Linux/systemd installer + 第三方模型边界代理
-- **M4** 运维产品化:watchdog、健康探针、token 日报、audit 强化
-- **M5** skill 生态:公司内 skill registry、eval 回归
+- **M0** 方向与 SPEC ✅
+- **M0.5** 实测 SPEC §14 待验证清单(AppLocker 白名单、工作区指令文件、vault 读取方式、RemoteApp 托盘行为、重启后企微恢复……)
+- **M1** 主机搭建:`anc init` / `anc host setup` / `anc host multisession` / `anc member add`,在一台干净的 Windows 专业版上拉起 5 人可用的环境
+- **M2** 知识层:persona 渲染、skill 分发、inbox 入库、对话式 onboarding
+- **M3** 运维:`anc status` / `anc doctor` / `anc audit`
 
-详见 [docs/PLAN.md](./docs/PLAN.md)。
+新的里程碑计划将替换 `docs/PLAN.md`。`docs/`、`light/`、`tools/harness-proxy/` 继承自上游,运行时相关部分已作废(SPEC §12),仅作参考。
 
 ## License
 
