@@ -1,4 +1,6 @@
-# @ha7ch/ai-native-company — 项目指引
+# workbuddy-anc — 项目指引
+
+> **Fork 说明（GoldenTellus）**：本仓库是 [GoldenTellus/workbuddy-anc](https://github.com/GoldenTellus/workbuddy-anc)，基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2` 二次开发。下文「当前状态」「关键裁决速览」「约定」三节继承自上游，描述的是上游的工作环境（其 reference deployment、`_research/` 资料、公开仓库状态、review 流程在本仓库均不存在）。二次开发方向待重新讨论，在此之前这三节**不作为开发依据**；「铁律:泄密防线」继续有效。
 
 开源 infra 立项库:让小团队在一台 Mac mini 上部署「一人一 AI bot + 公司共享 markdown vault」的运行时。本库是 gateway(cc-connect)与 harness(Claude Code / Codex 官方 CLI)之上的**编排层**——不写 gateway、不写 agent loop。
 

@@ -16,10 +16,10 @@
 
 ## 2. 包结构
 
-npm `@ha7ch/ai-native-company`,bin `anc`,`dependencies: {}`(零运行时依赖,tsc → dist/),Node ≥ 18。
+npm `@goldentellus/workbuddy-anc`,bin `anc`,`dependencies: {}`(零运行时依赖,tsc → dist/),Node ≥ 18。
 
 ```
-ai-native-company/
+workbuddy-anc/
 ├── package.json / tsconfig.json
 ├── src/
 │   ├── cli.ts                  # argv 手写解析 + 命令分发 + 全局 --json;退出码约定见 §6

@@ -1,4 +1,6 @@
-# @ha7ch/ai-native-company
+# workbuddy-anc
+
+> 本仓库基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2` 二次开发（MIT 许可）。
 
 > 把你的团队变成 AI native company:公司知识全在 markdown 里,每个人都有自己的 AI。
 >
@@ -76,12 +78,12 @@ Gateway 默认基于 [cc-connect](https://github.com/chenhg5/cc-connect)(MIT,Go 
 
 ```bash
 # 目标形态(M2 交付,见 PLAN)
-npx @ha7ch/ai-native-company onboard
+npx @goldentellus/workbuddy-anc onboard
 ```
 
 ## 和现有方案的区别
 
-| | OpenClaw | Lindy / Dust / 飞书 aily 等 | CrewAI / MetaGPT 等 | **ai-native-company** |
+| | OpenClaw | Lindy / Dust / 飞书 aily 等 | CrewAI / MetaGPT 等 | **workbuddy-anc** |
 |---|---|---|---|---|
 | 部署 | 自托管 ✅ | SaaS 云端 ❌ | 库,自己搭 | 自托管,一台 Mac mini ✅ |
 | 组织哲学 | 个人助理 | AI 替代人头 | 模拟虚构公司 | **一人一 bot 增强真人** |
@@ -107,4 +109,4 @@ npx @ha7ch/ai-native-company onboard
 
 ## License
 
-MIT © [HA7CH](https://github.com/HA7CH)
+MIT © [HA7CH](https://github.com/HA7CH)(上游原作) · © [GoldenTellus](https://github.com/GoldenTellus)(二次开发)

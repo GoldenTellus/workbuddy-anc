@@ -1,4 +1,4 @@
-# @ha7ch/ai-native-company — 架构规范(SPEC)
+# workbuddy-anc — 架构规范(SPEC)
 
 版本:0.1(2026-07-24,立项稿)
 状态:Draft。基于 Climax Racing reference deployment 的生产经验(markdown vault 13+ 周、6-bot 矩阵 8 周、现行 gateway 形态 5 周)+ 六路调研(见 [docs/RESEARCH.md](./docs/RESEARCH.md));2026-09 起并入第二个 reference deployment(制造企业四部门试点,Linux 服务器 + 全员 Windows 个人 agent + 第三方模型,见 [docs/LESSONS-MANUFACTURING-PILOT.md](./docs/LESSONS-MANUFACTURING-PILOT.md))的裁决,下文以「试点」指代。
@@ -115,7 +115,7 @@ onboarding 不只是建库。试点把 FDE 勘探里的「问题模型」做进�
 ```
 [IM 平台] ←→ [Gateway 层] ←→ [Bot/Persona 层] ←→ [Harness 层] ←→ [Vault 数据层]
                   ↑                ↑                                    ↑
-                  └────────────────┴── @ha7ch/ai-native-company ────────┘
+                  └────────────────┴── workbuddy-anc ───────────────────┘
                        (编排层:org 模型 → 渲染 → 部署 → 运维 → 迭代闭环)
 ```
 
@@ -295,7 +295,7 @@ roles/<role>/persona.md × members/<name>/persona.md(叠加)
 
 ## 9. 包形态与命令面
 
-- npm:`@ha7ch/ai-native-company`,bin 名 **`anc`**;同时以 **skill** 形态分发(onboarding 即 skill,呼应「本体是一个 skill」)。
+- npm:`@goldentellus/workbuddy-anc`,bin 名 **`anc`**;同时以 **skill** 形态分发(onboarding 即 skill,呼应「本体是一个 skill」)。
 - TypeScript,零/极少运行时依赖(遵循 ha7ch 工具链习惯);gateway 与 harness 是外部二进制,本库只编排。
 
 ```
