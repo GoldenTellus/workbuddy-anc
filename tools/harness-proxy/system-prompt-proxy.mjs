@@ -19,6 +19,7 @@ import http from "node:http";
 import https from "node:https";
 import fs from "node:fs";
 import zlib from "node:zlib";
+import { pathToFileURL } from "node:url";
 import { filterToolTurnNarration } from "./tool-turn-filter.mjs";
 
 const upstreamBase = (process.env.ANC_UPSTREAM_BASE_URL ?? "").replace(/\/$/, "");
@@ -103,7 +104,7 @@ const server = http.createServer((request, response) => {
   });
 });
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   server.listen(port, "127.0.0.1", () => {
     console.error(`[anc-harness-proxy] listening on 127.0.0.1:${server.address().port} mode=${mode} persona_chars=${persona.length}`);
   });
