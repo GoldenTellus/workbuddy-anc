@@ -1,6 +1,6 @@
 # workbuddy-anc — 项目指引(Codex 版,与 CLAUDE.md 内容一致)
 
-GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`(MIT)。目标:让 5 人左右的小团队,用一台常开的 **Windows 专业版主机**,给每个员工配一个自己的 **腾讯 WorkBuddy**,在 **企业微信** 里随时找它干活,全公司共享一个 markdown 知识库;全部用免费、开源或系统自带的组件搭起来。
+GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`(MIT)。目标:让 5 人左右的小团队,用一台常开的 **Windows 专业版主机**,给每个员工配一个自己的 **腾讯 WorkBuddy(Enterprise 版)**,在 **企业微信** 里随时找它干活,全公司共享一个 markdown 知识库;WorkBuddy 之外的部分全部用免费、开源或系统自带的组件搭起来。
 
 本库不写 agent、不写 IM 网关:执行引擎是 WorkBuddy,IM 通道是 WorkBuddy 自带的企微机器人。本库只做它们之外的部分——主机搭建、多会话接入、隔离与界面锁定、公司知识层(vault / persona / skill)、运维。
 
@@ -27,7 +27,7 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 5. **只在公司内网使用**;远程桌面端口不映射外网。重启后人工恢复(员工各连一次),不做无人值守自动恢复。
 6. **不封装、不修改 WorkBuddy,不提取其凭据或内部数据**,只用它的公开能力。
 7. **零 token 数据层**:vault 是主机本地 git 目录,员工只读;写入走 inbox → Admin 单写者入库。
-8. **零采购**:不依赖需要购买的授权或服务;合规付费路径只写进文档作替代。
+8. **零采购**:本库搭建的部分不依赖需要购买的授权或服务;合规付费路径只写进文档作替代。WorkBuddy 用 Enterprise 版,skill 以 vault 为真相源、经 Enterprise 管理后台分发为主路径(SPEC §4、§7)。
 
 ## 约定
 

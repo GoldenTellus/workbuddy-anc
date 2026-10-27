@@ -15,7 +15,7 @@
 | P2 | **账号只在主机上登录** | 所有 WorkBuddy 账号与内容只存在主机;员工电脑只当「屏幕」,不装也不登 WorkBuddy。同一账号永远只有一处在线,企微消息只会落到主机 |
 | P3 | **不写 agent,不写 IM 网关** | 执行引擎 = WorkBuddy,IM 通道 = WorkBuddy 自带的企微机器人。本库只做它们之外的部分:主机搭建、隔离与锁定、公司知识层、运维 |
 | P4 | **文件系统当数据库(零 token 设计)** | 继承上游:原件入库时一次性结构化成 markdown,回答时直读文件,不做 embedding、不建向量库 |
-| P5 | **零采购** | 不依赖需要购买的授权或服务。合规但需购买的替代路径(Windows Server + RDS)写进文档,不作为默认 |
+| P5 | **零采购** | 本库搭建的部分不依赖需要购买的授权或服务。合规但需购买的替代路径(Windows Server + RDS)写进文档,不作为默认。WorkBuddy 本身用哪个版本由部署方决定(v1 为 Enterprise 版,§4),不在本条范围内 |
 | P6 | **能力从使用中长出** | 继承上游:skill 由使用者在日常磨合中迭代,答错一次就长出一个校验 skill |
 
 **非目标(v1 不做)**:公司外网访问、多台主机、敌意多租户(信任模型 = 同公司互信圈)、主机重启后无人值守自动恢复、向量知识库、员工本机运行 WorkBuddy。
@@ -134,7 +134,7 @@ Windows 10/11 专业版默认同一时间只允许 1 个远程会话。多人同
 - **执行引擎**:腾讯 WorkBuddy 桌面客户端,每个员工在自己的 Windows 用户里登录自己的账号。本库不封装、不修改、不提取 WorkBuddy 的凭据或内部数据,只通过它公开的能力(工作区、Skill、MCP、企微机器人)对接。
 - **IM 通道**:WorkBuddy 自带的企微机器人。每个员工把自己的 WorkBuddy 绑定到企微,之后在企微里单聊或群里找它,任务在主机上执行、结果回到企微。本库不写 IM 网关。
 - **为什么只在主机登录**:WorkBuddy 支持多台电脑同时登录同一账号,但那样企微消息会落到哪台电脑不确定,上下文也会分裂成两份。P2 规定账号只在主机登录,员工电脑只用远程桌面看画面,问题从根上消失。
-- **版本**:个人版还是 Enterprise 版,v1 不做绑定。Enterprise 版的 Skill 管理、Connector 管理、模型按人配置能简化 §6、§7 的分发;用个人版时,分发走本库的渲染管线(§6.2)。具体用哪个是开放问题(§13)。
+- **版本**:**WorkBuddy Enterprise 版**(部署方已定)。管理后台的 Skill 管理、Connector 管理、按人配置模型是 §7 分发的首选路径;后台覆盖不到的部分(如工作区指令文件,§6.2)由本库的渲染管线补齐。后台具体能做什么、和本库怎么分工待验证(§14 V11)。
 - **数据流向**:模型推理和账号数据经过腾讯云,这是选 WorkBuddy 的固有代价。公司如果对数据出境或数据合规有要求,onboarding 时作为明确的决策项呈现;vault 里的内容被员工问到时,也会作为上下文发给模型。
 
 ---
@@ -224,9 +224,9 @@ vault\roles\<role>\persona.md × vault\members\<name>\persona.md(叠加)
 ## 7. Skill 系统
 
 - **真相源**:`vault\skills\<name>\SKILL.md`,YAML frontmatter(name + 中英双语触发词)+ 正文(数据源表、步骤、输出格式、失败排查)。格式与 WorkBuddy 的 Skill 是否直接兼容待验证(§14)。
-- **分发**:两条路径,一份正文。
-  - Enterprise 版:用管理后台的 Skill 管理统一下发,本库提供把 vault skill 打包成后台可导入格式的工具;
-  - 个人版或后台不可用时:`anc deploy skills` 把 skill 同步到每个员工用户的 WorkBuddy skill 目录(幂等,非破坏)。
+- **分发**:一份正文,两条路径。
+  - **主路径**:Enterprise 管理后台的 Skill 管理统一下发。本库提供把 vault skill 打包成后台可导入格式的工具,vault 仍是真相源,后台只是分发通道;
+  - **兜底**:后台不支持的场景(如只给某个员工的 skill、后台导入格式不兼容),`anc deploy skills` 把 skill 同步到该员工用户的 WorkBuddy skill 目录(幂等,非破坏)。
 - **三个结构约定**(继承上游):置顶铁律段(不编造、查不到就明说)、「事实 → 文件」数据源表、skill 间衔接显式声明。
 - **迭代闭环**:使用中答错或出现新需求 → Admin 收集 → 改 vault 里的 skill 正文 → 重新分发 → 下一次使用即生效。
 - **供应链**:只信 vault 里的 skill;不从公共市场直接安装到员工账号,引入前先由 Admin 审阅并放进 vault。
@@ -285,9 +285,9 @@ anc audit [--fix]           # 安全体检:管理员组成员、ACL、端口暴�
 
 1. **访谈**:公司做什么、谁在用、最常被问的问题 → 生成 `company\problem-model.md`(问题模型,继承上游 LESSONS)与 vault 初始结构。
 2. **名单**:约 5 个员工,每人一个岗位 → 生成 roles 与 members 的 persona。
-3. **决策项**(onboarding 必须明确呈现、由公司拍板):多会话层选 `rdpwrap` / `single` / `rds` 及其风险(§3.1);WorkBuddy 个人版或 Enterprise 版;数据经腾讯云的合规影响(§4)。
+3. **决策项**(onboarding 必须明确呈现、由公司拍板):多会话层选 `rdpwrap` / `single` / `rds` 及其风险(§3.1);数据经腾讯云的合规影响(§4)。
 4. **主机搭建**:`anc init` → `anc host setup` → `anc host multisession <provider>`。
-5. **逐个员工**:`anc member add` → 管理员把 `.rdp` 发给本人 → 员工首次远程进来,登录自己的 WorkBuddy、绑定企微机器人(无法自动化,checklist 引导)。
+5. **逐个员工**:在 Enterprise 管理后台为员工开通账号 → `anc member add` → 管理员把 `.rdp` 发给本人 → 员工首次远程进来,登录自己的 WorkBuddy、绑定企微机器人(无法自动化,checklist 引导)。
 6. **分发**:`anc deploy personas` + `anc deploy skills`。
 7. **验收**:每个员工在企微里问一个 vault 里有答案的问题、一个没有答案的问题(验证诚实条款);断开远程后再问一次(验证会话保持);`anc doctor` 与 `anc audit` 全绿。
 
@@ -336,7 +336,7 @@ anc audit [--fix]           # 安全体检:管理员组成员、ACL、端口暴�
 
 ## 13. 开放问题
 
-1. **WorkBuddy 版本**:个人版还是 Enterprise 版。Enterprise 版能统一管 Skill、Connector、模型,但可能涉及费用,与 P5 零采购冲突时以 P5 为准。
+1. **Enterprise 后台与本库的分工**:Skill、Connector、模型配置以后台为准还是以 vault 为准;已定 vault 是 skill 真相源,其余等 V11 实测后裁决。
 2. **实现语言**:PowerShell 脚本为主,还是 TypeScript(Node)CLI 调 PowerShell。倾向前者(主机零额外运行时),M1 技术设计裁决。
 3. **ingest 的执行者**:由 Admin 自己的 WorkBuddy 在管理员会话里完成结构化,还是本库提供脚本 + 人工确认。
 4. **群聊形态**:是否需要一个公司公共 bot(挂在 Admin 用户下)在企微群里答公共问题,还是只做一人一 bot。
@@ -360,3 +360,4 @@ anc audit [--fix]           # 安全体检:管理员组成员、ACL、端口暴�
 | V8 | vault `SKILL.md` 与 WorkBuddy Skill 格式是否兼容、skill 目录在哪 | §7 | 导入一个最小 skill 测试触发 |
 | V9 | 企微机器人的可见范围:其他员工能否找到并使用别人的 WorkBuddy | §8 | 用第二个企微账号尝试找到第一个员工的 bot |
 | V10 | rdpwrap 社区 fork / `rdpwrap.ini` 对主机当前系统版本的支持情况 | §3.1 | 安装后 RDPConf 显示全绿,两个用户同时远程 |
+| V11 | Enterprise 管理后台的能力:Skill 能否批量导入、能否只下发给指定成员、能否统一下发工作区指令或 persona、成员账号如何开通 | §4、§7、§10 | 在后台逐项操作,记录可用功能与导入格式 |

@@ -18,7 +18,8 @@
 - **在企业微信里用。** WorkBuddy 自带企微机器人,员工日常在企微里单聊或群里找自己的 WorkBuddy,任务在主机上执行、结果回到企微。
 - **账号只在主机上登录。** 员工电脑只当「屏幕」:需要看界面时用系统自带的远程桌面连进主机,只看到自己的 WorkBuddy 窗口。同一账号永远只有一处在线。
 - **公司知识 = 文件系统。** 主机上一个 git 管理的 markdown vault,员工只读;原件入库时一次性结构化,回答时直读文件,不做 embedding、不建向量库。
-- **零采购。** 全部用免费、开源或系统自带的组件:Windows 专业版 + RDP Wrapper(多人同时远程)+ RemoteApp Tool(只发布 WorkBuddy)+ 组策略 / AppLocker(界面锁定)。
+- **WorkBuddy Enterprise 版。** skill 以 vault 为真相源,经 Enterprise 管理后台统一下发给员工;后台覆盖不到的(如每个人的 persona)由本库补齐。
+- **零采购。** WorkBuddy 之外的部分全部用免费、开源或系统自带的组件:Windows 专业版 + RDP Wrapper(多人同时远程)+ RemoteApp Tool(只发布 WorkBuddy)+ 组策略 / AppLocker(界面锁定)。
 
 本库**不写 agent、不写 IM 网关**,只做 WorkBuddy 和企微之外的部分:主机搭建、多会话接入、隔离与锁定、vault / persona / skill 分发、运维体检。
 
