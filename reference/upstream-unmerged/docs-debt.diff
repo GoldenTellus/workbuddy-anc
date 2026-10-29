@@ -1,0 +1,85 @@
+diff --git a/.gitignore b/.gitignore
+index d6d2a22..6a4592b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,3 +11,4 @@ _research/
+ # light/vault-service 本地态
+ .dev.vars
+ .wrangler/
++wrangler.local.jsonc
+diff --git a/SPEC.md b/SPEC.md
+index a96d9f8..8b674bc 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -289,6 +289,6 @@ anc doctor               # 环境诊断(keychain/PATH/GUI 会话/版本 pin)
+ ## 12. 开放问题(onboarding 访谈与 M1 实作中回答)
+ 
+ 1. org 真相源的格式:纯 markdown(现状)vs `company.toml` 结构化清单——渲染管线需要机器可读,倾向「markdown 为主 + frontmatter 承载结构」。
+-2. 多公司单机(一台 mini 跑两家公司)是否支持——v1 不支持,一机一公司。
++2. 多公司单机(一台 mini 跑多家公司)——已论证可行并改判为「共享托管」部署形态(M-后续):硬约束 = 每公司一个 macOS 用户、每用户即一个独立 deployment(互信圈仍以单公司为界,与 §7 信任模型一致;OS 级隔离防 devbot 注入跨公司)+ 每公司自带订阅凭据(token 绝不跨公司共享,per-member 经 CLAUDE_CODE_OAUTH_TOKEN 按 project 注入);自动登录仅一用户,重启需逐用户登录一次(runbook 项)。v1 交付仍一机一公司。
+ 3. bot 间协作(群里互 @ 接力)——cc-connect 1.5 的 mention_map/inter-bot relay 落地后评估,v1 不做。
+ 4. 心跳/主动性(HEARTBEAT.md 模式)——多 bot 场景心跳成本 ×N,需全局错峰与预算闸,放 M4 评估。
+diff --git a/docs/PLAN.md b/docs/PLAN.md
+index 2a985d6..b415b17 100644
+--- a/docs/PLAN.md
++++ b/docs/PLAN.md
+@@ -10,6 +10,21 @@
+ - [x] 关键裁决:cc-connect 之上建约定层(不 fork 不自研);官方 CLI 双 harness;一人一 bot;每 bot 一 cwd 枢轴
+ - [x] README + SPEC + PLAN + RESEARCH
+ 
++## 轻形态 MVP — BYO Claude Code + 云上公司 vault ✅(2026-07-24 交付)
++
++- [x] vault 服务(Cloudflare Worker + R2,MCP 五工具 + 版本历史 + CAS),经 Codex review 合入
++- [x] 三 skill:onboard(访谈建库)/ join(接入+名片同步)/ ingest(结构化入库);技能分发名片化(正文住 vault,全员即时生效)
++- [x] HA7CH 试点实例部署(自带账号原则;自定义域解决国内可达)
++- [ ] 首家公司完整走通 onboarding 并留存使用(HA7CH 自己 → 再找一家非自家)
++- 与托管形态(M1-M4)共享 vault 规范,互为消费端,不互斥
++
++### Backlog(登记,按需启动)
++
++- per-member token + `skills/` 写权限分权(供应链边界;密钥登记表体系前提)
++- 共享托管 mini(一机多公司,SPEC 开放问题 2 已改判,约束见彼处)
++- Cloudflare Sandbox 云 target 合规 spike(容器内 setup-token + 1 bot 观察两周)
++- 公司密钥管理(vault 只存登记表不存值;「密钥即服务」为独立产品面)
++
+ ## M1 — 抽取:`anc init` 拉起最小公司(飞书 × Claude Code)
+ 
+ 目标:在一台干净 Mac mini 上,`anc init` + 引导 checklist 走完,得到一个能回话的 N-bot 公司。详细技术设计见 [M1-DESIGN.md](./M1-DESIGN.md)。
+diff --git a/docs/RESEARCH.md b/docs/RESEARCH.md
+index 76068fd..f2f6f36 100644
+--- a/docs/RESEARCH.md
++++ b/docs/RESEARCH.md
+@@ -23,9 +23,11 @@
+ | Claude Cowork / Managed Agents | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ⚠️ | ✅ | ❌ | ❌ | ❌ |
+ | Microsoft Agent 365 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ❌ |
+ | Every Plus Ones | ❌ | ✅ | ❌ | ❌ | ⚠️ | ✅ | ❌ | ❌ | ❌ | ❌ |
++| WorkBuddy(腾讯,2026-03)* | ⚠️ | ✅ | ✅ | ❌ | ⚠️ | ⚠️ | ❌ | ⚠️ | ⚠️ | ❌ |
+ | **ai-native-company(目标)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+ 
+ \* OpenClaw 的订阅路径 2026-04 被 Anthropic 切断(见 §4)。
++\* WorkBuddy:腾讯 AI agent 工作台(桌面端 + IM bot 双形态,OpenClaw-like),2026-03 上线 90 天国内第一、5 月出海;任务式多 agent 调度(非一人一持续 bot)、积分制计费;企业版有项目空间共享知识库与权限边界(故 H 记 ⚠️),但为云端 RAG/连接器路线,非文件系统真相源——E/H 两列依然无 ✅。
+ 
+ **关键观察:E(一人一 bot 对应真人、增强而非替代)和 H(公司级共享 vault)两列,矩阵里没有任何一家打勾。** 所有「AI 员工」产品在造新员工替代人头;所有框架不建组织数据层。单维度倒是多数已被市场验证是对的:A 被 OpenClaw 验证(甚至带火 Mac mini 销量,Bloomberg 2026-05 报道)、C 被飞书官方下场给 OpenClaw 写插件验证、D 被 Anthropic 自己弃向量改 grep 验证、F 被 Every 的 compound engineering 验证、G 被两家厂商把 agent 用量塞进订阅验证。
+ 
+@@ -64,7 +66,7 @@ Anthropic 2025-05 从 Claude Code 移除向量检索改用 agentic search(Boris
+ ## 7. 理念背书与竞争时钟
+ 
+ - 理念供给过剩(WAIC 2026「AI-Native Organizations」议题、Deloitte「The Great Rebuild」、Every 的 allocation economy / compound engineering),但「小团队今天想变 AI-native 该 git clone 什么」没有答案——理念与 infra 之间的缝就是本项目。
+-- 时钟:Claude Cowork 2026-07 起向 web/移动/企业扩张;Dust 拿 Sequoia B 轮;钉钉/飞书国内加速;OpenClaw 社区随时可能把团队化用法产品化。窗口存在,但不会永远开着。
++- 时钟:WorkBuddy 90 天做到国内第一并出海(桌面 + IM 双形态触达办公人群的最强量级实证,企业版 198 元/人/月);Claude Cowork 2026-07 起向 web/移动/企业扩张;Dust 拿 Sequoia B 轮;钉钉/飞书国内加速;OpenClaw 社区随时可能把团队化用法产品化。窗口存在,但不会永远开着。
+ 
+ ---
+ 
+diff --git a/light/vault-service/README.md b/light/vault-service/README.md
+index 3905fed..1de92be 100644
+--- a/light/vault-service/README.md
++++ b/light/vault-service/README.md
+@@ -21,7 +21,7 @@ npx wrangler secret put VAULT_TOKEN --name anc-vault-<公司名>
+ # ↑ 输一个长随机串,这就是公司的钥匙;--name 必须与部署名一致,否则 secret 会写到别的 Worker、服务恒 401
+ ```
+ 
+-产出地址形如 `https://anc-vault-<公司名>.<账号>.workers.dev`。
++产出地址形如 `https://anc-vault-<公司名>.<账号>.workers.dev`。绑自定义域/固化实例参数:在本目录建 `wrangler.local.jsonc`(gitignored,写 name/routes 等公司专属配置),`npx wrangler deploy -c wrangler.local.jsonc`——实例信息永不进仓库(自带账号原则)。
+ 
+ > 费用:Workers Paid $5/月起;R2 10GB 免费额度内 markdown 规模基本为零。
+ 
