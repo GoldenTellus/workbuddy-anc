@@ -3,7 +3,7 @@ import test from "node:test";
 import { filterToolTurnNarration } from "./tool-turn-filter.mjs";
 
 process.env.ANC_UPSTREAM_BASE_URL ??= "http://127.0.0.1:1";
-process.env.ANC_SYSTEM_PROMPT_FILE ??= new URL("./README.md", import.meta.url).pathname;
+process.env.ANC_SYSTEM_PROMPT_FILE ??= fileURLToPath(new URL("./README.md", import.meta.url));
 const { rewriteSystem } = await import("./system-prompt-proxy.mjs");
 
 const sseToolTurn = Buffer.from([
