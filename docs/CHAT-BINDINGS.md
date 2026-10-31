@@ -47,6 +47,8 @@ node scripts\anc-bind\bind.mjs list
 
 测试：`node --test scripts/anc-bind/bind.test.mjs`（3 条：绑定/改绑/解绑、未知 chat、缺参数）。
 
+> 同一张表也可以从本地小服务那边操作：`npm run service -- bind set --chat-id <chatid> --employee <姓名>`。服务侧的 schema 与这里一致，见 [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)。
+
 ## 谁写、什么时候写
 
 - **只允许管理员写**：绑定发生在建群那一步（一人一群），或离职交接时由管理员改。

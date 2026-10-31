@@ -139,6 +139,8 @@ Windows 主机(7×24)
 
 TypeScript + Node 22 实现(D11)。
 
+第一切片已落地(`tasks` / `task_events` / `reminders` / `outbox` / `chat_bindings` + CLI + 出站凭据扫描),见 [LOCAL-SERVICE.md](./LOCAL-SERVICE.md);HTTP 接口、常驻循环、vault 投影与 watchdog 等 T6/T17 后再加。
+
 - **状态**:任务与工作流状态以 SQLite 为真相;vault 内部区里的 markdown 是可重建的只读投影,提供 `reproject` 命令重建。
 - **完成判定**:「完成」只能由它判定,公司 bot 在对话里无权宣布。「完成」状态与对应的出站消息在同一个事务里提交。
 - **规则冻结**(上游 SPEC §5):访谈规则、提醒规则带 `version` 与内容 hash;每次工作流开始时冻结 `policy_version` 与 `rule_content_hash`,新规则只对新开的工作流生效。
