@@ -1,10 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { nowIso } from './db.ts';
+import { join } from 'node:path';
+import { nowIso, toIso } from './db.ts';
 import { dueReminders, markReminderSent } from './reminders.ts';
 import { getTask } from './tasks.ts';
 import { resolve } from './bindings.ts';
-import { enqueue, listOutbox, markSent, markFailed } from './outbox.ts';
+import { enqueue, listPendingDue, markSent, markFailed } from './outbox.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 
 export type Sender = (url: string, text: string, mentions: string[]) => Promise<void>;
@@ -12,8 +13,10 @@ export type Sender = (url: string, text: string, mentions: string[]) => Promise<
 export interface TickOptions {
   /** 逻辑时间，测试用；默认当前时间 */
   now?: string;
-  /** webhook 文件路径；不传则只入队不发送 */
+  /** 固定 webhook 文件（测试或单群部署）；不传则按群绑定里的 webhook_file 选，默认 wecom-webhook.txt */
   webhookFile?: string;
+  /** 密钥目录，默认 %ProgramData%\anc\secrets */
+  secretsDir?: string;
   /** 注入发送器，测试用；默认走 fetch */
   send?: Sender;
   limit?: number;
@@ -69,6 +72,7 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
       chatId: task.chat_id,
       dedupeKey: `reminder:${r.id}`,
       mentions,
+      at: now,
     });
     if (q.inserted) enqueued += 1;
     markReminderSent(db, r.id, now);
@@ -76,20 +80,37 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
 
   let sent = 0;
   let failed = 0;
-  const url = opts.webhookFile ? readFileSync(opts.webhookFile, 'utf8').trim() : '';
-  if (url) {
-    const send = opts.send ?? defaultSender;
-    const pending = listOutbox(db, { status: 'pending', limit: opts.limit ?? 20 });
-    for (const m of pending) {
-      const payload = JSON.parse(m.payload) as { text: string; mentions?: string[] };
+  const send = opts.send ?? defaultSender;
+  const fixedUrl = opts.webhookFile ? readFileSync(opts.webhookFile, 'utf8').trim() : '';
+  const secretsDir = opts.secretsDir ?? join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'secrets');
+  const pending = listPendingDue(db, toIso(now), opts.limit ?? 20);
+
+  for (const m of pending) {
+    const binding = m.chat_id ? resolve(db, m.chat_id) : null;
+    const file = binding?.webhook_file || 'wecom-webhook.txt';
+    let url = fixedUrl;
+    if (!url) {
       try {
-        await send(url, payload.text, payload.mentions ?? []);
-        markSent(db, m.id);
-        sent += 1;
-      } catch (e) {
-        markFailed(db, m.id, (e as Error).message);
+        url = readFileSync(join(secretsDir, file), 'utf8').trim();
+      } catch {
+        markFailed(db, m.id, '读不到 webhook 文件: ' + file);
         failed += 1;
+        continue;
       }
+    }
+    if (!url) {
+      markFailed(db, m.id, 'webhook 文件为空: ' + file);
+      failed += 1;
+      continue;
+    }
+    const payload = JSON.parse(m.payload) as { text: string; mentions?: string[] };
+    try {
+      await send(url, payload.text, payload.mentions ?? []);
+      markSent(db, m.id);
+      sent += 1;
+    } catch (e) {
+      markFailed(db, m.id, (e as Error).message);
+      failed += 1;
     }
   }
 

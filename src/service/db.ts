@@ -1,9 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import os from 'node:os';
 
-export const DEFAULT_DB = join(os.homedir(), 'anc', 'anc.db');
+export const DEFAULT_DB = process.env.ANC_DB && process.env.ANC_DB.trim()
+  ? process.env.ANC_DB.trim()
+  : join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'data', 'anc.db');
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -81,10 +82,15 @@ export function openDb(path: string = DEFAULT_DB): DatabaseSync {
 
 /** 轻量迁移：只加列，不改旧数据。 */
 function migrate(db: DatabaseSync): void {
-  const cols = db.prepare('PRAGMA table_info(chat_bindings)').all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === 'userid')) {
-    db.exec('ALTER TABLE chat_bindings ADD COLUMN userid TEXT');
-  }
+  const addCol = (table: string, col: string, type: string) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+  };
+  addCol('chat_bindings', 'userid', 'TEXT');
+  addCol('chat_bindings', 'webhook_file', 'TEXT');
+  addCol('tasks', 'assignee_userid', 'TEXT');
+  addCol('tasks', 'requester_userid', 'TEXT');
+  addCol('outbox', 'next_attempt_at', 'TEXT');
 }
 
 export function nowIso(d: Date = new Date()): string {

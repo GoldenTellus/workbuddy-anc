@@ -23,16 +23,16 @@
 ## 命令
 
 ```powershell
-# 绑定（管理员；userid 用于提醒时 @ 人）
-npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid>
+# 绑定（管理员；userid 用于提醒时 @ 人，webhook-file 是该群自己的密钥文件名）
+npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid> --webhook-file wecom-webhook.txt
 npm run service -- bind resolve --chat-id <chatid>
 npm run service -- bind list
 
-# 任务
-npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --due "2026-10-31T09:00:00+08:00"
+# 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
+npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00"
 npm run service -- task list --status open
-npm run service -- task done --id 1
-npm run service -- task cancel --id 1
+npm run service -- task done --id 1 --actor <userid>
+npm run service -- task cancel --id 1 --actor <userid>
 
 # 提醒
 npm run service -- reminder due --now "2026-10-31T09:00:00+08:00"
@@ -52,8 +52,12 @@ npm run service -- loop --interval-ms 60000
 `loop` 每次 tick 做三件事：
 
 1. 到期提醒 → 生成 outbox 消息（带绑定人的 `userid` 作为 `mentioned_list`），提醒标为已发（同日续排，跨天停）；
-2. 有 webhook 文件 → 把 pending 消息发出去；失败的记 `last_error`，留在表里等下次；
+2. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查绑定，用绑定里的 `webhook_file`（默认 `wecom-webhook.txt`）去 `%ProgramData%\anc\secrets\` 找；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`；
 3. 任务已完成/取消却还挂着的提醒 → 直接取消，不发。
+
+**权限**：`task done` / `task cancel` 必须带 `--actor <userid>`；只有任务的 `assignee_userid` 或 `requester_userid` 能操作，否则返回「只有执行人或交办人能操作这个任务」。未登记 userid 的旧任务不校验（兼容）。
+
+**常驻**：主机上用计划任务 `anc-service`（`LOCAL SERVICE`，开机启动 + 每分钟跑一次 `loop --once`）。部署脚本与 ACL 见下节。
 
 `outbox flush` 读的是**文件**里的 webhook（不接命令行明文），发给群机器人；返回 `errcode: 0` 才算成功。
 
@@ -72,8 +76,9 @@ npm run test:service
 
 ## 还没做
 
-- HTTP 接口与 token 校验、存活探测（§5.5，等 T17 定运行身份）；
-- 常驻循环已有最小版（`loop`：扫到期提醒 → outbox → webhook，默认每分钟）；还缺 outbox 重试退避、附件清理、开机提醒、watchdog、以及注册成 Windows 服务/计划任务的实际落地；
+- HTTP 接口与 token 校验、存活探测（§5.5）；
+- 连续 4 次无回应 → 通知交办人、之后每小时提醒一次；未完成任务次日顺延并告知交办人；时区/工作时段/节假日配置；
+- 附件清理、开机提醒、watchdog；Windows 服务形态（当前是计划任务 `anc-service`）；
 - vault 内部区的 markdown 投影与 `reproject`；
 - 规则冻结的 `policy_version` / `rule_content_hash` 目前只落字段，还没有规则源；
 - 公司 bot 侧怎么调它（T6：skill → 脚本，或 JSON 投递目录）。

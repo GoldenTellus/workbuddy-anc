@@ -20,21 +20,23 @@
 
 **目标**:员工在自己的群里 @ 公司 bot 说「7 点半提醒 B 开工」,到点 B 被 @;没回就继续提醒;B 回「完成」就停。
 
-**第一步:T6**——公司 bot 能否经技能调用本地脚本(`npm run service -- task add …`)。不成立就改走 JSON 投递目录(FORK §5.5),再做下面的事。
+**第一步:T6**——公司 bot 能否经技能调用本地脚本(`npm run service -- task add …`)。不成立就改走 JSON 投递目录(FORK §5.5),再做下面的事。**T6 已通过(2026-10-31)**:公司 bot 经 `anc-task` 技能调用 CLI,真实群里登记成功。
+
+**进度(2026-10-31)**:T6 通过;真实群里登记 #2,到点 #3 由 `anc-service` 发出并被 @;权限校验、outbox 退避、按群选 webhook 已上线。
 
 交付:
 
 - [ ] 公司 bot 的 `CODEBUDDY.md` 第一版:身份、职责边界;每轮先读消息开头的 `[anc:chat=… from=…]`,用 chatid 查绑定表,查不到就按未绑定处理,不猜人;私聊只处理管理员;诚实条款。控制在 6500 字符以内。M3 之前用仓库里的模板 + 部署脚本(带指纹、先备份、可回滚),M3 起改由渲染器生成。
-- [ ] 任务技能:把一句话转成 `task add / list / done / cancel`;回显写全的时间;执行人有多条待办时先问是哪条。
+- [x] 任务技能:把一句话转成 `task add / list / done / cancel`;回显写全的时间;执行人有多条待办时先问是哪条。(`light/skills/anc-task/SKILL.md`)
 - [ ] 本地小服务补齐 FORK §5.7 的默认规则:
-  - 权限:只有执行人或交办人能标完成、取消(用前缀里的 `from` 对照任务的 `assignee` / `requester`)
-  - 连续 4 次无回应,在交办人群里通知一次,之后每小时提醒一次
-  - 未完成任务次日顺延并告知交办人
-  - 时区、工作时段、节假日配置
-  - outbox 失败重试退避
-- [ ] 每个员工群一个 webhook,按 chatid 选用;密钥文件放 `%ProgramData%\anc\secrets\`,文件名登记在绑定表里,值不进库。
-- [ ] 数据库从 `%USERPROFILE%\anc\` 挪到 `%ProgramData%\anc\data\`,NTFS 只给本地小服务、公司 bot 用户和管理员。
-- [ ] 本地小服务常驻:`loop` 注册成开机即运行的计划任务(`LOCAL SERVICE`),失败重启;补测「没人登录时照样发」(T17 当时是推定)。
+  - [x] 权限:只有执行人或交办人能标完成、取消(用前缀里的 `from` 对照任务的 `assignee_userid` / `requester_userid`)
+  - [ ] 连续 4 次无回应,在交办人群里通知一次,之后每小时提醒一次
+  - [ ] 未完成任务次日顺延并告知交办人
+  - [ ] 时区、工作时段、节假日配置
+  - [x] outbox 失败重试退避(1/5/15/30/60 分钟,5 次后 failed)
+- [x] 每个员工群一个 webhook,按 chatid 选用;密钥文件放 `%ProgramData%\anc\secrets\`,文件名登记在绑定表里,值不进库。(`bind set --webhook-file`,loop 按绑定选文件)
+- [x] 数据库从 `%USERPROFILE%\anc\` 挪到 `%ProgramData%\anc\data\`,NTFS 只给本地小服务、公司 bot 用户和管理员。
+- [x] 本地小服务常驻:`loop` 注册成开机即运行的计划任务(`LOCAL SERVICE`),失败重启;补测「没人登录时照样发」(T17 当时是推定)。(已注册 `anc-service`,每分钟一次;无人登录待补测)
 
 **上线前必须满足**:
 
@@ -61,7 +63,7 @@
 
 **目标**:新员工入职,一小时内有自己的个人 bot 和三方群。
 
-- [ ] 渲染器:改写上游 `feat-m1-w1`,从 `roles/` × `members/` 生成公司 bot 的 `CODEBUDDY.md`、每人的接入包、群映射(FORK §5.9)
+- [ ] 渲染器:改写上游 `feat-m1-w1`,从 `roles/` × `members/` 生成公司 bot 的 `CODEBUDDY.md`、每人的接入包、群映射(FORK §5.9)。上游把这部分排在它自己的 M1(设计见 [M1-DESIGN.md](./M1-DESIGN.md) §2–§4),在本库排在 M3;名字里的「m1」都指上游,和本计划的 M1 无关
 - [ ] 先定:成员与群的对应以谁为真相——`members/` 的 frontmatter(FORK §5.8)还是绑定表(CHAT-BINDINGS)。两处都写会漂移,只能留一处,另一处由它生成
 - [ ] 接入脚本(FORK §5.3);技能名片
 - [ ] 入职、离职 runbook(FORK §5.8)

@@ -2,8 +2,8 @@
 // 本地小服务 CLI（先用脚本方式给公司 bot 调，HTTP 监听等 T17/T6）
 // 用法见 docs/LOCAL-SERVICE.md；所有命令支持 --db 与 --json。
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { openDb, DEFAULT_DB } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
@@ -65,7 +65,8 @@ try {
         String(args['chat-id'] ?? ''),
         String(args.employee ?? ''),
         typeof args.note === 'string' ? args.note : undefined,
-        typeof args.userid === 'string' ? args.userid : undefined
+        typeof args.userid === 'string' ? args.userid : undefined,
+        typeof args['webhook-file'] === 'string' ? args['webhook-file'] : undefined
       );
       out({ ok: true, action: r.action, binding: r.binding });
     } else if (cmd === 'resolve') {
@@ -79,15 +80,24 @@ try {
     } else fail('未知 bind 子命令');
   } else if (group === 'task') {
     if (cmd === 'add') {
+      let dueAt: string | undefined = typeof args.due === 'string' ? args.due : undefined;
+      if (typeof args['due-local'] === 'string') {
+        // 本地时间（如 "2026-10-31 17:30"）→ UTC ISO，避免模型自己做时区换算
+        const d = new Date(String(args['due-local']).replace(' ', 'T'));
+        if (Number.isNaN(d.getTime())) fail('--due-local 不是合法时间（用 "YYYY-MM-DD HH:mm"）');
+        dueAt = d.toISOString();
+      }
       const t = tasks.createTask(db, {
         title: String(args.title ?? ''),
         chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined,
         assignee: typeof args.assignee === 'string' ? args.assignee : undefined,
         requester: typeof args.requester === 'string' ? args.requester : undefined,
-        dueAt: typeof args.due === 'string' ? args.due : undefined,
+        assigneeUserId: typeof args['assignee-userid'] === 'string' ? args['assignee-userid'] : undefined,
+        requesterUserId: typeof args['requester-userid'] === 'string' ? args['requester-userid'] : undefined,
+        dueAt,
       });
-      if (typeof args.due === 'string') reminders.scheduleReminder(db, { taskId: t.id, dueAt: args.due });
-      out({ ok: true, task: t });
+      if (dueAt) reminders.scheduleReminder(db, { taskId: t.id, dueAt });
+      out({ ok: true, task: t, due_local: dueAt ? new Date(dueAt).toLocaleString('sv-SE') : null });
     } else if (cmd === 'list') {
       out({ ok: true, tasks: tasks.listTasks(db, { status: args.status as never, chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined }) });
     } else if (cmd === 'get') {
@@ -98,10 +108,15 @@ try {
       const id = num('id');
       const text = typeof args.text === 'string' ? args.text : `#${id} 已完成`;
       assertSafeOutbound(text);
-      const r = tasks.completeTask(db, id, { chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined, text });
+      const r = tasks.completeTask(
+        db,
+        id,
+        { chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined, text },
+        typeof args.actor === 'string' ? args.actor : undefined
+      );
       out({ ok: true, task: r.task, enqueued: r.enqueued });
     } else if (cmd === 'cancel') {
-      out({ ok: true, task: tasks.cancelTask(db, num('id')) });
+      out({ ok: true, task: tasks.cancelTask(db, num('id'), typeof args.actor === 'string' ? args.actor : undefined) });
     } else fail('未知 task 子命令');
   } else if (group === 'reminder') {
     if (cmd === 'add') {
@@ -147,18 +162,15 @@ try {
       out({ ok: failed === 0, sent, failed });
     } else fail('未知 outbox 子命令');
   } else if (group === 'loop') {
-    const file = typeof args['webhook-file'] === 'string'
-      ? args['webhook-file']
-      : join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets', 'wecom-webhook.txt');
-    const webhookFile = existsSync(file) ? file : undefined;
-    if (!webhookFile) console.error('[loop] 没有 webhook 文件，只入队不发送: ' + file);
+    const explicit = typeof args['webhook-file'] === 'string' ? args['webhook-file'] : null;
+    const secretsDir = explicit ? dirname(explicit) : join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');
     if (args.once === true) {
-      const r = await loop.tick(db, { webhookFile });
+      const r = await loop.tick(db, { webhookFile: explicit ?? undefined, secretsDir });
       out({ ok: true, ...r });
     } else {
       const intervalMs = typeof args['interval-ms'] === 'string' ? Number(args['interval-ms']) : 60000;
       process.on('SIGINT', () => { try { db.close(); } catch { /* ignore */ } process.exit(0); });
-      await loop.run(db, { webhookFile, intervalMs });
+      await loop.run(db, { webhookFile: explicit ?? undefined, secretsDir, intervalMs });
     }
   } else {
     fail('未知命令组: ' + group);

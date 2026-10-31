@@ -81,6 +81,22 @@ test('outbox：@ 人写进 payload', () => withDb((db) => {
   assert.deepEqual(payload.mentions, ['user-1', 'user-2']);
 }));
 
+test('权限：非执行人/交办人不能完成', () => withDb((db) => {
+  const t = tasks.createTask(db, { title: '权限测试', assigneeUserId: 'u1', requesterUserId: 'u2' });
+  assert.throws(() => tasks.completeTask(db, t.id, { text: 'x' }, 'u3'), /只有执行人或交办人/);
+  assert.throws(() => tasks.completeTask(db, t.id, { text: 'x' }), /只有执行人或交办人/);
+  const r = tasks.completeTask(db, t.id, { text: 'x' }, 'u1');
+  assert.equal(r.task.status, 'done');
+}));
+
+test('outbox：失败后退避，不在到点前重发', () => withDb((db) => {
+  const q = outbox.enqueue(db, { text: '退避测试', dedupeKey: 'b1' });
+  outbox.markFailed(db, q.id!, 'boom');
+  const row = outbox.listOutbox(db, { status: 'pending' })[0];
+  assert.equal(row.attempts, 1);
+  assert.equal(outbox.listPendingDue(db, new Date(Date.now() - 5_000).toISOString()).length, 0);
+}));
+
 test('出站扫描：命中即脱敏并给出规则名', () => {
   const s = scanOutbound('see sk-ABCDEFGHIJKLMNOPQRST and https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc-123');
   assert.equal(s.clean, false);

@@ -9,6 +9,8 @@ export interface Task {
   chat_id: string | null;
   assignee: string | null;
   requester: string | null;
+  assignee_userid: string | null;
+  requester_userid: string | null;
   due_at: string | null;
   status: TaskStatus;
   created_at: string;
@@ -21,25 +23,29 @@ export interface CreateTaskInput {
   chatId?: string;
   assignee?: string;
   requester?: string;
+  assigneeUserId?: string;
+  requesterUserId?: string;
   dueAt?: string;
   policyVersion?: string;
   ruleHash?: string;
 }
 
-const FIELDS = 'id, title, chat_id, assignee, requester, due_at, status, created_at, updated_at, completed_at';
+const FIELDS = 'id, title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, created_at, updated_at, completed_at';
 
 export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
   if (!input.title || !input.title.trim()) throw new Error('title 必填');
   const t = nowIso();
   return tx(db, () => {
     const r = db.prepare(
-      `INSERT INTO tasks (title, chat_id, assignee, requester, due_at, status, policy_version, rule_hash, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`
+      `INSERT INTO tasks (title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, policy_version, rule_hash, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`
     ).run(
       input.title.trim(),
       input.chatId ?? null,
       input.assignee ?? null,
       input.requester ?? null,
+      input.assigneeUserId ?? null,
+      input.requesterUserId ?? null,
       input.dueAt ? toIso(input.dueAt) : null,
       input.policyVersion ?? null,
       input.ruleHash ?? null,
@@ -51,6 +57,16 @@ export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
       .run(id, 'created', JSON.stringify({ title: input.title.trim() }), t);
     return getTask(db, id)!;
   });
+}
+
+function assertActor(task: Task, actor?: string): void {
+  const ids = [task.assignee_userid, task.requester_userid].filter(Boolean) as string[];
+  if (!ids.length) return; // 没登记 userid 的任务不校验（兼容旧数据）
+  if (!actor || !ids.includes(actor)) {
+    const e = new Error('只有执行人或交办人能操作这个任务') as Error & { code?: string };
+    e.code = 'FORBIDDEN';
+    throw e;
+  }
 }
 
 export function getTask(db: DatabaseSync, id: number): Task | null {
@@ -72,11 +88,12 @@ export function listTasks(db: DatabaseSync, opts: { status?: TaskStatus; chatId?
  * 完成与出站消息在同一个事务里提交（FORK §5.5）。
  * 重复完成是幂等的：已 done 的任务再点一次不再写事件、不再入队。
  */
-export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: string; text: string; dedupeKey?: string; mentions?: string[] }): { task: Task; enqueued: boolean } {
+export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: string; text: string; dedupeKey?: string; mentions?: string[] }, actor?: string): { task: Task; enqueued: boolean } {
   const t = nowIso();
   return tx(db, () => {
     const task = getTask(db, id);
     if (!task) throw new Error(`任务不存在: ${id}`);
+    assertActor(task, actor);
     if (task.status === 'done') return { task, enqueued: false };
     if (task.status === 'cancelled') throw new Error(`任务已取消，不能标记完成: ${id}`);
     db.prepare('UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?').run('done', t, t, id);
@@ -95,11 +112,12 @@ export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: s
   });
 }
 
-export function cancelTask(db: DatabaseSync, id: number): Task {
+export function cancelTask(db: DatabaseSync, id: number, actor?: string): Task {
   const t = nowIso();
   return tx(db, () => {
     const task = getTask(db, id);
     if (!task) throw new Error(`任务不存在: ${id}`);
+    assertActor(task, actor);
     if (task.status !== 'open') throw new Error(`只有 open 的任务能取消: ${id}`);
     db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('cancelled', t, id);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)').run(id, 'cancelled', null, t);
