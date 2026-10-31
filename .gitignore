@@ -11,3 +11,8 @@ _research/
 # light/vault-service 本地态
 .dev.vars
 .wrangler/
+
+# 本地 SQLite(schema 进仓库,数据不进)
+*.db
+*.db-wal
+*.db-shm

@@ -22,7 +22,8 @@
     "bot"
   ],
   "scripts": {
-    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs"
+    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs",
+    "test:bind": "node --test scripts/anc-bind/bind.test.mjs"
   },
   "private": true
 }
