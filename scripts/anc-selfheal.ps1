@@ -94,9 +94,20 @@ function Send-Alert([string]$text) {
 }
 
 # 冷却
-$state = @{}
-if (Test-Path $StateFile) { try { $state = Get-Content $StateFile -Raw | ConvertFrom-Json -AsHashtable } catch { $state = @{} } }
-if ($state.at -and -not $Force) {
+function Write-State($obj) {
+    [IO.File]::WriteAllText($StateFile, ($obj | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+}
+function Read-State {
+    if (-not (Test-Path $StateFile)) { return $null }
+    try {
+        $raw = [IO.File]::ReadAllText($StateFile, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)
+        return ($raw | ConvertFrom-Json)
+    } catch { return $null }
+}
+
+# 冷却（锚点缺失/inspect 失败也走同一份冷却，避免刷屏）
+$state = Read-State
+if ($state -and $state.at -and -not $Force) {
     $mins = ((Get-Date) - [datetime]$state.at).TotalMinutes
     if ($mins -lt $CooldownMinutes) {
         Write-Log "cooldown: 上次自愈在 $([int]$mins) 分钟前，跳过"
@@ -105,13 +116,26 @@ if ($state.at -and -not $Force) {
 }
 
 $inspect = & node (Join-Path $Repo 'scripts\workbuddy-patch\inspect.mjs') 2>$null | Out-String
-if (-not $inspect) { Write-Log 'ERROR inspect 没有输出'; exit 2 }
-$r = $inspect | ConvertFrom-Json
+if (-not $inspect) {
+    Write-Log 'ERROR inspect 没有输出（manifest 或 asar 有问题）'
+    Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'inspect-failed' })
+    Send-Alert '补丁自愈无法执行：inspect 无输出（manifest/asar 可能损坏），需人工检查'
+    exit 2
+}
+try { $r = $inspect | ConvertFrom-Json } catch { $r = $null }
+if (-not $r -or -not $r.ok) {
+    Write-Log 'ERROR inspect 返回失败'
+    Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'inspect-failed' })
+    Send-Alert '补丁自愈无法执行：inspect 返回失败，需人工检查'
+    exit 2
+}
 Write-Log ("inspect: version=$($r.version) hashMatches=$($r.hashMatches) anchorsOk=$($r.anchorsOk) bootstrapOk=$($r.bootstrapOk)")
 
 if (-not $r.anchorsOk) {
     Write-Log '锚点缺失：需要人工（skill anc-wb-patch 的 B/C 分支）'
-    Send-Alert '补丁自愈失败：关键锚点缺失，需人工重找注入点（skill anc-wb-patch）'
+    # 写冷却，避免守卫每分钟重复告警
+    Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'anchors-missing'; version = $r.version })
+    Send-Alert '补丁自愈失败：关键锚点缺失（emitMessage/WecomAiBotClient），需人工重找注入点；30 分钟内不再重复告警'
     exit 3
 }
 
@@ -126,8 +150,7 @@ if ($DryRun -or -not $Apply) {
 }
 
 # 记录并安排重启
-[pscustomobject]@{ at = (Get-Date).ToString('o'); version = $r.version; hashMatches = $r.hashMatches } |
-    ConvertTo-Json | Set-Content $StateFile -Encoding utf8
+Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); version = $r.version; hashMatches = $r.hashMatches })
 
 Write-Log '安排自愈重启（约 5 秒后 bot 短暂离线）'
 $self = $MyInvocation.MyCommand.Path

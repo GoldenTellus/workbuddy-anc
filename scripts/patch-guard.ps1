@@ -18,10 +18,12 @@ if (-not $main) { exit 0 }   # 没在跑：交给 anc-workbuddy-launch
 $patched = $false
 if (Test-Path $StateFile) {
     try {
-        $s = Get-Content $StateFile -Raw | ConvertFrom-Json
+        $raw = [IO.File]::ReadAllText($StateFile, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)
+        $s = $raw | ConvertFrom-Json
         $at = [datetime]$s.at
-        # 不比对 pid（加载模块的进程可能不是主进程），改看「补丁写入时间是否晚于进程启动」
-        if ($at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true }
+        # 只有「成功打补丁」的模式才算已打补丁；锚点缺失/inspect 失败的状态不算
+        $okMode = ($s.mode -eq 'hash' -or $s.mode -eq 'anchor')
+        if ($okMode -and $at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true }
     } catch { }
 }
 if ($patched) { exit 0 }
