@@ -22,10 +22,11 @@
 按准备成本从低到高排。T16 和 T4 只要有公司 bot 就能测,而且 T16 最关键,先做。
 
 1. **T16** 群标识(半小时)
-2. **T4** 锁屏和长时间无人(放一晚上)
-3. **T3** 群机器人 @ 人(十分钟)
-4. **T5 → T1 → T2** 需要 X 的个人 bot
-5. **T17** 由我在主机上做,开始前先跟你确认要改的内容;和上面几条可以并行
+2. **T16b** 传输层群标识与注入(一小时,依赖 T16 结论;要重启一次 WorkBuddy)
+3. **T4** 锁屏和长时间无人(放一晚上)
+4. **T3** 群机器人 @ 人(十分钟)
+5. **T5 → T1 → T2** 需要 X 的个人 bot
+6. **T17** 由我在主机上做,开始前先跟你确认要改的内容;和上面几条可以并行
 
 ## 3. 逐条步骤
 
@@ -49,6 +50,77 @@
 **通过**:能给出稳定的、每个群各不相同的标识(最好是群 ID,改名不变)。只拿得到群名也算勉强通过,那样群名就不能随便改,要写进运维约定。
 
 **不通过时**(只说看不到,或者明显在猜):「群就是身份边界」不成立。备选做法是建群时由管理员在群里发一条绑定口令,公司 bot 在会话里记住这个群属于谁。但这依赖会话不被压缩、不被重置(T20、T22),比较脆弱,要重新评估员工隔离方案。
+
+**实测记录(2026-10-31,WorkBuddy 5.9.3 / Electron 37.10.3)**
+
+- **环境**:personal/free 账号,IM 读取工具被企业授权拦下(`enableTeamIm=false`、无 enterpriseId)。按 §7 的口径,这只说明工具不可用,不计入本项;下面直接看 agent 实际收到的入站内容。
+- **做法**:在测试群 @ 公司 bot 发第 2 步那句话,然后核对本机落盘的入站 prompt:
+  - `%USERPROFILE%\.workbuddy\projects\<cwd 编码目录>\<session-id>.jsonl` —— 本轮会话记录,第一条 user 消息就是入站内容;
+  - `%USERPROFILE%\.workbuddy\traces\<pid>\trace_*.jsonl` —— 本轮 generation 的 `toolInput`,同一份内容的模型视角。
+- **观察**:入站 prompt 只有三段——`system-reminder`(`user_info` 里只有 OS、Shell、工作目录,外加身份文件、项目布局、connector 状态)、`current_time`、`<user_query>原文</user_query>`。**没有群名、没有群 ID、没有发送人 userid、没有渠道标识**。Claw 的系统提示里写着一句:「所有 IM 渠道(如元宝、QQ、钉钉、微信等)的消息共享同一个会话。」
+- **判定**:**不通过**。agent 侧拿不到任何群标识;同一份入站内容里也拿不到发送人,所以 T9 同步不通过。
+- **结论**:「群就是身份边界」在 Claw 通道上不成立。绑定口令(管理员在群里发一句、bot 记住)能补「哪个群属于谁」,但有两个硬伤:①依赖会话不被压缩、不被重置(T20、T22);②所有渠道共用一个会话,不同群的消息会落进同一上下文,口令本身也只能靠模型记住,隔离强度不够。
+- **新增待测 T16b(未做)**:传输层能否拿到群标识——企微 AIBot 回调 / Claw 会话元数据里有没有 chat id,本地小服务能否读到,并在会话启动时注入给 agent(例如按会话写一个 `current-chat.json`,或设环境变量)。成立则群身份改由我们侧提供,不再依赖 WorkBuddy;不成立则一人一群要退回「一员工一 bot」或「群内人工绑定 + 只按群授权」。
+- **取证注意**:会话记录里有真实群名、userid 和本机路径,只在本机看,不要贴进对话或仓库;写文档一律用 `<session-id>`、`<cwd 编码目录>` 这类占位。
+
+> 补充:第 2–5 步原本的 bot 自述探针(上下文 / 环境 / 改名)已经不需要——入站内容本身可读,直接核对即可。要复核时再发一次,比较两次 `<user_query>` 之外的部分有没有多出字段。
+
+### T16b 群标识能否从传输层拿到并注入(两段都成立;注入依赖 patch)
+
+**为什么要有这条**:T16 已判不通过(agent 侧看不到群)。这条回答的是退路——群标识在 WorkBuddy 的传输层是否还存在,以及能不能由我们侧按会话注入给 agent。成立的话,「群就是身份边界」可以改成「由本地小服务提供身份边界」。
+
+**前提**:公司 bot 在跑;能复现一次群消息;允许用 `--inspect` 起一次 WorkBuddy(会短暂离线)。
+
+**先排除的(2026-10-31 已查)**:
+
+- `%USERPROFILE%\.workbuddy\workbuddy.db` 的 `sessions` 表有 `group_id`、`group_title` 两列,但当前 14 行全为空;Claw 会话(`transport=local`)和 teams 会话(`transport=cloud`)都没有值。**库里有位置、没人写。**
+- 入站 prompt 里没有群标识(T16 已证)。
+- `daemon.log` / `main.log` 里搜不到 chatid 一类字段,只有 `conversationId`。
+
+**初测结果(2026-10-31,路线 1)**:在 daemon 里钩 `ws` 的 `message` 事件,拿到了企微 AIBot 的回调原文,`body` 里字段齐全:
+
+- `chatid` —— 两个测试群各一个,**值不同**;
+- `chattype` —— `group`;
+- `from.userid` —— 发送人;
+- `msgid`、`aibotid`、`response_url`、`text.content`。
+
+**结论:传输层有群标识,也有发送人。** T16b 的第一段(拿得到)通过;第二段见下。
+
+**第二段结果(2026-10-31,注入依赖 patch)**:在 `wecomaibot-client.js` 的 `emitMessage` 上套壳,把 `chatId` 和 `user` 拼成 `[anc:chat=<chatid> from=<userid>] ` 前缀加进 `content`。重发一条消息后:
+
+- 落盘 prompt 的 `<user_query>` 开头确实变成 `[anc:chat=<chatid> from=<userid>] …`;
+- bot 复述时把方括号原样带出,群 ID 和发送人都在;
+- 前缀是每轮由客户端代码拼进去的,**不依赖模型记忆**。
+
+**判定:两段都成立。** 代价是这一步属于**改动后行为**(patch `emitMessage`),必须按 §11 登记、随升级重放。不想背 patch 的话,替代方案是让本地小服务在更外层注入(会话工作目录文件或环境变量),但那需要另测——尤其是 Claw 目前所有渠道共享一个工作目录,直接写文件会串台。
+
+**已产品化(2026-10-31)**:同一注入以 `scripts/workbuddy-patch/`(preload + 启动器 + manifest)交付。用 `launch-patched.ps1` 启动后,日志依次出现 `preload active` 与 `PATCHED target=…wecomaibot-client.js`,复测同一条消息,落盘 prompt 仍以 `[anc:chat=<chatid> from=<userid>]` 开头。部署、开关与升级流程见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md)。
+
+> 取证注意:帧里有真实 chatid、userid 和 `response_url`(短时有效),只在本机看,录完即删;文档里只留字段名。抓取用了进程内钩子(改动后行为),但帧内容是 AIBot 自己发的协议数据,不是我们构造的。
+
+**三条取证路线(按成本排)**:
+
+1. **进程内钩子(推荐,成本最低)**
+   用 T16 那套以 `--inspect=9229` 起主进程或 daemon,在 CDP 里给企微 AIBot 的 WebSocket 客户端挂 `message` 钩子,把每帧里的 `chatid` / `chattype` / 发送人字段写进 `%USERPROFILE%\anc\aibot-frames.jsonl`。字段名和长度可以记,群名等值只在本机看。SDK 封装太深时,退一步 hook `ws` 的 `emit('message')`。
+2. **抓包(成本高,兜底)**
+   对 `wss://` 走 mitm,需要让 Electron 信任我们的 CA(`NODE_EXTRA_CA_CERTS` 或系统证书库)。只在路线 1 失败时做。
+3. **读对象图**
+   在 CDP 里找 Claw 通道的会话对象,看有没有 chat 字段。适合拿不到帧、但对象里其实有值的情况。
+
+**拿到 chat id 之后的注入形态**:
+
+| 形态 | 做法 | 风险 |
+|---|---|---|
+| 每轮环境变量 | wrapper 启动 agent 时注入 `ANC_CHAT_ID` | 得能控制启动;升级后可能失效 |
+| 会话目录文件 | 每轮写 `current-chat.json` 到会话工作目录 | Claw 是所有渠道共享一个目录,会串台 |
+| 本地工具 / MCP | 本地小服务按 session id 建 `session → chat` 映射,agent 调 `get_current_chat` | agent 得能拿到自己的 session id;拿不到就只能按时间窗口猜 |
+
+**判据**:
+
+- **通过**:能稳定拿到每个群的 chat id,并且能在**不依赖模型记忆**的前提下,让 agent 每轮读到正确的那一个。
+- **不通过**:chat id 拿得到但注入不了,或只能靠模型记——退回「一员工一 bot」或「群内人工绑定 + 只按群授权」。
+
+**记录**:测完在 §4 加一行;若结论依赖改动(注入层是 patch/封装),同步进 FORK-DIRECTION §11 台账。
 
 ### T4 锁屏和长时间无人时是否一直在线
 
@@ -157,8 +229,9 @@
 
 | 项 | 日期 | WorkBuddy 版本 | 结果 | 现象与备注 |
 |---|---|---|---|---|
-| T16 群标识 | | | | |
-| T9 发送人身份(随 T16) | | | | |
+| T16 群标识 | 2026-10-31 | 5.9.3 | **不通过** | 入站 prompt 只有 `<user_query>`,没有群名/群 ID/渠道标识;Claw 通道所有 IM 渠道共享一个会话。取证路径见 §3 |
+| T9 发送人身份(随 T16) | 2026-10-31 | 5.9.3 | **不通过** | 同一份入站内容里也没有发送人字段 |
+| T16b 群标识(传输层) | 2026-10-31 | 5.9.3 | **两段成立(注入经 patch)** | AIBot 帧里有 `chatid`(两个群不同)、`chattype`、`from.userid`;在 `wecomaibot-client` 的 `emitMessage` 注入前缀后,prompt 与 bot 复述都带出。属改动后行为,见 FORK §11 |
 | T4 锁屏 / 无人 | | | | |
 | T3 群机器人 @ 人 | | | | |
 | T5 可见范围 | | | | 管理后台菜单路径: |

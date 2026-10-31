@@ -1,0 +1,12 @@
+{
+  "name": "anc-workbuddy-identity-injection",
+  "description": "把企微 AIBot 回调里的 chatId / 发送人注入消息正文，让 agent 能读到群身份",
+  "workbuddyVersion": "5.9.3",
+  "electron": "37.10.3",
+  "target": "main/wecomaibot-client.js",
+  "sha256": "3510b3098686021a01827680b0d84a33daa9ef168b522fe8276ee72b8fae6fe5",
+  "size": 27427,
+  "prefix": "[anc:chat=",
+  "toggleEnv": "ANC_WB_PATCH",
+  "log": "%USERPROFILE%\\anc\\workbuddy-patch.log"
+}

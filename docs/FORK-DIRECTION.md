@@ -69,6 +69,7 @@ Windows 主机(7×24)
 | D14 | 原件(`_originals/`)不进 git,只在 markdown 里登记来源,靠离机备份保护 | 原件一旦进 git,历史里就删不掉 |
 | D15 | 技能、persona 模板、org 数据都走 git 变更:分支 → 渲染器校验 → 合并 → 渲染器部署到主机;手改线上文件视为事故 | 上游由 devbot 改技能,这里没有对应角色;渲染是唯一上线路径(上游 SPEC §4.2) |
 | D16 | 允许修改、封装 WorkBuddy,允许读取它的凭据与内部数据 | 产品内路径拿不到刚需能力(个人免费账号没有 IM 通道,§6),自取是目前唯一可控路径。代价按 §11 记账:版本绑定、升级重放、可一键关闭、凭据不入库 |
+| D17 | 群身份由我们侧注入:patch `wecomaibot-client` 的 `emitMessage`,把 `[anc:chat=<chatid> from=<userid>]` 拼进消息正文 | T16 实测 agent 侧看不到群;T16b 实测 AIBot 回调里有 chatid 与发送人,注入后 prompt 与 bot 复述都能带出。属改动后行为,清单与启动器见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md),台账见 §11 |
 
 ## 5. 组件设计
 
@@ -87,7 +88,9 @@ Windows 主机(7×24)
 - 成员:本人 + 公司 bot + 本人的个人 bot + 提醒用群机器人。群设置为只有群主能拉人。
 - 两个 bot 都 @ 才回应(D8)。登记任务、回复完成都要 @ 公司 bot,例如「@公司bot #12 完成」;提醒文案里写明这个写法。
 - 群就是身份边界:公司 bot 和本地小服务靠「哪个群」认人。
-- 认人默认不依赖 IM 读取 API(那能力要 patch 才有,见 §11):优先走「随消息透传 + 本地会话绑定反查」。确实要 patch 打开时,这条依赖进 §11 台账,并写清关掉 patch 后的降级行为。
+- 群标识由 D17 的注入提供:agent 在消息正文开头读 `[anc:chat=<chatid> from=<userid>]`;本地小服务用同一个 chatid 做映射。不依赖 IM 读取 API(那个仍被企业授权挡着,见 §6/§11)。
+- 关掉 patch(`ANC_WB_PATCH=0`)时降级为:agent 看不到群,只能靠 persona 里的绑定口令认群——脆弱,依赖会话不被压缩/重置(T20/T22)。这是降级路径,不是默认。
+- chatid 到员工的对应关系放本地 SQLite(`chat_bindings` 表),管理员建群时写入,agent 只读;表结构与用法见 [CHAT-BINDINGS.md](./CHAT-BINDINGS.md)。
 - 入职顺序:分配 WorkBuddy 席位 → 员工电脑装 WorkBuddy 并接企业微信 → 运行接入脚本(§5.3)→ 建三方群 → 加群机器人。
 - 员工电脑关机时群照常工作,只是个人 bot 暂时不回话。
 
@@ -208,11 +211,12 @@ TypeScript + Node 22 实现(D11)。
 | 工作区指令文件 | 按 `<cwd>\CODEBUDDY.md` → `<cwd>\.codebuddy\CODEBUDDY.md` → `<cwd>\AGENTS.md` 的顺序找,命中第一个就用、不合并;只在会话第一轮注入,超过 8000 字符截断 | persona 写进 `CODEBUDDY.md`,控制在 8000 字以内;铁律在 skill 里重复(§5.1) |
 | 私聊 | 企微私聊不按发送人区分,所有人共用一个会话、一份上下文、一个工作目录 | 私聊只留管理员,员工走群(D7) |
 | 群聊 | 按群隔离,一个群一个会话;默认要 @ 才回应 | 一人一群成立的基础 |
+| Claw 入站内容 | 经企微 AIBot 进来的消息走 Claw 通道;系统提示写明「所有 IM 渠道(元宝、QQ、钉钉、微信等)的消息共享同一个会话」;入站 prompt 只有 `system-reminder`(OS/Shell/工作目录/身份文件/项目布局/connector 状态)、`current_time`、`<user_query>原文</user_query>`,没有群名、群 ID、发送人 userid、渠道标识 | 群标识与发送人都不能从 agent 侧拿;一人一群的退路见 VERIFY T16 / T16b |
 | 并发 | 同一会话正忙时,新消息直接拒绝(回「正在处理其他消息,请稍后再试」),不排队;带附件的消息先缓存,回复「开始」或 3 分钟后处理 | 提醒不能经过 WorkBuddy 发(§5.7) |
 | 访问控制 | 桌面端没有发送人白名单;谁能找到 bot 由企微侧可见范围和群成员决定 | 公司 bot 用专用标准用户(§5.1);个人 bot 可见范围只设本人(§5.3);群锁成员(§5.2) |
 | 附件 | 落在 `%TEMP%\workbuddy-wecom-media\`,以绝对路径交给 agent;客户端不清理 | 视为 inbox 入口,由本地小服务清理(§5.4) |
 | 开机恢复 | 管理员登录后 WorkBuddy 开机自启并自动连上企业微信 | 人工恢复 = 登录一次(D5) |
-| IM 读取工具 | 会话列表/读消息两个工具注册成功,但一调用就被顶掉,回「IM activation is blocked by Host policy」;同机日志显示扩展激活策略 `allowed=false`、扩展目录为空(目录源 404),账号快照为 `type=personal`、`editionType=free`、无 enterpriseId | 群身份不得依赖这两个工具;T16 用「随消息透传 + 本地会话绑定反查」两条路判(VERIFY §3)。按 D16 可 patch 打开,但那是改动后行为,只能进 §11 台账 |
+| IM 读取工具 | 会话列表/读消息两个工具注册成功,一调用就被顶掉,回「IM activation is blocked by Host policy」。判定是三段式:①本地 `isAllowed()` 要求账号 `type=ultimate`、有 enterpriseId、且服务端 `enableTeamIm=true`;②团队 IM 是**内置扩展**(`resources/extensions/im-channels`,`status=active`),资产齐全,不是「没装」;③放行之后还要走 `{endpoint}/im/api/channel-entry/settings` 取 entry、再取 userSig 登录腾讯 IM。本机账号快照为 `type=personal`、`editionType=free`、无 enterpriseId,`enableTeamIm=false` | 群身份不得依赖这两个工具;T16 用「随消息透传 + 本地会话绑定反查」判(VERIFY §3)。按 D16 可 patch 绕过本地判定,但服务端 entry 仍拒绝,属改动后行为,只进 §11 台账 |
 
 ## 7. 待实测清单
 
@@ -231,6 +235,10 @@ TypeScript + Node 22 实现(D11)。
 | T17 | 本地小服务的运行身份(服务虚拟账户或 Windows 服务)能否外发 HTTPS 到企微 webhook、能否被 NTFS 单独授权 | 提醒发不出去;要换运行身份 |
 
 T16 的口径:IM 读取工具被拦只说明工具不可用,不算 T16 不通过;按 VERIFY §3 的自述法(上下文/环境/改名三探针)判群标识到底可不可得。若最后靠 D16 的 patch 才拿到群标识,结论必须标成「改动后行为」,进 §11 台账,并在升级后重测。
+
+**T16 已实测(2026-10-31,5.9.3):不通过。** 入站 prompt 里没有群名、群 ID、发送人 userid;Claw 通道所有 IM 渠道共用一个会话。取证与判据见 VERIFY §3「实测记录」和 §4 记录表。
+
+**T16b 跟进(2026-10-31):两段都成立,但注入依赖 patch。** AIBot 回调帧里有 `chatid`(每群不同)、`chattype`、`from.userid`;在 `wecomaibot-client` 的 `emitMessage` 注入前缀后,agent 能读到群 ID 与发送人,不依赖模型记忆。属改动后行为,登记在 §11;不想背 patch 的替代注入方式还没测。
 
 **影响实现**:不成立有退路。
 
@@ -306,4 +314,10 @@ D16 放开了手脚,但改动要留下账。这一节就是账本规则;**改了
 
 | 改动 | 目标版本 / build | 目标文件 hash | 目的 | 开关 | 回滚方式 |
 |---|---|---|---|---|---|
-| (示例)放开 IM 通道激活门 | 5.9.3 / `<build>` | `<sha256>` | 让 `im_list_conversations` 可用 | `ANC_WB_IM_PATCH=1` | 恢复 `backup/<version>/` 原文件 |
+| 加载期改写团队 IM 授权判定(**诊断用,不进生产**) | 5.9.3 / Electron 37.10.3 / `<build>` | `main/daemon-bootstrap.js` `d1ea8b17…580f`(788,139 B) | 把本地 `isAllowed()` 改成恒真,观察放行后卡在哪一层 | `NODE_OPTIONS=--require <probe>.cjs`(daemon 启动时注入,仅本进程) | 结束进程、不带该环境变量重启 |
+| AIBot 回调注入群标识(**已采纳,D17**) | 5.9.3 / Electron 37.10.3 / `<build>` | `main/wecomaibot-client.js` `3510b309…e6fe5`(27,427 B) | 在 `emitMessage` 把 `chatId`/发送人拼进 `content`,让群身份进 prompt | `ANC_WB_PATCH=0` 关闭;启动器 `scripts/workbuddy-patch/launch-patched.ps1` | `restore.ps1`;补丁只在内存,重启即失效 |
+| 团队 IM 授权判定,配套服务 bundle(未改,仅定位) | 5.9.3 / `<build>` | `main/netdrive-env-route.js` `ad05f474…0e16`(45,371 B) | `captureActivation` / `[channel-entry]` 在本文件,用于判读日志 | — | — |
+
+> 2026-10-31 实测结论:本地判定可以被绕开,但放行后 `POST {endpoint}/im/api/channel-entry/settings` 连续 4 次失败(`http:failed`,`state=error:load`),`allowed` 因 `entry.status!=='ready'` 仍为 false,工具返回同一句话。**门槛在账号/租户侧,本地 patch 拿不到数据**;客户端不记录 HTTP 状态码,属观测盲区。
+
+> 同日的 T16b 走了另一条路:AIBot 回调解密后的 `chatid` / `from.userid` 在 daemon 里拿得到,给 `emitMessage` 加前缀即可让 agent 读到;这条同样只进台账,不能写进 §6。
