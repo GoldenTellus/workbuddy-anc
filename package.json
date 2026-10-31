@@ -22,7 +22,7 @@
     "bot"
   ],
   "scripts": {
-    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs",
+    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs scripts/anc-bind/bind.test.mjs src/service/service.test.ts",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs",
     "test:service": "node --test src/service/service.test.ts",
     "service": "node src/service/cli.ts"
