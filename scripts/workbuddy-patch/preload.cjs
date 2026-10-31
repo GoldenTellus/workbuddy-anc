@@ -60,6 +60,13 @@ const BOOT_TARGET = String(mf.bootstrapTarget || '').replace(/\\/g, '/');
 const BOOT_REPL = Array.isArray(mf.bootstrapReplacements) ? mf.bootstrapReplacements : [];
 const OPS_WEBHOOK = expand(mf.opsWebhookFile || '');
 const CANARY = expand(mf.canary || '%ProgramData%\\anc\\data\\patch-canary.json');
+// 在目标模块里 require('fs') 不可靠；由 preload 提供写入函数，补丁体只调用
+global.__ancCanaryWrite = function (obj) {
+  try {
+    fs.mkdirSync(path.dirname(CANARY), { recursive: true });
+    fs.writeFileSync(CANARY, JSON.stringify(obj));
+  } catch (_) { /* ignore */ }
+};
 
 function alertOps(text) {
   if (!OPS_WEBHOOK) return;
@@ -89,7 +96,7 @@ const PATCH_BODY = [
   '        if (m && m.chatId && typeof m.content === "string" && m.content.indexOf("' + PREFIX + '") !== 0) {',
   '          m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + "] " + m.content;',
   '        }',
-  '        try { require("fs").writeFileSync("' + CANARY + '", JSON.stringify({ at: new Date().toISOString(), chatId: !!(m && m.chatId), user: !!(m && m.user), contentStr: !!(m && typeof m.content === "string") })); } catch (e) {}',
+  '        try { if (global.__ancCanaryWrite) global.__ancCanaryWrite({ at: new Date().toISOString(), chatId: !!(m && m.chatId), user: !!(m && m.user), contentStr: !!(m && typeof m.content === "string") }); } catch (e) {}',
   '      } catch (e) {}',
   '      return __ancOrig.call(this, m);',
   '    };',
