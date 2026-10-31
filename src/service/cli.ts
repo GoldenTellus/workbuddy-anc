@@ -79,6 +79,11 @@ try {
       out({ ok: true, removed: bindings.unbind(db, String(args['chat-id'] ?? '')) });
     } else if (cmd === 'list') {
       out({ ok: true, bindings: bindings.listBindings(db) });
+    } else if (cmd === 'import') {
+      const from = typeof args.from === 'string' ? args.from : '';
+      if (!from) fail('缺少 --from <groups.json>');
+      const groups = JSON.parse(readFileSync(from, 'utf8')) as bindings.GroupsFile;
+      out({ ok: true, ...bindings.importGroups(db, groups) });
     } else fail('未知 bind 子命令');
   } else if (group === 'task') {
     if (cmd === 'add') {

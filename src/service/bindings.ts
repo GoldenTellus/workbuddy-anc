@@ -49,3 +49,18 @@ export function unbind(db: DatabaseSync, chatId: string): number {
   const r = db.prepare('DELETE FROM chat_bindings WHERE chat_id = ?').run(chatId);
   return Number(r.changes ?? 0);
 }
+
+export interface GroupsFile {
+  members: Array<{ id: string; name: string; chat_id?: string | null; userid?: string | null; webhook_file?: string | null }>;
+}
+
+/** 把渲染器产出的 groups.json 同步进绑定表（members/ 是真相，绑定表是投影）。 */
+export function importGroups(db: DatabaseSync, groups: GroupsFile): { created: number; updated: number; skipped: number } {
+  let created = 0; let updated = 0; let skipped = 0;
+  for (const m of groups.members ?? []) {
+    if (!m.chat_id) { skipped += 1; continue; }
+    const r = bind(db, m.chat_id, m.name, undefined, m.userid ?? undefined, m.webhook_file ?? undefined);
+    if (r.action === 'created') created += 1; else updated += 1;
+  }
+  return { created, updated, skipped };
+}

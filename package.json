@@ -22,13 +22,16 @@
     "bot"
   ],
   "scripts": {
-    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs scripts/anc-bind/bind.test.mjs src/service/service.test.ts src/ingest/ingest.test.ts",
+    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs scripts/anc-bind/bind.test.mjs src/service/service.test.ts src/ingest/ingest.test.ts src/render/render.test.ts",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs",
     "test:service": "node --test src/service/service.test.ts",
     "test:ingest": "node --test src/ingest/ingest.test.ts",
     "ingest": "node src/ingest/cli.ts",
+    "test:render": "node --test src/render/render.test.ts",
+    "render": "node src/render/cli.ts",
     "service": "node src/service/cli.ts"
   },
   "private": true
 }
+
 
