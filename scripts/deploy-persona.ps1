@@ -1,4 +1,4 @@
-﻿# 部署公司 bot 的 CODEBUDDY.md（M1 第一版）
+# 部署公司 bot 的 CODEBUDDY.md（M1 第一版）
 # - 源文件：light/personas/company-bot/CODEBUDDY.md
 # - 目标：%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md（WorkBuddy 只读这个位置）
 # - 带指纹：打印源/目标 sha256；覆盖前自动备份到 <目标目录>\.anc-backup\
@@ -35,8 +35,12 @@ if ($Rollback) {
     if (-not (Test-Path $backupDir)) { Fail "没有备份目录: $backupDir" '先正常部署一次，备份会自动生成' 2 }
     $latest = Get-ChildItem $backupDir -Filter 'CODEBUDDY.*.md' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $latest) { Fail '没有可用的备份' '确认备份目录里有 CODEBUDDY.*.md' 2 }
-    if (-not $DryRun) { Copy-Item $latest.FullName $Target -Force }
-    Write-Host "[persona] 已回滚到 $($latest.Name) sha=$((Get-Sha $Target))"
+    if (-not $DryRun) {
+        Copy-Item $latest.FullName $Target -Force
+        Write-Host "[persona] 已回滚到 $($latest.Name) sha=$((Get-Sha $Target))"
+    } else {
+        Write-Host "[persona] dry-run：将回滚到 $($latest.Name)（未写入）"
+    }
     exit 0
 }
 

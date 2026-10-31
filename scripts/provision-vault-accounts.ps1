@@ -30,7 +30,8 @@ function New-Password {
 }
 
 if (-not (Test-Path $Csv)) { Write-Host "ERROR 找不到名单: $Csv"; exit 2 }
-$rows = Import-Csv -Path $Csv
+# PowerShell 5.1 的 Import-Csv 默认按 ANSI 读，中文姓名会乱码；显式 UTF8
+$rows = Import-Csv -Path $Csv -Encoding UTF8
 if (-not $rows) { Write-Host 'ERROR 名单为空'; exit 2 }
 
 $plan = @()
@@ -59,6 +60,8 @@ if ($created.Count -gt 0) {
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
     $file = Join-Path $OutDir ("provisioned-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".csv")
     $created | Export-Csv -Path $file -NoTypeInformation -Encoding UTF8
+    # 凭据只给管理员与 SYSTEM：bot 账号（标准用户）不得读取
+    & icacls $file /inheritance:r /grant "Administrators:(R,W)" "SYSTEM:(R,W)" 2>&1 | Out-Null
     Write-Host ("凭据已写入: " + $file)
     Write-Host '提醒：把凭据发到本人手上后删除该文件；不要提交进仓库。'
 }
