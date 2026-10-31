@@ -9,6 +9,18 @@
 | `anc-service` | 开机 + 每分钟 | `LOCAL SERVICE` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
 | `anc-backup` | 每天 02:00 | `LOCAL SERVICE` | `VACUUM INTO` 备份数据库，保留最近 14 份 |
 | `anc-boot-alert` | 开机 + 每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | WorkBuddy 没起来就经运维群 webhook 告警 |
+| `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM） |
+
+## vault 共享
+
+| 项 | 值 |
+|---|---|
+| 共享名 | `anc-vault-shared` → `D:\anc\vault-shared` |
+| 共享层权限 | `Authenticated Users` 只读、`Administrators` 完全控制 |
+| NTFS（共享区） | `BUILTIN\Users` 只读；`Administrators` / `SYSTEM` 完全控制；已断开继承，去掉继承来的 `Authenticated Users: Modify` |
+| NTFS（内部区） | 只有 `Administrators` / `SYSTEM`；普通用户与 `Authenticated Users` 已移除 |
+
+> 员工共享账号还没建：按 FORK §5.4，每人一个「只用于读共享、不能登录桌面」的本地账号，等员工名单确定后补。
 
 脚本落在 `%ProgramData%\anc\bin\`（只读），数据在 `%ProgramData%\anc\data\`，密钥在 `%ProgramData%\anc\secrets\`。
 
