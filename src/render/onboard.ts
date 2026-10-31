@@ -18,7 +18,8 @@ export interface OnboardResult {
 }
 
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
-const stamp = () => new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
+// 纯数字时间戳：带结尾点会被 Windows 截断，同一秒内两次安装会互相覆盖
+const stamp = () => new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 
 function backupFile(file: string): string {
   const dst = `${file}.bak-${stamp()}`;

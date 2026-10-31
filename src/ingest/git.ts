@@ -10,7 +10,8 @@ import { join } from 'node:path';
  */
 export function commitVault(vaultDir: string, message: string): string | null {
   if (!existsSync(join(vaultDir, '.git'))) throw new Error('不是 git 仓库: ' + vaultDir);
-  execFileSync('git', ['add', '-A'], { cwd: vaultDir });
+  // 排除备份/临时文件，避免把 .bak-* 这类中间产物提交进 vault
+  execFileSync('git', ['add', '-A', '--', '.', ':(exclude)*.bak-*', ':(exclude).tmp-*'], { cwd: vaultDir });
   const status = execFileSync('git', ['status', '--porcelain'], { cwd: vaultDir, encoding: 'utf8' });
   if (!status.trim()) return null;
 
