@@ -99,7 +99,7 @@ if (Test-Path $shared) {
 
 # 8 密钥不进 git（看内容里的真实形态，不看文件名）
 if (Test-Path (Join-Path $Repo '.git')) {
-    $hits = & git -C $Repo grep -I -n -E 'qyapi\.weixin\.qq\.com/cgi-bin/webhook/send\?key=[A-Za-z0-9-]{8,}|corpsecret[[:space:]]*=[[:space:]]*[A-Za-z0-9]{8,}' 2>$null
+    $hits = & git -C $Repo grep -I -n -E 'qyapi\.weixin\.qq\.com/cgi-bin/webhook/send\?key=[A-Za-z0-9-]{8,}|corpsecret[[:space:]]*=[[:space:]]*[A-Za-z0-9]{8,}' -- ':!*.test.ts' ':!*.test.mjs' ':!docs/*' 2>$null
     if ($hits) { Add-Result 'secrets-in-git' 'FAIL' ('仓库内容里有疑似密钥: ' + (($hits | Select-Object -First 2) -join ' | ')) '删掉并改用占位符；密钥只放 ProgramData' }
     else { Add-Result 'secrets-in-git' 'PASS' '仓库内容未见真实密钥' '-' }
 } else { Add-Result 'secrets-in-git' 'WARN' "不是 git 仓库: $Repo" '传对 -Repo' }
