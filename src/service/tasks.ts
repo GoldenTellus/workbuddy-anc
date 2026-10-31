@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { nowIso, toIso, tx } from './db.ts';
+import { enqueue } from './outbox.ts';
 
 export type TaskStatus = 'open' | 'done' | 'cancelled';
 
@@ -101,12 +102,20 @@ export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: s
     db.prepare("UPDATE reminders SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'").run(id);
     let enqueued = false;
     if (outbox) {
-      db.prepare(
-        `INSERT INTO outbox (dedupe_key, chat_id, payload, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', ?, ?)
-         ON CONFLICT(dedupe_key) DO NOTHING`
-      ).run(outbox.dedupeKey ?? `task-done:${id}`, outbox.chatId ?? task.chat_id ?? null, JSON.stringify({ text: outbox.text, mentions: outbox.mentions ?? [] }), t, t);
-      enqueued = true;
+      // 走 enqueue：统一过出站扫描（命中即阻断）、按 dedupe_key 去重，并如实返回是否入队。
+      // 通知被扫描拦下不应该让「完成任务」失败——任务已完成，只是这条消息不发。
+      try {
+        const q = enqueue(db, {
+          text: outbox.text,
+          chatId: outbox.chatId ?? task.chat_id,
+          dedupeKey: outbox.dedupeKey ?? `task-done:${id}`,
+          mentions: outbox.mentions,
+        });
+        enqueued = q.inserted;
+      } catch (e) {
+        db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+          .run(id, 'notify_blocked', JSON.stringify({ code: (e as Error & { code?: string }).code ?? 'ERROR' }), t);
+      }
     }
     return { task: getTask(db, id)!, enqueued };
   });

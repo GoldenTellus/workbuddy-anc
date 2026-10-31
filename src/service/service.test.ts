@@ -295,3 +295,48 @@ test('工作时段：周末不发，顺延到下一个工作起点', async () =>
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('完成：通知命中凭据只拦消息、不回滚完成；重复完成不重复入队', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-done-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    // 1) 通知里带 webhook → 被扫描拦下，但任务仍算完成
+    const t1 = tasks.createTask(db, { title: '回访客户', chatId: 'c1', assigneeUserId: 'u1', requesterUserId: 'u2' });
+    const blocked = tasks.completeTask(db, t1.id, { text: '已完成 #' + t1.id + ' https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abcdefgh-1234' }, 'u1');
+    assert.equal(blocked.enqueued, false, '命中凭据不入队');
+    assert.equal(tasks.getTask(db, t1.id)!.status, 'done', '完成状态不回滚');
+    assert.equal(outbox.listOutbox(db, { limit: 10 }).length, 0);
+    const ev = tasks.taskEvents(db, t1.id).map((e) => e.kind);
+    assert.ok(ev.includes('notify_blocked'), '应记 notify_blocked');
+
+    // 2) 普通完成入队一次，重复完成不再入队
+    const t2 = tasks.createTask(db, { title: '回访供应商', chatId: 'c1', assigneeUserId: 'u1' });
+    const r1 = tasks.completeTask(db, t2.id, { text: '已完成 #' + t2.id }, 'u1');
+    assert.equal(r1.enqueued, true);
+    const r2 = tasks.completeTask(db, t2.id, { text: '已完成 #' + t2.id }, 'u1');
+    assert.equal(r2.enqueued, false, '重复完成不再入队');
+    assert.equal(outbox.listOutbox(db, { limit: 10 }).length, 1);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('A2A：survey_id 含 ../ 不会写到内部区之外', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-tra-'));
+  const db = openDb(join(dir, 'anc.db'));
+  const internal = join(dir, 'vault-internal');
+  try {
+    const env = a2a.parseEnvelope(JSON.stringify({
+      protocol: 'anc-a2a/1', survey_id: '../../evil', message_id: 'm1', reply_to: null,
+      type: 'answer', rule_version: 'v1', payload: 'x',
+    }));
+    const r = a2a.submit(db, env, internal, 'u1');
+    assert.ok(r.file, '应落盘');
+    assert.ok(r.file!.startsWith(internal), '文件必须在内部区内: ' + r.file);
+    assert.ok(!r.file!.includes('..'));
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, copyFileSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export const LENGTH_WARN = 6500;
@@ -15,7 +15,9 @@ export function renderTemplate(tpl: string, vars: Record<string, string>): strin
 
 export function fingerprint(inputs: Array<{ path: string; content: string }>): string {
   const h = createHash('sha256');
-  for (const i of [...inputs].sort((a, b) => a.path.localeCompare(b.path))) {
+  // 不用 localeCompare：它随 locale 变化，会让同一份输入在不同机器上算出不同指纹
+  const sorted = [...inputs].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  for (const i of sorted) {
     h.update(i.path);
     h.update('\0');
     h.update(i.content);
@@ -46,7 +48,7 @@ export function checkLength(text: string): LengthCheck {
 export function writeAtomic(target: string, content: string, retries = 5): string {
   mkdirSync(dirname(target), { recursive: true });
   if (existsSync(target)) {
-    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
+    const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
     copyFileSync(target, join(dirname(target), `.${target.split(/[\\/]/).pop()}.bak-${stamp}`));
   }
   const tmp = join(dirname(target), `.tmp-${Date.now()}-${process.pid}.md`);
@@ -65,5 +67,6 @@ export function writeAtomic(target: string, content: string, retries = 5): strin
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
     }
   }
+  try { unlinkSync(tmp); } catch { /* ignore */ }
   throw new Error('目标文件写入失败（可能被占用）: ' + target + ' — ' + (lastErr as Error)?.message);
 }

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, cpSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { IngestError, normalizeTarget, assertTextSize, blobHash, assertFrontmatter } from './validate.ts';
 
 export interface BatchFile {
@@ -51,7 +51,12 @@ export function applyBatch(batchDir: string, vaultDir: string): ApplyResult {
 
   for (const f of meta.files) {
     const target = normalizeTarget(f.target);
-    const srcPath = join(batchDir, f.src);
+    // src 必须在批次目录内：meta.json 来自 bot，不能让它读批次外的文件
+    const base = resolve(batchDir);
+    const srcPath = resolve(base, f.src);
+    if (srcPath !== base && !srcPath.startsWith(base + sep)) {
+      throw new IngestError('BAD_PATH', '批次文件越界: ' + f.src);
+    }
     if (!existsSync(srcPath)) throw new IngestError('MISSING_SRC', '批次里缺少文件: ' + f.src);
     const content = readFileSync(srcPath);
 

@@ -97,7 +97,12 @@ export function submit(db: DatabaseSync, env: Envelope, internalDir: string, fro
   const dup = db.prepare('SELECT message_id FROM a2a_messages WHERE message_id = ?').get(env.message_id);
   if (dup) return { inserted: false, message_id: env.message_id, survey_id: env.survey_id, file: null };
 
-  const dir = join(internalDir, 'surveys', env.survey_id);
+  // survey_id 会进文件路径：只保留安全字符，去掉 .. 片段，避免穿越
+  const safeSurvey = String(env.survey_id)
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/\.{2,}/g, '_')
+    .replace(/^\.+/, '_') || '_invalid';
+  const dir = join(internalDir, 'surveys', safeSurvey || '_invalid');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, env.message_id.replace(/[^A-Za-z0-9._-]/g, '_') + '.md');
   const body = [

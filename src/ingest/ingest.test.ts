@@ -167,3 +167,22 @@ test('提交：--commit 生成提交，无改动返回 null', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('越界 src 被拒：meta 指向批次目录之外', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-ing-tra-'));
+  const batch = join(dir, 'pending', 'b1');
+  const vault = join(dir, 'vault');
+  mkdirSync(batch, { recursive: true });
+  mkdirSync(vault, { recursive: true });
+  writeFileSync(join(dir, 'evil.md'), '---\ntitle: x\nsource_file: y\nupdated_at: 2026-01-01\n---\nbody\n');
+  writeFileSync(join(batch, 'meta.json'), JSON.stringify({
+    batch_id: 'b1',
+    files: [{ src: '../../../evil.md', target: 'a/b.md', kind: 'markdown' }],
+  }));
+  try {
+    assert.throws(() => applyBatch(batch, vault), (e: unknown) => e instanceof IngestError && (e as IngestError).code === 'BAD_PATH');
+    assert.ok(!existsSync(join(vault, 'a', 'b.md')), '不应写盘');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
