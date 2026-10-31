@@ -6,7 +6,7 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 
 ## 当前状态
 
-- 方向 `docs/FORK-DIRECTION.md` 0.4;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md`,**当前做 M1(当日任务与提醒端到端),第一步是 T6**。
+- 方向 `docs/FORK-DIRECTION.md` 0.4;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md`,**M0–M4 已交付**:任务提醒、vault/入库、渲染与接入、访谈与 A2A 均落地,21 项实测里 T1–T22 只剩「真升级回归」等厂商发版。补丁侧有锚点模式、自愈与守卫、canary、更新探测(`anc-*` 共 8 个计划任务)。
 - WorkBuddy 只有补丁一条路(D18):企业版与个人版实测一样,群身份靠 D17 补丁。凡上主机的版本都先过 FORK-DIRECTION §11 的升级回归。
 - `package.json` 保持 `"private": true`,不发 npm。
 

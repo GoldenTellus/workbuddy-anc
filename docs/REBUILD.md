@@ -38,7 +38,9 @@ Copy-Item <仓库>\scripts\{backup-anc,boot-alert,cleanup-media,watchdog,doctor}
 # ACL：LOCAL SERVICE 读 service/secrets、写 data/backup；anc-bot 读 service/secrets/skills、写 data
 ```
 
-按 [OPS.md](./OPS.md) 重新注册五个计划任务：`anc-service`、`anc-backup`、`anc-boot-alert`、`anc-cleanup`、`anc-watchdog`。
+按 [OPS.md](./OPS.md) 重新注册八个计划任务：`anc-service`、`anc-backup`、`anc-boot-alert`、`anc-cleanup`、`anc-watchdog`、`anc-workbuddy-launch`、`anc-patch-guard`、`anc-update-watch`。
+
+> `anc-workbuddy-launch` 与 `anc-patch-guard` 必须用**登录用户 + Interactive** 身份注册，否则拉不起 GUI。
 
 ## 4. 恢复 bot
 
