@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "@goldentellus/workbuddy-anc",
   "version": "0.0.0",
-  "description": "把你的团队变成 AI native company:一台 Mac mini,一人一个 bot,公司知识全在 markdown 里。One Mac mini, one bot per person, all company knowledge in markdown.",
+  "description": "鎶婁綘鐨勫洟闃熷彉鎴?AI native company:涓€鍙?Mac mini,涓€浜轰竴涓?bot,鍏徃鐭ヨ瘑鍏ㄥ湪 markdown 閲屻€侽ne Mac mini, one bot per person, all company knowledge in markdown.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -22,10 +22,13 @@
     "bot"
   ],
   "scripts": {
-    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs scripts/anc-bind/bind.test.mjs src/service/service.test.ts",
+    "test": "node --test tools/harness-proxy/harness-proxy.test.mjs scripts/anc-bind/bind.test.mjs src/service/service.test.ts src/ingest/ingest.test.ts",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs",
     "test:service": "node --test src/service/service.test.ts",
+    "test:ingest": "node --test src/ingest/ingest.test.ts",
+    "ingest": "node src/ingest/cli.ts",
     "service": "node src/service/cli.ts"
   },
   "private": true
 }
+
