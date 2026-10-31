@@ -153,6 +153,18 @@ test('A2A：规则版本不符被拒；完成判定按 expected 与题数', () =
     assert.deepEqual(st.missing_questions, ['q2', 'q3']);
     assert.deepEqual(st.missing, []);
 
+    // q10 不能被当成 q1 命中
+    const big = a2a.createSurvey(db, { surveyId: 's2', ruleVersion: 'r1', expected: ['u1'], questionCount: 11 });
+    assert.equal(big.question_count, 11);
+    a2a.submit(db, a2a.parseEnvelope(JSON.stringify({
+      protocol: 'anc-a2a/1', survey_id: 's2', message_id: 'q10-20261031', reply_to: null,
+      type: 'answer', rule_version: 'r1', payload: 'x',
+    })), internal, 'u1');
+    const st2 = a2a.surveyStatus(db, 's2')!;
+    assert.ok(!st2.missing_questions.includes('q10'), 'q10 已提交');
+    assert.ok(st2.missing_questions.includes('q1'), 'q1 仍未提交');
+    assert.equal(st2.missing_questions.length, 10);
+
     a2a.submit(db, mk('q2', 'r1'), internal, 'u1');
     a2a.submit(db, mk('q3', 'r1'), internal, 'u1');
     st = a2a.surveyStatus(db, 's1')!;

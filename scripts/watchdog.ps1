@@ -27,8 +27,19 @@ try {
     if ($pending -ge $PendingMax) { $problems += "outbox 积压 $pending 条" }
 } catch { $problems += '查 outbox 失败' }
 
-# 3 WorkBuddy
-if (-not (Get-Process WorkBuddy -ErrorAction SilentlyContinue)) { $problems += 'WorkBuddy 没在跑（公司 bot 离线）' }
+# 3 WorkBuddy（自愈正在重启时给 5 分钟宽限，避免误报）
+if (-not (Get-Process WorkBuddy -ErrorAction SilentlyContinue)) {
+    $starting = $false
+    $gs = "$env:ProgramData\anc\data\patch-guard.state.json"
+    if (Test-Path $gs) {
+        try {
+            $raw = [IO.File]::ReadAllText($gs, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)
+            $last = [datetime]($raw | ConvertFrom-Json).lastStartAt
+            if (((Get-Date) - $last).TotalMinutes -lt 5) { $starting = $true }
+        } catch { }
+    }
+    if (-not $starting) { $problems += 'WorkBuddy 没在跑（公司 bot 离线）' }
+}
 
 # 4 补丁 canary：补丁生效但取不到 chatId（上游字段改名）
 $canary = "$env:ProgramData\anc\data\patch-canary.json"
