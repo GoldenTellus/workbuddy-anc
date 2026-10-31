@@ -1,4 +1,4 @@
-# T3 实测：群机器人能否按成员 ID @ 到人
+﻿# T3 实测：群机器人能否按成员 ID @ 到人
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File scripts\verify\t3-webhook.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\verify\t3-webhook.ps1 -Mobile   # 改用手机号 @

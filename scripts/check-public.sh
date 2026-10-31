@@ -26,4 +26,13 @@ if [ -n "$hits" ]; then
   fail=1
 fi
 
+# 4) 所有 .ps1 必须带 UTF-8 BOM：PowerShell 5.1 无 BOM 时按 ANSI 读，中文会解析失败
+while IFS= read -r f; do
+  head=$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')
+  if [ "$head" != "efbbbf" ]; then
+    echo "FAIL: $f 缺少 UTF-8 BOM（PS 5.1 会按 ANSI 读，中文脚本会崩）"
+    fail=1
+  fi
+done < <(git ls-files '*.ps1')
+
 exit $fail

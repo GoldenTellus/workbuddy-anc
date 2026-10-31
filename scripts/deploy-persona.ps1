@@ -1,4 +1,4 @@
-# 部署公司 bot 的 CODEBUDDY.md（M1 第一版）
+﻿# 部署公司 bot 的 CODEBUDDY.md（M1 第一版）
 # - 源文件：light/personas/company-bot/CODEBUDDY.md
 # - 目标：%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md（WorkBuddy 只读这个位置）
 # - 带指纹：打印源/目标 sha256；覆盖前自动备份到 <目标目录>\.anc-backup\
