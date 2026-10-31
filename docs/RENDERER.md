@@ -49,7 +49,8 @@ bot: 已接入
 <out>/groups.json                   # 群 → 员工映射 + userid + webhook 引用名
 ```
 
-- 每个产物顶部带 `<!-- anc:input-sha256:<hash> -->`：hash 覆盖 company.md + roles/* + members/*，用来发现被手改；
+- 每个产物顶部带 `<!-- anc:input-sha256:<hash> -->`：hash 覆盖 company.md + roles/* + members/*；
+- **手改检测**：`<out>/manifest.json` 记下每个产物的内容 hash。下次渲染时若输入没变、文件 hash 变了，就报 `WARN 产物被手改过` 并以退出码 1 结束（原文件已备份）；
 - **长度闸门**：>6500 字节警告，>7500 字节报错并列出各段长度（T19）；
 - **落盘**：先备份 `.bak-<时间>` → 临时文件 → 读回对拍 sha256 → 重命名（被占用时重试 5 次）。
 

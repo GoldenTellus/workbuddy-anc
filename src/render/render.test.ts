@@ -102,11 +102,12 @@ test('渲染：产物被手改后，指纹能发现', () => {
     const f = join(out, 'company-bot', 'CODEBUDDY.md');
     writeFileSync(f, readFileSync(f, 'utf8').replace('示例公司', '被改过的公司'), 'utf8');
     const again = renderOrg(org, out);
+    assert.equal(again.tampered.length, 1);
+    assert.equal(again.tampered[0], f);
     const now = readFileSync(f, 'utf8');
     assert.match(now, /anc:input-sha256:/);
-    assert.ok(existsSync(join(out, 'company-bot')));
-    assert.equal(again.members, 1);
     assert.match(now, /示例公司/);
+    assert.equal(again.members, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
