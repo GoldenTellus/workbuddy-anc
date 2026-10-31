@@ -61,6 +61,23 @@ powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1 -Destination "\\
 
 补丁启动器在网络层拦掉 `/v2/update`，并会在版本/hash 不符时向运维群告警，见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md)。
 
+## 专用用户切换清单（上线门槛）
+
+机器侧已就绪（2026-10-31）：标准用户 `anc-bot`（非管理员）已建，`%ProgramData%\anc\data` 给了 Modify，`secrets` / `service` / `skills` 给了 ReadAndExecute；密码写在 `%ProgramData%\anc\accounts\anc-bot.txt`（只有管理员能读，交付后删除）。
+
+剩下是**交互**部分，按顺序做一次：
+
+1. 注销 Administrator，用 `anc-bot` 登录；
+2. 在该用户下装 WorkBuddy（企业版），登录企业微信（扫码）；
+3. 把补丁目录拷到该用户可读的位置（如 `C:\ProgramData\anc\patch\`），或用共享；
+4. 用补丁启动器起 WorkBuddy：`powershell -File launch-patched.ps1`；
+5. 确认 `workbuddy-patch.log` 里 `PATCHED` 与 `update-hook installed` 都在；
+6. 在该用户下装技能：把 `~/.workbuddy/skills/anc-*` 复制过去（或跑 `render onboard --home`）；
+7. 群里发「今天有什么任务」→ 有回复即 T4 复测通过；
+8. 回填 [VERIFY.md](./VERIFY.md) 的 T4 行，并把本清单标记完成。
+
+> 注意：切换后别再回 Administrator 跑 WorkBuddy，否则又回到「bot 在管理员会话里」的状态。
+
 ## 常用命令
 
 ```powershell

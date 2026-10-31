@@ -282,5 +282,7 @@
 | T7 bot 互相触发(随 T2) | 2026-10-31 | 5.9.3 | **通过** | 长内容不误触发;正向/反向让 bot 原样输出 @ 对方,对方均沉默——bot 输出里的 @ 不构成触发 |
 | T17 运行身份 | 2026-10-31 | — | **通过** | `LOCAL SERVICE` 计划任务跑 `loop --once`:`sent=1`、outbox=`sent`、群里收到并被 @;`data` 可写、`deny` 读取被拒。无人登录项按 ServiceAccount 语义推定,未单测 |
 | T12 个人 bot 读网络路径（只读代理） | 2026-10-31 | — | **部分通过** | 用标准本地账号（`Users` 组、非管理员）经 `\\127.0.0.1\anc-vault-shared` 读取成功、写入被拒（`UnauthorizedAccessException`）；共享层 `Authenticated Users` 只读 + NTFS `Users` 只读。个人 bot 端点实测待员工机器 |
+| T17 无人登录（代理） | 2026-10-31 | — | **通过（代理）** | 把 WorkBuddy 全部进程停掉（`procs=0`）后，21:25 到点的提醒仍由 `anc-service`（`LOCAL SERVICE`）发出：`outbox reminder:14 = sent`，`loop.log` 记 `enqueued=1 sent=1`。说明提醒不依赖 bot 进程与交互登录；真机「注销后」仍待上线窗口 |
+| T4 专用用户下复测 | — | 5.9.3 | **待做** | 标准用户 `anc-bot` 已建（非管理员）、`data` 给了 Modify、`secrets/service/skills` 给了 ReadAndExecute；补丁启动器与 T4 需在该用户交互登录后复测 |
 | T18 技能名片位置 | 2026-10-31 | 5.9.3 | **通过** | `%USERPROFILE%\.workbuddy\skills\<name>\SKILL.md` 被识别：`anc-task`、`anc-ingest` 装在该位置后，真实群里触发并执行成功 |
 | T13 其他项目读不到 Claw 的 `CODEBUDDY.md`（跨用户代理） | 2026-10-31 | 5.9.3 | **部分通过** | 临时标准用户（非管理员）读取 Administrator 的 `WorkBuddy\Claw\CODEBUDDY.md` 被拒（`OTHER_DENIED`），读取自己的正常（`OWN_READ_OK`）；接入器在该用户 profile 里跑通、`verify` 返回 OK。同一用户下「另一个项目工作区」的隔离待 UI 实测 |
