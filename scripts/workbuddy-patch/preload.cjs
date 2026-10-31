@@ -49,6 +49,27 @@ const TARGET = String(mf.target || '').replace(/\\/g, '/');
 const EXPECTED = mf.sha256;
 const PREFIX = mf.prefix || '[anc:chat=';
 
+const BOOT_TARGET = String(mf.bootstrapTarget || '').replace(/\\/g, '/');
+const BOOT_REPL = Array.isArray(mf.bootstrapReplacements) ? mf.bootstrapReplacements : [];
+const OPS_WEBHOOK = expand(mf.opsWebhookFile || '');
+
+function alertOps(text) {
+  if (!OPS_WEBHOOK) return;
+  try {
+    const url = fs.readFileSync(OPS_WEBHOOK, 'utf8').trim();
+    if (!url) return;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ msgtype: 'text', text: { content: '[anc] ' + text } }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(function () {});
+    log('ALERT sent: ' + text);
+  } catch (e) {
+    log('ALERT failed: ' + (e && e.message));
+  }
+}
+
 const PATCH_BODY = [
   ';var __ancIdentityPatch = true;',
   ';try {',
@@ -73,17 +94,75 @@ const Module = require('module');
 const origCompile = Module.prototype._compile;
 let applied = 0;
 
+// 拦掉自动升级检查（main-bootstrap 由 Electron 自己的加载器执行，钩不到 _compile；
+// 改从网络层拦 /v2/update）。可用 ANC_WB_BLOCK_UPDATE=0 关闭。
+try {
+  if (String(process.env.ANC_WB_BLOCK_UPDATE || '1').toLowerCase() !== '0') {
+    const https = require('https');
+    const EE = require('events');
+    const patchFn = (orig) => function (...args) {
+      let target = '';
+      try {
+        const a0 = args[0];
+        target = typeof a0 === 'string' ? a0 : (a0 && (a0.href || a0.path)) || '';
+      } catch (_) { /* ignore */ }
+      if (String(target).includes('/v2/update')) {
+        log('update-blocked url=' + String(target).split('?')[0]);
+        const req = new EE.EventEmitter();
+        req.setTimeout = () => req;
+        req.write = () => true;
+        req.end = () => {};
+        req.abort = () => {};
+        req.destroy = () => {};
+        process.nextTick(() => req.emit('error', new Error('anc: update check blocked')));
+        return req;
+      }
+      return orig.apply(this, args);
+    };
+    https.request = patchFn(https.request);
+    https.get = patchFn(https.get);
+    log('update-hook installed');
+  }
+} catch (e) {
+  log('update-hook error: ' + (e && e.message));
+}
+
 Module.prototype._compile = function (content, filename) {
   try {
     const norm = typeof filename === 'string' ? filename.replace(/\\/g, '/') : '';
+    if (norm.indexOf('/main/') !== -1 && norm.indexOf('node_modules') === -1 && process.env.ANC_WB_DIAG === '1') {
+      log('compile-seen ' + norm);
+    }
     if (norm && typeof content === 'string' && norm.indexOf(TARGET) !== -1) {
       const digest = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
       if (digest !== EXPECTED) {
         log('SKIP hash-mismatch target=' + filename + ' got=' + digest + ' expected=' + EXPECTED);
+        alertOps('补丁未生效：wecomaibot-client.js 与登记版本不符（可能是 WorkBuddy 升级），群身份注入已停用，请按 docs/WORKBUDDY-PATCH.md 重放');
       } else if (content.indexOf('__ancIdentityPatch') === -1) {
         content += '\n' + PATCH_BODY;
         applied += 1;
         log('PATCHED target=' + filename);
+      }
+    }
+    if (norm && BOOT_TARGET && BOOT_REPL.length && norm.indexOf(BOOT_TARGET) !== -1 && typeof content === 'string') {
+      const updToggle = String(process.env.ANC_WB_PATCH_UPDATE || '1').toLowerCase();
+      if (updToggle === '0' || updToggle === 'off' || updToggle === 'false') {
+        log('update-patch disabled by env');
+      } else {
+        let hits = 0;
+        for (const pair of BOOT_REPL) {
+          const from = String(pair[0] || '');
+          const to = String(pair[1] || '');
+          if (from && content.indexOf(from) !== -1) {
+            content = content.split(from).join(to);
+            hits += 1;
+          }
+        }
+        if (hits) log('update-patch applied n=' + hits);
+        else {
+          log('update-patch SKIP no-match');
+          alertOps('自动升级补丁未命中：main-bootstrap.js 与登记版本不符，升级检查可能仍会运行');
+        }
       }
     }
   } catch (e) {

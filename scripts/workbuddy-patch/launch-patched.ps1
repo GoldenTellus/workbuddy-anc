@@ -56,7 +56,19 @@ if (-not (Test-Path $exe)) { Fail "找不到 $exe" '用 -InstallDir 指向 WorkB
 
 $ver = (Get-Item $exe).VersionInfo.FileVersion
 if ($ver -ne $manifest.workbuddyVersion) {
-    Fail "WorkBuddy 版本不符：期望 $($manifest.workbuddyVersion)，实际 $ver" '升级后先重测再更新 manifest.json 的版本与 hash' 1
+    # 版本不符：发运维告警（有 ops webhook 才发），然后按未打补丁方式启动
+    $ops = Join-Path $env:ProgramData 'anc\secrets\ops-webhook.txt'
+    if (Test-Path $ops) {
+        try {
+            $url = (Get-Content $ops -Raw).Trim()
+            if ($url) {
+                $body = (@{ msgtype = 'text'; text = @{ content = "[anc] WorkBuddy 升级到 $ver（登记版本 $($manifest.workbuddyVersion)），补丁未生效，请按 docs/WORKBUDDY-PATCH.md 重放" } } | ConvertTo-Json -Depth 4 -Compress)
+                Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
+                Write-Host '[anc] 已向运维群发送版本不符告警'
+            }
+        } catch { Write-Host "[anc] 告警发送失败: $($_.Exception.Message)" }
+    }
+    Fail "WorkBuddy 版本不符：期望 $($manifest.workbuddyVersion)，实际 $ver" '升级后先重测，再更新 manifest.json 的版本与 hash；本次按未打补丁启动' 1
 }
 
 if ($NoPatch -or $env:ANC_WB_PATCH -eq '0') {

@@ -10,6 +10,7 @@ import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
 import * as config from './config.ts';
+import * as backup from './backup.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 
@@ -162,6 +163,10 @@ try {
       }
       out({ ok: failed === 0, sent, failed });
     } else fail('未知 outbox 子命令');
+  } else if (group === 'backup') {
+    const to = typeof args.to === 'string' ? args.to : '';
+    if (!to) fail('缺少 --to');
+    out({ ok: true, path: backup.backup(db, to) });
   } else if (group === 'config') {
     if (cmd === 'list') {
       out({ ok: true, config: config.listConfig(db) });

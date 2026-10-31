@@ -7,6 +7,12 @@
   "sha256": "3510b3098686021a01827680b0d84a33daa9ef168b522fe8276ee72b8fae6fe5",
   "size": 27427,
   "prefix": "[anc:chat=",
+  "bootstrapTarget": "main/main-bootstrap.js",
+  "bootstrapReplacements": [
+    ["runStartupForceAutoUpdate(c,e.configStore,e.productSource)", "void 0"],
+    ["runEarlyForceUpgradeCheck(c)", "void 0"]
+  ],
+  "opsWebhookFile": "%ProgramData%\\anc\\secrets\\ops-webhook.txt",
   "toggleEnv": "ANC_WB_PATCH",
   "log": "%USERPROFILE%\\anc\\workbuddy-patch.log"
 }

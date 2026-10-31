@@ -203,7 +203,7 @@ TypeScript + Node 22 实现(D11)。
 - **防假绿**:所有定时任务写「输出新鲜度 + 成功标记」,watchdog 按它判断,不以「没消息」当「没事」。
 - **离机备份**:两区 vault 的 git、`_originals/`、SQLite,定期复制到主机以外。上游的教训:版本历史不是备份,vault 不能是唯一副本。
 - **重建 runbook**:主机坏了,按文档在新机器上从备份重建。
-- **脚本约定**(沿用上游 M1-DESIGN §6):退出码 0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已自动回滚;改配置的命令默认 dry-run,`--apply` 才落盘;错误固定两行 `ERROR` + `FIX`;支持 `--json`;改配置的命令都有 `rollback`。
+- **脚本约定**(沿用上游 [M1-DESIGN.md](./M1-DESIGN.md) §6,main 版与分支版一致):退出码 0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已自动回滚;改配置的命令默认 dry-run,`--apply` 才落盘;错误固定两行 `ERROR` + `FIX`;支持 `--json`;改配置的命令都有 `rollback`。
 
 ## 6. WorkBuddy 的已观察行为
 
@@ -318,6 +318,7 @@ D16 放开了手脚,但改动要留下账。这一节就是账本规则;**改了
 |---|---|---|---|---|---|
 | 加载期改写团队 IM 授权判定(**诊断用,不进生产**) | 5.9.3 / Electron 37.10.3 / `<build>` | `main/daemon-bootstrap.js` `d1ea8b17…580f`(788,139 B) | 把本地 `isAllowed()` 改成恒真,观察放行后卡在哪一层 | `NODE_OPTIONS=--require <probe>.cjs`(daemon 启动时注入,仅本进程) | 结束进程、不带该环境变量重启 |
 | AIBot 回调注入群标识(**已采纳,D17**) | 5.9.3 / Electron 37.10.3 / `<build>` | `main/wecomaibot-client.js` `3510b309…e6fe5`(27,427 B) | 在 `emitMessage` 把 `chatId`/发送人拼进 `content`,让群身份进 prompt | `ANC_WB_PATCH=0` 关闭;启动器 `scripts/workbuddy-patch/launch-patched.ps1` | `restore.ps1`;补丁只在内存,重启即失效 |
+| 自动升级拦截(**已采纳,D18 配套**) | 5.9.3 / Electron 37.10.3 / `<build>` | 网络层:`https.request` 命中 `/v2/update` 即拦;不改 asar | 防止 WorkBuddy 升级后补丁静默失效 | `ANC_WB_BLOCK_UPDATE=0` 关闭 | 重启即失效 |
 | 团队 IM 授权判定,配套服务 bundle(未改,仅定位) | 5.9.3 / `<build>` | `main/netdrive-env-route.js` `ad05f474…0e16`(45,371 B) | `captureActivation` / `[channel-entry]` 在本文件,用于判读日志 | — | — |
 
 > 2026-10-31 实测结论:本地判定可以被绕开,但放行后 `POST {endpoint}/im/api/channel-entry/settings` 连续 4 次失败(`http:failed`,`state=error:load`),`allowed` 因 `entry.status!=='ready'` 仍为 false,工具返回同一句话。**门槛在账号/租户侧,本地 patch 拿不到数据**;客户端不记录 HTTP 状态码,属观测盲区。

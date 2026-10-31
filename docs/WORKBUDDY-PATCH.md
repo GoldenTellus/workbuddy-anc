@@ -10,11 +10,26 @@ T16b 实测：企微 AIBot 的回调帧里 `chatid`、`chattype`、`from.userid`
 
 ## 改什么
 
+### 1) 群身份注入（主补丁）
+
 在 `main/wecomaibot-client.js` 的 `WecomAiBotClient.prototype.emitMessage` 外套一层：
 
 ```
 content = "[anc:chat=<chatid> from=<userid>] " + content
 ```
+
+### 2) 自动升级拦截（辅助补丁）
+
+`main/main-bootstrap.js` 由 Electron 自己的加载器执行，钩不到 `_compile`，所以改从网络层拦：`https.request` / `https.get` 命中 `/v2/update` 时直接返回一个只发 `error` 的假请求，升级检查失败即止。
+
+- 开关：`ANC_WB_BLOCK_UPDATE=0` 关闭；
+- 效果：启动日志里不再出现 `[UpdateService.win32] Checking for updates`；
+- 不拦 `/v3/config` 等其他接口。
+
+### 3) 失败告警
+
+- `wecomaibot-client.js` 的 sha256 与 manifest 不符 → 写日志并把告警发到 `%ProgramData%\anc\secrets\ops-webhook.txt`；
+- 启动器发现 WorkBuddy 版本与 manifest 不符 → 同样告警，并按未打补丁方式启动。
 
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
