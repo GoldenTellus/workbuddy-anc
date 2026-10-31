@@ -41,6 +41,17 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 `complete=true` 就告诉员工「访谈完成，已归档到内部区」；缺人就说还差谁。
 
+## 继续没做完的访谈
+
+先说「继续访谈」时：
+
+```powershell
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json a2a status --survey interview-<member>-<YYYYMMDD>
+```
+
+- `missing_questions` 里最小的那个就是下一题；从它接着问，`message_id` 用同名；
+- `complete=true` 就直接告诉员工已完成，别重复问。
+
 ## 边界
 
 - 只记工作事实，不生成绩效、排名、忙闲评价；
