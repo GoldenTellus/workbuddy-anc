@@ -131,5 +131,11 @@ if ($DryRun -or -not $Apply) {
 
 Write-Log '安排自愈重启（约 5 秒后 bot 短暂离线）'
 $self = $MyInvocation.MyCommand.Path
-Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $self, '-Worker', '-Repo', $Repo) -WindowStyle Hidden
+$workerCmd = "$env:ProgramData\anc\data\selfheal-worker.cmd"
+@"
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File "$self" -Worker -Repo "$Repo"
+"@ | Set-Content $workerCmd -Encoding ascii
+# 经 Explorer 拉起 Worker：脱离 WorkBuddy 的进程树，否则 WorkBuddy 退出时会被一起带走
+Start-Process explorer.exe -ArgumentList $workerCmd
 exit 0

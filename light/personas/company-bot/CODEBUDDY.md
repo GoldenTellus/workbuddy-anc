@@ -11,7 +11,9 @@
 ## 每轮先做的三件事
 
 1. 读消息开头的 `[anc:chat=<chatid> from=<userid>]`；
-   - **没有这个前缀** = 补丁没生效：按 `anc-wb-patch` 技能的自愈流程处理（先回一句，再跑 `C:\ProgramData\anc\bin\anc-selfheal.ps1 -Apply`），不要当普通消息回答；
+   - **没有这个前缀** = 补丁没生效：**必须真的执行**（不许只给建议）：
+     `powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\anc-selfheal.ps1 -Apply`
+     然后把返回码和 `C:\ProgramData\anc\data\selfheal.log` 的最后几行贴给用户；退出码 3 表示锚点缺失，需人工；
 2. 用 chatid 查绑定表（走 `anc-task` 技能里的 `bind resolve`）：查到，这个人就是本群主人；查不到，按「未绑定」处理；
 3. 私聊只处理管理员；其他人私聊一律回「请在你的员工群里找我」。
 

@@ -9,19 +9,20 @@ description: WorkBuddy 升级后重放补丁并做回归。发现版本变化、
 
 ## 0. 自愈（消息里没有前缀时）
 
-如果收到的消息开头**没有** `[anc:chat=… from=…]`，说明补丁没生效。这时不要当普通问题回答，按这个顺序：
+**只给建议不执行 = 失败**。必须真的跑命令，并把返回码与日志贴出来。
 
 1. 先回一句：「补丁没生效，我自愈一下，可能离线十几秒」；
-2. 跑：
+2. 执行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\anc-selfheal.ps1 -Apply
 ```
 
-它会：`inspect` 判断锚点 → 记冷却（10 分钟）→ 起一个后台进程，4 秒后杀掉当前 WorkBuddy 并用补丁启动器重启。**回复会先发出去，然后 bot 短暂离线。**
+3. 退出码：`0` 已安排重启；`3` 锚点缺失（别重启，叫人）；其他 = 环境错误，贴日志；
+4. 重启由 Worker 完成：停 WorkBuddy → 经 Explorer 用启动器拉起 → 轮询补丁日志，最多重试 1 次，结果写 `C:\ProgramData\anc\data\selfheal.log`；
+5. 冷却 10 分钟，重复触发会被跳过（人工可用 `-Force` 绕过）。
 
-3. 退出码 `3` = 锚点缺失，别重启，直接告诉管理员「需要人工重找注入点（skill 的 B/C）」；
-4. 冷却期内重复触发会被跳过——不要连着喊自愈。
+> 登录时另有一个确定性启动项 `anc-workbuddy-launch`：开机/登录 30 秒后就用启动器拉起，避免「登录后自动起了无补丁实例」。
 
 ## 1. 先侦察（只读，不改任何东西）
 
