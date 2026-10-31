@@ -2,6 +2,8 @@
 
 版本:0.1(2026-10-29)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream-unmerged/`](../reference/upstream-unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
 
+文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 [PLAN.md](./PLAN.md) 的 M1 无关;写明「该分支」的指 `reference/upstream-unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
+
 判定分五档:**直接用**(基本原样)/ **改写**(结构保留、内容要改)/ **借鉴**(只取思路)/ **仅参考** / **不适用**。
 
 ## 1. 总体结论

@@ -1,6 +1,12 @@
 # M1 技术设计 —— `anc init` 拉起最小公司(飞书 × Claude Code)
 
-版本:0.1(2026-07-24)。对应 [PLAN](./PLAN.md) M1,承接 [SPEC](../SPEC.md) §2/§3/§4/§9。
+> **本库说明(2026-10-31)**:这是**上游**的 M1 设计,原样保留作参考,和本库 [PLAN.md](./PLAN.md) 的 M1(当日任务与提醒)**不是一回事**。下文提到的「PLAN M1」指上游已被替换的旧计划(`git show 90e4fb2:docs/PLAN.md`)。
+>
+> - 渲染器部分(§2–§4)在本库对应 **PLAN M3**(渲染器与个人 bot 接入);doctor、watchdog、退出码等运维约定(§5、§6)归 PLAN「贯穿各里程碑的运维」。cc-connect、launchd、飞书相关内容本库不用。
+> - 逐项能不能用,见 [REUSE-MAP.md](./REUSE-MAP.md);和 [FORK-DIRECTION.md](./FORK-DIRECTION.md) 冲突时以后者为准。
+> - 另有一份分支版 `reference/upstream-unmerged/feat-m1-w1/docs/M1-DESIGN.md`,按 cc-connect v1.3.4 源码核对过。两版章节编号相同;正文在 §3.2、§3.3、§4.1、§4.4、§5.2、§8.1、§9、§10 有出入,§2、§3.4、§5.3、§6 一致。本库引用 M1-DESIGN 时,未注明的指本文件(main 版)。
+
+版本:0.1(2026-07-24)。对应 [PLAN](./PLAN.md) M1(上游旧计划),承接 [SPEC](../SPEC.md) §2/§3/§4/§9。
 
 **设计方法**:对 reference deployment(climax-vault)做六路解剖(运维脚本 / cli+devbot / vault 结构 / persona / skills / cc-connect 配置模型),在其上产出三份独立设计(抽取优先 / schema 优先 / 运维优先),经三位评委(可交付性 / 技术正确性 / 产品验收)交叉评审后合成本稿。骨架取「抽取优先」路线(两票优胜),并入另两份中被评委点名的机制,评审抓出的事实错误已逐条修正;并已对照 `_research/` 六份调研原文(尤其 internal-repo §6 抽取分界、internal 实勘 §7 installer 覆盖清单、china-gateways §三 harness 实测)做过一轮事实校准。
 

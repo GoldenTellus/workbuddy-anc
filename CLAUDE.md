@@ -17,7 +17,7 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 | `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–D18、组件设计、WorkBuddy 已观察行为、待实测 T1–T22、安全基线、风险登记、改动台账(§11) |
 | `docs/VERIFY.md` | 阻断项实测手册与结果记录 |
 | `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定,写代码前先查这里有没有能搬的 |
-| `reference/upstream-unmerged/` | 上游三个未合并分支(含 M1 渲染器 `feat-m1-w1`),只作参考,不参与构建 |
+| `reference/upstream-unmerged/` | 上游三个未合并分支(含上游 M1 的渲染器 `feat-m1-w1`,本库在 PLAN M3 复用;名字里的 m1 指上游,不是本库的 M1),只作参考,不参与构建 |
 | `docs/PLAN.md` | 里程碑 M0–M4:顺序、上线门槛、验收 |
 | `SPEC.md`、`README.md` 等 | **上游原文**(Mac mini + cc-connect + Claude Code),仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
 

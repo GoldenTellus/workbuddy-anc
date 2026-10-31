@@ -10,7 +10,7 @@
 
 | 目录 | 分支末端 | 分叉点 | 文件数 | 内容 |
 |---|---|---|---|---|
-| `feat-m1-w1/` | `7035529`(2026-07-25) | `410bc3b` | 32 | 托管形态 M1 第一周:org schema、frontmatter 解析、persona 渲染、cc-connect TOML 渲染与三重校验、`anc` CLI 雏形,带 golden 测试与 demo vault。TypeScript,约 4500 行 |
+| `feat-m1-w1/` | `7035529`(2026-07-25) | `410bc3b` | 32 | 上游 M1(托管形态)第一周,本库在 PLAN M3 复用:org schema、frontmatter 解析、persona 渲染、cc-connect TOML 渲染与三重校验、`anc` CLI 雏形,带 golden 测试与 demo vault。TypeScript,约 4500 行 |
 | `worktree-light-v2-layered/` | `36d3fc3`(2026-07-29) | `410bc3b` | 7 | 分层轻形态:`docs/VAULT-FORMS.md` 提出 vault 形态 A(git)/ B(对象存储分层 + 本地镜像)/ C(单机托管);Worker 改为 MCP 只做控制面、原件走流式 HTTP;新增零依赖 CLI `light/cli/anc.mjs` 与 56 项测试 |
 | `docs-debt/` | `e0d7ab2`(2026-07-25) | `410bc3b` | 5 | 文档补丁:SPEC 开放问题 2 改判为「共享托管」(一机多公司)、PLAN 登记轻形态 MVP 与 backlog、RESEARCH 把 WorkBuddy 列入 gap 矩阵、vault-service 自定义域说明 |
 
