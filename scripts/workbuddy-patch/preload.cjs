@@ -32,6 +32,13 @@ function expand(p) {
 }
 
 const LOG = expand(mf.log || '%USERPROFILE%\\anc\\workbuddy-patch.log');
+const STATE = expand(mf.state || '%ProgramData%\\anc\\data\\patch-state.json');
+function writeState(extra) {
+  try {
+    fs.mkdirSync(path.dirname(STATE), { recursive: true });
+    fs.writeFileSync(STATE, JSON.stringify(Object.assign({ pid: process.pid, version: mf.workbuddyVersion, at: new Date().toISOString() }, extra || {})));
+  } catch (_) { /* ignore */ }
+}
 function log(line) {
   try {
     fs.appendFileSync(LOG, new Date().toISOString() + ' [pid ' + process.pid + '] ' + line + '\r\n');
@@ -142,6 +149,7 @@ Module.prototype._compile = function (content, filename) {
         if (content.indexOf('__ancIdentityPatch') === -1) {
           content += '\n' + PATCH_BODY;
           applied += 1;
+          writeState({ mode: 'hash' });
           log('PATCHED target=' + filename);
         }
       } else if (strict === '1' || strict === 'true') {
@@ -151,6 +159,7 @@ Module.prototype._compile = function (content, filename) {
         if (content.indexOf('__ancIdentityPatch') === -1) {
           content += '\n' + PATCH_BODY;
           applied += 1;
+          writeState({ mode: 'anchor' });
           log('ANCHOR-PATCH version-unverified target=' + filename + ' got=' + digest);
           alertOps('WorkBuddy 版本变化，已按结构锚点打补丁（未登记版本）；请在测试群回归后更新 manifest');
         }

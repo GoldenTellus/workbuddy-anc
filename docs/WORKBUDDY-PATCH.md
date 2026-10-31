@@ -36,6 +36,13 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - `scripts/workbuddy-patch/inspect.mjs`：直接读 asar，报告版本、目标 hash、`emitMessage`/`WecomAiBotClient` 锚点数量、bootstrap 锚点是否还在，并给出建议；
 - `light/skills/anc-wb-patch`：升级当天给 agent 用的重放与回归流程（侦察 → 三种情况 → 四条回归 → 更新台账 → 回滚）。
 
+### 5) 自愈与守卫（不依赖模型）
+
+- 每次成功打补丁会写 `%ProgramData%\anc\data\patch-state.json`（时间、版本、模式）；
+- `scripts/patch-guard.ps1`（计划任务 `anc-patch-guard`，登录后每分钟）：WorkBuddy 在跑但 `patch-state` 早于进程启动 → 判定未打补丁 → 调 `anc-selfheal.ps1 -Apply`；
+- `anc-selfheal.ps1`：Worker 经 **Explorer** 启动（脱离 WorkBuddy 进程树），停进程 → 用启动器拉起 → 轮询补丁日志，失败重试 1 次并告警；10 分钟冷却；
+- `anc-workbuddy-launch`（登录后 30 秒）：直接用启动器拉起，避免登录自动起无补丁实例。
+
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
 - 前缀由代码每轮拼接，**不依赖模型记忆**。

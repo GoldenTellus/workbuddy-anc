@@ -11,6 +11,8 @@
 | `anc-boot-alert` | 开机 + 每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | WorkBuddy 没起来就经运维群 webhook 告警 |
 | `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM） |
 | `anc-watchdog` | 每 10 分钟 | `LOCAL SERVICE` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
+| `anc-workbuddy-launch` | 登录后 30 秒 | 登录用户（Interactive） | 用补丁启动器拉起 WorkBuddy，杜绝「登录自动起了无补丁实例」 |
+| `anc-patch-guard` | 登录后每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；在跑但补丁记录对不上 → 触发自愈重启（10 分钟冷却） |
 
 ## 体检与告警
 
