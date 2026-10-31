@@ -15,6 +15,12 @@
 | `anc-patch-guard` | 登录后每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；在跑但补丁记录对不上 → 触发自愈重启（10 分钟冷却） |
 | `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | 请求厂商更新接口：有新版本就发运维群（同一版本只告警一次），提示按 skill 走回归 |
 
+## 账号与凭据
+
+- `%ProgramData%\anc\accounts` **只给 Administrators 与 SYSTEM**：里面有 `anc-bot` 密码和按名单开出的只读账号初始密码，bot 账号（标准用户）不得读取；
+- 员工账号用 `scripts\provision-vault-accounts.ps1 -Csv <名单> -DryRun` 先看计划，再正式执行；CSV 用 UTF-8 写；
+- 凭据文件发给本人后删除，不进仓库、不进聊天。
+
 ## 维护窗口（升级/排障）
 
 停 WorkBuddy 之前先放维护开关，否则 `anc-patch-guard` 会在一分钟内把它重新拉起：
