@@ -19,6 +19,24 @@ CREATE TABLE IF NOT EXISTS config (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS a2a_surveys (
+  survey_id    TEXT PRIMARY KEY,
+  rule_version TEXT NOT NULL,
+  rule_hash    TEXT,
+  expected     TEXT NOT NULL DEFAULT '[]',
+  created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS a2a_messages (
+  message_id   TEXT PRIMARY KEY,
+  survey_id    TEXT NOT NULL,
+  from_userid  TEXT,
+  type         TEXT NOT NULL,
+  rule_version TEXT NOT NULL,
+  file_path    TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS chat_bindings (
   chat_id    TEXT PRIMARY KEY,
   employee   TEXT NOT NULL,

@@ -11,6 +11,7 @@ import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
 import * as config from './config.ts';
 import * as backup from './backup.ts';
+import * as a2a from './a2a.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 
@@ -168,6 +169,33 @@ try {
       }
       out({ ok: failed === 0, sent, failed });
     } else fail('未知 outbox 子命令');
+  } else if (group === 'a2a') {
+    if (cmd === 'create') {
+      if (!args.survey) fail('缺少 --survey');
+      if (!args['rule-version']) fail('缺少 --rule-version');
+      const expected = typeof args.expected === 'string' ? args.expected.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      out({ ok: true, ...a2a.createSurvey(db, {
+        surveyId: String(args.survey),
+        ruleVersion: String(args['rule-version']),
+        ruleFile: typeof args['rule-file'] === 'string' ? args['rule-file'] : undefined,
+        expected,
+      }) });
+    } else if (cmd === 'submit') {
+      const text = typeof args.text === 'string'
+        ? args.text
+        : (typeof args['text-file'] === 'string' ? readFileSync(args['text-file'], 'utf8') : '');
+      const internal = typeof args.internal === 'string' ? args.internal : '';
+      if (!text) fail('缺少 --text 或 --text-file');
+      if (!internal) fail('缺少 --internal <内部区目录>');
+      const env = a2a.parseEnvelope(text);
+      out({ ok: true, ...a2a.submit(db, env, internal, typeof args['from-userid'] === 'string' ? args['from-userid'] : undefined) });
+    } else if (cmd === 'status') {
+      const s = a2a.surveyStatus(db, String(args.survey ?? ''));
+      if (!s) fail('没有这次调查: ' + String(args.survey ?? ''));
+      out({ ok: true, ...s });
+    } else if (cmd === 'list') {
+      out({ ok: true, submissions: a2a.listSubmissions(db, String(args.survey ?? '')) });
+    } else fail('未知 a2a 子命令（create/submit/status/list）');
   } else if (group === 'backup') {
     const to = typeof args.to === 'string' ? args.to : '';
     if (!to) fail('缺少 --to');

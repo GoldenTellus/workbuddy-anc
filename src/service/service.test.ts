@@ -9,6 +9,7 @@ import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
 import * as config from './config.ts';
+import * as a2a from './a2a.ts';
 import { scanOutbound, assertSafeOutbound } from './outbound-scan.ts';
 import { tick as loopTick } from './loop.ts';
 
@@ -97,6 +98,69 @@ test('outbox：失败后退避，不在到点前重发', () => withDb((db) => {
   assert.equal(row.attempts, 1);
   assert.equal(outbox.listPendingDue(db, new Date(Date.now() - 5_000).toISOString()).length, 0);
 }));
+
+test('A2A：解析信封（代码块里）与协议校验', () => {
+  const env = {
+    protocol: 'anc-a2a/1', survey_id: 's1', message_id: 'm1', reply_to: null,
+    type: 'survey', rule_version: 'r1', payload: '整理本机资料',
+  };
+  const text = '请看下面\n```json\n' + JSON.stringify(env) + '\n```';
+  const parsed = a2a.parseEnvelope(text);
+  assert.equal(parsed.survey_id, 's1');
+  assert.equal(parsed.payload, '整理本机资料');
+  assert.throws(() => a2a.parseEnvelope('{"protocol":"anc-a2a/1"}'), /缺少字段/);
+  assert.throws(() => a2a.parseEnvelope(JSON.stringify({ ...env, protocol: 'x/1' })), /protocol/);
+  // PowerShell 写文件会带 BOM
+  assert.equal(a2a.parseEnvelope('\uFEFF' + JSON.stringify(env)).message_id, 'm1');
+});
+
+test('A2A：提交归档到内部区并按 message_id 去重', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-a2a-'));
+  const db = openDb(join(dir, 'anc.db'));
+  const internal = join(dir, 'vault-internal');
+  try {
+    const env = a2a.parseEnvelope(JSON.stringify({
+      protocol: 'anc-a2a/1', survey_id: 's1', message_id: 'm1', reply_to: null,
+      type: 'survey', rule_version: 'r1', payload: '工作事实',
+    }));
+    const r1 = a2a.submit(db, env, internal, 'u1');
+    assert.equal(r1.inserted, true);
+    assert.ok(r1.file && r1.file.endsWith('m1.md'));
+    const again = a2a.submit(db, env, internal, 'u1');
+    assert.equal(again.inserted, false);
+    assert.equal(a2a.listSubmissions(db, 's1').length, 1);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('A2A：规则版本不符被拒；完成判定按 expected', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-a2a2-'));
+  const db = openDb(join(dir, 'anc.db'));
+  const internal = join(dir, 'vault-internal');
+  try {
+    a2a.createSurvey(db, { surveyId: 's1', ruleVersion: 'r1', expected: ['u1', 'u2'] });
+    const mk = (id: string, ver: string) => a2a.parseEnvelope(JSON.stringify({
+      protocol: 'anc-a2a/1', survey_id: 's1', message_id: id, reply_to: null,
+      type: 'survey', rule_version: ver, payload: 'x',
+    }));
+    assert.throws(() => a2a.submit(db, mk('m9', 'r2'), internal, 'u1'), /冻结的是 r1/);
+
+    a2a.submit(db, mk('m1', 'r1'), internal, 'u1');
+    let st = a2a.surveyStatus(db, 's1')!;
+    assert.equal(st.complete, false);
+    assert.deepEqual(st.missing, ['u2']);
+
+    a2a.submit(db, mk('m2', 'r1'), internal, 'u2');
+    st = a2a.surveyStatus(db, 's1')!;
+    assert.equal(st.complete, true);
+    assert.deepEqual(st.missing, []);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('出站扫描：命中即脱敏并给出规则名', () => {
   const s = scanOutbound('see sk-ABCDEFGHIJKLMNOPQRST and https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc-123');

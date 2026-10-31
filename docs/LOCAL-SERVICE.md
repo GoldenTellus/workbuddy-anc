@@ -14,6 +14,8 @@
 | `reminders` | 提醒 | 一个任务同时只有一条 `pending`；同日按 `repeat_minutes` 续，跨天停 |
 | `outbox` | 出站消息 | `dedupe_key` 唯一；入队前过凭据扫描 |
 | `config` | 工作时段/节假日 | `work_start` / `work_end` / `weekdays`（1–7）/ `holidays`（逗号分隔日期）；默认全天 |
+| `a2a_surveys` | 调查（访谈） | `rule_version` + `rule_hash` 冻结规则；`expected` 是应交回的人员 |
+| `a2a_messages` | 交回的信封 | 按 `message_id` 去重；文件归档在内部区 `surveys/<survey_id>/` |
 
 原则（§5.5）：
 
@@ -46,6 +48,12 @@ npm run service -- outbox flush --webhook-file C:\ProgramData\anc\secrets\wecom-
 # 循环：到期提醒入队并发出（--once 只跑一次，便于联调）
 npm run service -- loop --once --webhook-file C:\ProgramData\anc\secrets\wecom-webhook.txt
 npm run service -- loop --interval-ms 60000
+
+# A2A（访谈/交回；信封先写文件，避开引号问题）
+npm run service -- a2a create --survey <survey_id> --rule-version v1 --rule-file <问题清单.md> --expected <userid,...>
+npm run service -- a2a submit --text-file <信封.json> --internal D:\anc\vault-internal --from-userid <userid>
+npm run service -- a2a status --survey <survey_id>
+npm run service -- a2a list --survey <survey_id>
 
 # 工作时段（默认为全天，需管理员显式开启）
 npm run service -- config list
