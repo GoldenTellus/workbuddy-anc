@@ -54,6 +54,10 @@ async function defaultSender(url: string, text: string, mentions: string[]): Pro
  *   3. 把到点且退避已过的 pending 消息发出去。
  */
 export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<TickResult> {
+  // 测试必须注入 send：node:test 子进程会带 NODE_TEST_CONTEXT，禁止默认发送器外发
+  if (!opts.send && process.env.NODE_TEST_CONTEXT) {
+    throw new Error('测试必须注入 send，禁止真实外发');
+  }
   const now = opts.now ?? nowIso();
 
   // 0) 次日顺延

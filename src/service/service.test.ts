@@ -144,7 +144,7 @@ test('循环：任务已完成时跳过并取消提醒', async () => {
     // 模拟一条漏网的 pending（正常路径下完成时已被取消）
     db.prepare("UPDATE reminders SET status = 'pending' WHERE task_id = ?").run(t.id);
 
-    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00' });
+    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00', send: async () => {} });
     assert.equal(r.skipped, 1);
     assert.equal(r.enqueued, 0);
     const rows = db.prepare('SELECT status FROM reminders WHERE task_id = ?').all(t.id) as Array<{ status: string }>;
@@ -163,7 +163,7 @@ test('升级：第 4 次提醒后通知交办人，之后每小时', async () =>
     const t = tasks.createTask(db, { title: '催办测试', chatId: 'chat-A', assigneeUserId: 'u-zhang', requesterUserId: 'u-li' });
     reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00', repeatMinutes: 15 });
     for (const at of ['09:00:05', '09:15:05', '09:30:05', '09:45:05']) {
-      await loopTick(db, { now: `2026-10-31T${at}+08:00` });
+      await loopTick(db, { now: `2026-10-31T${at}+08:00`, send: async () => {} });
     }
     const esc = outbox.listOutbox(db, { limit: 50 }).find((m) => (m.dedupe_key || '').startsWith('escalate:'));
     assert.ok(esc, '应有一条升级通知');
@@ -185,7 +185,7 @@ test('顺延：昨天未完成、没有 pending 的任务排到下一次并告�
     const r0 = reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-30T09:00:00+08:00' });
     db.prepare("UPDATE reminders SET status = 'cancelled' WHERE id = ?").run(r0.id);
 
-    const r = await loopTick(db, { now: '2026-10-31T08:00:00+08:00' });
+    const r = await loopTick(db, { now: '2026-10-31T08:00:00+08:00', send: async () => {} });
     assert.ok(r.enqueued >= 1);
     const carry = outbox.listOutbox(db, { limit: 50 }).find((m) => (m.dedupe_key || '').startsWith('carry:'));
     assert.ok(carry, '应有一条顺延通知');
@@ -207,7 +207,7 @@ test('工作时段：周末不发，顺延到下一个工作起点', async () =>
 
     const t = tasks.createTask(db, { title: '周末任务', chatId: 'chat-A' });
     reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T10:00:00+08:00' }); // 周六
-    const r = await loopTick(db, { now: '2026-10-31T10:00:05+08:00' });
+    const r = await loopTick(db, { now: '2026-10-31T10:00:05+08:00', send: async () => {} });
     assert.equal(r.enqueued, 0);
     const rem = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ?").get(t.id) as { due_at: string; status: string };
     assert.equal(rem.due_at, '2026-11-02T01:00:00.000Z'); // 周一 09:00 +08
