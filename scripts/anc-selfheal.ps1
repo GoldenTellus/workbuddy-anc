@@ -8,6 +8,7 @@ param(
     [switch]$Apply,
     [switch]$DryRun,
     [switch]$Worker,
+    [switch]$Force,
     [int]$CooldownMinutes = 10,
     [string]$Repo = 'E:\workbuddy-anc',
     [string]$StateFile = "$env:ProgramData\anc\data\selfheal.state.json",
@@ -22,16 +23,63 @@ function Write-Log([string]$m) {
     Write-Host $line
 }
 
-# 工作进程：等回复发出去 → 杀掉当前 WorkBuddy → 用补丁启动器重启
+# 工作进程：等回复发出去 → 停掉 WorkBuddy → 用补丁启动器重启
+# 注意：不能用 taskkill /T——Worker 自己是 WorkBuddy 的后代进程，/T 会把它一起杀掉。
 if ($Worker) {
     Write-Log 'worker: 4 秒后重启 WorkBuddy'
     Start-Sleep -Seconds 4
-    $main = Get-CimInstance Win32_Process -Filter "Name='WorkBuddy.exe'" | Where-Object { $_.CommandLine -notmatch '--type=' -and $_.CommandLine -notmatch 'daemon-app-server-entry' } | Select-Object -First 1
-    if ($main) { & taskkill /PID $main.ProcessId /T /F 2>&1 | Out-Null }
-    Start-Sleep -Seconds 6
+    Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    for ($i = 0; $i -lt 30; $i++) {
+        if (-not (Get-Process WorkBuddy -ErrorAction SilentlyContinue)) { break }
+        Start-Sleep -Seconds 1
+    }
+    Write-Log 'worker: WorkBuddy 已全部退出'
+    Start-Sleep -Seconds 4
+
     $launcher = Join-Path $Repo 'scripts\workbuddy-patch\launch-patched.ps1'
-    Write-Log ("worker: 启动 " + $launcher)
-    Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launcher) -WindowStyle Hidden
+    $out = "$env:ProgramData\anc\data\launcher.out"
+    $cmdFile = "$env:ProgramData\anc\data\selfheal-launch.cmd"
+    @"
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File "$launcher" > "$out" 2>&1
+"@ | Set-Content $cmdFile -Encoding ascii
+
+    function Test-Patched {
+        $plog = Join-Path $env:USERPROFILE 'anc\workbuddy-patch.log'
+        if (-not (Test-Path $plog)) { return $false }
+        return [bool](Get-Content $plog -Tail 60 | Select-String -Pattern 'PATCHED|ANCHOR-PATCH' -Quiet)
+    }
+
+    $ok = $false
+    for ($attempt = 1; $attempt -le 2 -and -not $ok; $attempt++) {
+        Write-Log ("worker: 第 $attempt 次启动 " + $launcher)
+        # 经 Explorer 启动：与人工双击/relaunch.cmd 的路径一致，避免直接 Start-Process 导致的提前退出
+        Start-Process explorer.exe -ArgumentList $cmdFile
+        for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 2
+            if (Test-Patched) { $ok = $true; break }
+            if (-not (Get-Process WorkBuddy -ErrorAction SilentlyContinue) -and $i -ge 10) { break }
+        }
+        if (-not $ok) {
+            Write-Log ("worker: 第 $attempt 次未见补丁，清理后重试")
+            Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 6
+        }
+    }
+
+    if ($ok) { Write-Log 'worker: 重启成功（补丁已生效）' }
+    else {
+        Write-Log 'worker: 两次启动都没见到补丁日志'
+        if (Test-Path $WebhookFile) {
+            try {
+                $url = (Get-Content $WebhookFile -Raw).Trim()
+                if ($url) {
+                    $body = @{ msgtype = 'text'; text = @{ content = '[anc] 自愈重启失败：两次都没见到补丁日志，请人工用 launch-patched.ps1 重启（输出见 launcher.out）' } } | ConvertTo-Json -Depth 4 -Compress
+                    Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
+                }
+            } catch { }
+        }
+    }
     exit 0
 }
 
@@ -48,7 +96,7 @@ function Send-Alert([string]$text) {
 # 冷却
 $state = @{}
 if (Test-Path $StateFile) { try { $state = Get-Content $StateFile -Raw | ConvertFrom-Json -AsHashtable } catch { $state = @{} } }
-if ($state.at) {
+if ($state.at -and -not $Force) {
     $mins = ((Get-Date) - [datetime]$state.at).TotalMinutes
     if ($mins -lt $CooldownMinutes) {
         Write-Log "cooldown: 上次自愈在 $([int]$mins) 分钟前，跳过"
