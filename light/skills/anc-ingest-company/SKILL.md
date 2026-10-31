@@ -19,6 +19,8 @@ New-Item -ItemType Directory "D:\anc\inbox\pending\$id" -Force
 ```
 
 1. 把附件**复制**进批次目录（原件，不修改）；
+   - 原件放在**批次根目录**（例如 `对话.txt`），不要放进批次里的 `_originals/` 子目录；
+   - `meta.json` 里 `src` 写批次根目录的文件名，`target` 才写 `_originals/<文件名>`；
 2. 写一个 markdown（正文）：
 
 ```markdown
