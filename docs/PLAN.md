@@ -50,12 +50,12 @@
 
 **目标**:员工在群里把资料发给公司 bot 说「入库」,管理员复核后入库;两个 bot 都能按路由查到。
 
-- [x] 两区 vault:共享区、内部区各一个独立 git 目录;共享区 SMB 只读共享,员工用主机本地共享账号读(FORK §5.4)。(已建 `D:\anc\vault-shared` / `D:\anc\vault-internal` 并各自提交;SMB 共享与员工账号待配)
+- [x] 两区 vault:共享区、内部区各一个独立 git 目录;共享区 SMB 只读共享,员工用主机本地共享账号读(FORK §5.4)。(已建 `D:\anc\vault-shared` / `D:\anc\vault-internal` 并各自提交;共享 `anc-vault-shared` 已开、NTFS 已加固;账号用 `scripts/provision-vault-accounts.ps1` 按名单开)
 - [x] 共享区骨架:根路由、`CONTRIBUTING.md`、`company/`(简介、名单、术语、问题模型模板)。来源:上游 `anc-onboard` 的目录骨架与根路由纪律
 - [x] 入库技能:改写上游 `anc-ingest` 正文;原件从 `%TEMP%\workbuddy-wecom-media\` 复制进 `inbox\pending\<id>\`,附元数据。(`light/skills/anc-ingest-company/SKILL.md`,已装到 `~/.workbuddy/skills/anc-ingest`)
 - [x] 入库进程:路径规范化、base hash 拒写、原件只许新建、管理员复核、提交、`inbox\failed\` 回执(FORK §5.4 的七步)。(核心已实现:校验 + 事务写入 + 回滚,`src/ingest`;git 提交、失败回执、管理员复核交互待补)
 - [x] 附件清理定时任务(`anc-cleanup`,每天 03:00,SYSTEM,清 7 天前的企微附件)
-- [ ] 实测 T12(个人 bot 读网络路径)、T19(8000 字符的计数方式)、T20(长会话后规则是否还在)
+- [ ] 实测 T12(个人 bot 读网络路径)、T19(8000 字符的计数方式)、T20(长会话后规则是否还在)。(T12 只读代理已通过:标准账号读 UNC 成功、写入被拒;个人 bot 端待员工机器)
 
 **验收**:发一份 PDF → 入库摘要回到群里 → 公司 bot 能回答其中的问题、查不到的说「尚未入库」;两个批次改同一个文件,后到的那个被拒并回执。
 

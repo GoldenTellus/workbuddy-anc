@@ -22,6 +22,21 @@
 
 > 员工共享账号还没建：按 FORK §5.4，每人一个「只用于读共享、不能登录桌面」的本地账号，等员工名单确定后补。
 
+### 按名单开账号
+
+```powershell
+# 名单 CSV（name,id；id 只允许小写字母数字 . _ -）
+#   张三,zhangsan
+powershell -ExecutionPolicy Bypass -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
+powershell -ExecutionPolicy Bypass -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv
+```
+
+- 账号名 `anc-read-<id>`，随机 12 位密码、永不过期，默认只在 `Users` 组；
+- 凭据写到 `%ProgramData%\anc\accounts\provisioned-<时间>.csv`：**发给本人后删除**，不进仓库；
+- 幂等：已存在的账号跳过、不改密码；
+- 实测（2026-10-31）：脚本创建的账号可读共享、写入被拒，用完即删；
+- 「拒绝本地登录」需在本地安全策略里对 `anc-vault-readers` 组设置，脚本不代做，避免把自己锁在外面。
+
 脚本落在 `%ProgramData%\anc\bin\`（只读），数据在 `%ProgramData%\anc\data\`，密钥在 `%ProgramData%\anc\secrets\`。
 
 ## 备份

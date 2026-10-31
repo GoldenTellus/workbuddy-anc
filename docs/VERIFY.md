@@ -281,3 +281,4 @@
 | T2 三机器人共存 | 2026-10-31 | 5.9.3 | **通过** | 两个 bot 均 @ 才回应,不 @ 不回 |
 | T7 bot 互相触发(随 T2) | 2026-10-31 | 5.9.3 | **通过** | 长内容不误触发;正向/反向让 bot 原样输出 @ 对方,对方均沉默——bot 输出里的 @ 不构成触发 |
 | T17 运行身份 | 2026-10-31 | — | **通过** | `LOCAL SERVICE` 计划任务跑 `loop --once`:`sent=1`、outbox=`sent`、群里收到并被 @;`data` 可写、`deny` 读取被拒。无人登录项按 ServiceAccount 语义推定,未单测 |
+| T12 个人 bot 读网络路径（只读代理） | 2026-10-31 | — | **部分通过** | 用标准本地账号（`Users` 组、非管理员）经 `\\127.0.0.1\anc-vault-shared` 读取成功、写入被拒（`UnauthorizedAccessException`）；共享层 `Authenticated Users` 只读 + NTFS `Users` 只读。个人 bot 端点实测待员工机器 |
