@@ -52,7 +52,26 @@ if (-not (Test-Path $manifestPath)) { Fail 'manifest.json 不存在' '确认 scr
 if (-not (Test-Path $preload)) { Fail 'preload.cjs 不存在' '确认 scripts/workbuddy-patch/ 完整' 2 }
 if (-not (Test-Path $inject)) { Fail 'inject.cjs 不存在' '确认 scripts/workbuddy-patch/ 完整' 2 }
 
-$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$manifest = $null
+try {
+    $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+} catch {
+    # manifest 坏了就 fail-closed：否则带着错的 hash 启动只会让补丁静默失效
+    $ops = Join-Path $env:ProgramData 'anc\secrets\ops-webhook.txt'
+    if (Test-Path $ops) {
+        try {
+            $url = (Get-Content $ops -Raw).Trim()
+            if ($url) {
+                $body = (@{ msgtype = 'text'; text = @{ content = "[anc] manifest.json 无法解析，补丁启动被拒绝：$($_.Exception.Message)。请从 git 恢复 scripts/workbuddy-patch/manifest.json" } } | ConvertTo-Json -Depth 4 -Compress)
+                Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
+            }
+        } catch { }
+    }
+    Fail "manifest.json 无法解析：$($_.Exception.Message)" '从 git 恢复 scripts/workbuddy-patch/manifest.json；或用 -NoPatch 临时启动' 4
+}
+if (-not $manifest.workbuddyVersion -or -not $manifest.sha256) {
+    Fail 'manifest.json 缺少 workbuddyVersion / sha256' '从 git 恢复 manifest.json' 4
+}
 $exe = Join-Path $InstallDir 'WorkBuddy.exe'
 if (-not (Test-Path $exe)) { Fail "找不到 $exe" '用 -InstallDir 指向 WorkBuddy 安装目录' 2 }
 

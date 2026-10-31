@@ -51,7 +51,15 @@ if (Test-Path $log) {
 
 # 5 WorkBuddy 版本与补丁
 $exe = "$env:LOCALAPPDATA\Programs\WorkBuddy\WorkBuddy.exe"
-$mf = if (Test-Path $Manifest) { Get-Content $Manifest -Raw | ConvertFrom-Json } else { $null }
+$mf = $null
+if (Test-Path $Manifest) {
+    try { $mf = Get-Content $Manifest -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $mf = $null }
+}
+if (Test-Path $Manifest) {
+    if (-not $mf) { Add-Result 'manifest' 'FAIL' 'manifest.json 无法解析' '从 git 恢复 scripts/workbuddy-patch/manifest.json' }
+    elseif (-not $mf.workbuddyVersion -or -not $mf.sha256) { Add-Result 'manifest' 'FAIL' '缺少 workbuddyVersion / sha256' '从 git 恢复 manifest.json' }
+    else { Add-Result 'manifest' 'PASS' ($mf.workbuddyVersion + ' / ' + $mf.sha256.Substring(0, 8) + '…') '-' }
+} else { Add-Result 'manifest' 'FAIL' 'manifest.json 不存在' '从 git 恢复' }
 if (-not (Test-Path $exe)) { Add-Result 'workbuddy' 'WARN' '当前用户下没装 WorkBuddy' 'bot 用户安装后复测' }
 elseif ($mf -and (Get-Item $exe).VersionInfo.FileVersion -ne $mf.workbuddyVersion) {
     Add-Result 'workbuddy' 'FAIL' ("版本 " + (Get-Item $exe).VersionInfo.FileVersion + " != 登记 " + $mf.workbuddyVersion) '按 WORKBUDDY-PATCH.md 重放补丁并更新 manifest'

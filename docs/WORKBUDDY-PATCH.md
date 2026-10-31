@@ -29,7 +29,8 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 ### 3) 失败告警
 
 - `wecomaibot-client.js` 的 sha256 与 manifest 不符 → 默认进入**锚点模式**：照打补丁、记 `ANCHOR-PATCH`、发运维群告警；`ANC_WB_STRICT=1` 或启动器 `-Strict` 时改为 fail-closed；
-- 启动器发现 WorkBuddy 版本与 manifest 不符 → 告警，默认继续（锚点模式），`-Strict` 时拒绝启动。
+- 启动器发现 WorkBuddy 版本与 manifest 不符 → 告警，默认继续（锚点模式），`-Strict` 时拒绝启动；
+- **manifest 自身坏了（非法 JSON / 缺字段）→ 拒绝启动（exit 4）+ 运维群告警**：带着错的 hash 启动只会让补丁静默失效；doctor 也会报 `manifest FAIL`。
 
 ### 4) 升级侦察与技能
 
