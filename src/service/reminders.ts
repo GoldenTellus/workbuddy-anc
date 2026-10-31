@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { nowIso, tx } from './db.ts';
+import { nowIso, toIso, tx } from './db.ts';
 
 export interface Reminder {
   id: number;
@@ -24,7 +24,7 @@ function localDate(iso: string): string {
 
 export function scheduleReminder(db: DatabaseSync, input: ScheduleInput): Reminder {
   if (!input.dueAt) throw new Error('dueAt 必填');
-  if (Number.isNaN(Date.parse(input.dueAt))) throw new Error('dueAt 不是合法时间');
+  const due = toIso(input.dueAt);
   const t = nowIso();
   const repeat = Math.max(1, Math.floor(input.repeatMinutes ?? 15));
   return tx(db, () => {
@@ -32,15 +32,15 @@ export function scheduleReminder(db: DatabaseSync, input: ScheduleInput): Remind
     const r = db.prepare(
       `INSERT INTO reminders (task_id, due_at, repeat_minutes, status, created_at)
        VALUES (?, ?, ?, 'pending', ?)`
-    ).run(input.taskId, input.dueAt, repeat, t);
+    ).run(input.taskId, due, repeat, t);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
-      .run(input.taskId, 'reminder_scheduled', JSON.stringify({ due_at: input.dueAt, repeat }), t);
+      .run(input.taskId, 'reminder_scheduled', JSON.stringify({ due_at: due, repeat }), t);
     return db.prepare('SELECT * FROM reminders WHERE id = ?').get(Number(r.lastInsertRowid)) as unknown as Reminder;
   });
 }
 
 export function dueReminders(db: DatabaseSync, now: string = nowIso()): Reminder[] {
-  return db.prepare("SELECT * FROM reminders WHERE status = 'pending' AND due_at <= ? ORDER BY due_at").all(now) as unknown as Reminder[];
+  return db.prepare("SELECT * FROM reminders WHERE status = 'pending' AND due_at <= ? ORDER BY due_at").all(toIso(now)) as unknown as Reminder[];
 }
 
 /**
@@ -51,9 +51,10 @@ export function markReminderSent(db: DatabaseSync, id: number, now: string = now
     const row = db.prepare('SELECT * FROM reminders WHERE id = ?').get(id) as unknown as Reminder | undefined;
     if (!row) throw new Error(`提醒不存在: ${id}`);
     if (row.status !== 'pending') throw new Error(`提醒不是 pending: ${id}`);
-    db.prepare("UPDATE reminders SET status = 'sent', last_sent_at = ? WHERE id = ?").run(now, id);
+    const t = toIso(now);
+    db.prepare("UPDATE reminders SET status = 'sent', last_sent_at = ? WHERE id = ?").run(t, id);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
-      .run(row.task_id, 'reminder_sent', JSON.stringify({ due_at: row.due_at }), now);
+      .run(row.task_id, 'reminder_sent', JSON.stringify({ due_at: row.due_at }), t);
 
     const nextAt = new Date(new Date(row.due_at).getTime() + row.repeat_minutes * 60_000).toISOString();
     const sameDay = localDate(nextAt) === localDate(row.due_at);
@@ -62,10 +63,10 @@ export function markReminderSent(db: DatabaseSync, id: number, now: string = now
       const r = db.prepare(
         `INSERT INTO reminders (task_id, due_at, repeat_minutes, status, created_at)
          VALUES (?, ?, ?, 'pending', ?)`
-      ).run(row.task_id, nextAt, row.repeat_minutes, now);
+      ).run(row.task_id, nextAt, row.repeat_minutes, t);
       next = db.prepare('SELECT * FROM reminders WHERE id = ?').get(Number(r.lastInsertRowid)) as unknown as Reminder;
       db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
-        .run(row.task_id, 'reminder_scheduled', JSON.stringify({ due_at: nextAt, repeat: row.repeat_minutes }), now);
+        .run(row.task_id, 'reminder_scheduled', JSON.stringify({ due_at: nextAt, repeat: row.repeat_minutes }), t);
     }
     return { sent: db.prepare('SELECT * FROM reminders WHERE id = ?').get(id) as unknown as Reminder, next };
   });

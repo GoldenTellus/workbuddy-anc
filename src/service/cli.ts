@@ -2,18 +2,19 @@
 // 本地小服务 CLI（先用脚本方式给公司 bot 调，HTTP 监听等 T17/T6）
 // 用法见 docs/LOCAL-SERVICE.md；所有命令支持 --db 与 --json。
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { openDb, DEFAULT_DB } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
+import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 
 type Args = Record<string, string | true> & { _: string[] };
 
-const BOOL_FLAGS = new Set(['json']);
+const BOOL_FLAGS = new Set(['json', 'once']);
 
 function parse(argv: string[]): Args {
   const out: Args = { _: [] };
@@ -59,7 +60,13 @@ if (!group) fail('缺少命令组（bind / task / reminder / outbox）');
 try {
   if (group === 'bind') {
     if (cmd === 'set') {
-      const r = bindings.bind(db, String(args['chat-id'] ?? ''), String(args.employee ?? ''), typeof args.note === 'string' ? args.note : undefined);
+      const r = bindings.bind(
+        db,
+        String(args['chat-id'] ?? ''),
+        String(args.employee ?? ''),
+        typeof args.note === 'string' ? args.note : undefined,
+        typeof args.userid === 'string' ? args.userid : undefined
+      );
       out({ ok: true, action: r.action, binding: r.binding });
     } else if (cmd === 'resolve') {
       const b = bindings.resolve(db, String(args['chat-id'] ?? ''));
@@ -139,6 +146,20 @@ try {
       }
       out({ ok: failed === 0, sent, failed });
     } else fail('未知 outbox 子命令');
+  } else if (group === 'loop') {
+    const file = typeof args['webhook-file'] === 'string'
+      ? args['webhook-file']
+      : join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets', 'wecom-webhook.txt');
+    const webhookFile = existsSync(file) ? file : undefined;
+    if (!webhookFile) console.error('[loop] 没有 webhook 文件，只入队不发送: ' + file);
+    if (args.once === true) {
+      const r = await loop.tick(db, { webhookFile });
+      out({ ok: true, ...r });
+    } else {
+      const intervalMs = typeof args['interval-ms'] === 'string' ? Number(args['interval-ms']) : 60000;
+      process.on('SIGINT', () => { try { db.close(); } catch { /* ignore */ } process.exit(0); });
+      await loop.run(db, { webhookFile, intervalMs });
+    }
   } else {
     fail('未知命令组: ' + group);
   }

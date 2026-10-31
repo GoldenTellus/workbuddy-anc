@@ -23,8 +23,8 @@
 ## 命令
 
 ```powershell
-# 绑定（管理员）
-npm run service -- bind set --chat-id <chatid> --employee <姓名> [--note "…"]
+# 绑定（管理员；userid 用于提醒时 @ 人）
+npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid>
 npm run service -- bind resolve --chat-id <chatid>
 npm run service -- bind list
 
@@ -41,9 +41,19 @@ npm run service -- reminder sent --id 1
 # 出站
 npm run service -- outbox list
 npm run service -- outbox flush --webhook-file C:\ProgramData\anc\secrets\wecom-webhook.txt
+
+# 循环：到期提醒入队并发出（--once 只跑一次，便于联调）
+npm run service -- loop --once --webhook-file C:\ProgramData\anc\secrets\wecom-webhook.txt
+npm run service -- loop --interval-ms 60000
 ```
 
 所有命令支持 `--db <path>` 与 `--json`。默认库 `%USERPROFILE%\anc\anc.db`。
+
+`loop` 每次 tick 做三件事：
+
+1. 到期提醒 → 生成 outbox 消息（带绑定人的 `userid` 作为 `mentioned_list`），提醒标为已发（同日续排，跨天停）；
+2. 有 webhook 文件 → 把 pending 消息发出去；失败的记 `last_error`，留在表里等下次；
+3. 任务已完成/取消却还挂着的提醒 → 直接取消，不发。
 
 `outbox flush` 读的是**文件**里的 webhook（不接命令行明文），发给群机器人；返回 `errcode: 0` 才算成功。
 
@@ -63,7 +73,7 @@ npm run test:service
 ## 还没做
 
 - HTTP 接口与 token 校验、存活探测（§5.5，等 T17 定运行身份）；
-- 常驻循环：定时扫 `reminders`、`outbox` 重试、附件清理、开机提醒、watchdog；
+- 常驻循环已有最小版（`loop`：扫到期提醒 → outbox → webhook，默认每分钟）；还缺 outbox 重试退避、附件清理、开机提醒、watchdog、以及注册成 Windows 服务/计划任务的实际落地；
 - vault 内部区的 markdown 投影与 `reproject`；
 - 规则冻结的 `policy_version` / `rule_content_hash` 目前只落字段，还没有规则源；
 - 公司 bot 侧怎么调它（T6：skill → 脚本，或 JSON 投递目录）。

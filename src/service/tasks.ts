@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { nowIso, tx } from './db.ts';
+import { nowIso, toIso, tx } from './db.ts';
 
 export type TaskStatus = 'open' | 'done' | 'cancelled';
 
@@ -40,7 +40,7 @@ export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
       input.chatId ?? null,
       input.assignee ?? null,
       input.requester ?? null,
-      input.dueAt ?? null,
+      input.dueAt ? toIso(input.dueAt) : null,
       input.policyVersion ?? null,
       input.ruleHash ?? null,
       t,

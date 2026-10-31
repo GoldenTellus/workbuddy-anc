@@ -75,10 +75,26 @@ export function openDb(path: string = DEFAULT_DB): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
+/** 轻量迁移：只加列，不改旧数据。 */
+function migrate(db: DatabaseSync): void {
+  const cols = db.prepare('PRAGMA table_info(chat_bindings)').all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'userid')) {
+    db.exec('ALTER TABLE chat_bindings ADD COLUMN userid TEXT');
+  }
+}
+
 export function nowIso(d: Date = new Date()): string {
+  return d.toISOString();
+}
+
+/** 统一把时间规范成 UTC ISO（字符串比较才可靠）；非法时间直接抛错。 */
+export function toIso(v: string | Date): string {
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) throw new Error('非法时间: ' + String(v));
   return d.toISOString();
 }
 

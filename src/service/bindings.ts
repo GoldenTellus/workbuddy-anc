@@ -4,6 +4,7 @@ import { nowIso } from './db.ts';
 export interface Binding {
   chat_id: string;
   employee: string;
+  userid: string | null;
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -17,17 +18,18 @@ function clean(v: string | undefined, field: string): string {
   return s;
 }
 
-export function bind(db: DatabaseSync, chatId: string, employee: string, note?: string): { action: 'created' | 'updated'; binding: Binding } {
+export function bind(db: DatabaseSync, chatId: string, employee: string, note?: string, userid?: string): { action: 'created' | 'updated'; binding: Binding } {
   const cid = clean(chatId, 'chat_id');
   const emp = clean(employee, 'employee');
+  const uid = userid ? clean(userid, 'userid') : null;
   const t = nowIso();
   const exists = db.prepare('SELECT chat_id FROM chat_bindings WHERE chat_id = ?').get(cid);
   if (exists) {
-    db.prepare('UPDATE chat_bindings SET employee = ?, note = ?, updated_at = ? WHERE chat_id = ?')
-      .run(emp, note ?? null, t, cid);
+    db.prepare('UPDATE chat_bindings SET employee = ?, userid = ?, note = ?, updated_at = ? WHERE chat_id = ?')
+      .run(emp, uid, note ?? null, t, cid);
   } else {
-    db.prepare('INSERT INTO chat_bindings (chat_id, employee, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-      .run(cid, emp, note ?? null, t, t);
+    db.prepare('INSERT INTO chat_bindings (chat_id, employee, userid, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(cid, emp, uid, note ?? null, t, t);
   }
   return { action: exists ? 'updated' : 'created', binding: resolve(db, cid)! };
 }

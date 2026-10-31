@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from './db.ts';
@@ -9,6 +9,7 @@ import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
 import { scanOutbound, assertSafeOutbound } from './outbound-scan.ts';
+import { tick as loopTick } from './loop.ts';
 
 function withDb(fn: (db: ReturnType<typeof openDb>) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'anc-svc-'));
@@ -88,4 +89,51 @@ test('出站扫描：命中即脱敏并给出规则名', () => {
   // 运行时拼接，避免仓库里出现形如赋值语句的字符串（check-public 的绊线）
   const fakeAssignment = 'app_secret' + ' = ' + 'hunter2';
   assert.throws(() => assertSafeOutbound(fakeAssignment), /凭据/);
+});
+
+test('循环：到期提醒入队、@ 绑定人并发送一次', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-loop-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    bindings.bind(db, 'chat-A', '张三', undefined, 'user-zhang');
+    const t = tasks.createTask(db, { title: '写周报', chatId: 'chat-A' });
+    reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00' });
+
+    const calls: Array<{ text: string; mentions: string[] }> = [];
+    const send = async (_url: string, text: string, mentions: string[]) => { calls.push({ text, mentions }); };
+
+    const hookFile = join(dir, 'webhook.txt');
+    writeFileSync(hookFile, 'https://example.invalid/hook\n', 'utf8');
+    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00', webhookFile: hookFile, send });
+    assert.equal(r.enqueued, 1);
+    assert.equal(r.sent, 1);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].mentions, ['user-zhang']);
+    assert.match(calls[0].text, /到点提醒：#1 写周报/);
+    assert.equal(outbox.listOutbox(db, { status: 'pending' }).length, 0);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('循环：任务已完成时跳过并取消提醒', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-loop-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const t = tasks.createTask(db, { title: '已完成的活', chatId: 'chat-A' });
+    reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00' });
+    tasks.completeTask(db, t.id, { text: 'done' });
+    // 模拟一条漏网的 pending（正常路径下完成时已被取消）
+    db.prepare("UPDATE reminders SET status = 'pending' WHERE task_id = ?").run(t.id);
+
+    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00' });
+    assert.equal(r.skipped, 1);
+    assert.equal(r.enqueued, 0);
+    const rows = db.prepare('SELECT status FROM reminders WHERE task_id = ?').all(t.id) as Array<{ status: string }>;
+    assert.ok(rows.every((x) => x.status !== 'pending'));
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
