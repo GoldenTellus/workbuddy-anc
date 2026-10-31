@@ -153,3 +153,45 @@ test('循环：任务已完成时跳过并取消提醒', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('升级：第 4 次提醒后通知交办人，之后每小时', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-esc-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    bindings.bind(db, 'chat-A', '张三', undefined, 'u-zhang');
+    const t = tasks.createTask(db, { title: '催办测试', chatId: 'chat-A', assigneeUserId: 'u-zhang', requesterUserId: 'u-li' });
+    reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00', repeatMinutes: 15 });
+    for (const at of ['09:00:05', '09:15:05', '09:30:05', '09:45:05']) {
+      await loopTick(db, { now: `2026-10-31T${at}+08:00` });
+    }
+    const esc = outbox.listOutbox(db, { limit: 50 }).find((m) => (m.dedupe_key || '').startsWith('escalate:'));
+    assert.ok(esc, '应有一条升级通知');
+    const payload = JSON.parse(esc!.payload) as { mentions: string[]; text: string };
+    assert.deepEqual(payload.mentions, ['u-li']);
+    const pending = db.prepare("SELECT repeat_minutes FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id) as { repeat_minutes: number };
+    assert.equal(pending.repeat_minutes, 60);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('顺延：昨天未完成、没有 pending 的任务排到下一次并告知', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-carry-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const t = tasks.createTask(db, { title: '昨天的活', chatId: 'chat-A', dueAt: '2026-10-30T09:00:00+08:00' });
+    const r0 = reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-30T09:00:00+08:00' });
+    db.prepare("UPDATE reminders SET status = 'cancelled' WHERE id = ?").run(r0.id);
+
+    const r = await loopTick(db, { now: '2026-10-31T08:00:00+08:00' });
+    assert.ok(r.enqueued >= 1);
+    const carry = outbox.listOutbox(db, { limit: 50 }).find((m) => (m.dedupe_key || '').startsWith('carry:'));
+    assert.ok(carry, '应有一条顺延通知');
+    const next = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id) as { due_at: string; status: string };
+    assert.equal(next.due_at, '2026-10-31T01:00:00.000Z');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

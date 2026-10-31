@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { nowIso, toIso } from './db.ts';
-import { dueReminders, markReminderSent } from './reminders.ts';
+import { dueReminders, markReminderSent, scheduleReminder } from './reminders.ts';
 import { getTask } from './tasks.ts';
 import { resolve } from './bindings.ts';
 import { enqueue, listPendingDue, markSent, markFailed } from './outbox.ts';
@@ -47,14 +47,41 @@ async function defaultSender(url: string, text: string, mentions: string[]): Pro
 
 /**
  * 一次 tick：
+ *   0. 昨天没完成、又没有 pending 提醒的任务 → 顺延到今天同一时刻，并告知；
  *   1. 到期提醒 → 生成 outbox 消息（带上该群绑定人的 userid 作为 @）；
- *   2. 到期提醒标记已发（同日续排，跨天停）；
- *   3. 有 webhook 时把 pending 消息发出去。
+ *   2. 到期提醒标记已发（同日续排，跨天停）；连续 4 次没回应 → 通知交办人一次，之后每小时一次；
+ *   3. 把到点且退避已过的 pending 消息发出去。
  */
 export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<TickResult> {
   const now = opts.now ?? nowIso();
-  const due = dueReminders(db, now);
+
+  // 0) 次日顺延
+  const nowDate = new Date(toIso(now));
+  const dayStart = new Date(nowDate); dayStart.setHours(0, 0, 0, 0);
+  const stale = db.prepare(
+    "SELECT id, title, due_at, chat_id FROM tasks WHERE status = 'open' AND due_at IS NOT NULL AND due_at < ?"
+  ).all(dayStart.toISOString()) as Array<{ id: number; title: string; due_at: string; chat_id: string | null }>;
   let enqueued = 0;
+  for (const t of stale) {
+    const pending = db.prepare("SELECT id FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id);
+    if (pending) continue;
+    const due = new Date(t.due_at);
+    const next = new Date(nowDate);
+    next.setHours(due.getHours(), due.getMinutes(), 0, 0);
+    if (next.getTime() <= nowDate.getTime()) next.setDate(next.getDate() + 1);
+    scheduleReminder(db, { taskId: t.id, dueAt: next.toISOString() });
+    const at = due.toLocaleString('sv-SE').slice(0, 16);
+    const nextLabel = next.toLocaleString('sv-SE').slice(0, 16);
+    const q = enqueue(db, {
+      text: `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，已顺延到 ${nextLabel}`,
+      chatId: t.chat_id,
+      dedupeKey: `carry:${t.id}:${dayStart.toISOString().slice(0, 10)}`,
+      at: now,
+    });
+    if (q.inserted) enqueued += 1;
+  }
+
+  const due = dueReminders(db, now);
   let skipped = 0;
 
   for (const r of due) {
@@ -76,6 +103,20 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     });
     if (q.inserted) enqueued += 1;
     markReminderSent(db, r.id, now);
+
+    // 连续 4 次没回应 → 通知交办人一次，并把后续提醒改成每小时
+    const sentCount = (db.prepare("SELECT COUNT(*) AS c FROM task_events WHERE task_id = ? AND kind = 'reminder_sent'").get(task.id) as { c: number }).c;
+    if (sentCount >= 4) {
+      const esc = enqueue(db, {
+        text: `任务 #${task.id} ${task.title} 已提醒 ${sentCount} 次仍未回应，请交办人跟进`,
+        chatId: task.chat_id,
+        dedupeKey: `escalate:${task.id}`,
+        mentions: task.requester_userid ? [task.requester_userid] : [],
+        at: now,
+      });
+      if (esc.inserted) enqueued += 1;
+      db.prepare("UPDATE reminders SET repeat_minutes = 60 WHERE task_id = ? AND status = 'pending'").run(task.id);
+    }
   }
 
   let sent = 0;

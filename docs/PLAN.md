@@ -30,8 +30,8 @@
 - [x] 任务技能:把一句话转成 `task add / list / done / cancel`;回显写全的时间;执行人有多条待办时先问是哪条。(`light/skills/anc-task/SKILL.md`)
 - [ ] 本地小服务补齐 FORK §5.7 的默认规则:
   - [x] 权限:只有执行人或交办人能标完成、取消(用前缀里的 `from` 对照任务的 `assignee_userid` / `requester_userid`)
-  - [ ] 连续 4 次无回应,在交办人群里通知一次,之后每小时提醒一次
-  - [ ] 未完成任务次日顺延并告知交办人
+  - [x] 连续 4 次无回应,在交办人群里通知一次,之后每小时提醒一次
+  - [x] 未完成任务次日顺延并告知交办人
   - [ ] 时区、工作时段、节假日配置
   - [x] outbox 失败重试退避(1/5/15/30/60 分钟,5 次后 failed)
 - [x] 每个员工群一个 webhook,按 chatid 选用;密钥文件放 `%ProgramData%\anc\secrets\`,文件名登记在绑定表里,值不进库。(`bind set --webhook-file`,loop 按绑定选文件)

@@ -49,11 +49,12 @@ npm run service -- loop --interval-ms 60000
 
 所有命令支持 `--db <path>` 与 `--json`。默认库 `%USERPROFILE%\anc\anc.db`。
 
-`loop` 每次 tick 做三件事：
+`loop` 每次 tick 做四件事：
 
+0. 昨天没完成、又没有 pending 提醒的任务 → 顺延到下一次同一时刻，并发一条「上次定在 … 没完成，已顺延到 …」；
 1. 到期提醒 → 生成 outbox 消息（带绑定人的 `userid` 作为 `mentioned_list`），提醒标为已发（同日续排，跨天停）；
-2. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查绑定，用绑定里的 `webhook_file`（默认 `wecom-webhook.txt`）去 `%ProgramData%\anc\secrets\` 找；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`；
-3. 任务已完成/取消却还挂着的提醒 → 直接取消，不发。
+2. 连续 4 次没回应 → 在同一个群通知交办人一次（`escalate:<任务号>` 去重），之后每小时提醒一次；
+3. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查绑定，用绑定里的 `webhook_file`（默认 `wecom-webhook.txt`）去 `%ProgramData%\anc\secrets\` 找；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`。
 
 **权限**：`task done` / `task cancel` 必须带 `--actor <userid>`；只有任务的 `assignee_userid` 或 `requester_userid` 能操作，否则返回「只有执行人或交办人能操作这个任务」。未登记 userid 的旧任务不校验（兼容）。
 
