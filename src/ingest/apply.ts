@@ -29,7 +29,8 @@ export interface ApplyResult {
 
 function readJson(path: string): BatchMeta {
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as BatchMeta;
+    const raw = readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
+    return JSON.parse(raw) as BatchMeta;
   } catch (e) {
     throw new IngestError('BAD_META', 'meta.json 读取失败: ' + (e as Error).message);
   }

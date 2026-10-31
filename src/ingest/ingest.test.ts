@@ -130,6 +130,19 @@ test('归档：成功进 done，失败进 failed 并写 reason', () => {
   }
 });
 
+test('入库：meta.json 带 UTF-8 BOM 也能读', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    const metaObj = { batch_id: 'b-bom', files: [{ src: 'a.md', target: 'company/BOM.md', kind: 'markdown' }] };
+    writeFileSync(join(batch, 'meta.json'), '\uFEFF' + JSON.stringify(metaObj), 'utf8');
+    const r = applyBatch(batch, vault);
+    assert.deepEqual(r.added, ['company/BOM.md']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('提交：--commit 生成提交，无改动返回 null', () => {
   const { dir, vault, batch } = setup();
   try {
