@@ -52,6 +52,14 @@ node src\ingest\cli.ts apply --batch D:\anc\inbox\pending\20261031-001 --shared 
 - 成功：批次自动移到 `inbox\done\<batch>`；
 - 失败：批次自动移到 `inbox\failed\<batch>` 并写 `reason.txt`（含错误码与原因）。
 
+带 `--commit` 时（可选，默认不提交）：
+
+- 在 vault 仓库里 `git add -A` 并提交；
+- 作者固定 `anc-ingest <anc-ingest@localhost>`，提交信息经 `-F` 文件传入，参数用数组、不经 shell；
+- 提交信息形如 `ingest: company/术语.md`；没有改动时返回 `commit: null`。
+
+起步阶段建议**不带** `--commit`，由管理员复核 diff 后手动提交；跑顺了再打开。
+
 错误码：`BAD_PATH` / `BAD_META` / `MISSING_SRC` / `TOO_LARGE` / `BAD_FRONTMATTER` / `NEED_BASE_HASH` / `BASE_HASH_MISMATCH` / `ORIGINAL_EXISTS` / `CASE_CONFLICT`。
 
 ## 已实现 / 未实现

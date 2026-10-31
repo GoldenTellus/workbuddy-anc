@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyBatch, archiveBatch, failBatch } from './apply.ts';
+import { commitVault } from './git.ts';
 import { normalizeTarget, blobHash, IngestError } from './validate.ts';
 
 const MD = '---\ntitle: 测试\nsource_file: _originals/x.pdf\nupdated_at: 2026-10-31\n---\n\n正文\n';
@@ -123,6 +125,25 @@ test('归档：成功进 done，失败进 failed 并写 reason', () => {
     const failed = failBatch(b2, inbox, 'BAD_PATH: ../x');
     assert.ok(existsSync(join(failed, 'a.md')));
     assert.match(readFileSync(join(failed, 'reason.txt'), 'utf8'), /BAD_PATH/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('提交：--commit 生成提交，无改动返回 null', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: vault });
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    meta(batch, [{ src: 'a.md', target: 'company/术语.md', kind: 'markdown' }]);
+    applyBatch(batch, vault);
+
+    const hash = commitVault(vault, 'ingest: company/术语.md');
+    assert.ok(hash && /^[0-9a-f]{7,}$/.test(hash));
+    const msg = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: vault, encoding: 'utf8' }).trim();
+    assert.equal(msg, 'ingest: company/术语.md');
+
+    assert.equal(commitVault(vault, 'again'), null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
