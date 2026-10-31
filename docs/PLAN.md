@@ -82,7 +82,7 @@
 - [x] 访谈技能:上游 `anc-onboard` 的访谈 11 问 + 问题模型(`light/skills/anc-interview/`:11 问 + 逐题提交;问题模型沿用 `light/skills/anc-onboard/vault-templates` 的模板)
 - [x] A2A v1:七字段信封、schema 校验、去重、归档到内部区、完成判定(FORK §5.6)。(`src/service/a2a.ts` + `a2a create/submit/status/list`;按 `message_id` 去重,按 `survey_id` 归档到 `vault-internal\surveys\`)
 - [x] 规则冻结的规则源(`policy_version` 与内容 hash,FORK §5.5)。(`a2a create --rule-version --rule-file` 记 `rule_hash`;版本不符的提交被 `RULE_MISMATCH` 拒)
-- [ ] 实测 T22(群会话会不会过期或重置)
+- [x] 实测 T22(群会话会不会过期或重置)。(2026-10-31 用户实测通过:长时间间隔后群会话仍有上下文)
 
 **验收**:一场跨天的访谈完整走完,访谈报告只在内部区,问题模型里对应要素回填了证据。
 
