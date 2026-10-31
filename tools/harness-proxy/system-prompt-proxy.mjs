@@ -75,6 +75,8 @@ const server = http.createServer((request, response) => {
       }
       const target = new URL(upstreamBase + request.url);
       const headers = { ...request.headers, host: target.host, "content-length": body.length };
+      // 已按 content-length 发送，转发时不能同时保留 chunked
+      delete headers["transfer-encoding"];
       const transport = target.protocol === "https:" ? https : http;
       const upstream = transport.request(target, { method: request.method, headers }, (upstreamResponse) => {
         const parts = [];
@@ -96,6 +98,8 @@ const server = http.createServer((request, response) => {
         if (!response.headersSent) response.writeHead(502, { "content-type": "application/json" });
         response.end(JSON.stringify({ error: { message: error.message } }));
       });
+      // 上游长时间不回就断开，避免 harness 永久挂住
+      upstream.setTimeout(120000, () => upstream.destroy(new Error("upstream timeout 120s")));
       upstream.end(body);
     } catch (error) {
       response.writeHead(400, { "content-type": "application/json" });

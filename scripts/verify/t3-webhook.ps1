@@ -1,4 +1,4 @@
-﻿# T3 实测：群机器人能否按成员 ID @ 到人
+# T3 实测：群机器人能否按成员 ID @ 到人
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File scripts\verify\t3-webhook.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\verify\t3-webhook.ps1 -Mobile   # 改用手机号 @
@@ -38,7 +38,10 @@ if (-not $NoMention) {
     if ($ids.Count -eq 0) { Fail 'userid 文件是空的' '写入至少一个 userid' 2 }
 }
 
-function Esc([string]$s) { return ($s -replace '\\', '\\\\' -replace '"', '\"') }
+# JSON 字符串转义：反斜杠、引号、换行/回车/制表符（否则带换行的文案会拼出非法 JSON）
+function Esc([string]$s) {
+    return ($s -replace '\\', '\\\\' -replace '"', '\"' -replace "`r", '\r' -replace "`n", '\n' -replace "`t", '\t')
+}
 
 $content = Esc $Text
 $mention = ''
