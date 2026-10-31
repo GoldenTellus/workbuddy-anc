@@ -29,7 +29,9 @@ $target = Join-Path $BackupDir "anc-$stamp.db"
 
 & $node "$env:ProgramData\anc\service\cli.ts" backup --db $SourceDb --to $target *> $null
 if (-not (Test-Path $target)) { Write-Log "ERROR 备份失败: $target"; exit 1 }
-Write-Log ("OK " + $target + " size=" + (Get-Item $target).Length)
+$size = (Get-Item $target).Length
+if ($size -le 0) { Write-Log "ERROR 备份文件为空: $target"; exit 1 }
+Write-Log ("OK " + $target + " size=" + $size)
 
 # 本地保留最近 N 份
 $old = Get-ChildItem $BackupDir -Filter 'anc-*.db' | Sort-Object LastWriteTime -Descending | Select-Object -Skip $Keep

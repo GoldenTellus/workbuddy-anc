@@ -32,7 +32,8 @@ if (/\s/.test(PRELOAD)) {
 const esc = PRELOAD.replace(/\\/g, '\\\\');
 const expr =
   "(function(){try{process.env.NODE_OPTIONS='--require " + esc + "';" +
-  "globalThis.__ancCloseInspector=function(){try{process.mainModule.require('inspector').close();return 'closed';}catch(e){return 'close-err '+e.message;}};" +
+  "globalThis.__ancCloseInspector=function(){try{var i=null;try{i=process.mainModule.require('inspector');}catch(e1){i=require('inspector');}" +
+  "setTimeout(function(){try{i.close();}catch(e){}},0);return 'scheduled';}catch(e){return 'close-err '+e.message;}};" +
   "return 'OK:'+process.pid;}catch(e){return 'ERR '+e.message;}})()";
 
 async function main() {
@@ -81,6 +82,7 @@ async function main() {
         v = r.result && r.result.result;
       }
       log('env set: ' + JSON.stringify(v && (v.value !== undefined ? v.value : v.description)));
+      const ok = !!(v && typeof v.value === 'string' && v.value.startsWith('OK:'));
       // 放行后关闭 inspector，避免长期暴露调试端口
       try {
         const r2 = await send('Runtime.evaluate', { expression: 'globalThis.__ancCloseInspector && globalThis.__ancCloseInspector()', returnByValue: true });
@@ -88,6 +90,11 @@ async function main() {
         log('inspector: ' + JSON.stringify(v2 && (v2.value !== undefined ? v2.value : v2.description)));
       } catch (e) {
         log('inspector close skipped: ' + e.message);
+      }
+      if (!ok) {
+        log('ERROR env not set (app left paused)');
+        setTimeout(() => process.exit(1), 300);
+        return;
       }
     } catch (e) {
       log('ERROR inject failed: ' + e.message);

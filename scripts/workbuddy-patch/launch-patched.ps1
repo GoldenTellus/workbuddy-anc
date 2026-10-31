@@ -123,6 +123,16 @@ $injectCode = $LASTEXITCODE
 
 if ($injectCode -ne 0) {
     Write-Host "[anc] 注入失败（exit=$injectCode），降级为未打补丁启动"
+    $ops = Join-Path $env:ProgramData 'anc\secrets\ops-webhook.txt'
+    if (Test-Path $ops) {
+        try {
+            $url = (Get-Content $ops -Raw).Trim()
+            if ($url) {
+                $body = (@{ msgtype = 'text'; text = @{ content = "[anc] 补丁注入失败（inject exit=$injectCode），已降级为无补丁启动；群身份不可用，请查看 workbuddy-patch.log" } } | ConvertTo-Json -Depth 4 -Compress)
+                Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
+            }
+        } catch { }
+    }
     Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 3
     Start-WorkBuddy $exe $InstallDir @()
