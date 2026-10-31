@@ -30,6 +30,16 @@ try {
 # 3 WorkBuddy
 if (-not (Get-Process WorkBuddy -ErrorAction SilentlyContinue)) { $problems += 'WorkBuddy 没在跑（公司 bot 离线）' }
 
+# 4 补丁 canary：补丁生效但取不到 chatId（上游字段改名）
+$canary = "$env:ProgramData\anc\data\patch-canary.json"
+if (Test-Path $canary) {
+    try {
+        $c = Get-Content $canary -Raw | ConvertFrom-Json
+        $hours = ((Get-Date) - [datetime]$c.at).TotalHours
+        if ($hours -lt 24 -and -not $c.chatId) { $problems += '补丁生效但取不到 chatId（上游字段可能改名，需人工重放）' }
+    } catch { }
+}
+
 if ($problems.Count -eq 0) { exit 0 }
 
 # 冷却

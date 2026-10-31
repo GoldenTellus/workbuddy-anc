@@ -43,6 +43,13 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - `anc-selfheal.ps1`：Worker 经 **Explorer** 启动（脱离 WorkBuddy 进程树），停进程 → 用启动器拉起 → 轮询补丁日志，失败重试 1 次并告警；10 分钟冷却；
 - `anc-workbuddy-launch`（登录后 30 秒）：直接用启动器拉起，避免登录自动起无补丁实例。
 
+### 6) canary（补丁生效 ≠ 语义正确）
+
+- 每次 `emitMessage` 被调用，补丁会写 `%ProgramData%\anc\data\patch-canary.json`：`{at, chatId, user, contentStr}`；
+- **doctor**：`chatId=false` → FAIL（上游字段可能改名）；超过 72 小时没更新 → WARN；
+- **watchdog**：24 小时内 `chatId=false` → 运维群告警；
+- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
+
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
 - 前缀由代码每轮拼接，**不依赖模型记忆**。

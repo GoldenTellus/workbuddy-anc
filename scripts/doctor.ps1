@@ -102,6 +102,20 @@ $db = "$env:ProgramData\anc\data\anc.db"
 if (Test-Path $db) { Add-Result 'database' 'PASS' ((Get-Item $db).Length.ToString() + ' B') '-' }
 else { Add-Result 'database' 'FAIL' '数据库不存在' '跑一次 service cli 初始化' }
 
+# 11 canary：补丁生效后真实收到的消息里有没有 chatId
+$canary = "$env:ProgramData\anc\data\patch-canary.json"
+if (-not (Test-Path $canary)) {
+    Add-Result 'canary' 'WARN' '还没有 canary 记录（补丁生效后需收到一条群消息）' '在群里发一条消息后再看'
+} else {
+    try {
+        $c = Get-Content $canary -Raw | ConvertFrom-Json
+        $hours = [int]((Get-Date) - [datetime]$c.at).TotalHours
+        if (-not $c.chatId) { Add-Result 'canary' 'FAIL' '补丁生效但取不到 chatId（上游字段可能改名）' '按 WORKBUDDY-PATCH.md 重放并核对字段名' }
+        elseif ($hours -gt 72) { Add-Result 'canary' 'WARN' "canary 已 $hours 小时没更新" '确认群里仍有消息' }
+        else { Add-Result 'canary' 'PASS' "最近 $hours 小时内有消息且带 chatId" '-' }
+    } catch { Add-Result 'canary' 'WARN' 'canary 文件无法解析' '删掉让补丁重写' }
+}
+
 $fails = @($results | Where-Object { $_.state -eq 'FAIL' }).Count
 $warns = @($results | Where-Object { $_.state -eq 'WARN' }).Count
 if ($Json) {

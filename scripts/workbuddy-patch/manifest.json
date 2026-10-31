@@ -1,19 +1,26 @@
 {
-  "name": "anc-workbuddy-identity-injection",
-  "description": "把企业微信 AIBot 回调里的 chatId / 发送人注入消息正文，让 agent 能读到群身份",
-  "workbuddyVersion": "5.9.3",
-  "electron": "37.10.3",
-  "target": "main/wecomaibot-client.js",
-  "sha256": "3510b3098686021a01827680b0d84a33daa9ef168b522fe8276ee72b8fae6fe5",
-  "size": 27427,
-  "prefix": "[anc:chat=",
-  "bootstrapTarget": "main/main-bootstrap.js",
-  "bootstrapReplacements": [
-    ["runStartupForceAutoUpdate(c,e.configStore,e.productSource)", "void 0"],
-    ["runEarlyForceUpgradeCheck(c)", "void 0"]
-  ],
-  "opsWebhookFile": "%ProgramData%\\anc\\secrets\\ops-webhook.txt",
-  "toggleEnv": "ANC_WB_PATCH",
-  "log": "%USERPROFILE%\\anc\\workbuddy-patch.log",
-  "state": "%ProgramData%\\anc\\data\\patch-state.json"
+    "name":  "anc-workbuddy-identity-injection",
+    "description":  "閹跺﹣绱掓稉姘簳娣?AIBot 閸ョ偠鐨熼柌宀€娈?chatId / 閸欐垿鈧椒姹夊▔銊ュ弳濞戝牊浼呭锝嗘瀮閿涘矁顔€ agent 閼冲€燁嚢閸掓壆鍏㈤煬顐″敜",
+    "workbuddyVersion":  "5.9.3",
+    "electron":  "37.10.3",
+    "target":  "main/wecomaibot-client.js",
+    "sha256":  "3510b3098686021a01827680b0d84a33daa9ef168b522fe8276ee72b8fae6fe5",
+    "size":  27427,
+    "prefix":  "[anc:chat=",
+    "bootstrapTarget":  "main/main-bootstrap.js",
+    "bootstrapReplacements":  [
+                                  [
+                                      "runStartupForceAutoUpdate(c,e.configStore,e.productSource)",
+                                      "void 0"
+                                  ],
+                                  [
+                                      "runEarlyForceUpgradeCheck(c)",
+                                      "void 0"
+                                  ]
+                              ],
+    "opsWebhookFile":  "%ProgramData%\\anc\\secrets\\ops-webhook.txt",
+    "toggleEnv":  "ANC_WB_PATCH",
+    "log":  "%USERPROFILE%\\anc\\workbuddy-patch.log",
+    "state":  "%ProgramData%\\anc\\data\\patch-state.json",
+    "canary":  "%ProgramData%\\anc\\data\\patch-canary.json"
 }
