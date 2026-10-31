@@ -135,7 +135,7 @@ if (-not $r.anchorsOk) {
     Write-Log '锚点缺失：需要人工（skill anc-wb-patch 的 B/C 分支）'
     # 写冷却，避免守卫每分钟重复告警
     Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'anchors-missing'; version = $r.version })
-    Send-Alert '补丁自愈失败：关键锚点缺失（emitMessage/WecomAiBotClient），需人工重找注入点；30 分钟内不再重复告警'
+    Send-Alert '补丁自愈失败：关键锚点缺失（emitMessage/WecomAiBotClient），需人工重找注入点；冷却期内不再重复告警'
     exit 3
 }
 
