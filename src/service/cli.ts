@@ -179,6 +179,7 @@ try {
         ruleVersion: String(args['rule-version']),
         ruleFile: typeof args['rule-file'] === 'string' ? args['rule-file'] : undefined,
         expected,
+        questionCount: typeof args.questions === 'string' ? Number(args.questions) : 0,
       }) });
     } else if (cmd === 'submit') {
       const text = typeof args.text === 'string'

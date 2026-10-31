@@ -63,19 +63,22 @@ export interface CreateSurveyInput {
   ruleVersion: string;
   ruleFile?: string;
   expected?: string[];
+  /** 访谈类：一共多少题（q1..qN），用于完成判定 */
+  questionCount?: number;
 }
 
 /** 建一次调查：冻结规则版本与内容 hash；expected 是应该交回的人员 userid。 */
-export function createSurvey(db: DatabaseSync, input: CreateSurveyInput): { survey_id: string; rule_version: string; rule_hash: string | null; expected: string[] } {
+export function createSurvey(db: DatabaseSync, input: CreateSurveyInput): { survey_id: string; rule_version: string; rule_hash: string | null; expected: string[]; question_count: number } {
   if (!input.surveyId) throw new A2AError('BAD_SURVEY', '缺少 survey_id');
   const ruleHash = input.ruleFile ? sha256(readFileSync(input.ruleFile)) : null;
   const expected = input.expected ?? [];
+  const questionCount = input.questionCount ?? 0;
   db.prepare(
-    `INSERT INTO a2a_surveys (survey_id, rule_version, rule_hash, expected, created_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(survey_id) DO UPDATE SET rule_version = excluded.rule_version, rule_hash = excluded.rule_hash, expected = excluded.expected`
-  ).run(input.surveyId, input.ruleVersion, ruleHash, JSON.stringify(expected), nowIso());
-  return { survey_id: input.surveyId, rule_version: input.ruleVersion, rule_hash: ruleHash, expected };
+    `INSERT INTO a2a_surveys (survey_id, rule_version, rule_hash, expected, question_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(survey_id) DO UPDATE SET rule_version = excluded.rule_version, rule_hash = excluded.rule_hash, expected = excluded.expected, question_count = excluded.question_count`
+  ).run(input.surveyId, input.ruleVersion, ruleHash, JSON.stringify(expected), questionCount, nowIso());
+  return { survey_id: input.surveyId, rule_version: input.ruleVersion, rule_hash: ruleHash, expected, question_count: questionCount };
 }
 
 export interface SubmitResult {
@@ -127,23 +130,33 @@ export interface SurveyStatus {
   expected: string[];
   received: string[];
   missing: string[];
+  missing_questions: string[];
   complete: boolean;
 }
 
 export function surveyStatus(db: DatabaseSync, surveyId: string): SurveyStatus | null {
-  const s = db.prepare('SELECT survey_id, rule_version, expected FROM a2a_surveys WHERE survey_id = ?').get(surveyId) as { survey_id: string; rule_version: string; expected: string } | undefined;
+  const s = db.prepare('SELECT survey_id, rule_version, expected, question_count FROM a2a_surveys WHERE survey_id = ?').get(surveyId) as { survey_id: string; rule_version: string; expected: string; question_count: number } | undefined;
   if (!s) return null;
   const expected = JSON.parse(s.expected || '[]') as string[];
   const rows = db.prepare('SELECT DISTINCT from_userid FROM a2a_messages WHERE survey_id = ? AND from_userid IS NOT NULL').all(surveyId) as Array<{ from_userid: string }>;
   const received = rows.map((r) => r.from_userid);
   const missing = expected.filter((u) => !received.includes(u));
+
+  const ids = db.prepare('SELECT message_id FROM a2a_messages WHERE survey_id = ?').all(surveyId) as Array<{ message_id: string }>;
+  const missingQuestions: string[] = [];
+  for (let i = 1; i <= (s.question_count || 0); i++) {
+    const re = new RegExp(`^q${i}(-|$)`);
+    if (!ids.some((r) => re.test(r.message_id))) missingQuestions.push('q' + i);
+  }
+
   return {
     survey_id: s.survey_id,
     rule_version: s.rule_version,
     expected,
     received,
     missing,
-    complete: expected.length > 0 && missing.length === 0,
+    missing_questions: missingQuestions,
+    complete: expected.length > 0 && missing.length === 0 && missingQuestions.length === 0,
   };
 }
 

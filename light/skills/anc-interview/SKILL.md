@@ -10,7 +10,7 @@ description: 给员工做一次结构访谈，把回答归档到公司内部区�
 ## 1. 开场（一次）
 
 ```powershell
-node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json a2a create --survey interview-<member>-<YYYYMMDD> --rule-version v1 --rule-file C:\ProgramData\anc\skills\anc-interview\questions.md --expected <userid>
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json a2a create --survey interview-<member>-<YYYYMMDD> --rule-version v1 --rule-file C:\ProgramData\anc\skills\anc-interview\questions.md --expected <userid> --questions 11
 ```
 
 （`questions.md` 由部署脚本放到上面路径；没有就先用仓库里的 `light/skills/anc-interview/questions.md`。）

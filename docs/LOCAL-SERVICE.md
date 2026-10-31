@@ -50,7 +50,7 @@ npm run service -- loop --once --webhook-file C:\ProgramData\anc\secrets\wecom-w
 npm run service -- loop --interval-ms 60000
 
 # A2A（访谈/交回；信封先写文件，避开引号问题）
-npm run service -- a2a create --survey <survey_id> --rule-version v1 --rule-file <问题清单.md> --expected <userid,...>
+npm run service -- a2a create --survey <survey_id> --rule-version v1 --rule-file <问题清单.md> --expected <userid,...> --questions 11
 npm run service -- a2a submit --text-file <信封.json> --internal D:\anc\vault-internal --from-userid <userid>
 npm run service -- a2a status --survey <survey_id>
 npm run service -- a2a list --survey <survey_id>

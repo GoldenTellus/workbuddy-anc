@@ -114,6 +114,7 @@ function migrate(db: DatabaseSync): void {
   addCol('tasks', 'assignee_userid', 'TEXT');
   addCol('tasks', 'requester_userid', 'TEXT');
   addCol('outbox', 'next_attempt_at', 'TEXT');
+  addCol('a2a_surveys', 'question_count', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 export function nowIso(d: Date = new Date()): string {

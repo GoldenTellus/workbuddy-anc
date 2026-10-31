@@ -135,27 +135,29 @@ test('A2A：提交归档到内部区并按 message_id 去重', () => {
   }
 });
 
-test('A2A：规则版本不符被拒；完成判定按 expected', () => {
+test('A2A：规则版本不符被拒；完成判定按 expected 与题数', () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-a2a2-'));
   const db = openDb(join(dir, 'anc.db'));
   const internal = join(dir, 'vault-internal');
   try {
-    a2a.createSurvey(db, { surveyId: 's1', ruleVersion: 'r1', expected: ['u1', 'u2'] });
+    a2a.createSurvey(db, { surveyId: 's1', ruleVersion: 'r1', expected: ['u1'], questionCount: 3 });
     const mk = (id: string, ver: string) => a2a.parseEnvelope(JSON.stringify({
       protocol: 'anc-a2a/1', survey_id: 's1', message_id: id, reply_to: null,
-      type: 'survey', rule_version: ver, payload: 'x',
+      type: 'answer', rule_version: ver, payload: 'x',
     }));
-    assert.throws(() => a2a.submit(db, mk('m9', 'r2'), internal, 'u1'), /冻结的是 r1/);
+    assert.throws(() => a2a.submit(db, mk('q1', 'r2'), internal, 'u1'), /冻结的是 r1/);
 
-    a2a.submit(db, mk('m1', 'r1'), internal, 'u1');
+    a2a.submit(db, mk('q1', 'r1'), internal, 'u1');
     let st = a2a.surveyStatus(db, 's1')!;
-    assert.equal(st.complete, false);
-    assert.deepEqual(st.missing, ['u2']);
+    assert.equal(st.complete, false, '只答一题不算完成');
+    assert.deepEqual(st.missing_questions, ['q2', 'q3']);
+    assert.deepEqual(st.missing, []);
 
-    a2a.submit(db, mk('m2', 'r1'), internal, 'u2');
+    a2a.submit(db, mk('q2', 'r1'), internal, 'u1');
+    a2a.submit(db, mk('q3', 'r1'), internal, 'u1');
     st = a2a.surveyStatus(db, 's1')!;
     assert.equal(st.complete, true);
-    assert.deepEqual(st.missing, []);
+    assert.deepEqual(st.missing_questions, []);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
