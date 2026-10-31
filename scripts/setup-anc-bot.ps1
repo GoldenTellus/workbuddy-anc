@@ -14,17 +14,27 @@ if (-not (Test-Path (Join-Path $stage 'WorkBuddy.exe'))) {
     exit 2
 }
 
+# robocopy 的退出码 0–7 是成功（1 表示有文件被复制），>=8 才是失败
+function Copy-Tree([string]$from, [string]$to, [string]$label) {
+    robocopy $from $to /E /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+    $code = $LASTEXITCODE
+    if ($code -ge 8) {
+        Write-Host "ERROR $label 复制失败（robocopy=$code）: $from -> $to" -ForegroundColor Red
+        exit 3
+    }
+}
+
 Write-Host '[1/3] 复制 WorkBuddy ...'
-robocopy $stage $dst /E /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+Copy-Tree $stage $dst 'WorkBuddy'
 
 Write-Host '[2/3] 复制补丁 ...'
 New-Item -ItemType Directory -Force -Path $patchDst | Out-Null
-robocopy $patchSrc $patchDst /E /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+Copy-Tree $patchSrc $patchDst 'patch'
 
 Write-Host '[3/3] 安装技能 ...'
 if (Test-Path $skillsSrc) {
     New-Item -ItemType Directory -Force -Path $skillsDst | Out-Null
-    robocopy $skillsSrc $skillsDst /E /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+    Copy-Tree $skillsSrc $skillsDst 'skills'
 }
 
 Write-Host ''
