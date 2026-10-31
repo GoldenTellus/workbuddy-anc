@@ -6,18 +6,20 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 
 ## 当前状态
 
-- 方向已定稿为 `docs/FORK-DIRECTION.md` 0.3。**下一步:按 `docs/VERIFY.md` 做阻断项实测**(T1–T5、T16、T17),结论回写 FORK-DIRECTION,再定里程碑计划(替换 `docs/PLAN.md`)。实测之前不写实现代码。
+- 方向 `docs/FORK-DIRECTION.md` 0.4;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md`,**当前做 M1(当日任务与提醒端到端),第一步是 T6**。
+- WorkBuddy 只有补丁一条路(D18):企业版与个人版实测一样,群身份靠 D17 补丁。凡上主机的版本都先过 FORK-DIRECTION §11 的升级回归。
 - `package.json` 保持 `"private": true`,不发 npm。
 
 ## 文档地图(改代码前先读)
 
 | 文件 | 内容 |
 |---|---|
-| `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–D16、组件设计、WorkBuddy 已观察行为、待实测 T1–T22、安全基线、风险登记、改动台账(§11) |
+| `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–D18、组件设计、WorkBuddy 已观察行为、待实测 T1–T22、安全基线、风险登记、改动台账(§11) |
 | `docs/VERIFY.md` | 阻断项实测手册与结果记录 |
 | `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定,写代码前先查这里有没有能搬的 |
 | `reference/upstream-unmerged/` | 上游三个未合并分支(含 M1 渲染器 `feat-m1-w1`),只作参考,不参与构建 |
-| `SPEC.md`、`README.md`、`docs/PLAN.md` 等 | **上游原文**(Mac mini + cc-connect + Claude Code),仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
+| `docs/PLAN.md` | 里程碑 M0–M4:顺序、上线门槛、验收 |
+| `SPEC.md`、`README.md` 等 | **上游原文**(Mac mini + cc-connect + Claude Code),仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
 
 ## 关键裁决速览(详见 FORK-DIRECTION §4,不要在实现中偏离)
 

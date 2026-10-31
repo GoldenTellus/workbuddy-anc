@@ -1,63 +1,95 @@
-# 实施计划(PLAN)
+# 里程碑计划
 
-版本:0.1(2026-07-24;2026-09-14 并入第二个 reference deployment)。里程碑按「每步都有真实用户在用」排序:reference deployment(Climax Racing)始终是第一个用户,每个里程碑先在它身上落地,再泛化。第二个 reference deployment(制造企业四部门试点,Linux + 全员 Windows + 第三方模型)提供对照样本,其 lessons 见 [LESSONS-MANUFACTURING-PILOT.md](./LESSONS-MANUFACTURING-PILOT.md)。
+版本:1.0(2026-10-31)。取代上游的 M0–M5(Mac mini + cc-connect + 飞书);上游原文在 git 历史里,需要时 `git show 90e4fb2:docs/PLAN.md`。设计依据是 [FORK-DIRECTION.md](./FORK-DIRECTION.md),本文只管顺序和验收。
 
----
+## 排序原则
 
-## M0 — 立项(本仓库现状)✅
+- **先让员工用上**:每个里程碑结束时,员工在企业微信里能多做一件事。
+- **先测后做**:里程碑依赖的待实测项(T#)排在它的第一步,不成立就先改设计。
+- **上线门槛跟着里程碑走**:部署加固不单独排期,每个里程碑列出上线前必须满足的条件。
+- **WorkBuddy 只有补丁一条路**(D18):企业版与个人版实测结果一样,群身份、发送人都要靠 D17 补丁。所以凡是上主机的版本,必须先过 §11 的升级回归。
 
-- [x] 六路调研:内部解剖 × 2(仓库 + 生产机实勘)、外部生态 × 4(gateway 选型 / OpenClaw 品类 / 组织框架 gap 分析 / IM 平台与 harness 实测)
-- [x] 关键裁决:cc-connect 之上建约定层(不 fork 不自研);官方 CLI 双 harness;一人一 bot;每 bot 一 cwd 枢轴
-- [x] README + SPEC + PLAN + RESEARCH
+## M0 方向与阻断项 ✅
 
-## M1 — 抽取:`anc init` 拉起最小公司(飞书 × Claude Code)
+- [x] 方向定稿(FORK-DIRECTION D1–D18)、上游复用盘点([REUSE-MAP.md](./REUSE-MAP.md))
+- [x] 阻断项实测([VERIFY.md](./VERIFY.md)):T1–T5、T7、T17 通过;T16 不通过,改由 D17 补丁注入群标识与发送人(T16b)
+- [x] WorkBuddy 补丁(D17,[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md))、群绑定表([CHAT-BINDINGS.md](./CHAT-BINDINGS.md))
+- [x] 本地小服务第一切片([LOCAL-SERVICE.md](./LOCAL-SERVICE.md)):任务、提醒、outbox、绑定、循环;`npm test` 21 项
 
-目标:在一台干净 Mac mini 上,`anc init` + 引导 checklist 走完,得到一个能回话的 N-bot 公司。详细技术设计见 [M1-DESIGN.md](./M1-DESIGN.md)。
+## M1 当日任务与提醒,端到端
 
-- [ ] 从 reference deployment 抽出 generic 部分,形成 **vault 模板仓库**(目录骨架、CONTRIBUTING、路由 CLAUDE.md/AGENTS.md 双文件、templates/)
-- [ ] **org 真相源 schema**(members/ + roles/,markdown + frontmatter)与 **config 渲染器**(org → cc-connect config.toml,原子写 + 三重校验 + dry-run)
-- [ ] **launchd installer**:gateway / vault-sync / watchdog 三件套 plist 生成(完整 PATH、无 SessionCreate、GUI 会话),`anc doctor` 环境诊断
-- [ ] 内置角色模板库第一批(通用:经理/运营/技术/对外),persona 七段式渲染
-- [ ] `anc deploy personas|skills`、`anc status`
-- [ ] 验收:Climax 生产从手工脚本切到 `anc` 命令面,行为不回退;一台测试 mini 从零拉起 demo 公司 ≤ 1 小时人工时间
+**目标**:员工在自己的群里 @ 公司 bot 说「7 点半提醒 B 开工」,到点 B 被 @;没回就继续提醒;B 回「完成」就停。
 
-## M2 — 对话式 onboarding + 自动入库
+**第一步:T6**——公司 bot 能否经技能调用本地脚本(`npm run service -- task add …`)。不成立就改走 JSON 投递目录(FORK §5.5),再做下面的事。
 
-- [ ] **onboarding skill**(SPEC §6):访谈(语音友好)→ **问题模型**(五要素,全标假设)→ 名单 → 初始资料 → 装机 checklist(断点续走)→ 验证 + 自我介绍;light 版已先行加入问题模型访谈与 vault-templates
-- [ ] **员工级访谈 bot**(SPEC §2.5 采集器):逐人采集工作事实回填问题模型;状态用 SQLite 事务、规则版本冻结、报告不评绩效(SPEC §2.3/§5)
-- [ ] **ingest 管线产品化**:inbox 目录约定、watcher sidecar、结构化入库(schema 校验 + diff 复核门,不 bypass)、publish、摘要通知
-- [ ] `anc audit [--fix]` 第一版(默认值、密钥权限、白名单、bypass 检查)
-- [ ] 验收:一个非 Climax 的真实小团队(找一家设计室/贸易行/俱乐部)完整走通 onboarding 并留存使用
+交付:
 
-## M3 — 第二平台与第二 harness
+- [ ] 公司 bot 的 `CODEBUDDY.md` 第一版:身份、职责边界;每轮先读消息开头的 `[anc:chat=… from=…]`,用 chatid 查绑定表,查不到就按未绑定处理,不猜人;私聊只处理管理员;诚实条款。控制在 6500 字符以内。M3 之前用仓库里的模板 + 部署脚本(带指纹、先备份、可回滚),M3 起改由渲染器生成。
+- [ ] 任务技能:把一句话转成 `task add / list / done / cancel`;回显写全的时间;执行人有多条待办时先问是哪条。
+- [ ] 本地小服务补齐 FORK §5.7 的默认规则:
+  - 权限:只有执行人或交办人能标完成、取消(用前缀里的 `from` 对照任务的 `assignee` / `requester`)
+  - 连续 4 次无回应,在交办人群里通知一次,之后每小时提醒一次
+  - 未完成任务次日顺延并告知交办人
+  - 时区、工作时段、节假日配置
+  - outbox 失败重试退避
+- [ ] 每个员工群一个 webhook,按 chatid 选用;密钥文件放 `%ProgramData%\anc\secrets\`,文件名登记在绑定表里,值不进库。
+- [ ] 数据库从 `%USERPROFILE%\anc\` 挪到 `%ProgramData%\anc\data\`,NTFS 只给本地小服务、公司 bot 用户和管理员。
+- [ ] 本地小服务常驻:`loop` 注册成开机即运行的计划任务(`LOCAL SERVICE`),失败重启;补测「没人登录时照样发」(T17 当时是推定)。
 
-- [ ] 钉钉(Stream Mode)、企业微信(智能机器人长连接)接入:主要是渲染器支持 + 逐平台建应用 checklist + 卡片降级策略
-- [ ] **Codex CLI 第二后端**:Harness 接口落地(runTurn/resume/事件流),AGENTS.md persona 注入,回归两 harness 行为一致性(试点已有 Codex 生产实证,见 LESSONS §1)
-- [ ] **第三方模型边界代理接入渲染管线**:company.fallback_provider 非官方端点时,渲染器自动拉起 `tools/harness-proxy/` 并把 base_url 指向 loopback(SPEC §3.2)
-- [ ] **Linux/systemd installer 后端**(SPEC §3.3):与 launchd 三件套同构 + `.path` 配置监听 + bubblewrap 沙箱
-- [ ] **批量 provisioning**(SPEC 开放问题 5):是否以 `anc provision` 交付,随 #8 裁决
-- [ ] per-member credential 支持(每人绑自己的订阅)
-- [ ] 验收:同一 org 定义,切平台/切 harness 只改配置一行
+**上线前必须满足**:
 
-## M4 — 运维与自我迭代闭环产品化
+- [ ] 公司 bot 换到专用标准用户下运行;补丁启动器与 T4 在该用户下复测。
+- [ ] 主机上的 WorkBuddy 关闭自动升级;补丁 hash 对不上时除了写日志,还要在运维群告警。
+- [ ] 开机提醒(FORK §5.1)、绑定表与数据库的离机备份。
 
-- [ ] watchdog / 防假绿探针 / token & 使用日报 通用化(去 Climax 专有逻辑)
-- [ ] **triage 引擎**:聊天问题挖掘 → 聚类去重 → 频率信号 → 自动开 issue → 人只把关(治「反馈闭环后半段全手工」的生产头号痛点)
-- [ ] **对话层 / 任务层产品化**(SPEC §4.3):后台任务 worker、按发送者隔离、`waiting_input` / `needs_review` 状态机、回传策略层
-- [ ] **cc-connect 上游 PR:卡片回调转发**(`card_action_webhook`,SPEC §3.1)
-- [ ] skill merge 后自动部署 + 漂移检测(merged = live)
-- [ ] 《整机重建 runbook》+ `anc rebuild`(config 可 git 重建,单机风险对策)
-- [ ] 心跳/主动性评估(HEARTBEAT.md 模式,多 bot 错峰与预算闸)
+**验收**:在真实的三方群里走一遍——登记、到点 @ 人、连续不回后交办人收到通知、回「完成」后停止、问「今天的任务」能列出;主机重启后没人登录,到点提醒照样发出;非执行人、非交办人说「#n 完成」被拒绝。
 
-## M5 — skill 生态
+## M2 vault 与入库
 
-- [ ] 公司内 skill registry 约定 + eval 回归框架(周期性跑,防 skill 退化)
-- [ ] role 模板库社区化(贡献指南、更多行业角色包)
-- [ ] 跨公司 skill 分发的安全设计(签名 + 扫描 + pin,见 SPEC §5)——仅设计,是否实施看需求
+**目标**:员工在群里把资料发给公司 bot 说「入库」,管理员复核后入库;两个 bot 都能按路由查到。
 
----
+- [ ] 两区 vault:共享区、内部区各一个独立 git 目录;共享区 SMB 只读共享,员工用主机本地共享账号读(FORK §5.4)
+- [ ] 共享区骨架:根路由、`CONTRIBUTING.md`、`company/`(简介、名单、术语、问题模型模板)。来源:上游 `anc-onboard` 的目录骨架与根路由纪律
+- [ ] 入库技能:改写上游 `anc-ingest` 正文;原件从 `%TEMP%\workbuddy-wecom-media\` 复制进 `inbox\pending\<id>\`,附元数据
+- [ ] 入库进程:路径规范化、base hash 拒写、原件只许新建、管理员复核、提交、`inbox\failed\` 回执(FORK §5.4 的七步)
+- [ ] 附件清理定时任务
+- [ ] 实测 T12(个人 bot 读网络路径)、T19(8000 字符的计数方式)、T20(长会话后规则是否还在)
 
-## 运营节奏
+**验收**:发一份 PDF → 入库摘要回到群里 → 公司 bot 能回答其中的问题、查不到的说「尚未入库」;两个批次改同一个文件,后到的那个被拒并回执。
 
-- 开发流程沿用 ha7ch 惯例:PR → Codex review → squash merge;每里程碑收口时同步 reference deployment。
-- 竞争时钟(RESEARCH 结论):Claude Cowork 正向企业扩张、OpenClaw 社区随时可能有人把团队化用法产品化——M1/M2 是窗口期,目标 4-6 周内交付。
+## M3 渲染器与个人 bot 接入
+
+**目标**:新员工入职,一小时内有自己的个人 bot 和三方群。
+
+- [ ] 渲染器:改写上游 `feat-m1-w1`,从 `roles/` × `members/` 生成公司 bot 的 `CODEBUDDY.md`、每人的接入包、群映射(FORK §5.9)
+- [ ] 先定:成员与群的对应以谁为真相——`members/` 的 frontmatter(FORK §5.8)还是绑定表(CHAT-BINDINGS)。两处都写会漂移,只能留一处,另一处由它生成
+- [ ] 接入脚本(FORK §5.3);技能名片
+- [ ] 入职、离职 runbook(FORK §5.8)
+- [ ] 实测 T13(其他项目读不到 Claw 的 CODEBUDDY.md)、T18(技能名片放哪才认)
+
+**验收**:用第二个 Windows 用户当干净机,照接入手册从零走一遍并计时;渲染产物被手改后,下一次渲染能发现。
+
+## M4 访谈与 A2A
+
+**目标**:按问题模型做员工访谈,员工的个人 bot 整理本机资料,经员工转发交给公司 bot。
+
+- [ ] 访谈技能:上游 `anc-onboard` 的访谈 11 问 + 问题模型
+- [ ] A2A v1:七字段信封、schema 校验、去重、归档到内部区、完成判定(FORK §5.6)
+- [ ] 规则冻结的规则源(`policy_version` 与内容 hash,FORK §5.5)
+- [ ] 实测 T22(群会话会不会过期或重置)
+
+**验收**:一场跨天的访谈完整走完,访谈报告只在内部区,问题模型里对应要素回填了证据。
+
+## 贯穿各里程碑的运维
+
+- 主机体检、watchdog、重建 runbook(FORK §5.10)
+- WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归
+- 新增文件类型时同步扩 `scripts/check-public.sh`
+
+## 暂不排期
+
+- 后台长任务(依赖 T6 的结果再设计)
+- 公司 bot 在员工群里放宽到不用 @(T7 已通过,可在 M1 之后评估)
+- A2A 自动通道(T14)
+- 入库的管理员复核何时取消
+- 公司资料能否上云(FORK §9)
