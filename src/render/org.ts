@@ -63,6 +63,11 @@ export function loadOrg(dir: string): Org {
     });
   }
 
-  members.sort((a, b) => a.id.localeCompare(b.id));
+  members.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const seen = new Set<string>();
+  for (const m of members) {
+    if (seen.has(m.id)) throw new Error('成员 id 重复: ' + m.id);
+    seen.add(m.id);
+  }
   return { company, roles, members };
 }

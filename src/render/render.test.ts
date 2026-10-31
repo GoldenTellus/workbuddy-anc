@@ -112,3 +112,17 @@ test('渲染：产物被手改后，指纹能发现', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('org：成员 id 重复要报错（否则渲染会互相覆盖）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-org-dup-'));
+  try {
+    writeFileSync(join(dir, 'company.md'), '---\nname: 示例\ncompany_bot_name: 公司bot\nvault_shared: \\\\host\\vault\nvault_internal: D:\\vault-internal\nlocal_workdir: D:\\work\n---\n');
+    mkdirSync(join(dir, 'members'), { recursive: true });
+    const body = '---\nid: same\nname: 张三\nrole: 销售\n---\n';
+    writeFileSync(join(dir, 'members', 'a.md'), body);
+    writeFileSync(join(dir, 'members', 'b.md'), body);
+    assert.throws(() => renderOrg(dir, join(dir, 'out')), /成员 id 重复/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
