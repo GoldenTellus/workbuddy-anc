@@ -26,7 +26,7 @@
 
 交付:
 
-- [ ] 公司 bot 的 `CODEBUDDY.md` 第一版:身份、职责边界;每轮先读消息开头的 `[anc:chat=… from=…]`,用 chatid 查绑定表,查不到就按未绑定处理,不猜人;私聊只处理管理员;诚实条款。控制在 6500 字符以内。M3 之前用仓库里的模板 + 部署脚本(带指纹、先备份、可回滚),M3 起改由渲染器生成。
+- [x] 公司 bot 的 `CODEBUDDY.md` 第一版:身份、职责边界;每轮先读消息开头的 `[anc:chat=… from=…]`,用 chatid 查绑定表,查不到就按未绑定处理,不猜人;私聊只处理管理员;诚实条款。控制在 6500 字符以内。M3 之前用仓库里的模板 + 部署脚本(带指纹、先备份、可回滚),M3 起改由渲染器生成。(`light/personas/company-bot/CODEBUDDY.md` + `scripts/deploy-persona.ps1`)
 - [x] 任务技能:把一句话转成 `task add / list / done / cancel`;回显写全的时间;执行人有多条待办时先问是哪条。(`light/skills/anc-task/SKILL.md`)
 - [ ] 本地小服务补齐 FORK §5.7 的默认规则:
   - [x] 权限:只有执行人或交办人能标完成、取消(用前缀里的 `from` 对照任务的 `assignee_userid` / `requester_userid`)
