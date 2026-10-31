@@ -72,7 +72,7 @@ export function listTasks(db: DatabaseSync, opts: { status?: TaskStatus; chatId?
  * 完成与出站消息在同一个事务里提交（FORK §5.5）。
  * 重复完成是幂等的：已 done 的任务再点一次不再写事件、不再入队。
  */
-export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: string; text: string; dedupeKey?: string }): { task: Task; enqueued: boolean } {
+export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: string; text: string; dedupeKey?: string; mentions?: string[] }): { task: Task; enqueued: boolean } {
   const t = nowIso();
   return tx(db, () => {
     const task = getTask(db, id);
@@ -88,7 +88,7 @@ export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: s
         `INSERT INTO outbox (dedupe_key, chat_id, payload, status, created_at, updated_at)
          VALUES (?, ?, ?, 'pending', ?, ?)
          ON CONFLICT(dedupe_key) DO NOTHING`
-      ).run(outbox.dedupeKey ?? `task-done:${id}`, outbox.chatId ?? task.chat_id ?? null, JSON.stringify({ text: outbox.text }), t, t);
+      ).run(outbox.dedupeKey ?? `task-done:${id}`, outbox.chatId ?? task.chat_id ?? null, JSON.stringify({ text: outbox.text, mentions: outbox.mentions ?? [] }), t, t);
       enqueued = true;
     }
     return { task: getTask(db, id)!, enqueued };

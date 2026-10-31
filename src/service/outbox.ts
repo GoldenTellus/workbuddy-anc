@@ -18,17 +18,20 @@ export interface EnqueueInput {
   text: string;
   chatId?: string | null;
   dedupeKey?: string | null;
+  /** 要 @ 的企微 userid（T3 已实测：mentioned_list 可 @ 到人） */
+  mentions?: string[];
 }
 
 /** 入队前先过凭据扫描：命中就不入库，避免污染 outbox。 */
 export function enqueue(db: DatabaseSync, input: EnqueueInput): { inserted: boolean; id: number | null } {
   const safeText = assertSafeOutbound(input.text);
+  const mentions = (input.mentions ?? []).map((m) => String(m).trim()).filter(Boolean);
   const t = nowIso();
   const r = db.prepare(
     `INSERT INTO outbox (dedupe_key, chat_id, payload, status, created_at, updated_at)
      VALUES (?, ?, ?, 'pending', ?, ?)
      ON CONFLICT(dedupe_key) DO NOTHING`
-  ).run(input.dedupeKey ?? null, input.chatId ?? null, JSON.stringify({ text: safeText }), t, t);
+  ).run(input.dedupeKey ?? null, input.chatId ?? null, JSON.stringify({ text: safeText, mentions }), t, t);
   const changes = Number(r.changes ?? 0);
   return { inserted: changes > 0, id: changes > 0 ? Number(r.lastInsertRowid) : null };
 }

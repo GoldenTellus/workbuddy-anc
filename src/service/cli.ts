@@ -119,13 +119,15 @@ try {
       const pend = outbox.listOutbox(db, { status: 'pending', limit });
       let sent = 0; let failed = 0;
       for (const m of pend) {
-        const payload = JSON.parse(m.payload) as { text: string };
+        const payload = JSON.parse(m.payload) as { text: string; mentions?: string[] };
         try {
           assertSafeOutbound(payload.text);
+          const text: Record<string, unknown> = { content: payload.text };
+          if (payload.mentions && payload.mentions.length) text.mentioned_list = payload.mentions;
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'content-type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ msgtype: 'text', text: { content: payload.text } }),
+            body: JSON.stringify({ msgtype: 'text', text }),
           });
           const body = await res.json().catch(() => ({}));
           if (res.ok && (body as { errcode?: number }).errcode === 0) { outbox.markSent(db, m.id); sent++; }

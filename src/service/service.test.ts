@@ -72,6 +72,14 @@ test('outbox：去重与凭据拦截', () => withDb((db) => {
   assert.throws(() => outbox.enqueue(db, { text: 'token: Bearer abcdefghijklmnop' }), /凭据/);
 }));
 
+test('outbox：@ 人写进 payload', () => withDb((db) => {
+  const r = outbox.enqueue(db, { text: '到点提醒', mentions: ['user-1', 'user-2'] });
+  assert.equal(r.inserted, true);
+  const row = outbox.listOutbox(db, { status: 'pending' })[0];
+  const payload = JSON.parse(row.payload) as { text: string; mentions: string[] };
+  assert.deepEqual(payload.mentions, ['user-1', 'user-2']);
+}));
+
 test('出站扫描：命中即脱敏并给出规则名', () => {
   const s = scanOutbound('see sk-ABCDEFGHIJKLMNOPQRST and https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc-123');
   assert.equal(s.clean, false);
