@@ -12,7 +12,9 @@
 param(
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\WorkBuddy",
     [int]$Port = 9229,
-    [switch]$NoPatch
+    [switch]$NoPatch,
+    # 默认按结构锚点打补丁（版本变化也继续）；-Strict 时版本不符则拒绝启动
+    [switch]$Strict
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,19 +58,24 @@ if (-not (Test-Path $exe)) { Fail "找不到 $exe" '用 -InstallDir 指向 WorkB
 
 $ver = (Get-Item $exe).VersionInfo.FileVersion
 if ($ver -ne $manifest.workbuddyVersion) {
-    # 版本不符：发运维告警（有 ops webhook 才发），然后按未打补丁方式启动
+    # 版本不符：默认进入锚点模式（照打补丁），只告警；-Strict 时 fail-closed
     $ops = Join-Path $env:ProgramData 'anc\secrets\ops-webhook.txt'
     if (Test-Path $ops) {
         try {
             $url = (Get-Content $ops -Raw).Trim()
             if ($url) {
-                $body = (@{ msgtype = 'text'; text = @{ content = "[anc] WorkBuddy 升级到 $ver（登记版本 $($manifest.workbuddyVersion)），补丁未生效，请按 docs/WORKBUDDY-PATCH.md 重放" } } | ConvertTo-Json -Depth 4 -Compress)
+                $mode = if ($Strict) { '严格模式：拒绝启动' } else { '锚点模式：继续打补丁' }
+                $body = (@{ msgtype = 'text'; text = @{ content = "[anc] WorkBuddy 升级到 $ver（登记版本 $($manifest.workbuddyVersion)），$mode。请在测试群回归后更新 manifest" } } | ConvertTo-Json -Depth 4 -Compress)
                 Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
-                Write-Host '[anc] 已向运维群发送版本不符告警'
+                Write-Host '[anc] 已向运维群发送版本变化告警'
             }
         } catch { Write-Host "[anc] 告警发送失败: $($_.Exception.Message)" }
     }
-    Fail "WorkBuddy 版本不符：期望 $($manifest.workbuddyVersion)，实际 $ver" '升级后先重测，再更新 manifest.json 的版本与 hash；本次按未打补丁启动' 1
+    if ($Strict) {
+        Fail "WorkBuddy 版本不符：期望 $($manifest.workbuddyVersion)，实际 $ver" '升级后先重测，再更新 manifest.json；本次按未打补丁启动' 1
+    }
+    Write-Host "[anc] 版本未登记（$ver），按结构锚点继续；回归通过后请更新 manifest"
+    $env:ANC_WB_ANCHOR = '1'
 }
 
 if ($NoPatch -or $env:ANC_WB_PATCH -eq '0') {

@@ -28,8 +28,13 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 
 ### 3) 失败告警
 
-- `wecomaibot-client.js` 的 sha256 与 manifest 不符 → 写日志并把告警发到 `%ProgramData%\anc\secrets\ops-webhook.txt`；
-- 启动器发现 WorkBuddy 版本与 manifest 不符 → 同样告警，并按未打补丁方式启动。
+- `wecomaibot-client.js` 的 sha256 与 manifest 不符 → 默认进入**锚点模式**：照打补丁、记 `ANCHOR-PATCH`、发运维群告警；`ANC_WB_STRICT=1` 或启动器 `-Strict` 时改为 fail-closed；
+- 启动器发现 WorkBuddy 版本与 manifest 不符 → 告警，默认继续（锚点模式），`-Strict` 时拒绝启动。
+
+### 4) 升级侦察与技能
+
+- `scripts/workbuddy-patch/inspect.mjs`：直接读 asar，报告版本、目标 hash、`emitMessage`/`WecomAiBotClient` 锚点数量、bootstrap 锚点是否还在，并给出建议；
+- `light/skills/anc-wb-patch`：升级当天给 agent 用的重放与回归流程（侦察 → 三种情况 → 四条回归 → 更新台账 → 回滚）。
 
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。

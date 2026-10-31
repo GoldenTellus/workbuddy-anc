@@ -17,7 +17,7 @@ const MANIFEST = path.join(__dirname, 'manifest.json');
 
 let mf = null;
 try {
-  mf = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+  mf = JSON.parse(fs.readFileSync(MANIFEST, 'utf8').replace(/^\uFEFF/, ''));
 } catch (_) {
   mf = null;
 }
@@ -85,6 +85,7 @@ const PATCH_BODY = [
   '      return __ancOrig.call(this, m);',
   '    };',
   '    __ancCls.prototype.__ancPatched = true;',
+  '    try { process.__ancIdentityApplied = true; } catch (e) {}',
   '  }',
   '} catch (e) {}',
   ''
@@ -135,13 +136,27 @@ Module.prototype._compile = function (content, filename) {
     }
     if (norm && typeof content === 'string' && norm.indexOf(TARGET) !== -1) {
       const digest = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
-      if (digest !== EXPECTED) {
+      const strict = String(process.env.ANC_WB_STRICT || '').toLowerCase();
+      const anchorMode = String(process.env.ANC_WB_ANCHOR || '1').toLowerCase() !== '0';
+      if (digest === EXPECTED) {
+        if (content.indexOf('__ancIdentityPatch') === -1) {
+          content += '\n' + PATCH_BODY;
+          applied += 1;
+          log('PATCHED target=' + filename);
+        }
+      } else if (strict === '1' || strict === 'true') {
+        log('STRICT-SKIP hash-mismatch target=' + filename + ' got=' + digest + ' expected=' + EXPECTED);
+        alertOps('补丁未生效（严格模式）：wecomaibot-client.js 与登记版本不符，请按 docs/WORKBUDDY-PATCH.md 重放');
+      } else if (anchorMode) {
+        if (content.indexOf('__ancIdentityPatch') === -1) {
+          content += '\n' + PATCH_BODY;
+          applied += 1;
+          log('ANCHOR-PATCH version-unverified target=' + filename + ' got=' + digest);
+          alertOps('WorkBuddy 版本变化，已按结构锚点打补丁（未登记版本）；请在测试群回归后更新 manifest');
+        }
+      } else {
         log('SKIP hash-mismatch target=' + filename + ' got=' + digest + ' expected=' + EXPECTED);
-        alertOps('补丁未生效：wecomaibot-client.js 与登记版本不符（可能是 WorkBuddy 升级），群身份注入已停用，请按 docs/WORKBUDDY-PATCH.md 重放');
-      } else if (content.indexOf('__ancIdentityPatch') === -1) {
-        content += '\n' + PATCH_BODY;
-        applied += 1;
-        log('PATCHED target=' + filename);
+        alertOps('补丁未生效：wecomaibot-client.js 与登记版本不符（可能是 WorkBuddy 升级），请按 docs/WORKBUDDY-PATCH.md 重放');
       }
     }
     if (norm && BOOT_TARGET && BOOT_REPL.length && norm.indexOf(BOOT_TARGET) !== -1 && typeof content === 'string') {
@@ -173,7 +188,7 @@ Module.prototype._compile = function (content, filename) {
 
 log('preload active version=' + mf.workbuddyVersion);
 process.on('exit', function () {
-  if (applied) log('exit patched=' + applied);
+  if (applied) log('exit patched=' + applied + ' identityApplied=' + (!!process.__ancIdentityApplied));
 });
 
 module.exports = { applied: function () { return applied; } };

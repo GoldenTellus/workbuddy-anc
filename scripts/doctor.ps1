@@ -62,9 +62,11 @@ $plog = "$env:USERPROFILE\anc\workbuddy-patch.log"
 if (Test-Path $plog) {
     $last = Get-Content $plog -Tail 200
     $patched = [bool]($last | Select-String -Pattern 'PATCHED' -Quiet)
+    $anchor = [bool]($last | Select-String -Pattern 'ANCHOR-PATCH' -Quiet)
     $hook = [bool]($last | Select-String -Pattern 'update-hook installed' -Quiet)
     if ($patched -and $hook) { Add-Result 'patch' 'PASS' 'PATCHED + update-hook' '-' }
-    else { Add-Result 'patch' 'FAIL' '日志里缺 PATCHED 或 update-hook' '重启补丁启动器，看 workbuddy-patch.log' }
+    elseif ($anchor -and $hook) { Add-Result 'patch' 'WARN' '锚点模式（版本未登记）' '按 docs/WORKBUDDY-PATCH.md 回归后更新 manifest 的 version/sha256' }
+    else { Add-Result 'patch' 'FAIL' '日志里缺 PATCHED/ANCHOR 或 update-hook' '重启补丁启动器，看 workbuddy-patch.log' }
 } else { Add-Result 'patch' 'WARN' '没有补丁日志（可能未用启动器）' '用 launch-patched.ps1 启动' }
 
 # 7 SMB 与 NTFS

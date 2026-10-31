@@ -319,6 +319,7 @@ D16 放开了手脚,但改动要留下账。这一节就是账本规则;**改了
 | 加载期改写团队 IM 授权判定(**诊断用,不进生产**) | 5.9.3 / Electron 37.10.3 / `<build>` | `main/daemon-bootstrap.js` `d1ea8b17…580f`(788,139 B) | 把本地 `isAllowed()` 改成恒真,观察放行后卡在哪一层 | `NODE_OPTIONS=--require <probe>.cjs`(daemon 启动时注入,仅本进程) | 结束进程、不带该环境变量重启 |
 | AIBot 回调注入群标识(**已采纳,D17**) | 5.9.3 / Electron 37.10.3 / `<build>` | `main/wecomaibot-client.js` `3510b309…e6fe5`(27,427 B) | 在 `emitMessage` 把 `chatId`/发送人拼进 `content`,让群身份进 prompt | `ANC_WB_PATCH=0` 关闭;启动器 `scripts/workbuddy-patch/launch-patched.ps1` | `restore.ps1`;补丁只在内存,重启即失效 |
 | 自动升级拦截(**已采纳,D18 配套**) | 5.9.3 / Electron 37.10.3 / `<build>` | 网络层:`https.request` 命中 `/v2/update` 即拦;不改 asar | 防止 WorkBuddy 升级后补丁静默失效 | `ANC_WB_BLOCK_UPDATE=0` 关闭 | 重启即失效 |
+| 锚点模式(版本无关注入) | 任意 | 运行时按结构找 `WecomAiBotClient.prototype.emitMessage`,不依赖文件 hash | 小版本升级后补丁继续生效;日志记 `ANCHOR-PATCH` 并发运维告警 | `ANC_WB_STRICT=1` 或启动器 `-Strict` 回到 fail-closed | 重启即失效 |
 | 团队 IM 授权判定,配套服务 bundle(未改,仅定位) | 5.9.3 / `<build>` | `main/netdrive-env-route.js` `ad05f474…0e16`(45,371 B) | `captureActivation` / `[channel-entry]` 在本文件,用于判读日志 | — | — |
 
 > 2026-10-31 实测结论:本地判定可以被绕开,但放行后 `POST {endpoint}/im/api/channel-entry/settings` 连续 4 次失败(`http:failed`,`state=error:load`),`allowed` 因 `entry.status!=='ready'` 仍为 false,工具返回同一句话。**门槛在账号/租户侧,本地 patch 拿不到数据**;客户端不记录 HTTP 状态码,属观测盲区。
