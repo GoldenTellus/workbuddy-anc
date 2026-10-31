@@ -26,7 +26,8 @@ export function scheduleReminder(db: DatabaseSync, input: ScheduleInput): Remind
   if (!input.dueAt) throw new Error('dueAt 必填');
   const due = toIso(input.dueAt);
   const t = nowIso();
-  const repeat = Math.max(1, Math.floor(input.repeatMinutes ?? 15));
+  const rawRepeat = Number(input.repeatMinutes ?? 15);
+  const repeat = Number.isFinite(rawRepeat) ? Math.min(1440, Math.max(1, Math.floor(rawRepeat))) : 15;
   return tx(db, () => {
     db.prepare("UPDATE reminders SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'").run(input.taskId);
     const r = db.prepare(

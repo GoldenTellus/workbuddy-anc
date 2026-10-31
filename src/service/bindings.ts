@@ -27,7 +27,7 @@ export function bind(db: DatabaseSync, chatId: string, employee: string, note?: 
   const t = nowIso();
   const exists = db.prepare('SELECT chat_id FROM chat_bindings WHERE chat_id = ?').get(cid);
   if (exists) {
-    db.prepare('UPDATE chat_bindings SET employee = ?, userid = ?, webhook_file = COALESCE(?, webhook_file), note = ?, updated_at = ? WHERE chat_id = ?')
+    db.prepare('UPDATE chat_bindings SET employee = ?, userid = COALESCE(?, userid), webhook_file = COALESCE(?, webhook_file), note = ?, updated_at = ? WHERE chat_id = ?')
       .run(emp, uid, hook, note ?? null, t, cid);
   } else {
     db.prepare('INSERT INTO chat_bindings (chat_id, employee, userid, webhook_file, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')

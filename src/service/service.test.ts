@@ -340,3 +340,19 @@ test('A2A：survey_id 含 ../ 不会写到内部区之外', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+test('绑定：再次 bind 不带 userid 时保留原值（COALESCE）', () => withDb((db) => {
+  bindings.bind(db, 'chat-B', '李四', undefined, 'user-li', 'hook.txt');
+  bindings.bind(db, 'chat-B', '李四', '改备注');
+  const b = bindings.resolve(db, 'chat-B')!;
+  assert.equal(b.userid, 'user-li', 'userid 不应被清空');
+  assert.equal(b.webhook_file, 'hook.txt', 'webhook_file 不应被清空');
+  bindings.bind(db, 'chat-B', '李四', undefined, 'user-li2');
+  assert.equal(bindings.resolve(db, 'chat-B')!.userid, 'user-li2', '显式传入应更新');
+}));
+test('提醒：repeatMinutes 非法值兜底为 15', () => withDb((db) => {
+  const t = tasks.createTask(db, { title: '非法 repeat' });
+  const r = reminders.scheduleReminder(db, { taskId: t.id, dueAt: new Date().toISOString(), repeatMinutes: Number('abc') });
+  assert.equal(r.repeat_minutes, 15);
+  const r2 = reminders.scheduleReminder(db, { taskId: t.id, dueAt: new Date().toISOString(), repeatMinutes: 0 });
+  assert.equal(r2.repeat_minutes, 1, '下限 1');
+}));

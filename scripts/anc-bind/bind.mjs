@@ -18,7 +18,8 @@ import { dirname, join } from 'node:path';
 import os from 'node:os';
 
 const HOME = os.homedir();
-const DEFAULT_DB = join(HOME, 'anc', 'anc.db');
+// 与服务共用同一个库：默认 ProgramData，可用 ANC_DB 覆盖
+const DEFAULT_DB = process.env.ANC_DB || join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'data', 'anc.db');
 
 function parseArgs(argv) {
   const out = { _: [] };

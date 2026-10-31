@@ -56,6 +56,11 @@ function num(name: string): number {
   return Number(v);
 }
 
+function numArg(v: unknown, def: number, min = 1, max = 1000): number {
+  if (typeof v !== 'string' || !/^\d+$/.test(v)) return def;
+  return Math.min(max, Math.max(min, Number(v)));
+}
+
 const db = openDb(dbPath);
 
 if (!group) fail('缺少命令组（bind / task / reminder / outbox）');
@@ -128,7 +133,7 @@ try {
     } else fail('未知 task 子命令');
   } else if (group === 'reminder') {
     if (cmd === 'add') {
-      const r = reminders.scheduleReminder(db, { taskId: num('task'), dueAt: String(args.due ?? ''), repeatMinutes: typeof args.repeat === 'string' ? Number(args.repeat) : undefined });
+      const r = reminders.scheduleReminder(db, { taskId: num('task'), dueAt: String(args.due ?? ''), repeatMinutes: typeof args.repeat === 'string' ? numArg(args.repeat, 15, 1, 1440) : undefined });
       out({ ok: true, reminder: r });
     } else if (cmd === 'due') {
       out({ ok: true, due: reminders.dueReminders(db, typeof args.now === 'string' ? args.now : undefined) });
@@ -137,7 +142,7 @@ try {
     } else fail('未知 reminder 子命令');
   } else if (group === 'outbox') {
     if (cmd === 'list') {
-      out({ ok: true, messages: outbox.listOutbox(db, { status: args.status as never, limit: typeof args.limit === 'string' ? Number(args.limit) : undefined }) });
+      out({ ok: true, messages: outbox.listOutbox(db, { status: args.status as never, limit: numArg(args.limit, 50, 1, 200) }) });
     } else if (cmd === 'flush') {
       const file = typeof args['webhook-file'] === 'string'
         ? args['webhook-file']
@@ -145,7 +150,7 @@ try {
       let url = '';
       try { url = readFileSync(file, 'utf8').trim(); } catch { fail('读不到 webhook 文件: ' + file); }
       if (!url) fail('webhook 文件为空: ' + file);
-      const limit = typeof args.limit === 'string' ? Number(args.limit) : 20;
+      const limit = numArg(args.limit, 20, 1, 200);
       const pend = outbox.listOutbox(db, { status: 'pending', limit });
       let sent = 0; let failed = 0;
       for (const m of pend) {
@@ -222,7 +227,7 @@ try {
       const r = await loop.tick(db, { webhookFile: explicit ?? undefined, secretsDir });
       out({ ok: true, ...r });
     } else {
-      const intervalMs = typeof args['interval-ms'] === 'string' ? Number(args['interval-ms']) : 60000;
+      const intervalMs = numArg(args['interval-ms'], 60000, 1000, 3600000);
       process.on('SIGINT', () => { try { db.close(); } catch { /* ignore */ } process.exit(0); });
       await loop.run(db, { webhookFile: explicit ?? undefined, secretsDir, intervalMs });
     }
