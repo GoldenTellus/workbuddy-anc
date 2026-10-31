@@ -9,6 +9,7 @@ import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
+import * as config from './config.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 
@@ -161,6 +162,20 @@ try {
       }
       out({ ok: failed === 0, sent, failed });
     } else fail('未知 outbox 子命令');
+  } else if (group === 'config') {
+    if (cmd === 'list') {
+      out({ ok: true, config: config.listConfig(db) });
+    } else if (cmd === 'get') {
+      const key = String(args.key ?? '');
+      const v = config.getConfig(db, key);
+      out({ ok: v !== null, key, value: v });
+      if (v === null) process.exit(1);
+    } else if (cmd === 'set') {
+      const key = String(args.key ?? '');
+      if (!key) fail('缺少 --key');
+      config.setConfig(db, key, String(args.value ?? ''));
+      out({ ok: true, key, value: config.getConfig(db, key) });
+    } else fail('未知 config 子命令');
   } else if (group === 'loop') {
     const explicit = typeof args['webhook-file'] === 'string' ? args['webhook-file'] : null;
     const secretsDir = explicit ? dirname(explicit) : join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');

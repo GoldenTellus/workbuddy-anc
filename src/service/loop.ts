@@ -7,6 +7,7 @@ import { getTask } from './tasks.ts';
 import { resolve } from './bindings.ts';
 import { enqueue, listPendingDue, markSent, markFailed } from './outbox.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
+import { loadRules, isWorkTime, nextWorkStart } from './config.ts';
 
 export type Sender = (url: string, text: string, mentions: string[]) => Promise<void>;
 
@@ -83,8 +84,18 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
 
   const due = dueReminders(db, now);
   let skipped = 0;
+  const rules = loadRules(db);
 
   for (const r of due) {
+    // 非工作时段/节假日：顺延到下一个工作时段起点，不发
+    if (!isWorkTime(nowDate, rules)) {
+      const next = nextWorkStart(nowDate, rules);
+      db.prepare('UPDATE reminders SET due_at = ? WHERE id = ?').run(next.toISOString(), r.id);
+      db.prepare("INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, 'reminder_deferred', ?, ?)")
+        .run(r.task_id, JSON.stringify({ to: next.toISOString() }), toIso(now));
+      skipped += 1;
+      continue;
+    }
     const task = getTask(db, r.task_id);
     if (!task || task.status !== 'open') {
       db.prepare("UPDATE reminders SET status = 'cancelled' WHERE id = ?").run(r.id);

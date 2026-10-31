@@ -32,7 +32,7 @@
   - [x] 权限:只有执行人或交办人能标完成、取消(用前缀里的 `from` 对照任务的 `assignee_userid` / `requester_userid`)
   - [x] 连续 4 次无回应,在交办人群里通知一次,之后每小时提醒一次
   - [x] 未完成任务次日顺延并告知交办人
-  - [ ] 时区、工作时段、节假日配置
+  - [x] 时区、工作时段、节假日配置(`config` 表:`work_start`/`work_end`/`weekdays`/`holidays`;非工作时段到点改排到下一个工作起点)
   - [x] outbox 失败重试退避(1/5/15/30/60 分钟,5 次后 failed)
 - [x] 每个员工群一个 webhook,按 chatid 选用;密钥文件放 `%ProgramData%\anc\secrets\`,文件名登记在绑定表里,值不进库。(`bind set --webhook-file`,loop 按绑定选文件)
 - [x] 数据库从 `%USERPROFILE%\anc\` 挪到 `%ProgramData%\anc\data\`,NTFS 只给本地小服务、公司 bot 用户和管理员。

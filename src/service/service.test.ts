@@ -8,6 +8,7 @@ import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
 import * as bindings from './bindings.ts';
+import * as config from './config.ts';
 import { scanOutbound, assertSafeOutbound } from './outbound-scan.ts';
 import { tick as loopTick } from './loop.ts';
 
@@ -190,6 +191,27 @@ test('顺延：昨天未完成、没有 pending 的任务排到下一次并告�
     assert.ok(carry, '应有一条顺延通知');
     const next = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id) as { due_at: string; status: string };
     assert.equal(next.due_at, '2026-10-31T01:00:00.000Z');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('工作时段：周末不发，顺延到下一个工作起点', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-hours-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    config.setConfig(db, 'work_start', '09:00');
+    config.setConfig(db, 'work_end', '18:00');
+    config.setConfig(db, 'weekdays', '1-5');
+
+    const t = tasks.createTask(db, { title: '周末任务', chatId: 'chat-A' });
+    reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T10:00:00+08:00' }); // 周六
+    const r = await loopTick(db, { now: '2026-10-31T10:00:05+08:00' });
+    assert.equal(r.enqueued, 0);
+    const rem = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ?").get(t.id) as { due_at: string; status: string };
+    assert.equal(rem.due_at, '2026-11-02T01:00:00.000Z'); // 周一 09:00 +08
+    assert.equal(rem.status, 'pending');
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
