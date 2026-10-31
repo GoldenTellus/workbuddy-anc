@@ -69,7 +69,7 @@
 - [x] 先定:成员与群的对应以谁为真相——`members/` 的 frontmatter(FORK §5.8)还是绑定表(CHAT-BINDINGS)。两处都写会漂移,只能留一处,另一处由它生成。(定:`members/` 是真相,`chat_bindings` 由 `bind import --from groups.json` 同步)
 - [x] 接入脚本(FORK §5.3);技能名片(`render onboard --package … --home …`;名片在 `light/skill-cards/`,带 `--adopt` 备份闸门与 `verify` 手改对拍)
 - [x] 入职、离职 runbook(FORK §5.8)。([ONBOARDING.md](./ONBOARDING.md):入库前置、开账号、org 登记、渲染、bind import、接入、群内验收、离职六步)
-- [~] 实测 T13(其他项目读不到 Claw 的 `CODEBUDDY.md`)、T18(技能名片放哪才认)。(T18 已通过:`%USERPROFILE%\.workbuddy\skills\<name>\SKILL.md` 被识别;T13 待第二用户/第二个项目的干净机)
+- [~] 实测 T13(其他项目读不到 Claw 的 `CODEBUDDY.md`)、T18(技能名片放哪才认)。(T18 已通过:`%USERPROFILE%\.workbuddy\skills\<name>\SKILL.md` 被识别;T13 跨用户代理已验证——临时标准用户读不到 Administrator 的 persona,同用户下「另一个项目工作区」待 UI 实测)
 
 **验收**:用第二个 Windows 用户当干净机,照接入手册从零走一遍并计时;渲染产物被手改后,下一次渲染能发现。
 
