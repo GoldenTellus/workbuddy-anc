@@ -7,6 +7,22 @@ description: WorkBuddy 升级后重放补丁并做回归。发现版本变化、
 
 目标：WorkBuddy 升级后，用最少步骤确认补丁还能用；不能用就改锚点，最后更新台账。
 
+## 0. 自愈（消息里没有前缀时）
+
+如果收到的消息开头**没有** `[anc:chat=… from=…]`，说明补丁没生效。这时不要当普通问题回答，按这个顺序：
+
+1. 先回一句：「补丁没生效，我自愈一下，可能离线十几秒」；
+2. 跑：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\anc-selfheal.ps1 -Apply
+```
+
+它会：`inspect` 判断锚点 → 记冷却（10 分钟）→ 起一个后台进程，4 秒后杀掉当前 WorkBuddy 并用补丁启动器重启。**回复会先发出去，然后 bot 短暂离线。**
+
+3. 退出码 `3` = 锚点缺失，别重启，直接告诉管理员「需要人工重找注入点（skill 的 B/C）」；
+4. 冷却期内重复触发会被跳过——不要连着喊自愈。
+
 ## 1. 先侦察（只读，不改任何东西）
 
 ```powershell
