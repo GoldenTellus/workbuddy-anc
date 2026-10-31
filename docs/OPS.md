@@ -13,6 +13,7 @@
 | `anc-watchdog` | 每 10 分钟 | `LOCAL SERVICE` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
 | `anc-workbuddy-launch` | 登录后 30 秒 | 登录用户（Interactive） | 用补丁启动器拉起 WorkBuddy，杜绝「登录自动起了无补丁实例」 |
 | `anc-patch-guard` | 登录后每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；在跑但补丁记录对不上 → 触发自愈重启（10 分钟冷却） |
+| `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | 请求厂商更新接口：有新版本就发运维群（同一版本只告警一次），提示按 skill 走回归 |
 
 ## 体检与告警
 

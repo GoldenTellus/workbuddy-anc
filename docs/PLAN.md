@@ -91,7 +91,7 @@
 ## 贯穿各里程碑的运维
 
 - [x] 主机体检、watchdog、重建 runbook(FORK §5.10)。(`scripts/doctor.ps1` 十项只读体检全 PASS;`anc-watchdog` 每 10 分钟查心跳/积压/进程;[REBUILD.md](./REBUILD.md))
-- [~] WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归。(伪升级演练已过:假版本+零 hash 启动,日志 `ANCHOR-PATCH` + 运维告警,bot 正常拉起;还原 manifest 后回到 `PATCHED`。真升级按 `light/skills/anc-wb-patch` 走)
+- [~] WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归。(伪升级演练已过:假版本+零 hash 启动,日志 `ANCHOR-PATCH` + 运维告警,bot 正常拉起;还原 manifest 后回到 `PATCHED`。**升级检测已自动化**:`anc-update-watch` 每天 09:00 查厂商接口,有新版本发运维群;真升级按 `light/skills/anc-wb-patch` 走。2026-11-01 实查:厂商仍为 5.9.3,暂无新版可升)
 - [x] 新增文件类型时同步扩 `scripts/check-public.sh`。(已覆盖 md/json/ts/mjs/cjs/ps1/sh)
 
 ## 暂不排期
