@@ -42,10 +42,15 @@ inbox\pending\<batch_id>\
 ## 用法
 
 ```powershell
-node src\ingest\cli.ts apply --batch D:\anc\inbox\pending\20261031-001 --shared D:\anc\vault-shared
+node src\ingest\cli.ts apply --batch D:\anc\inbox\pending\20261031-001 --shared D:\anc\vault-shared --inbox D:\anc\inbox
 ```
 
 输出 `added / modified / original` 三行，**不自动 git 提交**——起步阶段由管理员复核 diff 后再提交（FORK §5.4 第 4 步）。
+
+带 `--inbox` 时：
+
+- 成功：批次自动移到 `inbox\done\<batch>`；
+- 失败：批次自动移到 `inbox\failed\<batch>` 并写 `reason.txt`（含错误码与原因）。
 
 错误码：`BAD_PATH` / `BAD_META` / `MISSING_SRC` / `TOO_LARGE` / `BAD_FRONTMATTER` / `NEED_BASE_HASH` / `BASE_HASH_MISMATCH` / `ORIGINAL_EXISTS` / `CASE_CONFLICT`。
 

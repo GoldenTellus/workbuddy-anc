@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyBatch } from './apply.ts';
+import { applyBatch, archiveBatch, failBatch } from './apply.ts';
 import { normalizeTarget, blobHash, IngestError } from './validate.ts';
 
 const MD = '---\ntitle: 测试\nsource_file: _originals/x.pdf\nupdated_at: 2026-10-31\n---\n\n正文\n';
@@ -104,4 +104,26 @@ test('入库：缺 frontmatter 被拒，且不落盘', () => {
 test('normalizeTarget：合法路径通过', () => {
   assert.equal(normalizeTarget('company\\术语.md'), 'company/术语.md');
   assert.equal(normalizeTarget('skills/anc-task/SKILL.md'), 'skills/anc-task/SKILL.md');
+});
+
+test('归档：成功进 done，失败进 failed 并写 reason', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-arch-'));
+  const inbox = join(dir, 'inbox');
+  const b1 = join(inbox, 'pending', 'b1');
+  const b2 = join(inbox, 'pending', 'b2');
+  mkdirSync(b1, { recursive: true });
+  mkdirSync(b2, { recursive: true });
+  writeFileSync(join(b1, 'a.md'), 'x');
+  writeFileSync(join(b2, 'a.md'), 'x');
+  try {
+    const done = archiveBatch(b1, inbox);
+    assert.ok(existsSync(join(done, 'a.md')));
+    assert.ok(!existsSync(b1));
+
+    const failed = failBatch(b2, inbox, 'BAD_PATH: ../x');
+    assert.ok(existsSync(join(failed, 'a.md')));
+    assert.match(readFileSync(join(failed, 'reason.txt'), 'utf8'), /BAD_PATH/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

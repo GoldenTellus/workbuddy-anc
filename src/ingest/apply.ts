@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, cpSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { IngestError, normalizeTarget, assertTextSize, blobHash, assertFrontmatter } from './validate.ts';
 
@@ -108,4 +108,33 @@ export function applyBatch(batchDir: string, vaultDir: string): ApplyResult {
   }
 
   return result;
+}
+
+/** 成功后把批次挪到 done/。 */
+export function archiveBatch(batchDir: string, inboxDir: string): string {
+  const name = batchDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'batch';
+  const dest = join(inboxDir, 'done', name);
+  mkdirSync(dirname(dest), { recursive: true });
+  try {
+    renameSync(batchDir, dest);
+  } catch {
+    cpSync(batchDir, dest, { recursive: true });
+    rmSync(batchDir, { recursive: true, force: true });
+  }
+  return dest;
+}
+
+/** 失败后把批次挪到 failed/ 并写 reason.txt。 */
+export function failBatch(batchDir: string, inboxDir: string, reason: string): string {
+  const name = batchDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'batch';
+  const dest = join(inboxDir, 'failed', name);
+  mkdirSync(dirname(dest), { recursive: true });
+  try {
+    renameSync(batchDir, dest);
+  } catch {
+    cpSync(batchDir, dest, { recursive: true });
+    rmSync(batchDir, { recursive: true, force: true });
+  }
+  writeFileSync(join(dest, 'reason.txt'), reason, 'utf8');
+  return dest;
 }

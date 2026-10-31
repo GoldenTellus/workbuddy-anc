@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// 入库 CLI：把一个批次目录写进共享区
-// 用法：node src/ingest/cli.ts apply --batch <批次目录> --shared <共享区目录> [--json]
+// 入库 CLI：把一个批次目录写进共享区，并归档/转移失败批次
+// 用法：node src/ingest/cli.ts apply --batch <批次目录> --shared <共享区目录> [--inbox D:\anc\inbox] [--json]
 
-import { applyBatch } from './apply.ts';
+import { existsSync } from 'node:fs';
+import { applyBatch, archiveBatch, failBatch } from './apply.ts';
 import { IngestError } from './validate.ts';
 
 const argv = process.argv.slice(2);
@@ -14,6 +15,7 @@ const json = argv.includes('--json');
 const cmd = argv[0];
 const batch = arg('--batch');
 const shared = arg('--shared');
+const inbox = arg('--inbox');
 
 function fail(msg: string, code: string, exit = 1): never {
   if (json) console.log(JSON.stringify({ ok: false, code, error: msg }));
@@ -30,14 +32,21 @@ if (!shared) fail('缺少 --shared', 'USAGE', 2);
 
 try {
   const result = applyBatch(batch, shared);
-  if (json) console.log(JSON.stringify({ ok: true, ...result }));
+  const archived = inbox ? archiveBatch(batch, inbox) : null;
+  if (json) console.log(JSON.stringify({ ok: true, ...result, archived }));
   else {
     console.log('added   : ' + (result.added.join(', ') || '-'));
     console.log('modified: ' + (result.modified.join(', ') || '-'));
     console.log('original: ' + (result.originals.join(', ') || '-'));
+    if (archived) console.log('archived: ' + archived);
     console.log('（未提交 git；复核 diff 后再提交）');
   }
 } catch (e) {
   const err = e as IngestError;
-  fail(err.message, err.code || 'ERROR');
+  const code = err.code || 'ERROR';
+  let moved = null;
+  if (inbox && existsSync(batch)) {
+    try { moved = failBatch(batch, inbox, `${code}: ${err.message}`); } catch { /* ignore */ }
+  }
+  fail(err.message + (moved ? `（批次已移到 ${moved}）` : ''), code);
 }

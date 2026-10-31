@@ -55,11 +55,11 @@ updated_at: <YYYY-MM-DD>
 ## 3. 跑入库进程
 
 ```powershell
-node E:\workbuddy-anc\src\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --shared D:\anc\vault-shared --json
+node E:\workbuddy-anc\src\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --shared D:\anc\vault-shared --inbox D:\anc\inbox --json
 ```
 
-- 成功：把 `added` / `modified` / `original` 转成中文摘要；
-- 失败：把错误码与原因**原样转告**，批次留在 `pending`，不要自行删改重试。
+- 成功：批次会自动移到 `D:\anc\inbox\done\`；把 `added` / `modified` / `original` 转成中文摘要；
+- 失败：批次自动移到 `D:\anc\inbox\failed\` 并附 `reason.txt`；把错误码与原因**原样转告**，不要自行删改重试。
 
 ## 4. 回执
 
