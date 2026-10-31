@@ -10,6 +10,17 @@
 | `anc-backup` | 每天 02:00 | `LOCAL SERVICE` | `VACUUM INTO` 备份数据库，保留最近 14 份 |
 | `anc-boot-alert` | 开机 + 每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | WorkBuddy 没起来就经运维群 webhook 告警 |
 | `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM） |
+| `anc-watchdog` | 每 10 分钟 | `LOCAL SERVICE` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
+
+## 体检与告警
+
+```powershell
+powershell -File scripts\doctor.ps1        # 只读体检：专用用户、任务、心跳、版本、补丁、SMB/NTFS、密钥、时区、数据库
+powershell -File scripts\watchdog.ps1      # 手动跑一次看有没有要告警的
+```
+
+doctor 退出码：0 无 FAIL，1 有 FAIL，并在末尾列出 `FIX`。全 PASS 是上线门槛之一。
+
 
 ## vault 共享
 

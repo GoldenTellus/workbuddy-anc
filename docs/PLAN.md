@@ -42,7 +42,7 @@
 
 - [~] 公司 bot 换到专用标准用户下运行;补丁启动器与 T4 在该用户下复测。(标准用户 `anc-bot` 已建、ACL 已配;交互登录与 T4 复测待做,清单见 [OPS.md](./OPS.md))
 - [x] 主机上的 WorkBuddy 关闭自动升级;补丁 hash 对不上时除了写日志,还要在运维群告警。(网络层拦 `/v2/update`;hash 不符与版本不符都发 `ops-webhook.txt`)
-- [x] 开机提醒(FORK §5.1)、绑定表与数据库的离机备份。(`anc-boot-alert` 已注册;`anc-backup` 每日 02:00 本地保留 14 份,离机目标需在任务参数里补 `-Destination`;见 [OPS.md](./OPS.md))
+- [x] 开机提醒(FORK §5.1)、绑定表与数据库的离机备份。(`anc-boot-alert` 已注册;`anc-backup` 每日 02:00 本地保留 14 份并复制到第二块盘 `E:\anc-backup`;真正的离机目标待接 UNC,见 [OPS.md](./OPS.md))
 
 **验收**:在真实的三方群里走一遍——登记、到点 @ 人、连续不回后交办人收到通知、回「完成」后停止、问「今天的任务」能列出;主机重启后没人登录,到点提醒照样发出;非执行人、非交办人说「#n 完成」被拒绝。
 
@@ -88,9 +88,9 @@
 
 ## 贯穿各里程碑的运维
 
-- 主机体检、watchdog、重建 runbook(FORK §5.10)
-- WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归
-- 新增文件类型时同步扩 `scripts/check-public.sh`
+- [x] 主机体检、watchdog、重建 runbook(FORK §5.10)。(`scripts/doctor.ps1` 十项只读体检全 PASS;`anc-watchdog` 每 10 分钟查心跳/积压/进程;[REBUILD.md](./REBUILD.md))
+- [ ] WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归
+- [x] 新增文件类型时同步扩 `scripts/check-public.sh`。(已覆盖 md/json/ts/mjs/cjs/ps1/sh)
 
 ## 暂不排期
 
