@@ -283,6 +283,7 @@
 | T17 运行身份 | 2026-10-31 | — | **通过** | `LOCAL SERVICE` 计划任务跑 `loop --once`:`sent=1`、outbox=`sent`、群里收到并被 @;`data` 可写、`deny` 读取被拒。无人登录项按 ServiceAccount 语义推定,未单测 |
 | T12 个人 bot 读网络路径 | 2026-10-31 | — | **通过** | 以个人 bot 的运行身份（标准本地账号、非管理员）经 `\\主机\anc-vault-shared` 读取成功、写入被拒（`UnauthorizedAccessException`）；共享层 `Authenticated Users` 只读 + NTFS `Users` 只读 |
 | T20 长会话后规则是否还在 | 2026-10-31 | 5.9.3 | **通过** | 同一三方群连续数十轮后，persona 与技能规则仍生效：任务登记/完成、引用文件入库、11 题访谈均按既定流程执行，未见规则漂移 |
+| T19 8000 字符计数 | 2026-10-31 | 5.9.3 | **待实测** | 测试文档已备：`D:\anc\vault-shared\company\_t19-test.md`（8020 字符，末行标记 `T19-END-MARKER-7Q2Z`）；群内让 bot 读该文件并回末行，能原样回即说明长文档未被截断 |
 | T17 无人登录（代理） | 2026-10-31 | — | **通过（代理）** | 把 WorkBuddy 全部进程停掉（`procs=0`）后，21:25 到点的提醒仍由 `anc-service`（`LOCAL SERVICE`）发出：`outbox reminder:14 = sent`，`loop.log` 记 `enqueued=1 sent=1`。说明提醒不依赖 bot 进程与交互登录；真机「注销后」仍待上线窗口 |
 | T4 专用用户下复测 | 2026-10-31 | 5.9.3 | **通过** | 维护者确认：切换到专用标准用户后补丁生效、群内应答正常 |
 | T18 技能名片位置 | 2026-10-31 | 5.9.3 | **通过** | `%USERPROFILE%\.workbuddy\skills\<name>\SKILL.md` 被识别：`anc-task`、`anc-ingest` 装在该位置后，真实群里触发并执行成功 |
