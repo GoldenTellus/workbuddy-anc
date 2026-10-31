@@ -86,6 +86,8 @@
 
 **验收**:一场跨天的访谈完整走完,访谈报告只在内部区,问题模型里对应要素回填了证据。
 
+**验收记录(2026-10-31)**:11 题全部归档到 `vault-internal\surveys\interview-<userid>-20261031\`(q1–q11 + 公司画像 + ANC 落地建议),`a2a status complete=true`;`company/problem-model.md` 已按访谈回填瓶颈、因果链、量化影响、相关方、已有尝试与首批立项,证据全部指向内部区。同一晚完成,未跨天;T22 待明早验证。待补:高频问题补到 3–5 类、一周耗时补到 3 件、确认是否有 ERP 可对接、一份脱敏对账样例。
+
 ## 贯穿各里程碑的运维
 
 - [x] 主机体检、watchdog、重建 runbook(FORK §5.10)。(`scripts/doctor.ps1` 十项只读体检全 PASS;`anc-watchdog` 每 10 分钟查心跳/积压/进程;[REBUILD.md](./REBUILD.md))
