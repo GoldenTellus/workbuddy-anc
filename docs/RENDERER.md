@@ -72,6 +72,21 @@ node src\service\cli.ts --db C:\ProgramData\anc\data\anc.db bind import --from <
 - 运行期不再手改绑定表；要改群/人，改 org 数据 → 重渲染 → `bind import`；
 - `bind import` 幂等：同 chatid 更新为最新值，没有 chatid 的成员跳过。
 
+## 接入器（员工机）
+
+渲染出的 `members/<id>/CODEBUDDY.md` 是接入包的一半；接入器把它和技能名片装到员工机：
+
+```powershell
+node src\render\cli.ts onboard --package <out>\members\<id> --home %USERPROFILE% --vault-shared \\主机\anc-vault-shared
+node src\render\cli.ts verify  --home %USERPROFILE%
+```
+
+- 目标 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md` 已存在时**必须加 `--adopt`**，否则拒绝；adopt 会先备份 `.bak-<时间>`；
+- 名片从 `light/skill-cards/<名字>/SKILL.md` 复制到 `%USERPROFILE%\.workbuddy\skills\<名字>\SKILL.md`，并把 `{{vault_shared}}` 换成实际路径；
+- 安装记录写到 `WorkBuddy\Claw\.anc-install.json`（persona 与每张名片的内容 hash）；
+- `verify` 对拍记录：被手改或缺失即列出并以退出码 1 结束；
+- 名片只放触发词与安全底线，正文留在共享区 `skills/`。
+
 ## 已实现 / 未实现
 
 - 已实现：org 解析与校验、公司/个人 persona 渲染、groups.json、指纹、长度闸门、原子写与备份、6 条测试；

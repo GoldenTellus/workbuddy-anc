@@ -67,7 +67,7 @@
 
 - [x] 渲染器:改写上游 `feat-m1-w1`,从 `roles/` × `members/` 生成公司 bot 的 `CODEBUDDY.md`、每人的接入包、群映射(FORK §5.9)。上游把这部分排在它自己的 M1(设计见 [M1-DESIGN.md](./M1-DESIGN.md) §2–§4),在本库排在 M3;名字里的「m1」都指上游,和本计划的 M1 无关。(第一切片:`src/render`,org → 公司/个人 persona + groups.json,指纹 + 长度闸门 + 原子写;见 [RENDERER.md](./RENDERER.md))
 - [x] 先定:成员与群的对应以谁为真相——`members/` 的 frontmatter(FORK §5.8)还是绑定表(CHAT-BINDINGS)。两处都写会漂移,只能留一处,另一处由它生成。(定:`members/` 是真相,`chat_bindings` 由 `bind import --from groups.json` 同步)
-- [ ] 接入脚本(FORK §5.3);技能名片
+- [x] 接入脚本(FORK §5.3);技能名片(`render onboard --package … --home …`;名片在 `light/skill-cards/`,带 `--adopt` 备份闸门与 `verify` 手改对拍)
 - [ ] 入职、离职 runbook(FORK §5.8)
 - [ ] 实测 T13(其他项目读不到 Claw 的 CODEBUDDY.md)、T18(技能名片放哪才认)
 
