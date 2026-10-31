@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyBatch, archiveBatch, failBatch } from './apply.ts';
+import { applyBatch, archiveBatch, failBatch, inferInbox } from './apply.ts';
 import { commitVault } from './git.ts';
 import { normalizeTarget, blobHash, IngestError } from './validate.ts';
 
@@ -141,6 +141,12 @@ test('入库：meta.json 带 UTF-8 BOM 也能读', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('inferInbox：从 pending 路径推断 inbox', () => {
+  assert.equal(inferInbox('D:\\anc\\inbox\\pending\\b1'), 'D:\\anc\\inbox');
+  assert.equal(inferInbox('D:/anc/inbox/pending/b1/'), 'D:/anc/inbox');
+  assert.equal(inferInbox('D:\\tmp\\b1'), null);
 });
 
 test('提交：--commit 生成提交，无改动返回 null', () => {

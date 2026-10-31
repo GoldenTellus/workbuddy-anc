@@ -111,6 +111,12 @@ export function applyBatch(batchDir: string, vaultDir: string): ApplyResult {
   return result;
 }
 
+/** 从 `…\<inbox>\pending\<id>` 推断 inbox 目录；不匹配返回 null。 */
+export function inferInbox(batchDir: string): string | null {
+  const m = batchDir.replace(/[\\/]+$/, '').match(/^(.*)[\\/]pending[\\/][^\\/]+$/);
+  return m ? m[1] : null;
+}
+
 /** 成功后把批次挪到 done/。 */
 export function archiveBatch(batchDir: string, inboxDir: string): string {
   const name = batchDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'batch';
