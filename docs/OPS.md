@@ -15,6 +15,18 @@
 | `anc-patch-guard` | 登录后每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；在跑但补丁记录对不上 → 触发自愈重启（10 分钟冷却） |
 | `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | 请求厂商更新接口：有新版本就发运维群（同一版本只告警一次），提示按 skill 走回归 |
 
+## 维护窗口（升级/排障）
+
+停 WorkBuddy 之前先放维护开关，否则 `anc-patch-guard` 会在一分钟内把它重新拉起：
+
+```powershell
+"upgrade 2026-11-01" | Set-Content C:\ProgramData\anc\data\maintenance.flag -Encoding utf8
+# 维护完成
+Remove-Item C:\ProgramData\anc\data\maintenance.flag
+```
+
+维护结束后 guard 会在一分钟内自动拉起（自带 10 分钟节流，失败会告警）。
+
 ## 体检与告警
 
 ```powershell

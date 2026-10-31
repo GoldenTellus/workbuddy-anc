@@ -67,6 +67,11 @@ global.__ancCanaryWrite = function (obj) {
     fs.writeFileSync(CANARY, JSON.stringify(obj));
   } catch (_) { /* ignore */ }
 };
+// 记录安装路径：计划任务以 LOCAL SERVICE 运行，看不到用户目录，靠这个文件定位
+try {
+  fs.mkdirSync(path.dirname(STATE), { recursive: true });
+  fs.writeFileSync(path.join(path.dirname(STATE), 'workbuddy-path.txt'), process.execPath);
+} catch (_) { /* ignore */ }
 
 function alertOps(text) {
   if (!OPS_WEBHOOK) return;

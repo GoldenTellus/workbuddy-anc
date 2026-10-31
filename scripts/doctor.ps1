@@ -26,8 +26,12 @@ if (-not $bot) {
 }
 
 # 2 工作时段与配置
-$cfg = & node "$env:ProgramData\anc\service\cli.ts" --db "$env:ProgramData\anc\data\anc.db" --json config list 2>$null | Out-String | ConvertFrom-Json
-$start = $cfg.config.work_start; $end = $cfg.config.work_end
+$start = $null; $end = $null
+try {
+    $cfgRaw = & node "$env:ProgramData\anc\service\cli.ts" --db "$env:ProgramData\anc\data\anc.db" --json config list 2>$null | Out-String
+    $cfg = $cfgRaw | ConvertFrom-Json
+    $start = $cfg.config.work_start; $end = $cfg.config.work_end
+} catch { }
 if ($start -and $end) { Add-Result 'work-hours' 'PASS' "$start–$end" '-' } else { Add-Result 'work-hours' 'WARN' '未配置工作时段（默认全天）' '需要时 config set work_start/work_end' }
 
 # 3 计划任务
