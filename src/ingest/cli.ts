@@ -60,9 +60,14 @@ let commitError: string | null = null;
 if (doCommit) {
   try {
     const changed = [...result.added, ...result.modified];
-    // 只提交本批写入的文件（含原件），不带上其他未复核的改动
-    commit = commitVault(shared, `ingest: ${changed.join(', ') || 'batch ' + batch}`, [...changed, ...result.originals]);
+    // 只提交本批的 markdown；原件不进 git（D14），由 vault 的 .gitignore 保证
+    commit = commitVault(shared, `ingest: ${changed.join(', ') || 'batch ' + batch}`, changed);
   } catch (e) { commitError = (e as Error).message; }
+}
+
+// 文件已写入、批次已归档，只有提交失败：这是部分成功，必须非 0，否则调用方以为入库完成了
+if (commitError) {
+  fail('文件已写入但提交失败（批次已归档，需人工提交）: ' + commitError, 'COMMIT_FAILED');
 }
 
 if (json) {

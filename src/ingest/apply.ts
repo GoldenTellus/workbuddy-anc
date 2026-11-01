@@ -1,6 +1,6 @@
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, cpSync, rmSync,
-  realpathSync, lstatSync, openSync, closeSync, rmdirSync,
+  realpathSync, lstatSync, openSync, closeSync, rmdirSync, writeSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { IngestError, normalizeTarget, assertTextSize, blobHash, assertFrontmatter } from './validate.ts';
@@ -80,7 +80,10 @@ export function applyBatch(batchDir: string, vaultDir: string): ApplyResult {
       assertFrontmatter(content.toString('utf8'));
       if (existed) {
         if (!f.base_hash) throw new IngestError('NEED_BASE_HASH', '覆盖已有文件必须带 base_hash: ' + target);
-        if (blobHash(old!) !== f.base_hash) throw new IngestError('BASE_HASH_MISMATCH', 'base_hash 与当前 HEAD 不一致: ' + target);
+        if (blobHash(old!) !== f.base_hash) {
+          const cur = blobHash(old!);
+          throw new IngestError('BASE_HASH_MISMATCH', 'base_hash 与目标当前内容不一致: ' + target + '；当前=' + cur.slice(0, 12) + ' 传入=' + String(f.base_hash).slice(0, 12) + '（请重读后重投）');
+        }
       } else if (f.base_hash) {
         throw new IngestError('UNEXPECTED_BASE_HASH', '新文件不应带 base_hash: ' + target);
       }
@@ -120,19 +123,54 @@ function assertNoLinkOnPath(root: string, dest: string): void {
   }
 }
 
+const LOCK_STALE_MS = 10 * 60_000;
+
+function readLock(lockPath: string): { pid?: number; started_at?: string } | null {
+  try { return JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: number; started_at?: string }; } catch { return null; }
+}
+
+/** 锁是否已失效：pid 不存在，或存在超过 10 分钟。判不了（解析失败）就返回 null，按占用处理。 */
+function staleReason(lockPath: string): string | null {
+  const l = readLock(lockPath);
+  if (!l || typeof l.pid !== "number") return null;
+  let alive = true;
+  try { process.kill(l.pid, 0); } catch { alive = false; }
+  const started = l.started_at ? Date.parse(l.started_at) : NaN;
+  const age = Number.isFinite(started) ? Date.now() - started : Number.POSITIVE_INFINITY;
+  if (!alive) return "pid " + l.pid + " 已不存在";
+  if (age > LOCK_STALE_MS) return "锁已存在 " + Math.round(age / 60000) + " 分钟";
+  return null;
+}
+
+function acquireLock(lockPath: string): number {
+  const payload = JSON.stringify({ pid: process.pid, started_at: new Date().toISOString() });
+  try {
+    const fd = openSync(lockPath, "wx");
+    writeSync(fd, payload);
+    return fd;
+  } catch {
+    const reason = staleReason(lockPath);
+    if (!reason) {
+      throw new IngestError("VAULT_BUSY", "另一个入库正在进行（锁文件 " + lockPath + "）；稍后重试，确认没有进程在跑时可删掉锁文件");
+    }
+    // 留档而不是直接删：出问题时能看出是谁、什么时候留下的
+    try { renameSync(lockPath, lockPath + ".stale-" + Date.now()); } catch { /* ignore */ }
+    const fd = openSync(lockPath, "wx");
+    writeSync(fd, payload);
+    process.stderr.write("WARN  接管了残留锁（" + reason + "）；旧锁已改名留档\n");
+    return fd;
+  }
+}
+
 /**
  * vault 级独占锁：两个入库进程同时改同一文件、带同一个 base_hash 时，
  * 计划阶段都能通过，后写的会覆盖先写的。拿锁后在写入前再核一次 hash。
+ * 崩溃/断电留下的锁按 pid 与年龄自愈，不然入库会永久停摆。
  */
 function withVaultLock<T>(vault: string, fn: () => T): T {
-  const lock = join(vault, '.git', 'anc-ingest.lock');
-  const lockPath = existsSync(join(vault, '.git')) ? lock : join(vault, '.anc-ingest.lock');
-  let fd: number;
-  try {
-    fd = openSync(lockPath, 'wx');
-  } catch {
-    throw new IngestError('VAULT_BUSY', '另一个入库正在进行（锁文件 ' + lockPath + '）；稍后重试，确认没有进程在跑时可删掉锁文件');
-  }
+  const lock = join(vault, ".git", "anc-ingest.lock");
+  const lockPath = existsSync(join(vault, ".git")) ? lock : join(vault, ".anc-ingest.lock");
+  const fd = acquireLock(lockPath);
   try {
     return fn();
   } finally {

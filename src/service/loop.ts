@@ -79,7 +79,12 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
   const now = opts.now ?? nowIso();
   // 开机后网络可能晚就绪：先把近期因网络失败的消息捞回来
   let requeued = 0;
-  try { requeued = requeueTransientFailures(db, toIso(now)); } catch { /* ignore */ }
+  try {
+    requeued = requeueTransientFailures(db, toIso(now));
+  } catch (e) {
+    // 捞不回来会让开机后积压的消息永远发不出去：至少要在日志里留下痕迹
+    console.error('WARN  requeueTransientFailures 失败: ' + (e as Error).message);
+  }
 
   let skipped = 0;
   const rules = loadRules(db);
@@ -92,28 +97,27 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     "SELECT id, title, due_at, chat_id FROM tasks WHERE status = 'open' AND due_at IS NOT NULL AND due_at < ?"
   ).all(dayStart.toISOString()) as Array<{ id: number; title: string; due_at: string; chat_id: string | null }>;
   let enqueued = 0;
+  // 去重键用本地日期：toISOString().slice(0,10) 是 UTC 日期，北京时间 00:00–08:00 会算成前一天
+  const dayKey = `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`;
   for (const t of stale) {
-    const pending = db.prepare("SELECT id FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id);
-    if (pending) continue;
+    const key = `carry:${t.id}:${dayKey}`;
+    // 不再用"有没有 pending 提醒"做闸门：正常续排的任务一整天都是 pending，"次日顺延并告知"会永远发不出去
+    if (db.prepare('SELECT id FROM outbox WHERE dedupe_key = ?').get(key)) continue;
+    // 顺延到"次日同一时分"；那个时刻若不在工作时段，再推到下一个工作起点
     const due = new Date(t.due_at);
     const next = new Date(nowDate);
     next.setHours(due.getHours(), due.getMinutes(), 0, 0);
     if (next.getTime() <= nowDate.getTime()) next.setDate(next.getDate() + 1);
+    const target = isWorkTime(next, rules) ? next : nextWorkStart(next, rules);
     const at = due.toLocaleString('sv-SE').slice(0, 16);
-    const nextLabel = next.toLocaleString('sv-SE').slice(0, 16);
+    const nextLabel = target.toLocaleString('sv-SE').slice(0, 16);
     const text = `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，已顺延到 ${nextLabel}`;
     // 先检查再排期：被拦的任务不再顺延，免得每天都卡在这里
     if (blockedBySecret(db, t.id, text, now)) { skipped += 1; continue; }
-    scheduleReminder(db, { taskId: t.id, dueAt: next.toISOString() });
-    const q = enqueue(db, {
-      text,
-      chatId: t.chat_id,
-      dedupeKey: `carry:${t.id}:${dayStart.toISOString().slice(0, 10)}`,
-      at: sendAt,
-    });
+    scheduleReminder(db, { taskId: t.id, dueAt: target.toISOString() });
+    const q = enqueue(db, { text, chatId: t.chat_id, dedupeKey: key, at: sendAt });
     if (q.inserted) enqueued += 1;
   }
-
   const due = dueReminders(db, now);
 
   for (const r of due) {

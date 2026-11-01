@@ -1,9 +1,10 @@
 ---
-
-> 公司 bot 的入库技能（**线上在用的就是这份**，安装后目录名是 `anc-ingest`）。上游原版 `light/skills/anc-ingest/SKILL.md` 已删除，需要时 `git show 90e4fb2:light/skills/anc-ingest/SKILL.md`；它在本库的改写来源是 `reference/upstream/skills/anc-onboard.vault-skills.anc-ingest.md`。
 name: anc-ingest
 description: 把群里的资料入库到公司知识库。用户说「入库」「把这个存进公司库」「归档」「ingest」时使用。触发词：入库、归档、存进公司库、这份文件入库、ingest、archive。
 ---
+
+> 公司 bot 的入库技能（**线上在用的就是这份**，安装后目录名是 `anc-ingest`）。上游原版 `light/skills/anc-ingest/SKILL.md` 已删除，需要时 `git show 90e4fb2:light/skills/anc-ingest/SKILL.md`；它在本库的改写来源是 `reference/upstream/skills/anc-onboard.vault-skills.anc-ingest.md`。
+
 
 # anc-ingest（公司 bot 侧）
 

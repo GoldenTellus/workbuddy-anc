@@ -23,8 +23,12 @@ export function parseFrontmatter(text: string): { fm: Record<string, string>; bo
   if (!m) return { fm: {}, body: text };
   const fm: Record<string, string> = {};
   for (const line of m[1].split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
     const kv = line.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
-    if (kv) fm[kv[1]] = kv[2].trim().replace(/^["']|["']$/g, '');
+    // 说明文字混进 frontmatter 时不能静默跳过：技能/org 文件会被解析成缺字段，坏得无声无息
+    if (!kv) throw new Error('frontmatter 行不合法（只接受 key: value 或 # 注释）: ' + t);
+    fm[kv[1]] = kv[2].trim().replace(/^["']|["']$/g, '');
   }
   return { fm, body: m[2] };
 }

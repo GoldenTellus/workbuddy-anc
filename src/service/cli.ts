@@ -175,6 +175,9 @@ try {
       const internal = typeof args.internal === 'string' ? args.internal : '';
       if (!text) fail('缺少 --text 或 --text-file');
       if (!internal) fail('缺少 --internal <内部区目录>');
+      // 越区防护：内部区必须是独立的 git 目录，且不能是共享区（传 --shared 时比对）
+      try { a2a.assertInternalDir(internal, typeof args.shared === 'string' ? args.shared : undefined); }
+      catch (e) { fail((e as Error).message); }
       const env = a2a.parseEnvelope(text);
       out({ ok: true, ...a2a.submit(db, env, internal, typeof args['from-userid'] === 'string' ? args['from-userid'] : undefined) });
     } else if (cmd === 'status') {

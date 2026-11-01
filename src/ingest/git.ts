@@ -13,6 +13,10 @@ const SAFE = ['-c', 'core.hooksPath=' + (process.platform === 'win32' ? 'NUL' : 
  */
 export function commitVault(vaultDir: string, message: string, paths?: string[]): string | null {
   if (!existsSync(join(vaultDir, '.git'))) throw new Error('不是 git 仓库: ' + vaultDir);
+  // D14：原件永不进 git。调用方传进来就是 bug，直接拒，别让 git add 去撞 .gitignore
+  if (paths && paths.some((p) => p === "_originals" || /^_originals[\\/]/i.test(p))) {
+    throw new Error("commitVault 不接受 _originals/ 路径：原件不进 git（D14）");
+  }
   // 给了 paths 就只提交本批的文件：别的批次还在等复核、或有人手改过的内容不能被顺带提交。
   // 不给 paths 时沿用旧行为（整库提交，排除备份/临时文件）。
   const scope = paths && paths.length ? paths.map((p) => ':(literal)' + p) : ['.', ':(exclude)*.bak-*', ':(exclude).tmp-*'];

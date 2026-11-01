@@ -1,10 +1,28 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import { nowIso, tx } from './db.ts';
 
 export const PROTOCOL = 'anc-a2a/1';
+export const MAX_PAYLOAD = 256 * 1024;
+
+/** 内部区必须是独立 git 目录；传了共享区路径时，内部区不能是它或其子目录（D12 的两区不能混）。 */
+export function assertInternalDir(dir: string, sharedDir?: string): string {
+  if (!dir) throw new A2AError('BAD_INTERNAL', '缺少内部区目录（--internal）');
+  if (!isAbsolute(dir)) throw new A2AError('BAD_INTERNAL', '内部区必须是绝对路径: ' + dir);
+  // 越区先判，且不依赖目录是否存在：shared\sub 这种还没建的路径也要当场拒掉
+  if (sharedDir && isAbsolute(sharedDir)) {
+    const r = resolve(dir);
+    const s2 = resolve(sharedDir);
+    if (r === s2 || r.startsWith(s2 + sep)) {
+      throw new A2AError('BAD_INTERNAL', '内部区不能是共享区或其子目录: ' + dir);
+    }
+  }
+  if (!existsSync(dir)) throw new A2AError('BAD_INTERNAL', '内部区目录不存在: ' + dir);
+  if (!existsSync(join(dir, '.git'))) throw new A2AError('BAD_INTERNAL', '内部区不是 git 仓库（内部区与共享区必须是两个独立目录）: ' + dir);
+  return dir;
+}
 
 export interface Envelope {
   protocol: string;
@@ -96,6 +114,10 @@ export interface SubmitResult {
 
 /** 提交：校验 → 规则版本对得上 → 去重 → 归档到内部区。 */
 export function submit(db: DatabaseSync, env: Envelope, internalDir: string, fromUserid?: string): SubmitResult {
+  // payload 是员工整理的内容，会整段写进内部区：给个上限，免得一次提交把磁盘写满
+  if (typeof env.payload !== 'string' || env.payload.length > MAX_PAYLOAD) {
+    throw new A2AError('PAYLOAD_TOO_LARGE', 'payload 超过 ' + MAX_PAYLOAD + ' 字节');
+  }
   const survey = db.prepare('SELECT survey_id, rule_version, expected FROM a2a_surveys WHERE survey_id = ?').get(env.survey_id) as { survey_id: string; rule_version: string; expected: string } | undefined;
   // 没 create 过的调查不收：否则版本检查被跳过，任意 survey_id 都能往内部区写
   if (!survey) throw new A2AError('UNKNOWN_SURVEY', `没有这场调查: ${env.survey_id}（先 a2a create）`);

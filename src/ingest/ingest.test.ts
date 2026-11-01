@@ -271,9 +271,60 @@ test('提交：只提交本批文件，别的未复核改动不被带进去', ()
     writeFileSync(join(batch, 'a.md'), MD, 'utf8');
     meta(batch, [{ src: 'a.md', target: 'company/本批.md', kind: 'markdown' }]);
     const r = applyBatch(batch, vault);
-    assert.ok(commitVault(vault, 'ingest: 本批', [...r.added, ...r.modified, ...r.originals]));
+    assert.ok(commitVault(vault, 'ingest: 本批', [...r.added, ...r.modified]));
     const files = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=', 'HEAD'], { cwd: vault, encoding: 'utf8' }).trim().split('\n');
     assert.deepEqual(files, ['company/本批.md']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('提交：原件永不进 git（vault 有 .gitignore 时也不报错）', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: vault });
+    writeFileSync(join(vault, '.gitignore'), '_originals/\n', 'utf8');
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    writeFileSync(join(batch, 'x.pdf'), Buffer.from('%PDF-1.4'));
+    meta(batch, [
+      { src: 'a.md', target: 'company/术语.md', kind: 'markdown' },
+      { src: 'x.pdf', target: '_originals/x.pdf', kind: 'original' },
+    ]);
+    const r = applyBatch(batch, vault);
+    const hash = commitVault(vault, 'ingest: ' + r.added.join(','), [...r.added, ...r.modified]);
+    assert.ok(hash);
+    const tracked = execFileSync('git', ['ls-files', '_originals'], { cwd: vault, encoding: 'utf8' }).trim();
+    assert.equal(tracked, '', '原件不得进 git');
+    assert.ok(existsSync(join(vault, '_originals/x.pdf')), '原件仍应在磁盘');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('提交：把 _originals 传给 commitVault 必须被拒（D14）', () => {
+  const { dir, vault } = setup();
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: vault });
+    assert.throws(() => commitVault(vault, 'x', ['_originals/a.pdf']), /_originals/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('锁：残留锁（pid 不存在）可接管；活锁仍拒绝', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    mkdirSync(join(vault, '.git'), { recursive: true });
+    writeFileSync(join(vault, 'a.md'), MD, 'utf8');
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    meta(batch, [{ src: 'a.md', target: 'company/a.md', kind: 'markdown' }]);
+    const lock = join(vault, '.git', 'anc-ingest.lock');
+    writeFileSync(lock, JSON.stringify({ pid: 999999, started_at: '2020-01-01T00:00:00.000Z' }), 'utf8');
+    const r = applyBatch(batch, vault);
+    assert.deepEqual(r.added, ['company/a.md']);
+    meta(batch, [{ src: 'a.md', target: 'company/b.md', kind: 'markdown' }]);
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, started_at: new Date().toISOString() }), 'utf8');
+    assert.throws(() => applyBatch(batch, vault), (e: unknown) => (e as IngestError).code === 'VAULT_BUSY');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

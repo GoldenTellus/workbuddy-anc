@@ -120,18 +120,18 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 
 ## 2. 阶段 A:裁决补全(先把 §9 清空)
 
-**为什么排第一**:§9 五项里,资料上云、放宽 @、取消复核已裁决(D19–D21),剩后台长任务与 A2A 通道两项待定(D22–D23)。不定这两项就进 C 阶段,等于边做边改需求。
+**为什么排第一**:§9 五项里,资料上云、放宽 @、取消复核、后台任务形态、A2A 通道全部已裁决(D19–D23),A 阶段于 2026-11-02 收口。
 
 | # | 裁决 | 现在的事实 | 怎么定 | 规模 |
 |---|---|---|---|---|
 | A1 | **D19 资料不上云(已裁决 2026-11-02)** | WorkBuddy 推理在腾讯云;正文进对话即上传 | **已定:不上云。** 任何 vault 正文都不作为对话内容;摘要由本地脚本生成;落地与验收见 C13 | 已落账 |
 | A2 | **D20 不放宽 @(已裁决 2026-11-02)** | T7 已过;D8 是"两个 bot 都 @ 才回应" | **已定:维持 D8,不放宽。** 公司 bot 与个人 bot 都保持 @ 才回应;部门群/全员群同样不放开;提醒文案继续写 @ 写法 | 已落账 |
 | A3 | **D21 复核永久保留(已裁决 2026-11-02)** | 现在每批人工看 diff 后手提交;P0-2 让 `--commit` 本身有 bug | **已定:复核不取消。** 入库永远走"校验 → 管理员看 diff → 手动提交";`--commit` 只作为复核通过后的一次性提交命令,不设自动模式;H1/H2 仍需修好它 | 已落账 |
-| A4 | **D22 后台长任务形态** | §5.5 只写了"按发送者隔离 + needs_review + 不自动重试",没有执行器设计 | 定:任务 = SQLite 行(`kind=background`),执行者是 WorkBuddy 会话;小服务只负责状态机与超时;中断即 `needs_review`,所有者确认才重排 | S |
-| A5 | **D23 A2A 通道** | T14(个人 bot 以员工身份发群消息)未测 | 先测 T14(半天)。通 → 自动通道进 C4;不通 → **员工转发即为终态**,FORK §5.6 去掉"等 T14"的悬置表述 | M |
+| A4 | **D22 后台长任务形态(已裁决 2026-11-02)** | §5.5 只写了语义,没定执行器 | **已定:执行器仍是 WorkBuddy**,任务是 SQLite 行(`kind=background`),小服务只管状态/超时/`needs_review`/不自动重试;不写调度器 | 已落账 |
+| A5 | **D23 A2A 通道(已裁决 2026-11-02)** | T14 未测;本机只有公司账号,无法测"个人 bot 以员工身份发群消息" | **已定:默认走员工转发(D9)**。只读探测到客户端有 `sendReply` 系列方法,但那只证明"能回复当前 AIBot 会话";T14 在第一个员工装好个人 bot 当天实测,通则由 C4 实现自动通道,不通则员工转发写死 | 已落账 |
 | A6 | 回写 FORK §9 | — | §9 五项全部移入 D19–D23 或"不做";§9 只剩真正未解的技术未知 | XS |
 
-**gate A**:§9 原先的五项裁决全部落账(D19–D21 已定,D22–D23 待定后落账);§9 只剩非裁决类的技术未知(访谈 bot 设计、改写上游 SPEC),不再有"要不要做"的悬置项。
+**gate A ✅(2026-11-02 达成)**:§9 五项裁决全部落账(D19–D23);§9 只剩非裁决类的技术未知(访谈 bot 沿用 D22 的形态、改写上游 SPEC)。下一阶段:§3 的 R0。
 
 ---
 
@@ -151,24 +151,37 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 
 > R0 是整份计划的信任基础。没有 R0,R1 迁移完成后你只能看到"doctor 全 PASS",而它已经骗过一次。
 
+**R0 ✅ 2026-11-02**:`doctor` 从 18 项扩到 23 项(新增 `bot-process-owner`、`secrets-acl`、`deploy-layout`,任务从 5 个扩到 8 个并校验 principal),`-SelfTest` 六条全绿。首轮实测 **5 个 FAIL**,同日已修掉两个(见下),剩 **3 个**全部属于 R1:
+
+| FAIL | 归属 | 状态 |
+|---|---|---|
+| `bot-process-owner`:WorkBuddy 跑在 Administrator,期望 `anc-bot` | R1 | 待迁 |
+| `task-anc-patch-guard` / `task-anc-workbuddy-launch`:principal=Administrator | R1 | 待迁 |
+| `secrets-acl`:secrets 与其下文件对 `BUILTIN\Users` 可读 | P0-1 | **已修**(三步 icacls;`LOCAL SERVICE` 读探针退出码 0) |
+| `deploy-layout`:`ProgramData\anc\ingest` 与 `render` 是文件 | P1-3 | **已修**(删坏文件 + `scripts/deploy.ps1 -Apply` 部署 45 个文件并逐文件对拍) |
+
+> 副产物:`-SelfTest` 顺带证伪了一条运维命令。只做 `icacls /inheritance:r /grant ...` **不会**移除 `BUILTIN\Users`(继承 ACE 会被转成显式 ACE 留住);必须再跑 `/remove:g "BUILTIN\Users" "Everyone" "Authenticated Users" /T`。doctor 的 FIX 文案与 OPS.md 已按正确的三步写。
+
 ### R1–R8
 
 | # | 项 | 现状 | 闭合判据 | 依赖 | 规模 |
 |---|---|---|---|---|---|
-| R1 | 运行身份迁到 `anc-bot` | 8 个 WorkBuddy 进程 owner = Administrator;`anc-patch-guard`/`anc-workbuddy-launch` principal = Administrator | REBUILD §4 走完;`APPLIED mode=hash`;群内应答正常;`anc-cleanup -MediaDir` 参数化;R0 四项全 PASS | R0 | M |
-| R2 | 真机注销后无人登录 | 只做过"停 WorkBuddy"代理测试 | 注销 → 到点提醒照发(记时间戳 + 群消息 ID) | R1 | S |
+| R1 | 运行身份迁到 `anc-bot` **(blocker：需人工切换用户，2026-11-02 起挂起)** | 8 个 WorkBuddy 进程 owner = Administrator;`anc-patch-guard`/`anc-workbuddy-launch` principal = Administrator | REBUILD §4 走完;`APPLIED mode=hash`;群内应答正常;`anc-cleanup -MediaDir` 参数化;R0 四项全 PASS | R0 | M |
+| R2 | 真机注销后无人登录 **（依赖 R1，挂起）** | 只做过"停 WorkBuddy"代理测试 | 注销 → 到点提醒照发(记时间戳 + 群消息 ID) | R1 | S |
 | R3 | 升级通知 + 非执行人拒绝 | 只有单测 | 真实群第 4 次未回应 → 交办人收到通知;非执行人说「#n 完成」被拒 | — | S |
 | R4 | 跨天访谈 | 11 题一晚做完 | 跨天一场访谈完整走完,报告只在内部区 | — | S |
-| R5 | 干净机计时 | 未做 | 第二个 Windows 用户照 ONBOARDING 从零走完,记录耗时 | R1 | M |
+| R5 | 干净机计时 **（依赖 R1，挂起）** | 未做 | 第二个 Windows 用户照 ONBOARDING 从零走完,记录耗时 | R1 | M |
 | R6 | T13 同用户另一工作区 | 只验跨用户 | 同用户、另一项目工作区读不到 `Claw\CODEBUDDY.md` | — | S |
 | R7 | 真升级回归 | 厂商 5.9.3 | **事件触发型**:发版后按 §11 三段回归;挂台账带负责人 | 厂商 | 待触发 |
 | R8 | 收尾台账统一 | 清单分散;VERIFY 18/22 | 单一清单(R0–R7),每条带证据;VERIFY 补到 22/22,未测标"未测" | 全部 | S |
 
-**gate R**:R0–R6、R8 全绿 + R7 挂触发标记 + `doctor -SelfTest` 全绿。
+**gate R（2026-11-02 调整）**：R0 ✅；**R1/R2/R5 因「需人工切换用户」挂起**并记在台账；R3/R4/R6 待真实群与 UI 验收；R7 挂触发型标记。**H 阶段不依赖这些，先推进**——硬化是纯代码与测试，不受运行身份影响；等切换窗口再回来补 R1–R2、R5。
 
 ---
 
 ## 4. 阶段 H:硬化(审计 P0/P1 → 测试与告警)
+
+> **不依赖 R1**：以下全部是代码与测试，可在运行身份迁移挂起时推进。做完 H，等切换窗口回来补 R1–R2、R5。
 
 每条都要求"失败会红"的测试,不接受"改好了但没测"。
 
@@ -188,7 +201,31 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | H12 | 日志与告警面 | `anc-loop.cmd`、`loop.log` 494 KB | `--no-warnings`;按天轮转;所有 `catch` 要么重试要么告警 | 注入异常 → 告警文件有记录 |
 | H13 | 测试补 6 类缺口 | 测试矩阵 | 并发/多进程、跨天链、HEAD≠工作区、originals+commit、a2a 越区、`backup.ts` | 60 → 约 85–95 项 |
 
+**H3 / H5 / H6 ✅ 2026-11-02**(语义与越区):
+
+| 项 | 改了什么 | 验证 |
+|---|---|---|
+| H3 `base_hash` 语义 | **定为「读取时工作区内容的 git blob hash」，不是 HEAD**。理由：复核窗口里工作区会领先 HEAD（上一批已写入未提交），比 HEAD 会放过覆盖未复核改动——与 D13 的复核语义相反。FORK §5.4 措辞已按此改；错误信息带「当前/传入」前 12 位便于重读 | 既有 base hash 用例（比工作区）继续通过；篡改后 hash 被拒 |
+| H5 工作时段/跨天 | carry 不再被 `pending` 挡住（正常续排的任务一整天都是 pending，"次日顺延并告知"永远发不出去）；顺延目标 = 次日同一时分，非工作时段再推到工作起点；去重键改**本地日期**（原来用 UTC，北京 00:00–08:00 会算成前一天） | 新用例：昨天有 pending 提醒也能收到顺延通知、提醒重排到 10:00；同日第二次 tick 不重复告知 |
+| H6 a2a 越区 | 新增 `assertInternalDir`：绝对路径 → **越区（不依赖存在性）** → 存在 → 是 git 仓库；CLI 用 `--shared` 比对；payload ≤256 KB | 新用例：相对路径 / 非 git / 共享区或其子目录都拒；超限 payload 被拒且不落库 |
+
+**H-1 批次（H7 / H10 / H12）✅ 2026-11-02**：
+
+| 项 | 改了什么 | 验证 |
+|---|---|---|
+| H7 出站扫描 | 定「命中即阻断」为终态，`FORK §8` 文字已改；脱敏文本只用于日志与诊断，不用于发送 | 既有拦截/脱敏用例继续通过 |
+| H10 技能 frontmatter | `light/skills/anc-ingest-company/SKILL.md` 的说明文字移出 `---`；`org.ts` 的 frontmatter 解析遇到非 `key: value` 行**报错**而不是静默跳过 | 新用例：frontmatter 混入说明文字 → `loadOrg` 抛错；技能文件现在可被标准 YAML 解析 |
+| H12 日志与告警面 | `anc-loop.cmd` 加 `--no-warnings` + 5 MB 轮转（保留 `loop.log.1`）；`loop.ts` 的 `requeueTransientFailures` 失败不再空吞，改打 `WARN` | 6 MB 夹具验证轮转片段；**实测发现任务指向 `service\anc-loop.cmd`（旧副本）而不是 `bin`**——已把 `anc-service` 的 Action 改指 `<bin>\anc-loop.cmd`、删除旧副本，tick 增量从 239 B（带 warning）降到 70 B（单行 JSON）。这正是 H9 要消除的双份 |
+
 **gate H**:13 条全绿;`npm test` 全绿且新增用例都能在旧代码上红。
+
+**H1 / H2 / H4 ✅ 2026-11-02**(数据不可逆与 7×24 单点,先做):
+
+| 项 | 改了什么 | 验证 |
+|---|---|---|
+| H1 原件不进 git | `ingest/cli.ts:64` 只把 `added`/`modified` 交给 `commitVault`;`git.ts` 收到 `_originals/` 路径直接抛错(D14 的代码级守卫) | 新用例:vault 带 `.gitignore: _originals/` 时正常提交,`git ls-files _originals` 为空,磁盘上原件仍在 |
+| H2 失败必须非 0 | `commit 失败` 从"只记 `commit_error` 仍 `ok:true`"改成 `exit 1` + `ok:false` + `code=COMMIT_FAILED`,并说明"文件已写入、批次已归档、需人工提交" | 实测:对非 git 目录 `--commit` → `EXIT=1`,`ok:false`,文件确已写入(部分成功语义清楚) |
+| H4 锁自愈 | 锁文件写 `{pid, started_at}`;`pid` 不存在或年龄 >10 分钟 → 接管,旧锁改名 `.stale-<ts>` 留档并打 `WARN`;解析不了的锁按占用处理(fail-closed) | 新用例:死 pid 的锁被接管后入库成功;活锁仍 `VAULT_BUSY` |
 
 ---
 

@@ -8,7 +8,7 @@
 
 | 任务 | 触发 | 身份 | 执行 | 作用 |
 |---|---|---|---|---|
-| `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <svc>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
+| `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <bin>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
 | `anc-backup` | 每天 02:00 起每 1 小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `backup-anc.ps1 -Destination <第二块盘>` | `VACUUM INTO` 快照 + 完整性校验，保留 14 份并复制到第二块盘；错过 02:00 会自动补 |
 | `anc-boot-alert` | 开机后每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | `boot-alert.ps1` | WorkBuddy 没起来就经运维群 webhook 告警 |
 | `anc-cleanup` | 每天 03:00 | `SYSTEM` | `cleanup-media.ps1 -MediaDir <bot 用户的 TEMP>\workbuddy-wecom-media -Days 7` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM）；遇到 junction / 符号链接一律跳过。**`-MediaDir` 写死了 bot 用户，换运行身份时要同步改** |
@@ -19,11 +19,29 @@
 
 PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册脚本尚未入库，重建时按此表手工注册（见 [REBUILD.md](./REBUILD.md)）。
 
+### 部署（一条命令）
+
+```powershell
+# 先看计划（默认 dry-run）
+powershell -File scripts\deploy.ps1
+# 落盘：备份 → 复制 → 逐文件对拍 hash → 失败回滚
+powershell -File scripts\deploy.ps1 -Apply
+```
+
+把 `src\{service,ingest,render}`、`scripts\*.ps1|*.cmd|*.vbs`、`scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 下的 `service|ingest|render|bin|patch`，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
+
 ## 账号与凭据
 
 - `%ProgramData%\anc\accounts` **只给 Administrators 与 SYSTEM**：里面有 `anc-bot` 密码和按名单开出的只读账号初始密码，bot 账号（标准用户）不得读取；
 - 员工账号用 `scripts\provision-vault-accounts.ps1 -Csv <名单> -DryRun` 先看计划，再正式执行；CSV 用 UTF-8 写；
 - 凭据文件发给本人后删除，不进仓库、不进聊天。
+- **收紧 `secrets` 必须是三步**（只做 `/inheritance:r` + `/grant` 不会移除 `BUILTIN\Users`，它会作为显式 ACE 留下）：
+  ```powershell
+  icacls C:\ProgramData\anc\secrets /inheritance:r
+  icacls C:\ProgramData\anc\secrets /remove:g "BUILTIN\Users" "Everyone" "Authenticated Users" /T
+  icacls C:\ProgramData\anc\secrets /grant "NT AUTHORITY\SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" "<bot用户>:(OI)(CI)RX" /T
+  ```
+  改完跑 `doctor`，`secrets-acl` 必须转 PASS；再在群里发一条消息确认提醒仍能发出。
 
 ## 维护窗口（升级/排障）
 
@@ -57,8 +75,10 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor.ps1        # 只读体检：专用用户、任务、心跳、版本、补丁、SMB/NTFS、密钥、时区、数据库
-powershell -File scripts\watchdog.ps1      # 手动跑一次看有没有要告警的
+powershell -File scripts\doctor.ps1              # 只读体检（23 项）：专用用户、进程 owner、8 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
+powershell -File scripts\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
+powershell -File scripts\watchdog.ps1            # 手动跑一次看有没有要告警的
 ```
 
 doctor 退出码：0 无 FAIL，1 有 FAIL，并在末尾列出 `FIX`。全 PASS 是上线门槛之一。
@@ -140,6 +160,8 @@ Get-ScheduledTaskInfo -TaskName 'anc-service' | Select-Object LastRunTime, LastT
 
 # 看服务日志
 Get-Content C:\ProgramData\anc\data\loop.log -Tail 20
+# 日志超过 5 MB 由 anc-loop.cmd 轮转为 loop.log.1（只留一份）；该命令带 --no-warnings，屏蔽 sqlite 实验特性告警
+# loop.log 末尾就是每次 tick 的 JSON（enqueued/sent/failed/skipped/requeued）；failed>0 时看 outbox 的 last_error
 
 # 看备份日志
 Get-Content C:\ProgramData\anc\data\backup.log -Tail 20

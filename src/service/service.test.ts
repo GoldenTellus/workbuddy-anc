@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -557,3 +557,61 @@ test('outbox：网络错误 10 次才判死，下一 tick 会被重新入队；�
   assert.equal(r2.status, 'failed');
   assert.equal(outbox.requeueTransientFailures(db, new Date().toISOString()), 0, '业务错误不捞回');
 }));
+test('A2A：内部区必须是独立 git 目录，且不能是共享区', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-a2a-zone-'));
+  try {
+    const internal = join(dir, 'vault-internal');
+    const shared = join(dir, 'vault-shared');
+    mkdirSync(internal, { recursive: true });
+    mkdirSync(shared, { recursive: true });
+    assert.throws(() => a2a.assertInternalDir('relative/path'), /绝对路径/);
+    assert.throws(() => a2a.assertInternalDir(internal), /不是 git 仓库/);
+    mkdirSync(join(internal, '.git'), { recursive: true });
+    mkdirSync(join(shared, '.git'), { recursive: true });
+    assert.equal(a2a.assertInternalDir(internal), internal);
+    assert.throws(() => a2a.assertInternalDir(shared, shared), /不能是共享区/);
+    assert.throws(() => a2a.assertInternalDir(join(shared, 'sub'), shared), /不能是共享区/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('A2A：payload 超过上限被拒，且不落库', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-a2a-big-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const internal = join(dir, 'vault-internal');
+    a2a.createSurvey(db, { surveyId: 's1', ruleVersion: 'r1', expected: ['u1'], questionCount: 1 });
+    const env = a2a.parseEnvelope(JSON.stringify({
+      protocol: a2a.PROTOCOL, survey_id: 's1', message_id: 'q1', type: 'answer', rule_version: 'r1', payload: 'x'.repeat(a2a.MAX_PAYLOAD + 1),
+    }));
+    assert.throws(() => a2a.submit(db, env, internal, 'u1'), (e: unknown) => (e as { code?: string }).code === 'PAYLOAD_TOO_LARGE');
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM a2a_messages').get().c, 0);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('顺延：昨天有 pending 提醒也照样告知（生产态），且提醒重排到开工时间', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-carry-pending-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    config.setConfig(db, 'work_start', '09:00');
+    config.setConfig(db, 'work_end', '18:00');
+    const t = tasks.createTask(db, { title: '昨天的活', chatId: 'chat-A', dueAt: '2026-10-30T10:00:00+08:00' });
+    reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-30T10:00:00+08:00' });
+    const r = await loopTick(db, { now: '2026-10-31T08:00:00+08:00', send: async () => {} });
+    assert.ok(r.enqueued >= 1);
+    assert.ok(outbox.listOutbox(db, { limit: 50 }).some((m) => (m.dedupe_key || '').startsWith('carry:')), '应有顺延通知');
+    const next = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ? AND status = 'pending' ORDER BY id DESC").get(t.id) as { due_at: string; status: string };
+    assert.equal(next.due_at, '2026-10-31T02:00:00.000Z');
+    // 同一天再 tick 一次：不重复告知
+    await loopTick(db, { now: '2026-10-31T08:05:00+08:00', send: async () => {} });
+    const carries = outbox.listOutbox(db, { limit: 100 }).filter((m) => (m.dedupe_key || '').startsWith('carry:'));
+    assert.equal(carries.length, 1);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

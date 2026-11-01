@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { renderTemplate, checkLength, writeAtomic } from './render.ts';
 import { renderOrg } from './index.ts';
+import { loadOrg } from './org.ts';
 
 test('模板：占位符替换，未知占位符报错', () => {
   assert.equal(renderTemplate('你好 {{name}}', { name: '张三' }), '你好 张三');
@@ -188,6 +189,16 @@ test('原子写：连续多次写备份名不撞、不覆盖，且只保留最�
     // 最新一份备份是倒数第二次写入的内容
     const newest = baks.sort().at(-1)!;
     assert.equal(readFileSync(join(dir, newest), 'utf8'), 'v13');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('org：frontmatter 混入说明文字时解析报错（不静默跳过）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-org-badfm-'));
+  try {
+    writeFileSync(join(dir, 'company.md'), '---\n> 说明文字\nname: 示例\n---\n', 'utf8');
+    assert.throws(() => loadOrg(dir), /frontmatter 行不合法/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
