@@ -33,6 +33,15 @@ Remove-Item C:\ProgramData\anc\data\maintenance.flag
 
 维护结束后 guard 会在一分钟内自动拉起（自带 10 分钟节流，失败会告警）。
 
+## 为什么不再弹窗
+
+以登录用户身份运行的任务（`anc-patch-guard`、`anc-workbuddy-launch`）如果直接调 `powershell.exe`，每次触发都会闪一个控制台窗口（守卫每分钟一次）。现在统一用 `scripts/run-hidden.vbs` 包一层：
+
+```
+wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
+```
+
+`.cmd` 里再 `powershell -WindowStyle Hidden -File ...`。自愈的 Worker 与重启也都经 `.vbs` 由 Explorer 拉起，全程无窗口。改动后实测：手动触发守卫与自愈，均无可见窗口。
 ## 体检与告警
 
 ```powershell

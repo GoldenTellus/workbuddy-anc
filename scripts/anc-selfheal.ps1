@@ -54,7 +54,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$launcher" > "$out" 2>&1
     for ($attempt = 1; $attempt -le 2 -and -not $ok; $attempt++) {
         Write-Log ("worker: 第 $attempt 次启动 " + $launcher)
         # 经 Explorer 启动：与人工双击/relaunch.cmd 的路径一致，避免直接 Start-Process 导致的提前退出
-        Start-Process explorer.exe -ArgumentList $cmdFile
+        $launchVbs = "$env:ProgramData\anc\data\selfheal-launch.vbs"
+        @"
+Set sh = CreateObject("WScript.Shell")
+sh.Run """$cmdFile""", 0, False
+"@ | Set-Content $launchVbs -Encoding ascii
+        Start-Process explorer.exe -ArgumentList $launchVbs
         for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep -Seconds 2
             if (Test-Patched) { $ok = $true; break }
@@ -159,6 +164,11 @@ $workerCmd = "$env:ProgramData\anc\data\selfheal-worker.cmd"
 @echo off
 powershell -NoProfile -ExecutionPolicy Bypass -File "$self" -Worker -Repo "$Repo"
 "@ | Set-Content $workerCmd -Encoding ascii
-# 经 Explorer 拉起 Worker：脱离 WorkBuddy 的进程树，否则 WorkBuddy 退出时会被一起带走
-Start-Process explorer.exe -ArgumentList $workerCmd
+# 经 Explorer 拉起 Worker：脱离 WorkBuddy 的进程树；用 .vbs 包一层避免闪窗
+$workerVbs = "$env:ProgramData\anc\data\selfheal-worker.vbs"
+@"
+Set sh = CreateObject("WScript.Shell")
+sh.Run """$workerCmd""", 0, False
+"@ | Set-Content $workerVbs -Encoding ascii
+Start-Process explorer.exe -ArgumentList $workerVbs
 exit 0
