@@ -109,7 +109,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 
 | ID | 条款 | 来源 |
 |---|---|---|
-| O-1 | 8 个计划任务齐、principal 正确、`IgnoreNew` | OPS |
+| O-1 | 9 个计划任务齐、principal 正确、`IgnoreNew` | OPS |
 | O-2 | doctor 覆盖全部关键面,且**每项都能证明会 FAIL**(自测) | §5.10/2.0 新增 |
 | O-3 | watchdog 覆盖 WorkBuddy/心跳/outbox 积压,同类告警有冷却 | §5.10 |
 | O-4 | 备份离机(另一块物理盘或 UNC),含 vault 与 SQLite;恢复演练过 | §5.10/REBUILD |
@@ -143,7 +143,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 
 | # | 动作 | 判据 |
 |---|---|---|
-| R0.1 | doctor 任务覆盖 8/8,并校验 `Principal.UserId` 与服务身份 | 少一个任务必须 FAIL;principal 错必须 FAIL |
+| R0.1 | doctor 任务覆盖 9/9,并校验 `Principal.UserId` 与服务身份 | 少一个任务必须 FAIL;principal 错必须 FAIL |
 | R0.2 | 新增 `secrets-acl`:secrets 目录与其下全部文件对 `Users`/`Everyone`/`Authenticated Users` 无读权限 | 当前状态跑 → 必须 FAIL(P0-1 的证明) |
 | R0.3 | 新增 `deploy-layout`:`%ProgramData%\anc\{ingest,render,service,bin,patch}` 是目录、patch 目录与仓库 `scripts/workbuddy-patch` 逐文件 hash 一致 | `ingest`/`render` 是文件时必须 FAIL |
 | R0.4 | `dedicated-user` 拆三查:账号存在 / 非管理员 / **WorkBuddy 进程 owner == 配置账号** | 当前状态(Administrator)跑 → 必须 FAIL |
@@ -197,7 +197,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | H8 | check-public 可执行且只有一份实现 | ~~`scripts/check-public.sh`~~ → `scripts/check-public.mjs` | **已落地**:删 `.sh`、写 Node 版(逐文件 JS 正则,不用 git grep——POSIX ERE 的 `[\s]` 会被当字符类);加 `.gitattributes`(`*.sh eol=lf`);`*.test.ts` 白名单保留 | 干净基线零输出 exit 0;注入假 webhook(经 `git add -N`)必须命中;清理后恢复 0 |
 | H9 | 唯一来源 | `ProgramData\{ingest,render}`、技能、`doctor -Repo` | 删坏文件;新增 `deploy.ps1`;技能与 doctor 改部署路径;合并两份公司 persona | 移走工作副本后入库仍可用 |
 | H10 | 技能 frontmatter | `light/skills/anc-ingest-company/SKILL.md:1-6` | 说明移出 frontmatter;`org.ts` 解析器加严格断言 | PyYAML 解析通过 |
-| H11 | 任务注册脚本 | `OPS.md:20` | **已落地**：`scripts/register-tasks.ps1`，8 个任务、幂等覆盖、默认 dry-run；`-BotUser`/`-BackupDestination`/`-CleanupMediaDir` 可覆盖；交互类任务在 bot 用户没有配置目录时**拒绝** `-Apply`（避免 R1 前把守卫/启动器改到未登录用户） | dry-run 输出 8 行且 principal 正确；`-Apply` 前检查用户配置目录 |
+| H11 | 任务注册脚本 | `OPS.md:20` | **已落地**：`scripts/register-tasks.ps1`，9 个任务、幂等覆盖、默认 dry-run；`-BotUser`/`-BackupDestination`/`-CleanupMediaDir` 可覆盖；交互类任务在 bot 用户没有配置目录时**拒绝** `-Apply`（避免 R1 前把守卫/启动器改到未登录用户） | dry-run 输出 9 行且 principal 正确；`-Apply` 前检查用户配置目录 |
 | H12 | 日志与告警面 | `anc-loop.cmd`、`loop.log` 494 KB | `--no-warnings`;按天轮转;所有 `catch` 要么重试要么告警 | 注入异常 → 告警文件有记录 |
 | H13 | 测试补 6 类缺口 | 测试矩阵 | 并发/多进程、跨天链、HEAD≠工作区、originals+commit、a2a 越区、`backup.ts` | 60 → 约 85–95 项 |
 
@@ -238,7 +238,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 
 | # | 缺口 | 来源 | 验收 | 依赖 | 规模 |
 |---|---|---|---|---|---|
-| C1 | HTTP 接口 + token + 存活探测 | §5.5 / LOCAL-SERVICE:100 | 无 token 全拒;有 token 可用;watchdog 改用存活探测 | — | M |
+| C1 | HTTP 接口 + token + 存活探测 | §5.5 / LOCAL-SERVICE:100 | **已落地（2026-11-02）**：`src/service/http.ts` + `cli serve`，只监听 `127.0.0.1:17891`；未配 token 业务路由 503（fail-closed）、缺 401、错 403；`/__anc_health` 免 token；第 9 个任务 `anc-http`（LOCAL SERVICE，常驻）；doctor 加 `http-health`、watchdog 加探测 | `http.test.ts` 4 项；实机 health/401/403/200 实测 | M |
 | C2 | vault 投影 + `reproject` | §5.5 / INGEST:80 | 删投影 → 重建 → hash 对拍一致 | C1(可选) | M |
 | C3 | 后台任务 + `needs_review` | §5.5 / D22 | 执行器被杀 → 进 `needs_review`;所有者确认才重排 | A4 | L |
 | C4 | A2A 自动通道 | §5.6 / D23 | 若 T14 通:个人 bot 发群消息 → 自动归档;不通:员工转发写死 | A5 | L |

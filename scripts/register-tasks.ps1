@@ -1,4 +1,4 @@
-﻿# 注册/修复 8 个计划任务（OPS.md「计划任务」表的可执行版本）
+﻿# 注册/修复 9 个计划任务（OPS.md「计划任务」表的可执行版本）
 # 默认 dry-run；-Apply 才落盘。已存在同名任务会被覆盖（Register-ScheduledTask -Force）。
 #
 # 注意：两个交互类任务（anc-workbuddy-launch / anc-patch-guard）的 principal 是 -BotUser，
@@ -14,6 +14,7 @@ param(
     [string]$ServiceAccount = 'LOCAL SERVICE',
     [string]$CleanupMediaDir = '',
     [string]$BackupDestination = 'E:\anc-backup',
+    [string[]]$Only = @(),
     [switch]$Apply,
     [switch]$ForceInteractive
 )
@@ -121,6 +122,13 @@ $defs = @(
         Settings = (New-Settings 'PT3M')
     },
     @{
+        Name = 'anc-http'; Desc = '本地 HTTP 面：只监听 127.0.0.1，供 watchdog 与后台任务用'
+        Triggers = @((New-ScheduledTaskTrigger -AtStartup), (New-EveryMinutesTrigger 1))
+        Action = (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + (Join-Path $bin 'anc-http.cmd') + '"'))
+        Principal = (New-ServicePrincipal $ServiceAccount)
+        Settings = (New-Settings 'PT0M')
+    },
+    @{
         Name = 'anc-update-watch'; Desc = '每天 09:00 查厂商更新接口，有新版本发运维群'
         Triggers = @((New-ScheduledTaskTrigger -Daily -At '09:00'))
         Action = (New-PsAction 'check-workbuddy-update.ps1')
@@ -128,6 +136,12 @@ $defs = @(
         Settings = (New-Settings 'PT5M')
     }
 )
+
+# 只注册指定的任务（R1 之前用 -Only anc-http 之类，避免动到交互类任务的 principal）
+if ($Only.Count -gt 0) {
+    $defs = @($defs | Where-Object { $Only -contains $_.Name })
+    if ($defs.Count -eq 0) { Fail ('没有匹配的任务: ' + ($Only -join ',')) '用 -Only 指定 OPS 表里的任务名' 2 }
+}
 
 # 计划摘要
 '{0,-24} {1,-34} {2}' -f 'TASK', 'PRINCIPAL', 'ACTION'
@@ -170,5 +184,5 @@ if ($failed.Count -gt 0) {
     Fail ('注册失败: ' + ($failed -join '; ')) '检查是否有同名任务被策略锁定，或用管理员重跑' 1
 }
 
-'已注册 {0} 个任务。跑 scripts\doctor.ps1 复核 8/8 与 principal。' -f $defs.Count
+'已注册 {0} 个任务。跑 scripts\doctor.ps1 复核 9/9 与 principal。' -f $defs.Count
 exit 0

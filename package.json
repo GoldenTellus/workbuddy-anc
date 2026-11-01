@@ -22,7 +22,7 @@
     "bot"
   ],
   "scripts": {
-    "test": "node --test scripts/anc-bind/bind.test.mjs src/service/service.test.ts src/ingest/ingest.test.ts src/render/render.test.ts src/render/onboard.test.ts",
+    "test": "node --test scripts/anc-bind/bind.test.mjs src/service/service.test.ts src/service/http.test.ts src/ingest/ingest.test.ts src/render/render.test.ts src/render/onboard.test.ts",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs",
     "test:service": "node --test src/service/service.test.ts",
     "test:ingest": "node --test src/ingest/ingest.test.ts",

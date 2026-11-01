@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// 本地小服务 CLI（先用脚本方式给公司 bot 调，HTTP 监听等 T17/T6）
+// 本地小服务 CLI：脚本方式给公司 bot 调（bind/task/reminder/outbox/a2a/config/loop/serve）
 // 用法见 docs/LOCAL-SERVICE.md；所有命令支持 --db 与 --json。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { openDb, DEFAULT_DB } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
@@ -14,6 +14,7 @@ import * as backup from './backup.ts';
 import * as a2a from './a2a.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
+import { startServer } from './http.ts';
 
 type Args = Record<string, string | true> & { _: string[] };
 
@@ -63,7 +64,7 @@ function numArg(v: unknown, def: number, min = 1, max = 1000): number {
 
 const db = openDb(dbPath);
 
-if (!group) fail('缺少命令组（bind / task / reminder / outbox）');
+if (!group) fail('缺少命令组（bind / task / reminder / outbox / a2a / config / backup / loop / serve）');
 
 try {
   if (group === 'bind') {
@@ -210,6 +211,39 @@ try {
       config.setConfig(db, key, String(args.value ?? '').trim());
       out({ ok: true, key, value: config.getConfig(db, key) });
     } else fail('未知 config 子命令');
+  } else if (group === 'serve') {
+    // 长驻 HTTP 面：只监听 127.0.0.1。token 从 secrets 读，未配置时业务路由全 503（fail-closed）
+    const secretsDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');
+    const tokenFile = typeof args['token-file'] === 'string' ? args['token-file'] : join(secretsDir, 'service-token.txt');
+    let token: string | null = null;
+    if (existsSync(tokenFile)) {
+      const raw = readFileSync(tokenFile, 'utf8').trim();
+      token = raw || null;
+    }
+    if (!token) console.error('WARN  未配置 token（' + tokenFile + '）：业务路由会全部 503，只有 /__anc_health 可用');
+    const logPath = join(dirname(dbPath), 'loop.log');
+
+    const s = await startServer({
+      port: numArg(args.port, 17891, 1024, 65535),
+      token,
+      health: () => {
+        let ageMin: number | null = null;
+        try { ageMin = Math.round((Date.now() - statSync(logPath).mtimeMs) / 60000); } catch { ageMin = null; }
+        return { ok: ageMin !== null && ageMin <= 10, detail: ageMin === null ? '没有 loop.log' : 'tick ' + ageMin + ' 分钟前' };
+      },
+      status: () => ({
+        open_tasks: (db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status='open'").get() as { c: number }).c,
+        pending_outbox: (db.prepare("SELECT COUNT(*) AS c FROM outbox WHERE status='pending'").get() as { c: number }).c,
+      }),
+    });
+    console.log(JSON.stringify({ ok: true, url: s.url, token_configured: Boolean(token) }));
+    const stop = (): void => {
+      void s.close().then(() => { try { db.close(); } catch { /* ignore */ } process.exit(0); });
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+    // 长驻：靠信号退出，finally 不会执行
+    await new Promise<void>(() => { /* keep alive */ });
   } else if (group === 'loop') {
     const explicit = typeof args['webhook-file'] === 'string' ? args['webhook-file'] : null;
     const chatId = typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined;

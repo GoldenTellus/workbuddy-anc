@@ -128,6 +128,7 @@ $ExpectedPrincipal = [ordered]@{
     'anc-boot-alert'       = 'LOCAL SERVICE'
     'anc-cleanup'          = 'SYSTEM'
     'anc-watchdog'         = 'LOCAL SERVICE'
+    'anc-http'             = 'LOCAL SERVICE'
     'anc-update-watch'     = 'LOCAL SERVICE'
     'anc-workbuddy-launch' = $BotUser
     'anc-patch-guard'      = $BotUser
@@ -337,6 +338,19 @@ if (-not (Test-Path $canary)) {
         elseif ($hours -gt 72) { Add-Result 'canary' 'WARN' "canary 已 $hours 小时没更新" '确认群里仍有消息' }
         else { Add-Result 'canary' 'PASS' "最近 $hours 小时内有消息且带 chatId" '-' }
     } catch { Add-Result 'canary' 'WARN' 'canary 文件无法解析' '删掉让补丁重写' }
+}
+
+# 19 HTTP 面存活（watchdog 用同一个端点判死；未注册 anc-http 时给提示而不是 FAIL）
+try {
+    $h = Invoke-RestMethod -Uri 'http://127.0.0.1:17891/__anc_health' -TimeoutSec 3
+    if ($h.ok) { Add-Result 'http-health' 'PASS' $h.detail '-' }
+    else { Add-Result 'http-health' 'FAIL' ('服务在但心跳不健康: ' + $h.detail) '检查 anc-service 是否在跑' }
+} catch {
+    if (Get-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue) {
+        Add-Result 'http-health' 'FAIL' 'anc-http 任务在但端口没响应' '看 %ProgramData%\anc\data\http.log；确认 17891 没被占用'
+    } else {
+        Add-Result 'http-health' 'WARN' 'HTTP 面未启用（没有 anc-http 任务）' '需要时跑 scripts\register-tasks.ps1 -Apply'
+    }
 }
 
 $fails = @($results | Where-Object { $_.state -eq 'FAIL' }).Count

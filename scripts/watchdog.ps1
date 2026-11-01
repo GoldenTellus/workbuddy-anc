@@ -51,6 +51,16 @@ if (Test-Path $canary) {
     } catch { }
 }
 
+# 5 HTTP 面（注册了 anc-http 才要求）：watchdog 自己也要能判断"服务在但心跳不健康"
+if (Get-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue) {
+    try {
+        $h = Invoke-RestMethod -Uri 'http://127.0.0.1:17891/__anc_health' -TimeoutSec 3
+        if (-not $h.ok) { $problems += "HTTP 面在但心跳不健康：" + $h.detail }
+    } catch {
+        $problems += 'HTTP 面没在监听（anc-http？）'
+    }
+}
+
 if ($problems.Count -eq 0) { exit 0 }
 
 # 冷却
