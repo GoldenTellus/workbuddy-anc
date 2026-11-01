@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -13,6 +13,7 @@ import * as config from './config.ts';
 import * as a2a from './a2a.ts';
 import { scanOutbound, assertSafeOutbound } from './outbound-scan.ts';
 import { tick as loopTick } from './loop.ts';
+import * as backup from './backup.ts';
 
 function withDb(fn: (db: ReturnType<typeof openDb>) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'anc-svc-'));
@@ -612,6 +613,58 @@ test('顺延：昨天有 pending 提醒也照样告知（生产态），且提�
     assert.equal(carries.length, 1);
   } finally {
     db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('备份：VACUUM INTO 快照可打开且数据一致', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-backup-snap-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    tasks.createTask(db, { title: '备份前的任务', chatId: 'chat-A' });
+    const snap = backup.backup(db, join(dir, 'snap', 'anc-snap.db'));
+    assert.ok(existsSync(snap));
+    const s2 = new DatabaseSync(snap, { readOnly: true });
+    try {
+      const n = (s2.prepare('SELECT COUNT(*) AS c FROM tasks').get() as { c: number }).c;
+      assert.equal(n, 1);
+    } finally {
+      s2.close();
+    }
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('备份：目标已存在时不覆盖、不破坏原文件', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-backup-exists-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    tasks.createTask(db, { title: 'x' });
+    const target = join(dir, 'x.db');
+    writeFileSync(target, 'not-a-db', 'utf8');
+    assert.throws(() => backup.backup(db, target));
+    assert.equal(readFileSync(target, 'utf8'), 'not-a-db', '原文件必须原样保留');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('outbox：两个连接同时领取，只有一个拿到（多进程语义）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-claim-'));
+  const path = join(dir, 'anc.db');
+  const db1 = openDb(path);
+  const db2 = openDb(path);
+  try {
+    const q = outbox.enqueue(db1, { text: 'x', chatId: 'chat-A', dedupeKey: 'k1', at: '2026-11-02T00:00:00.000Z' });
+    assert.equal(q.inserted, true);
+    assert.equal(outbox.claim(db1, q.id!, '2026-11-02T00:00:01.000Z'), true);
+    assert.equal(outbox.claim(db2, q.id!, '2026-11-02T00:00:01.000Z'), false, '第二个连接不能再领');
+  } finally {
+    db1.close();
+    db2.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -58,7 +58,7 @@ updated_at: <YYYY-MM-DD>
 ## 3. 跑入库进程
 
 ```powershell
-node E:\workbuddy-anc\src\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --shared D:\anc\vault-shared --inbox D:\anc\inbox --json
+node C:\ProgramData\anc\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --shared D:\anc\vault-shared --inbox D:\anc\inbox --json
 ```
 
 - 成功：批次会自动移到 `D:\anc\inbox\done\`；把 `added` / `modified` / `original` 转成中文摘要；

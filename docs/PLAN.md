@@ -217,7 +217,12 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | H10 技能 frontmatter | `light/skills/anc-ingest-company/SKILL.md` 的说明文字移出 `---`；`org.ts` 的 frontmatter 解析遇到非 `key: value` 行**报错**而不是静默跳过 | 新用例：frontmatter 混入说明文字 → `loadOrg` 抛错；技能文件现在可被标准 YAML 解析 |
 | H12 日志与告警面 | `anc-loop.cmd` 加 `--no-warnings` + 5 MB 轮转（保留 `loop.log.1`）；`loop.ts` 的 `requeueTransientFailures` 失败不再空吞，改打 `WARN` | 6 MB 夹具验证轮转片段；**实测发现任务指向 `service\anc-loop.cmd`（旧副本）而不是 `bin`**——已把 `anc-service` 的 Action 改指 `<bin>\anc-loop.cmd`、删除旧副本，tick 增量从 239 B（带 warning）降到 70 B（单行 JSON）。这正是 H9 要消除的双份 |
 
-**gate H**:13 条全绿;`npm test` 全绿且新增用例都能在旧代码上红。
+**H9 / H13 ✅ 2026-11-02**（gate H 收口）：
+
+| 项 | 改了什么 | 验证 |
+|---|---|---|
+| H9 唯一来源 | 技能里 4 处 `E:\workbuddy-anc\...` 改成 `C:\ProgramData\anc\{ingest,patch}\...`；`setup-anc-bot.ps1` 删掉第二份补丁副本（不再复制到 `%USERPROFILE%\anc\patch`），启动命令改指部署目录；`doctor` 的 `-Repo` 默认改空、manifest 改从 `%ProgramData%\anc\patch` 读（`-Repo` 只在和仓库比对时传）；两份公司 persona 内容对齐（只剩变量差异） | `doctor` 无参数不再依赖工作副本（`secrets-in-git` 转 WARN 并提示传 `-Repo`）；带 `-Repo` 时 `deploy-layout`/`secrets-in-git` 恢复 PASS |
+| H13 测试补强 | 补 `backup.ts`（快照可打开且数据一致；目标已存在时不覆盖不破坏）与「两个连接同时领取只有一个拿到」的多进程语义；跨天链/HEAD≠工作区/originals+commit/a2a 越区已在 H1–H6 落地 | `npm test` 67 → **70**，全绿 |
 
 **H1 / H2 / H4 ✅ 2026-11-02**(数据不可逆与 7×24 单点,先做):
 

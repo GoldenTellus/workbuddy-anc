@@ -27,7 +27,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\anc-s
 ## 1. 先侦察（只读，不改任何东西）
 
 ```powershell
-node E:\workbuddy-anc\scripts\workbuddy-patch\inspect.mjs
+node C:\ProgramData\anc\patch\inspect.mjs
 powershell -File C:\ProgramData\anc\bin\doctor.ps1
 ```
 
@@ -44,7 +44,7 @@ powershell -File C:\ProgramData\anc\bin\doctor.ps1
 启动器默认按锚点模式打补丁，不需要改代码：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File E:\workbuddy-anc\scripts\workbuddy-patch\launch-patched.ps1
+powershell -ExecutionPolicy Bypass -File C:\ProgramData\anc\patch\launch-patched.ps1
 ```
 
 确认日志出现 `INJECTED mode=anchor version-unverified` 和随后的 `APPLIED mode=anchor`（只有前者、或出现 `ANCHOR-MISS` = 没生效），然后走第 3 步回归。
@@ -87,7 +87,7 @@ powershell -ExecutionPolicy Bypass -File E:\workbuddy-anc\scripts\workbuddy-patc
 
 ```powershell
 # 临时关补丁启动（不注入，行为回到原版）
-powershell -File E:\workbuddy-anc\scripts\workbuddy-patch\launch-patched.ps1 -NoPatch
+powershell -File C:\ProgramData\anc\patch\launch-patched.ps1 -NoPatch
 # 或严格模式：版本不符时拒绝启动
 powershell -File ...\launch-patched.ps1 -Strict
 ```

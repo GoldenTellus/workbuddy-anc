@@ -3,7 +3,8 @@
 # -SelfTest：用 %TEMP% 下的夹具证明"每类检查确实能 FAIL"，不碰真实环境
 [CmdletBinding()]
 param(
-    [string]$Repo = 'E:\workbuddy-anc',
+    [string]$Repo = '',
+    [string]$Root = '',
     [string]$Manifest = '',
     [string]$BotUser = 'anc-bot',
     [switch]$Json,
@@ -11,7 +12,9 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-if (-not $Manifest) { $Manifest = Join-Path $Repo 'scripts\workbuddy-patch\manifest.json' }
+if (-not $Root) { $Root = Join-Path $env:ProgramData 'anc' }
+# 线上以部署目录为准：manifest 默认取 %ProgramData%\anc\patch 的那份，不再从 git 工作副本读
+if (-not $Manifest) { $Manifest = Join-Path $Root 'patch\manifest.json' }
 $results = @()
 function Add-Result([string]$name, [string]$state, [string]$detail, [string]$fix) {
     $script:results += [pscustomobject]@{ check = $name; state = $state; detail = $detail; fix = $fix }
@@ -68,9 +71,9 @@ function Test-DeployLayout([string]$Root, [string]$Src) {
         if (-not (Test-Path -LiteralPath $p)) { $bad += "${n}: 缺失" }
         elseif (-not (Get-Item -LiteralPath $p -Force).PSIsContainer) { $bad += "${n}: 是文件（应为目录）" }
     }
-    $srcDir = Join-Path $Src 'scripts\workbuddy-patch'
+    $srcDir = if ($Src) { Join-Path $Src 'scripts\workbuddy-patch' } else { '' }
     $dstDir = Join-Path $Root 'patch'
-    if ((Test-Path $srcDir) -and (Test-Path $dstDir) -and (Get-Item -LiteralPath $dstDir -Force).PSIsContainer) {
+    if ($srcDir -and (Test-Path $srcDir) -and (Test-Path $dstDir) -and (Get-Item -LiteralPath $dstDir -Force).PSIsContainer) {
         foreach ($f in @(Get-ChildItem -LiteralPath $srcDir -File)) {
             $d = Join-Path $dstDir $f.Name
             if (-not (Test-Path -LiteralPath $d)) { $bad += "patch/$($f.Name): 缺失" }
@@ -285,16 +288,16 @@ $sec = Test-SecretsAcl "$env:ProgramData\anc\secrets"
 Add-Result 'secrets-acl' $sec.state $sec.detail $sec.fix
 
 # 13 部署布局（唯一来源：从部署目录跑，不从工作副本跑）
-$dl = Test-DeployLayout "$env:ProgramData\anc" $Repo
+$dl = Test-DeployLayout $Root $Repo
 Add-Result 'deploy-layout' $dl.state $dl.detail $dl.fix
 
 # 14 密钥不进 git
-if (Test-Path (Join-Path $Repo '.git')) {
+if ($Repo -and (Test-Path (Join-Path $Repo '.git'))) {
     $hits = & git -C $Repo grep -I -n -E 'qyapi\.weixin\.qq\.com/cgi-bin/webhook/send\?key=[A-Za-z0-9-]{8,}|corpsecret[[:space:]]*=[[:space:]]*[A-Za-z0-9]{8,}' -- ':!*.test.ts' ':!*.test.mjs' ':!docs/*' 2>$null
     $where = $hits | Select-Object -First 3 | ForEach-Object { ($_ -split ':', 3)[0..1] -join ':' }
     if ($hits) { Add-Result 'secrets-in-git' 'FAIL' ('仓库内容里有疑似密钥，位置: ' + ($where -join ', ')) '删掉并改用占位符；密钥只放 ProgramData' }
     else { Add-Result 'secrets-in-git' 'PASS' '仓库内容未见真实密钥' '-' }
-} else { Add-Result 'secrets-in-git' 'WARN' "不是 git 仓库: $Repo" '传对 -Repo' }
+} else { Add-Result 'secrets-in-git' 'WARN' '未指定 -Repo（或不是 git 仓库），跳过仓库密钥扫描' '转公开前在仓库里跑一次：doctor.ps1 -Repo <仓库根>' }
 
 # 15 时区
 $tz = (Get-TimeZone).Id
