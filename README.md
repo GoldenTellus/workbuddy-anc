@@ -38,7 +38,7 @@ Windows 主机（7×24）
 ## 现状
 
 - 里程碑 M0–M4 的功能都已交付：任务提醒、vault 与入库、渲染与接入、访谈与 A2A；补丁侧有锚点模式、自愈与守卫、canary、更新探测，主机上 8 个计划任务。
-- 还有验收没闭合，见 [docs/PLAN.md](./docs/PLAN.md) 的「验收未闭合」与「下一阶段」。
+- 收尾与后续见 [docs/PLAN.md](./docs/PLAN.md) 2.0：**阶段 R（收尾，含"让 doctor 能自证 FAIL"）→ H（硬化）→ C（补齐）→ V（收口）**，每段一个 gate。
 - `npm test` 60 项（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）。
 
 ## 从哪里开始读

@@ -1,6 +1,6 @@
 # 入职 / 离职 runbook
 
-对应 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.8、[PLAN.md](./PLAN.md) M3。目标：新员工一小时内拿到个人 bot 和三方群。
+对应 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.8、[PLAN.md](./PLAN.md) 阶段 R（R5 干净机计时）与 C7/C8（离职自动化、共享账号）。目标：新员工一小时内拿到个人 bot 和三方群。
 
 ## 入职
 

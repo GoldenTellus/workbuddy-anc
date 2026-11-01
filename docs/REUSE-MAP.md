@@ -1,6 +1,6 @@
 # 上游复用清单
 
-版本:0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
+版本:0.3(2026-11-02)。0.3 补录 6 条原表漏判(`tools/harness-proxy/tool-turn-filter.mjs`、`light/vault-service/README.md`、`tsconfig.json` 的误判、`docs/RESEARCH.md` 等),并新增 §6「按阶段取用」把本表与 PLAN 2.0 的 A/R/H/C/V 对齐。0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
 
 > **0.2:上游文件已按本表整理**(2026-11-01)。下文的「来源」列仍写上游原路径(便于对照上游),现在的位置是:
 >
@@ -9,7 +9,7 @@
 > - 挪进本库模板目录:`vault-templates/company/`、`vault-templates/collab/` → `light/templates/vault/`。
 > - 上游设计文档(SPEC、LESSONS、LIGHT-MVP、RESEARCH、M1-DESIGN)留在原位,开头标了「上游原文」。
 
-文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 [PLAN.md](./PLAN.md) 的 M1 无关;写明「该分支」的指 `reference/upstream/unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
+文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 1.1 的 M1 无关（1.1 已归档：`git show 52e816a:docs/PLAN.md`）;写明「该分支」的指 `reference/upstream/unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
 
 判定分五档:**直接用**(基本原样)/ **改写**(结构保留、内容要改)/ **借鉴**(只取思路)/ **仅参考** / **不适用**。
 
@@ -129,9 +129,23 @@
 | 上游 | 判定 | 要改什么 |
 |---|---|---|
 | `feat-m1-w1/test/`:`node:test` + `assert/strict` + tsc 零依赖;`helpers.ts` 内存 org 工厂;golden 快照用 `UPDATE_GOLDEN=1` 重生成 | 直接用 | fixtures 换企微字段与中文成员目录;golden 换成两份 `CODEBUDDY.md` + `groups.json`;`config-golden` / `toml-roundtrip` 两个测试作废 |
-| `package.json` / `tsconfig.json`(strict、`noUncheckedIndexedAccess`、零运行时依赖) | 直接用 | `node --test dist/test/*.test.js` 的通配符 cmd.exe 不展开,要用 Node 22 自带 glob 或显式列文件 |
+| `package.json` / `tsconfig.json`(strict、`noUncheckedIndexedAccess`、零运行时依赖) | 直接用 | `node --test dist/test/*.test.js` 的通配符 cmd.exe 不展开,要用 Node 22 自带 glob 或显式列文件。**0.3 修正**:这里指的是 `light/vault-service/tsconfig.json` 的编译理念(`strict` + `noUncheckedIndexedAccess`),**文件本身不能直接用**——它是 Cloudflare Worker 配置,见 §2.9 |
 | `light/test/e2e.mjs` 的 `ok()` / `section()`、一个用例对应一次实测失败 | 借鉴 | 小服务回归测试 |
 | `light/test/cli-collab.mjs` 改 `HOME` 隔离 | 不能照搬 | Windows 上 `os.homedir()` 读 `USERPROFILE`,照搬会污染真实配置 |
+
+### 2.9 0.3 补录:原表漏判或判过粗的七条
+
+> 2026-11-02 重新逐文件核对上游 `90e4fb2`(33 个文件)后补。原表按"组件"覆盖得很全,但下面这些要么只被整体一句"不适用"带过,要么根本没判。
+
+| 上游 | 判定 | 用在哪 | 要改什么 |
+|---|---|---|---|
+| `tools/harness-proxy/tool-turn-filter.mjs` | **借鉴**(原判"不适用"过粗) | **T21** 若实测"工具轮次的叙述(「让我先查一下」)会发进企微":把它的规则搬过来——含 `tool_use` 的轮次丢弃其 text 块,只透传最终文本轮次 | 上游过滤的是 Anthropic Messages 的响应(SSE + JSON 两种形态);本库没有"harness 与端点之间"这个代理位,只能在 `emitMessage` 侧做**启发式**过滤(拿不到 tool_use 标记),必须可关闭、误杀要记事件。先测 T21 再决定 |
+| `tools/harness-proxy/README.md` | 借鉴(设计参照) | FORK §5.5 本机接口、§8 安全基线 | 四条可直接抄进 C1 的检查项:只监听 loopback、凭据文件权限收紧(上游建议 600)、代理/服务不持有上游凭据(header 由调用方带)、`GET /__anc_health` 存活探测 |
+| `light/vault-service/README.md` | 改写 | **C1**(接口契约)、**C2**(投影/搜索) | 取 MCP 五工具(`vault_list/read/search/write/history`)的字段与错误语义、etag CAS 的"窄窗口竞争"说明、搜索资源上限(≤400 文件 / 15MB 每次)、二进制 ≤6MB、`_history/` 只读;Worker / R2 / wrangler / `claude mcp add` 全不取 |
+| `light/vault-service/tsconfig.json` | **改写**(修正原判"直接用") | 若引入 strict 编译 | 原文是 Worker 配置(`types:["@cloudflare/workers-types"]`、`moduleResolution:"bundler"`、`noEmit`);本库是 Node + `node:sqlite`,换 `types:["node"]`、`module:"nodenext"`、`target:"es2023"`。`strict` / `noUncheckedIndexedAccess` 这两条理念直接用 |
+| `light/vault-service/.dev.vars.example` | 仅参考 | C1 的 token 设计 | 上游是"单 token 一家公司";本库是"按群一个 webhook + 服务 token",键名与粒度都不能照搬 |
+| `docs/RESEARCH.md` | 仅参考(原表未判) | 对外材料、选型答辩 | §5 IM 平台矩阵可作"为什么是企微"的旁证;§6「文件系统当数据库」的行业背书可引用;§2/§3/§4(cc-connect 选型、OpenClaw、Harness 双后端)与本库无关 |
+| 根 `.gitignore`、上游 `AGENTS.md` / `CLAUDE.md` | 仅参考 | 措辞对照 | `.gitignore` 的 `_research/` 本库已同源采用;`.dev.vars` / `.wrangler/` 不需要。上游指引只作"铁律怎么写、诚实条款怎么落到 persona"的措辞对照,避免两套指引漂移 |
 
 ## 3. 不适用
 
@@ -187,3 +201,34 @@
 | 结构化入库由谁做 | 公司 bot 做结构化(主机上只有它有模型),结果投进 `inbox/pending/`;入库进程不调模型,只做路径、hash、schema 校验和 commit;起步阶段加一道管理员复核 |
 | 原件放哪 | `_originals/` 不进 git,只在 markdown 里登记来源路径,靠离机备份保护 |
 | 技能和 persona 谁来改 | 上游由 devbot 改,这里没有对应角色。建议由管理员在本仓库走分支 → 验证 → 合并,合并后由渲染器部署到主机 |
+
+---
+
+## 6. 按阶段取用(PLAN 2.0 索引)
+
+横向表按组件;这张按"你正在做哪件事"。**R/H 阶段基本不用上游**——收尾与硬化都是本库自己的体检、身份、入库、补丁;上游真正吃重是从 C 阶段开始。
+
+| 阶段 / 任务 | 取哪份 | 取什么 | 明确不取 |
+|---|---|---|---|
+| R 收尾(R0–R8) | 基本不取 | — | 上游没有"运行身份迁移""注销后无人登录""干净机计时"这类东西(它的形态是 Mac + launchd)。R3 的告警冷却写法可参照 `docs/M1-DESIGN.md` §5.2 |
+| H7 出站扫描 | LESSONS §2.7 | 扫描哪些凭据类型 + "WorkBuddy 自己的回复扫不到"这个盲区 | `rg` 实现 |
+| H8 check-public | 上游 `scripts/check-public.sh`、§2.7 | 规则清单:企微 webhook、corpid `ww[0-9a-f]{16}`、`C:\Users\<真名>`、内网段、key/secret 明文赋值 | 它的扫描范围(缺 `.mjs` / `.ps1`)与 bash 实现 |
+| H10 frontmatter | `feat-m1-w1/src/org/frontmatter.ts` | 解析逻辑 + BOM 教训(首行必须精确 `---`) | 它的字段集 |
+| C1 HTTP + token | v1 `vault-service` 的 `authorized()` / `handleRpc`、`light/vault-service/README.md`、harness-proxy README | 常量时间比较、未配 token 全拒、五工具契约、`/__anc_health`、只监听 loopback | Worker / R2 / wrangler / `claude mcp add` |
+| C2 投影 + reproject | SPEC §2.3 状态层、`light/vault-service/README.md` 的 etag 说明 | "SQLite 是真相、markdown 是投影、可重建";etag CAS 的窄窗口并发语义 | `_history/`、`toolHistory`、manifest(用 git log) |
+| C3 后台任务 | SPEC §4.3 | `needs_review` 不自动重试、按发送者隔离 | 它的执行器(Claude Code 会话) |
+| C4 A2A | SPEC §7 | 七字段信封 | 飞书卡片回调 |
+| C6 离机备份 | `VAULT-FORMS.md` | 原件进 git 删不掉、`_history` 不是备份、`_ocr/` 文本投影 | R2 对象存储 |
+| C7 离职 | M1-DESIGN §3.4 | `disabled` 停用不删档 | 批量 provisioning |
+| C8 共享账号 | LESSONS §1 | "停用的不自动重建"这一条 | 中转站签发 key |
+| C9 渲染器 rollback + 部署 | `feat-m1-w1` 的 `validateRoundTrip` / `--adopt`、分支版 M1-DESIGN §4.4 | "备份 → 原子写 → 读回对拍 → 失败还原";`deploy` / `rollback` 在上游只是桩,要自己写 | TOML 渲染 |
+| C10 配置化 | M1-DESIGN §3.2 | `timezone` 配置项 + doctor 校验系统时区 | — |
+| C13 不上云 | `VAULT-FORMS.md` 形态 C、SPEC §2.3 | "单机目录、不上云"就是本库形态 | 云同步 |
+| T21 若实测会漏叙述 | `tools/harness-proxy/tool-turn-filter.mjs` | 见 §2.9 第一条:过滤 tool 轮次的 text | SSE 解析那一半(本库没有代理位) |
+| V6 转公开 | 上游 `check-public.sh`、§2.7 | 同 H8 | 同 H8 |
+| 日常改渲染器/技能 | `feat-m1-w1`、`anc-onboard` 的 11 问 / 问题模型 / 入库正文 | frontmatter、org 校验、三层 persona、路由表、指纹闸门、测试骨架;技能文本 | 飞书字段、`platform: feishu`、`allowed_tools`、`~/.claude/skills/` |
+| T12 退路 | `worktree-light-v2-layered/light/cli/anc.mjs` 的 `cmdPull` | 清单增量、`pool()` 思路 → 改成计划任务跑 `robocopy /MIR` | `push` 与冲突处理(员工不写 vault) |
+
+**三个未合并分支各管一摊**:`feat-m1-w1` = 渲染器改写来源;`worktree-light-v2-layered` = 入库(base_etag / handleRawPut / normalizePath)与 `VAULT-FORMS.md`;`docs-debt` = 不采用(一机多公司),只作对照。
+
+**取用规矩**:先查本表定位 → 再看 §2 / §2.9 的判定档 → 从 `git show 90e4fb2:<路径>` 或 `reference/upstream/` 取 → 按 FORK 的 D 系列改写 → 补测试。凡是"群身份、企微回调、Windows 落地"的问题,上游一律没有答案(它的前提是 Claude Code + 飞书 + Mac)。

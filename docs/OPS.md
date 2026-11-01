@@ -1,6 +1,6 @@
 # 主机运维
 
-对应 [PLAN.md](./PLAN.md) M1「上线前必须满足」与 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.1/§5.10。
+对应 [PLAN.md](./PLAN.md) 阶段 R（R1 运行身份迁移）与 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.1/§5.10。
 
 ## 计划任务
 

@@ -6,9 +6,9 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 
 ## 当前状态
 
-- 方向 `docs/FORK-DIRECTION.md` 0.4;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md` **1.1**:**M0–M4 功能已交付**——任务提醒、vault/入库、渲染与接入、访谈与 A2A 均已落地;补丁侧有锚点模式、自愈与守卫、canary、更新探测,主机上 8 个计划任务。
+- 方向 `docs/FORK-DIRECTION.md` 0.5;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md` **2.0**：阶段 A/R/H/C/V，1.1 的 **M0–M4 功能已交付**——任务提醒、vault/入库、渲染与接入、访谈与 A2A 均已落地;补丁侧有锚点模式、自愈与守卫、canary、更新探测,主机上 8 个计划任务。
 - 2026-11-01 做过一轮分组代码审查并修完(2 个 CRITICAL、约 10 个 HIGH 及其余),`npm test` 60 项全绿、`doctor` 全 PASS。
-- **验收尚未闭合**:运行身份仍在管理员账号下(专用标准用户从未登录过)、真机注销后的无人登录、M1 的升级通知与非执行人拒绝、M3 的干净机计时、M4 的跨天访谈、真升级回归。清单与建议顺序见 PLAN 的「验收未闭合」「下一阶段」。
+- **当前在收尾(PLAN 2.0 阶段 R)**:R0 先让 doctor 能自证 FAIL(现在只查 5/8 任务、不看运行主体、不查 secrets ACL)→ R1 运行身份迁到 `anc-bot`(现仍在管理员账号下)→ R2 注销后无人登录、R3 升级通知/非执行人拒绝、R4 跨天访谈、R5 干净机计时、R6 T13;R7 真升级回归是事件触发型,不阻塞 gate。
 - 一次主机盘点发现的部署差异记在 `_research/host-deploy-audit-20261101.md`(不进 git):入库与登录启动器仍有从 git 工作副本跑的路径,`%ProgramData%\anc\ingest` 与 `render` 被误复制成同名文件。
 - WorkBuddy 只有补丁一条路(D18):企业版与个人版实测一样,群身份靠 D17 补丁。凡上主机的版本都先过 FORK-DIRECTION §11 的升级回归。
 - `package.json` 保持 `"private": true`,不发 npm。
@@ -17,11 +17,11 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 
 | 文件 | 内容 |
 |---|---|
-| `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–D18、组件设计、WorkBuddy 已观察行为、待实测 T1–T22、安全基线、风险登记、改动台账(§11) |
+| `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–D21、组件设计、WorkBuddy 已观察行为、待实测 T1–T22、安全基线、风险登记、改动台账(§11) |
 | `docs/VERIFY.md` | 阻断项实测手册与结果记录 |
-| `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定(0.2 起列明每份上游文件现在在哪、删掉的去哪取),写代码前先查这里有没有能搬的 |
+| `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定(0.2 起列明每份上游文件现在在哪、删掉的去哪取;0.3 起 §6 有按 PLAN 阶段的索引:R/H 基本不用上游,C 阶段开始吃重),写代码前先查这里有没有能搬的 |
 | `reference/upstream/` | 上游参考:未合并分支(含渲染器的改写来源 `feat-m1-w1`)、以后可能用到的上游技能与 MCP 骨架。不参与构建,README 写明每份什么时候会用 |
-| `docs/PLAN.md` | 里程碑 M0–M4:顺序、上线门槛、验收、验收未闭合、下一阶段 |
+| `docs/PLAN.md` | 里程碑 2.0:阶段 A(裁决)/R(收尾)/H(硬化)/C(补齐)/V(收口)、终态 DoD 35 条、每段 gate |
 | `docs/OPS.md`、`docs/REBUILD.md` | 主机运维:8 个计划任务、补丁与部署的唯一来源、维护开关、重建步骤 |
 | `SPEC.md` 等上游原文 | 设计文档原位保留并标了「上游原文」,仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
 

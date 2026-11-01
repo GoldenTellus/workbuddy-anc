@@ -1,6 +1,6 @@
 # M1 技术设计 —— `anc init` 拉起最小公司(飞书 × Claude Code)
 
-> **本库说明(2026-10-31)**:这是**上游**的 M1 设计,原样保留作参考,和本库 [PLAN.md](./PLAN.md) 的 M1(当日任务与提醒)**不是一回事**。下文提到的「PLAN M1」指上游已被替换的旧计划(`git show 90e4fb2:docs/PLAN.md`)。
+> **本库说明(2026-10-31)**:这是**上游**的 M1 设计,原样保留作参考,和本库历史里程碑 M1(当日任务与提醒，见 `git show 52e816a:docs/PLAN.md`)**不是一回事**。下文提到的「PLAN M1」指上游已被替换的旧计划(`git show 90e4fb2:docs/PLAN.md`)。
 >
 > - 渲染器部分(§2–§4)在本库对应 **PLAN M3**(渲染器与个人 bot 接入);doctor、watchdog、退出码等运维约定(§5、§6)归 PLAN「贯穿各里程碑的运维」。cc-connect、launchd、飞书相关内容本库不用。
 > - 逐项能不能用,见 [REUSE-MAP.md](./REUSE-MAP.md);和 [FORK-DIRECTION.md](./FORK-DIRECTION.md) 冲突时以后者为准。
