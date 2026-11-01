@@ -7,7 +7,7 @@
 | 任务 | 触发 | 身份 | 作用 |
 |---|---|---|---|
 | `anc-service` | 开机 + 每分钟 | `LOCAL SERVICE` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
-| `anc-backup` | 每天 02:00 | `LOCAL SERVICE` | `VACUUM INTO` 备份数据库，保留最近 14 份 |
+| `anc-backup` | 每小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `VACUUM INTO` 快照，保留 14 份并复制到 `E:\anc-backup`；错过 02:00 会自动补 |
 | `anc-boot-alert` | 开机 + 每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | WorkBuddy 没起来就经运维群 webhook 告警 |
 | `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM） |
 | `anc-watchdog` | 每 10 分钟 | `LOCAL SERVICE` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
