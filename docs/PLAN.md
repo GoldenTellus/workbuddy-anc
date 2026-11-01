@@ -194,7 +194,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | H5 | 工作时段/跨天 | `loop.ts:91-128` | 非工作时段按"当天截止"语义处理;carry 判定不依赖 `pending` | 两条跨天链用例 |
 | H6 | a2a 越区 | `service/cli.ts:175-179` | `assertInsideVault` + payload ≤256 KB | 传共享区路径必须被拒 |
 | H7 | 出站扫描与 §8 对齐 | `outbound-scan.ts:44-51` | 定:阻断(改 §8 文字)或脱敏发送(改代码);留 `redacted` 事件 | 命中 → 行为与文档一致 |
-| H8 | check-public 可执行且只有一份实现 | `scripts/check-public.sh` | 加 `.gitattributes`(`*.sh eol=lf`);把四项检查移植成 `scripts/check-public.mjs`(Node,跨平台),与 doctor 共用同一份正则。合并时**保留 `*.test.ts` 白名单**:`service.test.ts:484` 里有假 key `qyapi…key=abcdefgh-1234`,不排除会误报 | `bash` 与 `node` 两版对同一 HEAD 结论一致;注入一个假 webhook 必须命中 |
+| H8 | check-public 可执行且只有一份实现 | ~~`scripts/check-public.sh`~~ → `scripts/check-public.mjs` | **已落地**:删 `.sh`、写 Node 版(逐文件 JS 正则,不用 git grep——POSIX ERE 的 `[\s]` 会被当字符类);加 `.gitattributes`(`*.sh eol=lf`);`*.test.ts` 白名单保留 | 干净基线零输出 exit 0;注入假 webhook(经 `git add -N`)必须命中;清理后恢复 0 |
 | H9 | 唯一来源 | `ProgramData\{ingest,render}`、技能、`doctor -Repo` | 删坏文件;新增 `deploy.ps1`;技能与 doctor 改部署路径;合并两份公司 persona | 移走工作副本后入库仍可用 |
 | H10 | 技能 frontmatter | `light/skills/anc-ingest-company/SKILL.md:1-6` | 说明移出 frontmatter;`org.ts` 解析器加严格断言 | PyYAML 解析通过 |
 | H11 | 任务注册脚本 | `OPS.md:20` | `register-tasks.ps1`(幂等,含 Boot 触发器) | 空机 → 注册 → 8/8 + doctor PASS |
@@ -258,7 +258,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | V3 | **五类故障自恢复** | 断电 / 杀进程 / 磁盘满 / 时钟跳变 / webhook 404 | 恢复后无需人工删锁/改库;各留一份恢复日志 |
 | V4 | **证明有效** | `doctor -SelfTest` + 三项抽查(ACL/任务/manifest) | 全绿;抽查的 FAIL 与自测一致 |
 | V5 | **7×24 浸泡** | 连续 7 天不干预,每天记:outbox 对账、告警条数、doctor 快照 | 0 人工干预、0 丢消息、0 误报告警 |
-| V6 | **可重建 + 可转公开** | 干净机 REBUILD 计时;`check-public.sh` | 重建 ≤ 记录基线;检查零输出 exit 0 |
+| V6 | **可重建 + 可转公开** | 干净机 REBUILD 计时;`check-public.mjs` | 重建 ≤ 记录基线;检查零输出 exit 0 |
 
 **gate V**:六条全绿 → 打 tag `v1.0`,FORK 与 PLAN 一起冻结为"已验收版本"。
 

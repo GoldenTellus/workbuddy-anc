@@ -1,0 +1,8 @@
+# 行尾策略：Windows 工作区默认 CRLF（core.autocrlf=true），但 bash 脚本必须是 LF，
+# 否则在 bash 里会报 "set: -: invalid option" / "$'\r': command not found"。
+*.sh text eol=lf
+
+# 脚本类保持 CRLF：PowerShell 5.1 与 cmd.exe 在 Windows 下的习惯
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf

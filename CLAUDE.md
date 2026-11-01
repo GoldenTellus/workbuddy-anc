@@ -48,5 +48,5 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 - `_research/` 与任何含生产细节的内容**绝不 commit**(.gitignore 已排除,别绕过)。
 - 改动 WorkBuddy 的产物(patch diff、反编译中间件、提取脚本输出)同样不进仓库:原件放 `_research/workbuddy/`,仓库里只放清单与脚本骨架,规矩见 FORK-DIRECTION §11。
 - 绝不进仓库:企微 webhook 地址、corpid / corpsecret、WorkBuddy 或企微的账号 ID、按 D16 读取的任何凭据值、真实的主机名、内网地址、带真实用户名的本机路径、人名。文档里用 `%USERPROFILE%`、`\\主机\vault`、`<userid>` 这类占位符。
-- 转公开检查(repo 转 public 前必跑):`bash scripts/check-public.sh`,零输出且退出码 0 = 通过。扫描范围:`*.md *.json *.ts *.mjs *.cjs *.ps1`;`.ps1` 必须带 UTF-8 BOM、`.json` 不许带 BOM。`.sh` / `.vbs` / `.cmd` / `.tsx` 等不在范围内,新增时要人工过一遍。脚本是绊线不是证明,转公开前仍需人工过一遍全量 diff。
+- 转公开检查(repo 转 public 前必跑):`node scripts/check-public.mjs`,零输出且退出码 0 = 通过。扫描范围:`*.md *.json *.ts *.mjs *.cjs *.ps1`;`.ps1` 必须带 UTF-8 BOM、`.json` 不许带 BOM。`.vbs` / `.cmd` / `.tsx` 等不在范围内,新增时要人工过一遍。脚本是绊线不是证明,转公开前仍需人工过一遍全量 diff。
 - 涉及部署现场的表述只写通用化 lessons learned,不写可定位到具体在跑机器的攻击面线索(措辞用设计约束时态,如「一律不授予」,不用「已整改/待整改」)。

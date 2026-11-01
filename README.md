@@ -59,7 +59,7 @@ Windows 主机（7×24）
 - 文档中文为主；TypeScript + Node 22 LTS，零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
 - 开发流程：分支 → PR → 验证 → squash merge。
 - 部署：从仓库复制到 `%ProgramData%\anc\`（命令见 REBUILD §3），主机上手改线上文件视为事故。
-- 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `bash scripts/check-public.sh` 并人工过一遍全量 diff。
+- 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/check-public.mjs` 并人工过一遍全量 diff。
 
 `package.json` 保持 `"private": true`，不发 npm。
 

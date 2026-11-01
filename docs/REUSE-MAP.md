@@ -122,7 +122,7 @@
 | LESSONS §4 persona 写死盘符 | 直接用这条教训 | 路径由接入脚本注入,模板里不写死 | — |
 | LESSONS §2.7 出站凭据扫描 | 改写 | outbox 与 webhook | `rg` 换成小服务内置正则;**WorkBuddy 自己在企微里的回复扫描不到**,要写明 |
 | LESSONS §2.1 敏感结果只落内部目录 | 直接用 | 访谈报告 | 和「vault 全员只读共享」冲突,见 §5 待定 |
-| `scripts/check-public.sh` | 改写 | 泄密绊线 | 扫描范围加 `.mjs` `.ps1` `.jsonc` `.bat`;规则加企微 webhook(`qyapi.weixin.qq.com/cgi-bin/webhook/send?key=`)、corpid(`ww[0-9a-f]{16}`)、带真实用户名的 `C:\Users\` 路径、内网地址段、`key` / `secret` / `webhook` 明文赋值 |
+| `scripts/check-public.sh` | 改写(已落地) | 泄密绊线 | 上游是 bash + `git grep`;本库实现为 `scripts/check-public.mjs`(Node,逐文件 JS 正则):Windows 工作区 CRLF 下 bash 跑不起来,且 POSIX ERE 的 `[\s]` 会被当字符类。规则含企微 webhook(`qyapi.weixin.qq.com/cgi-bin/webhook/send?key=`)、corpid(`ww[0-9a-f]{16}`)、带真实用户名的 `C:\Users\` 路径、内网地址段、`key` / `secret` / `webhook` 明文赋值 |
 
 ### 2.8 测试与工具链
 
