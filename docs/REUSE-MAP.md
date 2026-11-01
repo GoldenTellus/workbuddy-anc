@@ -1,8 +1,15 @@
 # 上游复用清单
 
-版本:0.1(2026-10-29)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream-unmerged/`](../reference/upstream-unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
+版本:0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
 
-文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 [PLAN.md](./PLAN.md) 的 M1 无关;写明「该分支」的指 `reference/upstream-unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
+> **0.2:上游文件已按本表整理**(2026-11-01)。下文的「来源」列仍写上游原路径(便于对照上游),现在的位置是:
+>
+> - 已删除(按本表「不适用」或已被本库实现取代):`light/skills/anc-ingest/`、`light/skills/anc-join/`、`light/vault-service/`、`tools/harness-proxy/`。原样随时可取:`git show 90e4fb2:<路径>`。
+> - 挪到 [`reference/upstream/`](../reference/upstream/README.md)(以后可能用,写明了什么时候用):`anc-onboard/SKILL.md`、`anc-onboard/vault-skills/anc-ingest.md`、`vault-service` 的 MCP RPC 骨架、三个未合并分支。
+> - 挪进本库模板目录:`vault-templates/company/`、`vault-templates/collab/` → `light/templates/vault/`。
+> - 上游设计文档(SPEC、LESSONS、LIGHT-MVP、RESEARCH、M1-DESIGN)留在原位,开头标了「上游原文」。
+
+文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 [PLAN.md](./PLAN.md) 的 M1 无关;写明「该分支」的指 `reference/upstream/unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
 
 判定分五档:**直接用**(基本原样)/ **改写**(结构保留、内容要改)/ **借鉴**(只取思路)/ **仅参考** / **不适用**。
 
@@ -18,7 +25,7 @@
 
 ### 2.1 渲染器:生成 CODEBUDDY.md 与群映射
 
-来源都在 `reference/upstream-unmerged/feat-m1-w1/`。
+来源都在 `reference/upstream/unmerged/feat-m1-w1/`。
 
 | 上游 | 判定 | 用在哪 | 要改什么 |
 |---|---|---|---|

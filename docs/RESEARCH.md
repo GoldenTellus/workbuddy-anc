@@ -1,5 +1,7 @@
 # 调研摘要(RESEARCH)
 
+> **上游原文，仅作参考**（HA7CH/ai-native-company@`90e4fb2`，原样保留）。写的是上游的 Mac mini + cc-connect + Claude Code 形态，不是本库的现状；本库的设计以 [FORK-DIRECTION.md](./FORK-DIRECTION.md) 为准，逐项能不能用见 [REUSE-MAP.md](./REUSE-MAP.md)。
+
 2026-07-24,六路并行调研(2 路内部:reference deployment 仓库解剖 + 生产机实勘;4 路外部:gateway 选型 / OpenClaw 品类 / 组织框架 gap 分析 / IM 平台与 harness 实测)的公开摘要。内部实勘细节不在本文件(涉及生产环境),结论已折叠进 SPEC。
 
 ---

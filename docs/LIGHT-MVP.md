@@ -1,5 +1,7 @@
 # 轻形态 MVP:BYO Claude Code + 云上唯一一份 vault
 
+> **上游原文，仅作参考**（HA7CH/ai-native-company@`90e4fb2`，原样保留）。写的是上游的 Mac mini + cc-connect + Claude Code 形态，不是本库的现状；本库的设计以 [FORK-DIRECTION.md](./FORK-DIRECTION.md) 为准，逐项能不能用见 [REUSE-MAP.md](./REUSE-MAP.md)。文中提到的 `light/vault-service/`、`light/skills/anc-join/` 等已从本库删除，留下的部分见 [reference/upstream/](../reference/upstream/README.md)。
+
 版本:0.1(2026-07-24)。代码与 skill 见 `light/`。
 
 ## 一句话

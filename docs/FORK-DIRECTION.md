@@ -28,7 +28,7 @@
 - **公司 bot 是所有人共用的一个实例**。上游原则 P1 是「一人一 bot」;这里一人一 bot 落在个人 bot 上,公司 bot 靠「一人一群」按人隔离会话(D7)。
 - **信任模型**沿用上游 SPEC §7:一个部署 = 一个互信的公司,不做敌意多租户。
 
-上游可复用的代码与设计逐项列在 [REUSE-MAP.md](./REUSE-MAP.md)。上游未合并的三个分支收在 [`reference/upstream-unmerged/`](../reference/upstream-unmerged/README.md),只作参考。
+上游可复用的代码与设计逐项列在 [REUSE-MAP.md](./REUSE-MAP.md)。上游未合并的三个分支收在 [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md),只作参考。
 
 ## 3. 拓扑
 

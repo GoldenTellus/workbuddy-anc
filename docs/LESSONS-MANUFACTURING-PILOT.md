@@ -1,5 +1,7 @@
 # 第二个 reference deployment:制造企业四部门试点的 lessons learned
 
+> **上游原文，仅作参考**（HA7CH/ai-native-company@`90e4fb2`，原样保留）。写的是上游的 Mac mini + cc-connect + Claude Code 形态，不是本库的现状；本库的设计以 [FORK-DIRECTION.md](./FORK-DIRECTION.md) 为准，逐项能不能用见 [REUSE-MAP.md](./REUSE-MAP.md)。
+
 版本:0.1(2026-09-14)。来源:国内一家医疗器械制造企业的 AI 应用一阶段试点(2026-08 起,研发 / 产品 / 项目 / 采购四部门,由 FDE 团队驻场实施)。本文只写**通用化的机制与裁决**,不写可定位到具体公司、机器、人员的信息;所有 ID 用 `ou_***` / `cli_***` 占位。
 
 Climax Racing 是本库的第一个 reference deployment(车队,6 bot,Mac mini)。本文是第二个,且形态差异很大:**Linux 服务器上的常驻 bot + 全员 Windows 电脑上的个人 agent + 第三方模型**。两个部署互为对照,能分清哪些是 SPEC 的普适裁决、哪些只是第一个部署的局部经验。

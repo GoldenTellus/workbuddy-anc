@@ -4,7 +4,7 @@
 >
 > - 渲染器部分(§2–§4)在本库对应 **PLAN M3**(渲染器与个人 bot 接入);doctor、watchdog、退出码等运维约定(§5、§6)归 PLAN「贯穿各里程碑的运维」。cc-connect、launchd、飞书相关内容本库不用。
 > - 逐项能不能用,见 [REUSE-MAP.md](./REUSE-MAP.md);和 [FORK-DIRECTION.md](./FORK-DIRECTION.md) 冲突时以后者为准。
-> - 另有一份分支版 `reference/upstream-unmerged/feat-m1-w1/docs/M1-DESIGN.md`,按 cc-connect v1.3.4 源码核对过。两版章节编号相同;正文在 §3.2、§3.3、§4.1、§4.4、§5.2、§8.1、§9、§10 有出入,§2、§3.4、§5.3、§6 一致。本库引用 M1-DESIGN 时,未注明的指本文件(main 版)。
+> - 另有一份分支版 `reference/upstream/unmerged/feat-m1-w1/docs/M1-DESIGN.md`,按 cc-connect v1.3.4 源码核对过。两版章节编号相同;正文在 §3.2、§3.3、§4.1、§4.4、§5.2、§8.1、§9、§10 有出入,§2、§3.4、§5.3、§6 一致。本库引用 M1-DESIGN 时,未注明的指本文件(main 版)。
 
 版本:0.1(2026-07-24)。对应 [PLAN](./PLAN.md) M1(上游旧计划),承接 [SPEC](../SPEC.md) §2/§3/§4/§9。
 
