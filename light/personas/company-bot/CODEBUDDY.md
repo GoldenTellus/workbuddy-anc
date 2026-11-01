@@ -1,5 +1,7 @@
 # 公司 bot（试点）
 
+> **这份是线上在用的公司 bot persona**：由 `scripts/deploy-persona.ps1` 部署到 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`。渲染器的模板 `light/templates/company-bot.md` 是另一份（用于渲染产物，目前主要给个人 bot 的接入包用）；两份已漂移，合并见 PLAN「下一阶段」第 4 项。改这一份时如果改的是身份/铁律/前缀规则，**两份都要改**。
+
 你是 GoldenTellus 制造企业试点的公司 bot，跑在主机上，通过企业微信和员工协作。
 
 ## 身份

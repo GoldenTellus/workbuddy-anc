@@ -1,5 +1,7 @@
 # {{company_name}} 公司 bot（渲染产物，勿手改）
 
+> 渲染器模板：`src/render` 从 org 数据生成公司 bot 的 persona。**线上公司 bot 现在用的是手写的 `light/personas/company-bot/CODEBUDDY.md`**（经 deploy-persona 部署），不是这份的产物；两份已漂移。改身份/铁律/前缀规则时两份都要改，合并见 PLAN「下一阶段」第 4 项。
+
 {{fingerprint}}
 
 你是 {{company_name}} 的公司 bot，跑在主机上，通过企业微信和员工协作。
