@@ -356,3 +356,24 @@ test('提醒：repeatMinutes 非法值兜底为 15', () => withDb((db) => {
   const r2 = reminders.scheduleReminder(db, { taskId: t.id, dueAt: new Date().toISOString(), repeatMinutes: 0 });
   assert.equal(r2.repeat_minutes, 1, '下限 1');
 }));
+test('outbox：网络错误 10 次才判死，下一 tick 会被重新入队；业务错误仍 5 次', () => withDb((db) => {
+  const q = outbox.enqueue(db, { text: '网络重试', chatId: 'c1', dedupeKey: 'net:1' });
+  for (let i = 0; i < 9; i++) outbox.markFailed(db, q.id!, 'fetch failed');
+  let row = db.prepare('SELECT status, attempts FROM outbox WHERE id = ?').get(q.id) as { status: string; attempts: number };
+  assert.equal(row.status, 'pending', '9 次仍应可重试');
+  outbox.markFailed(db, q.id!, 'fetch failed');
+  row = db.prepare('SELECT status, attempts FROM outbox WHERE id = ?').get(q.id) as { status: string; attempts: number };
+  assert.equal(row.status, 'failed', '10 次判死');
+
+  const n = outbox.requeueTransientFailures(db, new Date().toISOString());
+  assert.equal(n, 1, '网络失败应被捞回');
+  row = db.prepare('SELECT status, attempts FROM outbox WHERE id = ?').get(q.id) as { status: string; attempts: number };
+  assert.equal(row.status, 'pending');
+  assert.equal(row.attempts, 0);
+
+  const q2 = outbox.enqueue(db, { text: '业务错误', chatId: 'c1', dedupeKey: 'perm:1' });
+  for (let i = 0; i < 5; i++) outbox.markFailed(db, q2.id!, 'HTTP 400 invalid webhook');
+  const r2 = db.prepare('SELECT status FROM outbox WHERE id = ?').get(q2.id) as { status: string };
+  assert.equal(r2.status, 'failed');
+  assert.equal(outbox.requeueTransientFailures(db, new Date().toISOString()), 0, '业务错误不捞回');
+}));

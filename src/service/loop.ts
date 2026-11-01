@@ -5,7 +5,7 @@ import { nowIso, toIso } from './db.ts';
 import { dueReminders, markReminderSent, scheduleReminder } from './reminders.ts';
 import { getTask } from './tasks.ts';
 import { resolve } from './bindings.ts';
-import { enqueue, listPendingDue, markSent, markFailed } from './outbox.ts';
+import { enqueue, listPendingDue, markSent, markFailed, requeueTransientFailures } from './outbox.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { loadRules, isWorkTime, nextWorkStart } from './config.ts';
 
@@ -28,6 +28,7 @@ export interface TickResult {
   sent: number;
   failed: number;
   skipped: number;
+  requeued: number;
 }
 
 async function defaultSender(url: string, text: string, mentions: string[]): Promise<void> {
@@ -59,6 +60,9 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     throw new Error('测试必须注入 send，禁止真实外发');
   }
   const now = opts.now ?? nowIso();
+  // 开机后网络可能晚就绪：先把近期因网络失败的消息捞回来
+  let requeued = 0;
+  try { requeued = requeueTransientFailures(db, toIso(now)); } catch { /* ignore */ }
 
   // 0) 次日顺延
   const nowDate = new Date(toIso(now));
@@ -170,7 +174,7 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     }
   }
 
-  return { enqueued, sent, failed, skipped };
+  return { enqueued, sent, failed, skipped, requeued };
 }
 
 export interface RunOptions extends TickOptions {

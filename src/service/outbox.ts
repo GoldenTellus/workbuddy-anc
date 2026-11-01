@@ -60,11 +60,17 @@ export function markSent(db: DatabaseSync, id: number): void {
 
 const BACKOFF_MIN = [1, 5, 15, 30, 60];
 
+/** 网络类错误（开机后还没联网、DNS 未就绪）与业务错误分开：前者多给几次机会。 */
+function isTransient(error: string): boolean {
+  return /fetch failed|HTTP 5\d\d|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(String(error));
+}
+
 export function markFailed(db: DatabaseSync, id: number, error: string): void {
   const row = db.prepare('SELECT attempts FROM outbox WHERE id = ?').get(id) as { attempts: number } | undefined;
   const attempts = Number(row?.attempts ?? 0) + 1;
   const t = nowIso();
-  if (attempts >= 5) {
+  const maxAttempts = isTransient(error) ? 10 : 5;
+  if (attempts >= maxAttempts) {
     db.prepare("UPDATE outbox SET status = 'failed', attempts = ?, last_error = ?, updated_at = ? WHERE id = ?")
       .run(attempts, String(error).slice(0, 500), t, id);
     return;
@@ -73,4 +79,20 @@ export function markFailed(db: DatabaseSync, id: number, error: string): void {
   const nextAt = new Date(Date.now() + backoff * 60_000).toISOString();
   db.prepare("UPDATE outbox SET attempts = ?, last_error = ?, updated_at = ?, next_attempt_at = ? WHERE id = ?")
     .run(attempts, String(error).slice(0, 500), t, nextAt, id);
+}
+
+/**
+ * 把「近期因网络原因失败」的消息重新入队：开机后网络晚就绪时，别让提醒永久 failed。
+ * 只回收 24 小时内、错误看起来是网络类的，避免把配错的 webhook 无限重试。
+ */
+export function requeueTransientFailures(db: DatabaseSync, now: string, withinHours = 24): number {
+  const since = new Date(new Date(now).getTime() - withinHours * 3600_000).toISOString();
+  const r = db.prepare(
+    `UPDATE outbox SET status = 'pending', attempts = 0, next_attempt_at = ?
+     WHERE status = 'failed' AND created_at >= ?
+       AND (last_error LIKE '%fetch failed%' OR last_error LIKE 'HTTP 5%'
+            OR last_error LIKE '%ETIMEDOUT%' OR last_error LIKE '%ECONNRESET%'
+            OR last_error LIKE '%ENOTFOUND%' OR last_error LIKE '%EAI_AGAIN%')`
+  ).run(now, since);
+  return Number(r.changes ?? 0);
 }

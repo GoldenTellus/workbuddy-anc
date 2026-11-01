@@ -6,7 +6,9 @@ param(
     [string]$SourceDb = "$env:ProgramData\anc\data\anc.db",
     [string]$BackupDir = "$env:ProgramData\anc\backup",
     [string]$Destination = '',
-    [int]$Keep = 14
+    [int]$Keep = 14,
+    # 距上次成功备份不足这个小时数就跳过：计划任务改成每小时跑，错过 02:00 也能补上
+    [int]$MinIntervalHours = 20
 )
 
 $ErrorActionPreference = 'Continue'
@@ -18,6 +20,17 @@ function Write-Log([string]$m) {
 }
 
 if (-not (Test-Path $SourceDb)) { Write-Log "ERROR 源库不存在: $SourceDb"; exit 2 }
+
+# 幂等：最近一次成功备份还在窗口内就跳过（配合每小时触发，补上错过的 02:00）
+$last = Get-ChildItem $BackupDir -Filter 'anc-*.db' -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($last) {
+    $ageHours = ((Get-Date) - $last.LastWriteTime).TotalHours
+    if ($ageHours -lt $MinIntervalHours) {
+        Write-Log ("skip: last backup " + [math]::Round($ageHours, 1) + "h ago (< $MinIntervalHours h)")
+        exit 0
+    }
+}
 
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $node) { $node = 'C:\Program Files\nodejs\node.exe' }
