@@ -52,6 +52,18 @@ if (Test-Path $StateFile) {
 }
 if ($patched) { exit 0 }
 
+# 有人正在对话（canary 两分钟内有更新）就别打断：等下一分钟的空档再重启
+$canaryFile = "$env:ProgramData\anc\data\patch-canary.json"
+if (Test-Path $canaryFile) {
+    try {
+        $c = [IO.File]::ReadAllText($canaryFile, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+        if (((Get-Date) - [datetime]$c.at).TotalMinutes -lt 2) {
+            Write-Host 'canary active recently: defer restart'
+            exit 0
+        }
+    } catch { }
+}
+
 # 自愈已判定「修不了」（锚点缺失/inspect 失败）时别每分钟再拉一次进程
 $healState = "$env:ProgramData\anc\data\selfheal.state.json"
 if (Test-Path $healState) {
