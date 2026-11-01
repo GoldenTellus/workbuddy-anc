@@ -40,7 +40,7 @@ if (-not $main) {
             $last = [datetime]($raw | ConvertFrom-Json).lastStartAt
         } catch { }
     }
-    if ($last -and ((Get-Date) - $last).TotalMinutes -lt 10) { exit 0 }
+    if ($last -and ((Get-Date) - $last).TotalMinutes -lt 3) { exit 0 }
     [pscustomobject]@{ lastStartAt = (Get-Date).ToString('o') } | ConvertTo-Json |
         Set-Content $guardState -Encoding utf8 -ErrorAction SilentlyContinue
     & powershell -NoProfile -ExecutionPolicy Bypass -File $SelfHeal -Apply -PatchDir $PatchDir *> $null

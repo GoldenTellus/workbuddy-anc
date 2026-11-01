@@ -124,6 +124,12 @@ function Read-State {
 }
 
 # 冷却（锚点缺失/inspect 失败也走同一份冷却，避免刷屏）
+# 崩溃恢复优先：bot 根本没在跑时不受冷却限制，否则要干等 10 分钟
+if (-not $Force) {
+    $alive = Get-Process WorkBuddy -ErrorAction SilentlyContinue
+    if (-not $alive) { $Force = $true; Write-Log 'no WorkBuddy process: bypass cooldown' }
+}
+
 $state = Read-State
 if ($state -and $state.at -and -not $Force) {
     $mins = ((Get-Date) - [datetime]$state.at).TotalMinutes
