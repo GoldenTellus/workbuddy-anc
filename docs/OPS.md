@@ -17,7 +17,7 @@
 | `anc-patch-guard` | 登录后 10 秒 + 每天 00:00 起每 1 分钟 | bot 用户（Interactive） | `wscript //B <bin>\run-hidden.vbs <bin>\anc-guard.cmd` | 读 `patch-state.json`；只认补丁体包装成功后写的 `applied=true`，否则触发自愈重启（10 分钟冷却；重启中、重启失败、锚点缺失时 60 分钟内不再触发） |
 | `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | `check-workbuddy-update.ps1` | 请求厂商更新接口：有新版本就发运维群（只有告警发出去了才记为已见），提示按 skill 走回归 |
 
-PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册脚本尚未入库，重建时按此表手工注册（见 [REBUILD.md](./REBUILD.md)）。
+PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册用 `scripts\register-tasks.ps1`（默认 dry-run，`-Apply` 才写；两个交互类任务要求 bot 用户已登录过、没有用户配置目录时会拒绝注册）：`-BotUser`、`-BackupDestination`、`-CleanupMediaDir` 都可覆盖。
 
 ### 部署（一条命令）
 

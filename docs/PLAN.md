@@ -197,7 +197,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | H8 | check-public 可执行且只有一份实现 | ~~`scripts/check-public.sh`~~ → `scripts/check-public.mjs` | **已落地**:删 `.sh`、写 Node 版(逐文件 JS 正则,不用 git grep——POSIX ERE 的 `[\s]` 会被当字符类);加 `.gitattributes`(`*.sh eol=lf`);`*.test.ts` 白名单保留 | 干净基线零输出 exit 0;注入假 webhook(经 `git add -N`)必须命中;清理后恢复 0 |
 | H9 | 唯一来源 | `ProgramData\{ingest,render}`、技能、`doctor -Repo` | 删坏文件;新增 `deploy.ps1`;技能与 doctor 改部署路径;合并两份公司 persona | 移走工作副本后入库仍可用 |
 | H10 | 技能 frontmatter | `light/skills/anc-ingest-company/SKILL.md:1-6` | 说明移出 frontmatter;`org.ts` 解析器加严格断言 | PyYAML 解析通过 |
-| H11 | 任务注册脚本 | `OPS.md:20` | `register-tasks.ps1`(幂等,含 Boot 触发器) | 空机 → 注册 → 8/8 + doctor PASS |
+| H11 | 任务注册脚本 | `OPS.md:20` | **已落地**：`scripts/register-tasks.ps1`，8 个任务、幂等覆盖、默认 dry-run；`-BotUser`/`-BackupDestination`/`-CleanupMediaDir` 可覆盖；交互类任务在 bot 用户没有配置目录时**拒绝** `-Apply`（避免 R1 前把守卫/启动器改到未登录用户） | dry-run 输出 8 行且 principal 正确；`-Apply` 前检查用户配置目录 |
 | H12 | 日志与告警面 | `anc-loop.cmd`、`loop.log` 494 KB | `--no-warnings`;按天轮转;所有 `catch` 要么重试要么告警 | 注入异常 → 告警文件有记录 |
 | H13 | 测试补 6 类缺口 | 测试矩阵 | 并发/多进程、跨天链、HEAD≠工作区、originals+commit、a2a 越区、`backup.ts` | 60 → 约 85–95 项 |
 

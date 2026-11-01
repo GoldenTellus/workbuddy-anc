@@ -26,7 +26,8 @@ function tracked() {
 const all = tracked();
 if (all.some((f) => f.startsWith('_research/'))) bad('FAIL  _research/ 下有文件被 git 跟踪');
 
-const files = all.filter((f) => EXT.test(f) && !SKIP.test(f));
+const files = all.filter((f) => EXT.test(f) && !SKIP.test(f) && f !== 'scripts/check-public.mjs');
+// 排除自身：规则字符串本身就在这个文件里，不排除会自命中。代价是本文件里的密钥只能靠人工 diff 发现。
 
 // 2) 部署指纹与真实 ID（文档示例用 <userid> / *** / 占位）
 const FP = new RegExp([
