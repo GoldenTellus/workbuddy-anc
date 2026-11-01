@@ -31,16 +31,25 @@ Copy-Item E:\anc-backup\anc-<最新>.db C:\ProgramData\anc\data\anc.db
 ## 3. 装服务与任务
 
 ```powershell
-# 服务代码
-Copy-Item <仓库>\src\service\* C:\ProgramData\anc\service -Recurse -Force
-# 运维脚本
-Copy-Item <仓库>\scripts\{backup-anc,boot-alert,cleanup-media,watchdog,doctor}.ps1 C:\ProgramData\anc\bin -Force
-# ACL：LOCAL SERVICE 读 service/secrets、写 data/backup；anc-bot 读 service/secrets/skills、写 data
+$R = '<仓库>'; $A = 'C:\ProgramData\anc'
+# 目标目录先建好：Copy-Item 目标不存在时会把「目录」复制成同名「文件」
+'service','ingest','render','bin','patch' | ForEach-Object { New-Item -ItemType Directory -Force "$A\$_" | Out-Null }
+# 本地小服务、入库进程、渲染器（.ts 直接由 Node 运行）
+Copy-Item "$R\src\service\*" "$A\service\" -Force
+Copy-Item "$R\src\ingest\*"  "$A\ingest\"  -Force
+Copy-Item "$R\src\render\*"  "$A\render\"  -Force
+Copy-Item "$R\scripts\anc-loop.cmd" "$A\service\" -Force
+# 运维脚本与两个任务入口
+Copy-Item "$R\scripts\*.ps1", "$R\scripts\run-hidden.vbs", "$R\scripts\anc-guard.cmd", "$R\scripts\anc-launch.cmd" "$A\bin\" -Force
+Copy-Item "$R\scripts\verify\t3-webhook.ps1" "$A\bin\" -Force
+# 补丁（线上补丁的唯一来源）
+Copy-Item "$R\scripts\workbuddy-patch\*" "$A\patch\" -Force
+# ACL：LOCAL SERVICE 读 service/secrets、写 data/backup；bot 用户读 service/secrets/skills、写 data
 ```
 
 按 [OPS.md](./OPS.md) 重新注册八个计划任务：`anc-service`、`anc-backup`、`anc-boot-alert`、`anc-cleanup`、`anc-watchdog`、`anc-workbuddy-launch`、`anc-patch-guard`、`anc-update-watch`。
 
-> `anc-workbuddy-launch` 与 `anc-patch-guard` 必须用**登录用户 + Interactive** 身份注册，否则拉不起 GUI。
+> `anc-workbuddy-launch` 与 `anc-patch-guard` 必须用**bot 用户 + Interactive** 身份注册，否则拉不起 GUI。三个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd` 进 `bin\`，`anc-loop.cmd` 进 `service\`）从仓库 `scripts/` 复制；触发器、身份、参数照 OPS.md 的计划任务表。
 
 ## 4. 恢复 bot
 

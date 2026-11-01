@@ -4,16 +4,20 @@
 
 ## 计划任务
 
-| 任务 | 触发 | 身份 | 作用 |
-|---|---|---|---|
-| `anc-service` | 开机 + 每分钟 | `LOCAL SERVICE` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
-| `anc-backup` | 每小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `VACUUM INTO` 快照，保留 14 份并复制到 `E:\anc-backup`；错过 02:00 会自动补 |
-| `anc-boot-alert` | 开机 + 每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | WorkBuddy 没起来就经运维群 webhook 告警 |
-| `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM）；遇到 junction / 符号链接一律跳过，不跟进去删 |
-| `anc-watchdog` | 每 10 分钟 | `LOCAL SERVICE` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
-| `anc-workbuddy-launch` | 登录后 30 秒 | 登录用户（Interactive） | 用补丁启动器拉起 WorkBuddy，杜绝「登录自动起了无补丁实例」 |
-| `anc-patch-guard` | 登录即跑 + 每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；只认补丁体包装成功后写的 `applied=true`，否则触发自愈重启（10 分钟冷却；重启中、重启失败、锚点缺失时 60 分钟内不再触发） |
-| `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | 请求厂商更新接口：有新版本就发运维群（同一版本只告警一次），提示按 skill 走回归 |
+共 8 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
+
+| 任务 | 触发 | 身份 | 执行 | 作用 |
+|---|---|---|---|---|
+| `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <svc>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
+| `anc-backup` | 每天 02:00 起每 1 小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `backup-anc.ps1 -Destination <第二块盘>` | `VACUUM INTO` 快照 + 完整性校验，保留 14 份并复制到第二块盘；错过 02:00 会自动补 |
+| `anc-boot-alert` | 开机后每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | `boot-alert.ps1` | WorkBuddy 没起来就经运维群 webhook 告警 |
+| `anc-cleanup` | 每天 03:00 | `SYSTEM` | `cleanup-media.ps1 -MediaDir <bot 用户的 TEMP>\workbuddy-wecom-media -Days 7` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM）；遇到 junction / 符号链接一律跳过。**`-MediaDir` 写死了 bot 用户，换运行身份时要同步改** |
+| `anc-watchdog` | 每天 00:00 起每 10 分钟 | `LOCAL SERVICE` | `watchdog.ps1` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
+| `anc-workbuddy-launch` | 登录后 30 秒 | bot 用户（Interactive） | `wscript //B <bin>\run-hidden.vbs <bin>\anc-launch.cmd` | 用补丁启动器拉起 WorkBuddy，杜绝「登录自动起了无补丁实例」 |
+| `anc-patch-guard` | 登录后 10 秒 + 每天 00:00 起每 1 分钟 | bot 用户（Interactive） | `wscript //B <bin>\run-hidden.vbs <bin>\anc-guard.cmd` | 读 `patch-state.json`；只认补丁体包装成功后写的 `applied=true`，否则触发自愈重启（10 分钟冷却；重启中、重启失败、锚点缺失时 60 分钟内不再触发） |
+| `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | `check-workbuddy-update.ps1` | 请求厂商更新接口：有新版本就发运维群（只有告警发出去了才记为已见），提示按 skill 走回归 |
+
+PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册脚本尚未入库，重建时按此表手工注册（见 [REBUILD.md](./REBUILD.md)）。
 
 ## 账号与凭据
 
@@ -47,7 +51,7 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 
 线上只从 `%ProgramData%\anc\patch\` 跑补丁（`launch-patched.ps1` / `preload.cjs` / `inspect.mjs` / `manifest.json`）；守卫与自愈默认 `-PatchDir` 也指向这里。**不从 git 工作副本跑**：在仓库里切分支会直接改到线上补丁，两份 manifest 也会漂移。部署补丁 = 把 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\patch\`。
 
-`%ProgramData%\anc\bin\anc-launch.cmd` 里的启动器路径也要指向 `%ProgramData%\anc\patch\launch-patched.ps1`（`.cmd` 在主机上手写，不在仓库里）。
+登录拉起（`anc-launch.cmd`）、守卫与自愈三条启动路径必须用同一份补丁：`anc-launch.cmd` 一律以仓库 `scripts/anc-launch.cmd` 为准，指向 `%ProgramData%\anc\patch\launch-patched.ps1`。入库技能调用的入库 CLI 同理，应从部署目录跑，不从工作副本跑。
 
 公司 bot 看到消息没有 `[anc:chat=…]` 前缀时**不再自己跑自愈**，只回「身份识别暂不可用」；修复完全交给守卫。任何群成员都能发消息，交给 bot 触发等于让人随意重启 WorkBuddy。
 ## 体检与告警
