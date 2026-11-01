@@ -97,12 +97,10 @@ npm run test:service
 
 ## 还没做
 
-- HTTP 接口与 token 校验、存活探测（§5.5）；
-- 连续 4 次无回应 → 通知交办人、之后每小时提醒一次；未完成任务次日顺延并告知交办人；时区/工作时段/节假日配置；
-- 附件清理、开机提醒、watchdog；Windows 服务形态（当前是计划任务 `anc-service`）；
+- HTTP 接口与 token 校验、存活探测（§5.5）——现在是 CLI + 计划任务，没有常驻 HTTP 服务；
+- Windows 服务形态（当前是计划任务 `anc-service` 每分钟跑一次 `loop --once`）；
 - vault 内部区的 markdown 投影与 `reproject`；
-- 规则冻结的 `policy_version` / `rule_content_hash` 目前只落字段，还没有规则源；
-- 公司 bot 侧怎么调它（T6：skill → 脚本，或 JSON 投递目录）。
+- 发送前「领取」已实现，但**没有**发送队列的多进程协调（同一时刻只靠 SQLite 的领取保证不重复发）。
 
 ## 安全
 

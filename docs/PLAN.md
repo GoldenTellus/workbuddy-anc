@@ -1,6 +1,8 @@
 # 里程碑计划
 
-版本:1.0(2026-10-31)。取代上游的 M0–M5(Mac mini + cc-connect + 飞书);上游原文在 git 历史里,需要时 `git show 90e4fb2:docs/PLAN.md`。设计依据是 [FORK-DIRECTION.md](./FORK-DIRECTION.md),本文只管顺序和验收。
+版本:1.1(2026-11-02)。取代上游的 M0–M5(Mac mini + cc-connect + 飞书);上游原文在 git 历史里,需要时 `git show 90e4fb2:docs/PLAN.md`。设计依据是 [FORK-DIRECTION.md](./FORK-DIRECTION.md),本文只管顺序和验收。
+
+> **1.1 改了什么**:M0–M4 的功能全部交付,本文从「排期」转为「对账」——逐条核对了已打勾项与主机现状(不一致的改回未完成并写明原因),补了「验收未闭合」与「下一阶段(建议顺序)」两节。
 
 ## 排序原则
 
@@ -36,11 +38,11 @@
   - [x] outbox 失败重试退避(1/5/15/30/60 分钟,5 次后 failed)
 - [x] 每个员工群一个 webhook,按 chatid 选用;密钥文件放 `%ProgramData%\anc\secrets\`,文件名登记在绑定表里,值不进库。(`bind set --webhook-file`,loop 按绑定选文件)
 - [x] 数据库从 `%USERPROFILE%\anc\` 挪到 `%ProgramData%\anc\data\`,NTFS 只给本地小服务、公司 bot 用户和管理员。
-- [x] 本地小服务常驻:`loop` 注册成开机即运行的计划任务(`LOCAL SERVICE`),失败重启;补测「没人登录时照样发」(T17 当时是推定)。(已注册 `anc-service`,每分钟一次;无人登录待补测)
+- [x] 本地小服务常驻:`loop` 注册成开机即运行的计划任务(`LOCAL SERVICE`),失败重启;补测「没人登录时照样发」(T17 当时是推定)。(已注册 `anc-service`,每分钟一次;无人登录见下方「验收未闭合」)
 
 **上线前必须满足**:
 
-- [x] 公司 bot 换到专用标准用户下运行;补丁启动器与 T4 在该用户下复测。(已通过:补丁生效、群内应答正常)
+- [ ] 公司 bot 换到专用标准用户下运行;补丁启动器与 T4 在该用户下复测。(**未完成**:2026-10-31 曾在该用户下复测通过,但 2026-11-01 盘点时 WorkBuddy、`anc-patch-guard`、`anc-workbuddy-launch` 都跑在管理员账号下,`anc-bot` 从未登录、没有用户配置目录。需要先定运行身份,再按 [REBUILD.md](./REBUILD.md) §4 迁过去;`anc-cleanup` 的 `-MediaDir` 写死了当前用户的 TEMP,要同步改)
 - [x] 主机上的 WorkBuddy 关闭自动升级;补丁 hash 对不上时除了写日志,还要在运维群告警。(网络层拦 `/v2/update`;hash 不符与版本不符都发 `ops-webhook.txt`)
 - [x] 开机提醒(FORK §5.1)、绑定表与数据库的离机备份。(`anc-boot-alert` 已注册;`anc-backup` 每日 02:00 本地保留 14 份并复制到第二块盘 `E:\anc-backup`;真正的离机目标待接 UNC,见 [OPS.md](./OPS.md))
 
@@ -55,7 +57,7 @@
 - [x] 两区 vault:共享区、内部区各一个独立 git 目录;共享区 SMB 只读共享,员工用主机本地共享账号读(FORK §5.4)。(已建 `D:\anc\vault-shared` / `D:\anc\vault-internal` 并各自提交;共享 `anc-vault-shared` 已开、NTFS 已加固;账号用 `scripts/provision-vault-accounts.ps1` 按名单开)
 - [x] 共享区骨架:根路由、`CONTRIBUTING.md`、`company/`(简介、名单、术语、问题模型模板)。来源:上游 `anc-onboard` 的目录骨架与根路由纪律
 - [x] 入库技能:改写上游 `anc-ingest` 正文;原件从 `%TEMP%\workbuddy-wecom-media\` 复制进 `inbox\pending\<id>\`,附元数据。(`light/skills/anc-ingest-company/SKILL.md`,已装到 `~/.workbuddy/skills/anc-ingest`)
-- [x] 入库进程:路径规范化、base hash 拒写、原件只许新建、管理员复核、提交、`inbox\failed\` 回执(FORK §5.4 的七步)。(核心已实现:校验 + 事务写入 + 回滚,`src/ingest`;git 提交、失败回执、管理员复核交互待补)
+- [x] 入库进程:路径规范化、base hash 拒写、原件只许新建、提交、`inbox\failed\` 回执(FORK §5.4 的七步)。(`src/ingest`:校验 + 事务写入 + 回滚 + 只提交本批文件的 git 提交 + 失败回执;管理员复核仍是「不带 `--commit`,人工看 diff 后手动提交」)
 - [x] 附件清理定时任务(`anc-cleanup`,每天 03:00,SYSTEM,清 7 天前的企微附件)
 - [x] 实测 T12(个人 bot 读网络路径)、T19(8000 字符的计数方式)、T20(长会话后规则是否还在)。(T12 以个人 bot 运行身份验证:标准账号读 UNC 成功、写入被拒;T19 8020 字符文档原样回末行;T20 数十轮后规则仍生效)
 
@@ -91,8 +93,32 @@
 ## 贯穿各里程碑的运维
 
 - [x] 主机体检、watchdog、重建 runbook(FORK §5.10)。(`scripts/doctor.ps1` 十项只读体检全 PASS;`anc-watchdog` 每 10 分钟查心跳/积压/进程;[REBUILD.md](./REBUILD.md))
-- [~] WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归。(伪升级演练已过:假版本+零 hash 启动,日志 `ANCHOR-PATCH` + 运维告警,bot 正常拉起;还原 manifest 后回到 `PATCHED`。**升级检测已自动化**:`anc-update-watch` 每天 09:00 查厂商接口,有新版本发运维群;真升级按 `light/skills/anc-wb-patch` 走。2026-11-01 实查:厂商仍为 5.9.3,暂无新版可升)
+- [~] WorkBuddy 升级一律按 §11 三段回归:原版回归 → 重放补丁 → 改动后回归。(伪升级演练已过:假版本+零 hash 启动,日志 `INJECTED mode=anchor` + 运维告警,补丁体包装成功记 `APPLIED`,bot 正常拉起;还原 manifest 后回到 `APPLIED mode=hash`。**升级检测已自动化**:`anc-update-watch` 每天 09:00 查厂商接口,有新版本发运维群;真升级按 `light/skills/anc-wb-patch` 走。2026-11-01 实查:厂商仍为 5.9.3,暂无新版可升)
 - [x] 新增文件类型时同步扩 `scripts/check-public.sh`。(已覆盖 md/json/ts/mjs/cjs/ps1/sh)
+
+## 验收未闭合
+
+功能都交付了,但下面这些验收项还差最后一步。按「影响线上程度」排序:
+
+| # | 项 | 现状 | 怎么算闭合 |
+|---|---|---|---|
+| 1 | 运行身份迁到专用标准用户 | 现在跑在管理员账号下;`anc-bot` 从未登录(见 M1 上线前必须满足) | 按 REBUILD §4 迁过去;补丁日志出现 `APPLIED mode=hash`;群内应答正常;doctor 全 PASS |
+| 2 | 真机注销后的无人登录 | 只做过「停掉 WorkBuddy」的代理测试(VERIFY T17) | 注销后到点,提醒仍发出 |
+| 3 | M1 升级通知与非执行人拒绝 | 只有单元测试 | 真实群里:第 4 次未回应后交办人收到通知;非执行人说「#n 完成」被拒 |
+| 4 | M4 跨天访谈 | 11 题一晚做完,未跨天 | 一场跨天的访谈完整走完,报告只在内部区 |
+| 5 | M3 干净机计时 | 未做 | 用第二个 Windows 用户照 [ONBOARDING.md](./ONBOARDING.md) 从零走一遍并计时 |
+| 6 | T13 同用户下的另一个项目工作区 | 只验证了跨用户 | 同用户、另一个项目工作区读不到 Claw 的 `CODEBUDDY.md` |
+| 7 | 真升级回归 | 厂商仍为 5.9.3 | 厂商发新版后按 §11 三段回归 |
+
+## 下一阶段(建议顺序)
+
+1. **定运行身份并迁过去**(验收 1)。它决定 `anc-cleanup` 的参数、计划任务身份、ACL,后面所有部署都受影响,所以排第一。
+2. **补验收 2–4**(无人登录、升级通知/权限、跨天访谈)。都不改代码,只需要在真实群里跑一遍并记录。
+3. **把部署变成一条命令**。现在主机上的文件靠手工复制,已经出过一次「目录被复制成同名文件」;补一个从仓库部署到 `%ProgramData%\anc\` 的脚本,并让入库技能从部署目录调 CLI。
+4. **合并两份公司 bot persona**。手写的 `light/personas/company-bot/CODEBUDDY.md` 与渲染模板 `light/templates/company-bot.md` 已漂移约 60 行;合并后渲染器成为唯一来源。
+5. **验收 5、6** 和 M3 的协作模板改写(REUSE-MAP 第 60 行)。
+
+功能扩展(后台长任务、A2A 自动通道、放宽 @ 要求)等验收闭合后再排。
 
 ## 暂不排期
 

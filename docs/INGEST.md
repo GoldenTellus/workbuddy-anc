@@ -76,8 +76,8 @@ node src\ingest\cli.ts apply --batch D:\anc\inbox\pending\20261031-001 --shared 
 
 ## 已实现 / 未实现
 
-- 已实现：批次读取、全部校验、事务写入（失败回滚已写入与已覆盖的文件）、`added/modified/original` 结果；
-- 未实现：git 提交（`-F` 传作者名）、失败批次进 `inbox\failed\` 并回执、管理员复核交互、附件清理任务、`reproject` 投影。
+- 已实现：批次读取、全部校验（含 `.git`、短名、非法字符、重复目标、链接越界）、vault 级锁、锁内复核、事务写入（临时文件 + 改名，失败回滚并报告回滚失败）、只提交本批文件的 git 提交（关 hooks）、失败批次进 `inbox\failed\` 并写 `reason.txt`、`added/modified/original` 结果；
+- 未实现：写入前的 journal（进程被强杀或断电后自动恢复 vault；目前靠临时文件 + 改名把残留降到最低，回滚失败会明确报 `ROLLBACK_INCOMPLETE`）、管理员复核的交互界面（现在是人工看 diff）、`reproject` 投影。
 
 ## 测试
 

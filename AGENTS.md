@@ -6,7 +6,10 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 
 ## 当前状态
 
-- 方向 `docs/FORK-DIRECTION.md` 0.4;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md`,**M0–M4 已交付**:任务提醒、vault/入库、渲染与接入、访谈与 A2A 均落地,21 项实测里 T1–T22 只剩「真升级回归」等厂商发版。补丁侧有锚点模式、自愈与守卫、canary、更新探测(`anc-*` 共 8 个计划任务)。
+- 方向 `docs/FORK-DIRECTION.md` 0.4;阻断项实测已完成(结果见 `docs/VERIFY.md` §4)。里程碑见 `docs/PLAN.md` **1.1**:**M0–M4 功能已交付**——任务提醒、vault/入库、渲染与接入、访谈与 A2A 均已落地;补丁侧有锚点模式、自愈与守卫、canary、更新探测,主机上 8 个计划任务。
+- 2026-11-01 做过一轮分组代码审查并修完(2 个 CRITICAL、约 10 个 HIGH 及其余),`npm test` 60 项全绿、`doctor` 全 PASS。
+- **验收尚未闭合**:运行身份仍在管理员账号下(专用标准用户从未登录过)、真机注销后的无人登录、M1 的升级通知与非执行人拒绝、M3 的干净机计时、M4 的跨天访谈、真升级回归。清单与建议顺序见 PLAN 的「验收未闭合」「下一阶段」。
+- 一次主机盘点发现的部署差异记在 `_research/host-deploy-audit-20261101.md`(不进 git):入库与登录启动器仍有从 git 工作副本跑的路径,`%ProgramData%\anc\ingest` 与 `render` 被误复制成同名文件。
 - WorkBuddy 只有补丁一条路(D18):企业版与个人版实测一样,群身份靠 D17 补丁。凡上主机的版本都先过 FORK-DIRECTION §11 的升级回归。
 - `package.json` 保持 `"private": true`,不发 npm。
 
@@ -16,10 +19,11 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 |---|---|
 | `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–D18、组件设计、WorkBuddy 已观察行为、待实测 T1–T22、安全基线、风险登记、改动台账(§11) |
 | `docs/VERIFY.md` | 阻断项实测手册与结果记录 |
-| `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定,写代码前先查这里有没有能搬的 |
-| `reference/upstream-unmerged/` | 上游三个未合并分支(含上游 M1 的渲染器 `feat-m1-w1`,本库在 PLAN M3 复用;名字里的 m1 指上游,不是本库的 M1),只作参考,不参与构建 |
-| `docs/PLAN.md` | 里程碑 M0–M4:顺序、上线门槛、验收 |
-| `SPEC.md`、`README.md` 等 | **上游原文**(Mac mini + cc-connect + Claude Code),仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
+| `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定(0.2 起列明每份上游文件现在在哪、删掉的去哪取),写代码前先查这里有没有能搬的 |
+| `reference/upstream/` | 上游参考:未合并分支(含渲染器的改写来源 `feat-m1-w1`)、以后可能用到的上游技能与 MCP 骨架。不参与构建,README 写明每份什么时候会用 |
+| `docs/PLAN.md` | 里程碑 M0–M4:顺序、上线门槛、验收、验收未闭合、下一阶段 |
+| `docs/OPS.md`、`docs/REBUILD.md` | 主机运维:8 个计划任务、补丁与部署的唯一来源、维护开关、重建步骤 |
+| `SPEC.md` 等上游原文 | 设计文档原位保留并标了「上游原文」,仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
 
 ## 关键裁决速览(详见 FORK-DIRECTION §4,不要在实现中偏离)
 
@@ -37,12 +41,12 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 - 开发流程:分支 → PR → 验证 → squash merge;维护者明确要求时可直接提交 main。
 - 从上游借代码前先查 `docs/REUSE-MAP.md`;上游写死的飞书、cc-connect、macOS 内容不要带进来。
 - 这台机器上 git 命令较慢,耗时的 git 操作放后台跑。
-- **CLAUDE.md 与本文件同步维护**(Claude 镜像,内容一致)。
+- **AGENTS.md 与本文件同步维护**(Codex 镜像,内容一致)。
 
 ## 铁律:泄密防线
 
 - `_research/` 与任何含生产细节的内容**绝不 commit**(.gitignore 已排除,别绕过)。
 - 改动 WorkBuddy 的产物(patch diff、反编译中间件、提取脚本输出)同样不进仓库:原件放 `_research/workbuddy/`,仓库里只放清单与脚本骨架,规矩见 FORK-DIRECTION §11。
 - 绝不进仓库:企微 webhook 地址、corpid / corpsecret、WorkBuddy 或企微的账号 ID、按 D16 读取的任何凭据值、真实的主机名、内网地址、带真实用户名的本机路径、人名。文档里用 `%USERPROFILE%`、`\\主机\vault`、`<userid>` 这类占位符。
-- 转公开检查(repo 转 public 前必跑):`bash scripts/check-public.sh`,零输出且退出码 0 = 通过。脚本目前只扫 `*.md *.json *.ts`,按 FORK-DIRECTION §8 扩规则之前,新增 `.ps1` / `.mjs` 等文件要人工过一遍。脚本是绊线不是证明,转公开前仍需人工过一遍全量 diff。
+- 转公开检查(repo 转 public 前必跑):`bash scripts/check-public.sh`,零输出且退出码 0 = 通过。扫描范围:`*.md *.json *.ts *.mjs *.cjs *.ps1`;`.ps1` 必须带 UTF-8 BOM、`.json` 不许带 BOM。`.sh` / `.vbs` / `.cmd` / `.tsx` 等不在范围内,新增时要人工过一遍。脚本是绊线不是证明,转公开前仍需人工过一遍全量 diff。
 - 涉及部署现场的表述只写通用化 lessons learned,不写可定位到具体在跑机器的攻击面线索(措辞用设计约束时态,如「一律不授予」,不用「已整改/待整改」)。
