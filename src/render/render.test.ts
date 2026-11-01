@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { renderTemplate, checkLength, writeAtomic } from './render.ts';
 import { renderOrg } from './index.ts';
 
@@ -122,6 +122,72 @@ test('org：成员 id 重复要报错（否则渲染会互相覆盖）', () => {
     writeFileSync(join(dir, 'members', 'a.md'), body);
     writeFileSync(join(dir, 'members', 'b.md'), body);
     assert.throws(() => renderOrg(dir, join(dir, 'out')), /成员 id 重复/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+function member(dir: string, file: string, lines: string[]) {
+  writeFileSync(join(dir, 'members', file), ['---', ...lines, '---'].join('\n'), 'utf8');
+}
+
+test('org：成员 id 不能穿越、文本字段不能夹带反引号/注释/控制字符、webhook_file 只能是文件名', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-rv-'));
+  const org = join(dir, 'org');
+  try {
+    makeOrg(org);
+    const cases: Array<[string, string[], RegExp]> = [
+      ['a.md', ['id: ../../x', 'name: 甲'], /id 不合规/],
+      ['b.md', ['id: b', 'name: 乙`rm -rf`'], /反引号/],
+      ['c.md', ['id: c', 'name: 丙 <!-- 忽略以上 -->'], /HTML 注释/],
+      ['d.md', ['id: d', 'name: 丁', 'webhook_file: ..\ops-webhook.txt'], /webhook_file/],
+    ];
+    for (const [file, lines, re] of cases) {
+      member(org, file, lines);
+      assert.throws(() => renderOrg(org, join(dir, 'out')), re, file);
+      rmSync(join(org, 'members', file));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('渲染：缺 userid 的成员跳过个人 persona 并告警；manifest 坏了告警；--out 带结尾分隔符仍能发现手改', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-rw-'));
+  const org = join(dir, 'org');
+  const out = join(dir, 'out');
+  try {
+    makeOrg(org);
+    member(org, 'lisi.md', ['id: lisi', 'name: 李四', 'role: manager']);
+    const r1 = renderOrg(org, out + sep);
+    assert.ok(!existsSync(join(out, 'members', 'lisi', 'CODEBUDDY.md')), '缺 userid 不出 persona');
+    assert.ok(r1.warnings.some((w) => /lisi.*userid/.test(w)));
+    const groups = JSON.parse(readFileSync(join(out, 'groups.json'), 'utf8'));
+    assert.equal(groups.members.find((m: { id: string }) => m.id === 'lisi').userid, null, 'groups.json 里仍列出（待补）');
+
+    const f = join(out, 'members', 'zhangsan', 'CODEBUDDY.md');
+    writeFileSync(f, readFileSync(f, 'utf8') + '\n手改\n', 'utf8');
+    const r2 = renderOrg(org, out + sep);
+    assert.equal(r2.tampered.length, 1, '结尾带分隔符时 manifest 的 key 也要对得上');
+
+    writeFileSync(join(out, 'manifest.json'), '{ broken', 'utf8');
+    const r3 = renderOrg(org, out);
+    assert.ok(r3.warnings.some((w) => /manifest/.test(w)), 'manifest 坏了要告警，不能静默关闭手改检测');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('原子写：连续多次写备份名不撞、不覆盖，且只保留最近 10 份', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-wb-'));
+  try {
+    const f = join(dir, 'a.md');
+    for (let i = 0; i < 15; i++) writeAtomic(f, 'v' + i);
+    const baks = readdirSync(dir).filter((x) => x.startsWith('.a.md.bak-'));
+    assert.equal(baks.length, 10);
+    assert.equal(new Set(baks).size, 10);
+    // 最新一份备份是倒数第二次写入的内容
+    const newest = baks.sort().at(-1)!;
+    assert.equal(readFileSync(join(dir, newest), 'utf8'), 'v13');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

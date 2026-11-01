@@ -46,7 +46,7 @@ Copy-Item <仓库>\scripts\{backup-anc,boot-alert,cleanup-media,watchdog,doctor}
 
 1. 建专用标准用户 `anc-bot`；
 2. 登录该用户，安装 WorkBuddy（企业版），扫码登录企业微信；
-3. 用补丁启动器启动：`launch-patched.ps1`，确认日志里 `PATCHED` + `update-hook installed`；
+3. 用补丁启动器启动：`launch-patched.ps1`，确认日志里 `APPLIED mode=hash` + `update-hook installed`；
 4. 安装技能到该用户 `~/.workbuddy/skills/`（或 `render onboard`）；
 5. 群里发「今天有什么任务」，有回复即可。
 

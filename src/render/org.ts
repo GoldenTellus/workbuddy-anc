@@ -29,6 +29,24 @@ export function parseFrontmatter(text: string): { fm: Record<string, string>; bo
   return { fm, body: m[2] };
 }
 
+/** id 会进输出路径（members/<id>/）：只许安全字符，../ 不能把产物写到 --out 外 */
+const MEMBER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** 会原样进 persona 的文本字段：拒绝控制字符、反引号、HTML 注释，限制长度，免得夹带指令或破坏 markdown */
+const PERSONA_TEXT_FIELDS = ['name', 'role', 'userid', 'chat_id'] as const;
+
+function assertMemberFields(file: string, id: string, fm: Record<string, string>): void {
+  if (!MEMBER_ID.test(id)) throw new Error(`成员 id 不合规（小写字母数字 _ -，≤64）: ${id}（${file}）`);
+  for (const k of PERSONA_TEXT_FIELDS) {
+    const v = fm[k];
+    if (v === undefined) continue;
+    if (v.length > 100) throw new Error(`成员字段 ${k} 过长（${file}）`);
+    if (/[\u0000-\u001f`]|<!--|-->/.test(v)) throw new Error(`成员字段 ${k} 含控制字符、反引号或 HTML 注释（${file}）`);
+  }
+  if (fm.webhook_file !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.txt$/.test(fm.webhook_file)) {
+    throw new Error(`成员 webhook_file 只能是 secrets 目录下的文件名（${file}）: ${fm.webhook_file}`);
+  }
+}
+
 function readDir(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter((f) => f.endsWith('.md'));
@@ -51,6 +69,7 @@ export function loadOrg(dir: string): Org {
     const { fm } = parseFrontmatter(readFileSync(join(dir, 'members', f), 'utf8'));
     const id = fm.id || basename(f, '.md');
     if (!fm.name) throw new Error('成员缺少 name: ' + f);
+    assertMemberFields(f, id, fm);
     members.push({
       id,
       name: fm.name,

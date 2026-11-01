@@ -1,7 +1,7 @@
-﻿{
+{
   "name": "@goldentellus/workbuddy-anc",
   "version": "0.0.0",
-  "description": "鎶婁綘鐨勫洟闃熷彉鎴?AI native company:涓€鍙?Mac mini,涓€浜轰竴涓?bot,鍏徃鐭ヨ瘑鍏ㄥ湪 markdown 閲屻€侽ne Mac mini, one bot per person, all company knowledge in markdown.",
+  "description": "把你的团队变成 AI native company:一台 Mac mini,一人一个 bot,公司知识全在 markdown 里。One Mac mini, one bot per person, all company knowledge in markdown.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,7 +33,3 @@
   },
   "private": true
 }
-
-
-
-

@@ -31,17 +31,35 @@ if ($MediaDir) {
 
 if (-not $targets.Count) { Write-Log 'skip: no media dir found'; exit 0 }
 
+# 以 SYSTEM 扫标准用户可写的目录：PS 5.1 的 -Recurse 会钻进 junction/符号链接，
+# 用户建一个指向系统目录的 junction 就能让 SYSTEM 去删那里的文件。所以手写递归，见 reparse point 一律跳过。
+function Test-Reparse($item) { return [bool]($item.Attributes -band [IO.FileAttributes]::ReparsePoint) }
+function Get-OldFiles([string]$root, [datetime]$before) {
+    $stack = New-Object System.Collections.Stack
+    $stack.Push($root)
+    while ($stack.Count -gt 0) {
+        $d = $stack.Pop()
+        foreach ($c in (Get-ChildItem -LiteralPath $d -Force -ErrorAction SilentlyContinue)) {
+            if (Test-Reparse $c) { Write-Log ("WARN skip reparse point: " + $c.FullName); continue }
+            if ($c.PSIsContainer) { $stack.Push($c.FullName) }
+            elseif ($c.LastWriteTime -lt $before) { $c }
+        }
+    }
+}
+
 $cutoff = (Get-Date).AddDays(-$Days)
 $total = 0
 $freedTotal = 0
 foreach ($dir in $targets) {
-    if (-not (Test-Path $dir)) { continue }
-    $old = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cutoff }
-    if (-not $old) { Write-Log "clean: nothing older than $Days day(s) in $dir"; continue }
+    if (-not (Test-Path -LiteralPath $dir)) { continue }
+    $top = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+    if (-not $top -or (Test-Reparse $top)) { Write-Log ("WARN skip (reparse point or unreadable): " + $dir); continue }
+    $old = @(Get-OldFiles $top.FullName $cutoff)
+    if (-not $old.Count) { Write-Log "clean: nothing older than $Days day(s) in $dir"; continue }
     $freed = 0
     $count = 0
     foreach ($f in $old) {
-        try { Remove-Item $f.FullName -Force -ErrorAction Stop; $count++; $freed += $f.Length }
+        try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop; $count++; $freed += $f.Length }
         catch { Write-Log ("WARN delete failed: " + $f.FullName) }
     }
     $total += $count

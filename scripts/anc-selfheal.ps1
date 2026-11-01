@@ -10,7 +10,8 @@ param(
     [switch]$Worker,
     [switch]$Force,
     [int]$CooldownMinutes = 10,
-    [string]$Repo = 'E:\workbuddy-anc',
+    # 唯一的线上补丁来源：部署脚本复制到这里；不从 git 工作副本跑（切分支会改到线上）
+    [string]$PatchDir = "$env:ProgramData\anc\patch",
     [string]$StateFile = "$env:ProgramData\anc\data\selfheal.state.json",
     [string]$WebhookFile = "$env:ProgramData\anc\secrets\ops-webhook.txt"
 )
@@ -26,6 +27,9 @@ function Write-Log([string]$m) {
 # 工作进程：等回复发出去 → 停掉 WorkBuddy → 用补丁启动器重启
 # 注意：不能用 taskkill /T——Worker 自己是 WorkBuddy 的后代进程，/T 会把它一起杀掉。
 if ($Worker) {
+    $workerStart = Get-Date
+    # 先写 restarting：守卫在重启空档里看到它就不再重复拉起
+    [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = $workerStart.ToString('o'); status = 'restarting' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
     Write-Log 'worker: 4 秒后重启 WorkBuddy'
     Start-Sleep -Seconds 4
     Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -36,7 +40,7 @@ if ($Worker) {
     Write-Log 'worker: WorkBuddy 已全部退出'
     Start-Sleep -Seconds 4
 
-    $launcher = Join-Path $Repo 'scripts\workbuddy-patch\launch-patched.ps1'
+    $launcher = Join-Path $PatchDir 'launch-patched.ps1'
     $out = "$env:ProgramData\anc\data\launcher.out"
     $cmdFile = "$env:ProgramData\anc\data\selfheal-launch.cmd"
     @"
@@ -44,10 +48,14 @@ if ($Worker) {
 powershell -NoProfile -ExecutionPolicy Bypass -File "$launcher" > "$out" 2>&1
 "@ | Set-Content $cmdFile -Encoding ascii
 
+    # 只认本次启动之后由补丁体写下的 applied=true（旧日志行、拼接时的记录都不算）
     function Test-Patched {
-        $plog = Join-Path $env:USERPROFILE 'anc\workbuddy-patch.log'
-        if (-not (Test-Path $plog)) { return $false }
-        return [bool](Get-Content $plog -Tail 60 | Select-String -Pattern 'PATCHED|ANCHOR-PATCH' -Quiet)
+        $ps = "$env:ProgramData\anc\data\patch-state.json"
+        if (-not (Test-Path $ps)) { return $false }
+        try {
+            $s = [IO.File]::ReadAllText($ps, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+            return ([bool]$s.applied -and ([datetime]$s.at) -gt $workerStart)
+        } catch { return $false }
     }
 
     $ok = $false
@@ -72,9 +80,14 @@ sh.Run """$cmdFile""", 0, False
         }
     }
 
-    if ($ok) { Write-Log 'worker: 重启成功（补丁已生效）' }
+    if ($ok) {
+        Write-Log 'worker: 重启成功（补丁已生效）'
+        [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'healed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+    }
     else {
         Write-Log 'worker: 两次启动都没见到补丁日志'
+        # 标成 restart-failed：守卫 60 分钟内不再触发，避免降级启动—再自愈的循环
+        [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'restart-failed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
         if (Test-Path $WebhookFile) {
             try {
                 $url = (Get-Content $WebhookFile -Raw).Trim()
@@ -120,7 +133,7 @@ if ($state -and $state.at -and -not $Force) {
     }
 }
 
-$inspect = & node (Join-Path $Repo 'scripts\workbuddy-patch\inspect.mjs') 2>$null | Out-String
+$inspect = & node (Join-Path $PatchDir 'inspect.mjs') 2>$null | Out-String
 if (-not $inspect) {
     Write-Log 'ERROR inspect 没有输出（manifest 或 asar 有问题）'
     Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'inspect-failed' })
@@ -162,7 +175,7 @@ $self = $MyInvocation.MyCommand.Path
 $workerCmd = "$env:ProgramData\anc\data\selfheal-worker.cmd"
 @"
 @echo off
-powershell -NoProfile -ExecutionPolicy Bypass -File "$self" -Worker -Repo "$Repo"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$self" -Worker -PatchDir "$PatchDir"
 "@ | Set-Content $workerCmd -Encoding ascii
 # 经 Explorer 拉起 Worker：脱离 WorkBuddy 的进程树；用 .vbs 包一层避免闪窗
 $workerVbs = "$env:ProgramData\anc\data\selfheal-worker.vbs"

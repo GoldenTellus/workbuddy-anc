@@ -47,11 +47,14 @@ export function dueReminders(db: DatabaseSync, now: string = nowIso()): Reminder
 /**
  * 标记已发；同一自然日内按 repeat_minutes 排下一次，跨天自动停（FORK §5.7：夜里不推送）。
  */
-export function markReminderSent(db: DatabaseSync, id: number, now: string = nowIso()): { sent: Reminder; next: Reminder | null } {
+export function markReminderSent(db: DatabaseSync, id: number, now?: string): { sent: Reminder; next: Reminder | null };
+export function markReminderSent(db: DatabaseSync, id: number, now: string | undefined, opts: { ifPending: true }): { sent: Reminder; next: Reminder | null } | null;
+/** opts.ifPending：提醒已不是 pending（任务刚被完成、提醒被取消）时返回 null，不抛错。 */
+export function markReminderSent(db: DatabaseSync, id: number, now: string = nowIso(), opts: { ifPending?: boolean } = {}): { sent: Reminder; next: Reminder | null } | null {
   return tx(db, () => {
     const row = db.prepare('SELECT * FROM reminders WHERE id = ?').get(id) as unknown as Reminder | undefined;
-    if (!row) throw new Error(`提醒不存在: ${id}`);
-    if (row.status !== 'pending') throw new Error(`提醒不是 pending: ${id}`);
+    if (!row) { if (opts.ifPending) return null; throw new Error(`提醒不存在: ${id}`); }
+    if (row.status !== 'pending') { if (opts.ifPending) return null; throw new Error(`提醒不是 pending: ${id}`); }
     const t = toIso(now);
     db.prepare("UPDATE reminders SET status = 'sent', last_sent_at = ? WHERE id = ?").run(t, id);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')

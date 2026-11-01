@@ -32,7 +32,7 @@ name: 张三
 role: manager
 userid: <userid>
 chat_id: <chatid>
-webhook_file: wecom-webhook.txt
+webhook_file: hook-zhangsan.txt
 seat: Enterprise
 bot: 已接入
 ---
@@ -50,9 +50,11 @@ bot: 已接入
 ```
 
 - 每个产物顶部带 `<!-- anc:input-sha256:<hash> -->`：hash 覆盖 company.md + roles/* + members/*；
-- **手改检测**：`<out>/manifest.json` 记下每个产物的内容 hash。下次渲染时若输入没变、文件 hash 变了，就报 `WARN 产物被手改过` 并以退出码 1 结束（原文件已备份）；
-- **长度闸门**：>6500 字节警告，>7500 字节报错并列出各段长度（T19）；
-- **落盘**：先备份 `.bak-<时间>` → 临时文件 → 读回对拍 sha256 → 重命名（被占用时重试 5 次）。
+- **手改检测**：`<out>/manifest.json` 记下每个产物的内容 hash。下次渲染时若输入没变、文件 hash 变了，就报 `WARN 产物被手改过` 并以退出码 1 结束（原文件已备份）。manifest 本身损坏时报 `WARN manifest.json 无法解析`，不再静默关闭检测；
+- **长度闸门**：按 UTF-8 **字节**算（比按字符保守，只会误拒），>6500 警告，>7500 报错并列出各段长度（T19）；公司 bot 与每个成员的 persona 都检查、都告警；
+- **成员校验**：`id` 只许 `[a-z0-9_-]`（≤64，会进输出路径）；`name` / `role` / `userid` / `chat_id` 拒绝控制字符、反引号、`<!--`，≤100 字符；`webhook_file` 只能是 `xxx.txt` 文件名；
+- **缺 userid**：该成员不出个人 persona，只告警（`groups.json` 里仍列出，`userid: null`），补上后重渲染；
+- **落盘**：先备份 `.bak-<毫秒时间戳>`（同名不覆盖、每个产物只留最近 10 份）→ 临时文件 → 读回对拍 sha256 → 重命名（被占用时重试 5 次）；`groups.json` 与 `manifest.json` 同样原子写。
 
 ## 用法
 

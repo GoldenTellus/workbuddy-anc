@@ -4,7 +4,7 @@ name: 张三
 role: manager
 userid: <userid>
 chat_id: <chatid>
-webhook_file: wecom-webhook.txt
+webhook_file: hook-zhangsan.txt
 seat: Enterprise
 bot: 已接入
 ---

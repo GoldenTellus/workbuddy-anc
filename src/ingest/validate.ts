@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
-const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+const RESERVED = /^(con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(\..*)?$/i;
+// Windows 文件名非法字符与控制字符：放过去要到写盘时才失败，再叠加回滚
+const ILLEGAL = /[<>"|?*\u0000-\u001f]/;
 
 export class IngestError extends Error {
   code: string;
@@ -23,6 +25,9 @@ export function normalizeTarget(input: string): string {
     if (!part || part === '.' || part === '..') throw new IngestError('BAD_PATH', '非法路径段: ' + p);
     if (/[ .]$/.test(part)) throw new IngestError('BAD_PATH', '路径段不能以空格或点结尾: ' + p);
     if (RESERVED.test(part)) throw new IngestError('BAD_PATH', 'Windows 保留名: ' + p);
+    if (ILLEGAL.test(part)) throw new IngestError('BAD_PATH', '含 Windows 非法字符或控制字符: ' + p);
+    // .git 与 8.3 短名（如 GIT~1）一律拒绝：写进 .git 等于能植入 hook，在下次提交时执行
+    if (part.toLowerCase() === '.git' || /~\d/.test(part)) throw new IngestError('BAD_PATH', '不允许写入 .git 或使用短文件名: ' + p);
   }
   return parts.join('/');
 }

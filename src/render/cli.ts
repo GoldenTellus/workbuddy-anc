@@ -31,12 +31,13 @@ try {
     if (!orgDir) fail('缺少 --org', 'USAGE', 2);
     if (!outDir) fail('缺少 --out', 'USAGE', 2);
     const r = renderOrg(orgDir, outDir);
-    if (json) console.log(JSON.stringify({ ok: true, input_sha256: r.inputSha, outputs: r.outputs, groups: r.members, tampered: r.tampered }));
+    if (json) console.log(JSON.stringify({ ok: true, input_sha256: r.inputSha, outputs: r.outputs, groups: r.members, tampered: r.tampered, warnings: r.warnings }));
     else {
       console.log('input_sha256: ' + r.inputSha);
       for (const o of r.outputs) console.log(`  ${String(o.bytes).padStart(5)} B  ${o.file}`);
       console.log(`  groups.json  ${r.members} member(s)`);
       if (r.warn) console.log('WARN 公司 bot persona 超过 6500 字节，接近上限');
+      for (const w of r.warnings) console.log('WARN ' + w);
       for (const t of r.tampered) console.log('WARN 产物被手改过（指纹不一致，已重渲染并备份原文件）: ' + t);
     }
     if (r.tampered.length) process.exit(1);

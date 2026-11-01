@@ -1,6 +1,6 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadOrg } from './org.ts';
 import { renderTemplate, fingerprint, checkLength, writeAtomic } from './render.ts';
@@ -14,6 +14,8 @@ export interface RenderResult {
   warn: boolean;
   /** 已存在产物里指纹与本次输入不一致的文件（被手改过） */
   tampered: string[];
+  /** 不阻断但要人看的事：成员缺 userid 被跳过、persona 接近上限、manifest 损坏 */
+  warnings: string[];
 }
 
 interface Manifest { input_sha256: string; files: Record<string, string> }
@@ -22,13 +24,16 @@ function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-function readManifest(outDir: string): Manifest | null {
+/** 读上次的 manifest；坏了要说出来——否则手改检测就此静默关闭。 */
+function readManifest(outDir: string): { manifest: Manifest | null; error: string | null } {
   const p = join(outDir, 'manifest.json');
-  if (!existsSync(p)) return null;
+  if (!existsSync(p)) return { manifest: null, error: null };
   try {
-    return JSON.parse(readFileSync(p, 'utf8')) as Manifest;
-  } catch {
-    return null;
+    const m = JSON.parse(readFileSync(p, 'utf8').replace(/^﻿/, '')) as Manifest;
+    if (!m || typeof m.input_sha256 !== 'string' || !m.files) throw new Error('缺少 input_sha256/files');
+    return { manifest: m, error: null };
+  } catch (e) {
+    return { manifest: null, error: 'manifest.json 无法解析，本次无法检查手改（' + (e as Error).message + '）；渲染后会重写' };
   }
 }
 
@@ -57,9 +62,14 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
 
   const outputs: RenderResult['outputs'] = [];
   const tampered: string[] = [];
-  const manifest = readManifest(outDir);
+  const warnings: string[] = [];
+  const mf = readManifest(outDir);
+  if (mf.error) warnings.push(mf.error);
+  const manifest = mf.manifest;
   const record: Record<string, string> = {};
-  const rel = (f: string) => f.slice(outDir.length + 1).replace(/\\/g, '/');
+  // path.relative：--out 带结尾分隔符时 slice 会多切一个字符，manifest 的 key 对不上，手改检测被静默跳过
+  const outRoot = resolve(outDir);
+  const rel = (f: string) => relative(outRoot, resolve(f)).replace(/\\/g, '/');
 
   // 输入没变但文件内容变了 → 手改
   const track = (file: string, content: string): string => {
@@ -90,6 +100,11 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
   outputs.push({ file: cFile, bytes: cLen.bytes, sha: track(cFile, companyText) });
 
   for (const m of org.members) {
+    // 没有 userid 就不出个人 persona：否则模板里是字面量 <userid>，个人 bot 认不出主人、只能靠模型猜
+    if (!m.userid) {
+      warnings.push(`成员 ${m.id} 没有 userid，跳过个人 persona（补上 members/${m.id}.md 的 userid 后重新渲染）`);
+      continue;
+    }
     const text = renderTemplate(memberTpl, {
       fingerprint: fpLine,
       member_name: m.name,
@@ -97,10 +112,11 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
       company_bot_name: org.company.company_bot_name,
       vault_shared: org.company.vault_shared,
       local_workdir: org.company.local_workdir,
-      owner_userid: m.userid || '<userid>',
+      owner_userid: m.userid,
     });
     const len = checkLength(text);
     if (!len.ok) throw new Error(`成员 ${m.id} 的 persona 超过 7500 字节（当前 ${len.bytes}）`);
+    if (len.warn) warnings.push(`成员 ${m.id} 的 persona ${len.bytes} 字节，超过 6500 的提醒线`);
     const f = join(outDir, 'members', m.id, 'CODEBUDDY.md');
     outputs.push({ file: f, bytes: len.bytes, sha: track(f, text) });
   }
@@ -111,8 +127,9 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
     members: org.members.map((m) => ({ id: m.id, name: m.name, chat_id: m.chat_id || null, userid: m.userid || null, webhook_file: m.webhook_file || null })),
   };
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, 'groups.json'), JSON.stringify(groups, null, 2) + '\n', 'utf8');
-  writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ input_sha256: inputSha, generated_at: new Date().toISOString(), files: record }, null, 2) + '\n', 'utf8');
+  // groups.json 是 bind import 的输入、manifest 是手改检测的基准：都走原子写，半截文件会让下一步误判
+  writeAtomic(join(outDir, 'groups.json'), JSON.stringify(groups, null, 2) + '\n');
+  writeAtomic(join(outDir, 'manifest.json'), JSON.stringify({ input_sha256: inputSha, generated_at: new Date().toISOString(), files: record }, null, 2) + '\n');
 
-  return { inputSha, outputs, members: org.members.length, warn: cLen.warn, tampered };
+  return { inputSha, outputs, members: org.members.length, warn: cLen.warn || warnings.length > 0, tampered, warnings };
 }

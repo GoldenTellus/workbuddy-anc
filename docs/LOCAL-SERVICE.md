@@ -27,7 +27,7 @@
 
 ```powershell
 # 绑定（管理员；userid 用于提醒时 @ 人，webhook-file 是该群自己的密钥文件名）
-npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid> --webhook-file wecom-webhook.txt
+npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid> --webhook-file hook-<姓名拼音>.txt
 npm run service -- bind resolve --chat-id <chatid>
 npm run service -- bind list
 
@@ -43,10 +43,12 @@ npm run service -- reminder sent --id 1
 
 # 出站
 npm run service -- outbox list
-npm run service -- outbox flush --webhook-file C:\ProgramData\anc\secrets\wecom-webhook.txt
+npm run service -- outbox flush    # 与 loop 同一套：按每条消息的群绑定选 webhook
 
-# 循环：到期提醒入队并发出（--once 只跑一次，便于联调）
-npm run service -- loop --once --webhook-file C:\ProgramData\anc\secrets\wecom-webhook.txt
+# 循环：到期提醒入队并发出（--once 只跑一次）
+npm run service -- loop --once
+# 联调单个群：--webhook-file 必须配 --chat-id，只发这个群的消息
+npm run service -- loop --once --chat-id <chatid> --webhook-file C:\ProgramData\anc\secrets\<该群>.txt
 npm run service -- loop --interval-ms 60000
 
 # A2A（访谈/交回；信封先写文件，避开引号问题）
@@ -70,14 +72,15 @@ npm run service -- config set --key holidays --value 2026-10-01,2026-10-02
 0. 昨天没完成、又没有 pending 提醒的任务 → 顺延到下一次同一时刻，并发一条「上次定在 … 没完成，已顺延到 …」；
 0.5 到点但不在工作时段（`work_start`–`work_end`、`weekdays`、`holidays`）→ 改排到下一个工作时段起点，不打扰；默认是全天，需管理员显式开启；
 1. 到期提醒 → 生成 outbox 消息（带绑定人的 `userid` 作为 `mentioned_list`），提醒标为已发（同日续排，跨天停）；
-2. 连续 4 次没回应 → 在同一个群通知交办人一次（`escalate:<任务号>` 去重），之后每小时提醒一次；
-3. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查绑定，用绑定里的 `webhook_file`（默认 `wecom-webhook.txt`）去 `%ProgramData%\anc\secrets\` 找；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`。
+2. 连续 4 次没回应 → 在**交办人自己的群**（按 `requester_userid` 反查绑定）通知交办人一次（`escalate:<任务号>` 去重；查不到交办人的群才退回任务所在群，并记 `escalate_no_group` 事件），之后每小时提醒一次（下一次直接排到一小时后）；
+   顺延和升级这类系统主动发的通知，在非工作时段入队时最早可发时间排到下一个工作起点，夜里不推；
+3. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查绑定，用绑定里的 `webhook_file` 去 `%ProgramData%\anc\secrets\` 找（只能是纯文件名：字母数字 `._-`、`.txt` 结尾）。**群没绑定或没登记 `webhook_file` 时标 `NO_WEBHOOK_FOR_CHAT` 失败，不退回任何默认群**（一人一群）。发送前先「领取」（`pending → sending`），重叠的 tick 或 `outbox flush` 不会重复发；领取后 10 分钟没回写的视为发送方退出、可重领。到点提醒有一小时有效期，迟到超过就标 `EXPIRED` 不补发。`last_error` 进库前去掉 URL 与文件原文；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`（网络类含超时给 10 次；开机后网络类失败**每条只回收一次**，不会每分钟重置）。
 
-**权限**：`task done` / `task cancel` 必须带 `--actor <userid>`；只有任务的 `assignee_userid` 或 `requester_userid` 能操作，否则返回「只有执行人或交办人能操作这个任务」。未登记 userid 的旧任务不校验（兼容）。
+**权限**：`task done` / `task cancel` 必须带 `--actor <userid>`；只有任务的 `assignee_userid` 或 `requester_userid` 能操作，否则返回「只有执行人或交办人能操作这个任务」。`task add` 必须带 `--requester-userid`（消息前缀里的 `from`），`--due-local` 必须是完整的 `YYYY-MM-DD HH:mm`。两个 userid 都没登记的旧任务仍不校验（兼容存量数据）；`actor` 来自模型从前缀里抄的 `from`，可信度取决于 D17 补丁（伪造前缀已在补丁里中和）。
 
 **常驻**：主机上用计划任务 `anc-service`（`LOCAL SERVICE`，开机启动 + 每分钟跑一次 `loop --once`）。部署脚本与 ACL 见下节。
 
-`outbox flush` 读的是**文件**里的 webhook（不接命令行明文），发给群机器人；返回 `errcode: 0` 才算成功。
+`outbox flush` 与 `loop` 走同一段发送逻辑：webhook 只从 secrets 目录的**文件**读（不接命令行明文），按群选择；返回 `errcode: 0` 才算成功。
 
 ## 运行要求
 
@@ -103,6 +106,6 @@ npm run test:service
 
 ## 安全
 
-- webhook 只从文件读，路径默认 `%ProgramData%\anc\secrets\wecom-webhook.txt`；不写入日志、不进 git。
+- webhook 只从 `%ProgramData%\anc\secrets\<群的文件名>.txt` 读，没有全局默认；不写入日志、不进 git。
 - 出站凭据扫描覆盖：企微 webhook、app_secret/corpsecret、api_key、Bearer、Cookie、私钥、带口令的连接串、`sk-*`、`AKIA*`、`xox*-`、飞书 `cli_/ou_`。
 - 数据库里只有任务与绑定关系；`*.db` 已在 `.gitignore`。

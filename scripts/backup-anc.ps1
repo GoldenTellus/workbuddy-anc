@@ -41,6 +41,12 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $target = Join-Path $BackupDir "anc-$stamp.db"
 
 & $node "$env:ProgramData\anc\service\cli.ts" backup --db $SourceDb --to $target *> $null
+# cli 退出码非 0（含完整性校验失败）一律算失败，并删掉可能残留的半截文件
+if ($LASTEXITCODE -ne 0) {
+    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+    Write-Log "ERROR 备份失败（cli 退出码 $LASTEXITCODE）: $target"
+    exit 1
+}
 if (-not (Test-Path $target)) { Write-Log "ERROR 备份失败: $target"; exit 1 }
 $size = (Get-Item $target).Length
 if ($size -le 0) { Write-Log "ERROR 备份文件为空: $target"; exit 1 }

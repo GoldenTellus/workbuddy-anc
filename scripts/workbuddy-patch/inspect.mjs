@@ -51,8 +51,10 @@ const bootText = boot ? boot.toString('utf8') : '';
 const anchors = {
   emitMessage: (content.match(/emitMessage/g) || []).length,
   class: (content.match(/WecomAiBotClient/g) || []).length,
-  bootstrapStart: mf.bootstrapReplacements ? mf.bootstrapReplacements.filter(([f]) => bootText.includes(f)).length : 0,
-  bootstrapEarly: mf.bootstrapReplacements ? mf.bootstrapReplacements.filter(([f]) => bootText.includes(f)).length : 0,
+  // 每条替换单独计：[0] 启动时强制自动升级，[1] 早期强制升级检查
+  bootstrapStart: mf.bootstrapReplacements && mf.bootstrapReplacements[0] ? Number(bootText.includes(mf.bootstrapReplacements[0][0])) : 0,
+  bootstrapEarly: mf.bootstrapReplacements && mf.bootstrapReplacements[1] ? Number(bootText.includes(mf.bootstrapReplacements[1][0])) : 0,
+  bootstrapTotal: mf.bootstrapReplacements ? mf.bootstrapReplacements.length : 0,
 };
 
 const version = existsSync(exe) ? (await import('node:child_process')).execFileSync('powershell', ['-NoProfile', '-Command', `(Get-Item '${exe.replace(/'/g, "''")}').VersionInfo.FileVersion`], { encoding: 'utf8' }).trim() : null;
@@ -67,7 +69,8 @@ const report = {
   hashMatches: sha === mf.sha256,
   anchors,
   anchorsOk: anchors.emitMessage > 0 && anchors.class > 0,
-  bootstrapOk: anchors.bootstrapStart > 0,
+  // 每条登记的替换都要能命中，只命中一条说明另一个升级入口已变，升级仍可能被触发
+  bootstrapOk: anchors.bootstrapTotal > 0 && anchors.bootstrapStart + anchors.bootstrapEarly === Math.min(anchors.bootstrapTotal, 2),
   advice: [],
 };
 if (!report.hashMatches) report.advice.push('hash 与 manifest 不符：可先按锚点模式启动；回归通过后更新 manifest 的 sha256/size/version');

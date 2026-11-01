@@ -7,8 +7,9 @@
 #   3) 去掉 -DryRun 正式执行；凭据写到 %ProgramData%\anc\accounts\provisioned-<日期>.csv
 # 说明：
 #   - 账号名固定 anc-read-<id>，随机 12 位密码，密码永不过期；
-#   - 默认属于 Users，不在 Administrators；
+#   - 加入本地组 anc-vault-readers（不存在则建），不在 Administrators；
 #   - 「拒绝本地登录」需在本地安全策略里对组 anc-vault-readers 单独设置（脚本不代替，避免锁死本机）；
+#     脚本只保证账号进了这个组，策略才管得到它；
 #   - 幂等：已存在的账号跳过，不改密码。
 
 [CmdletBinding()]
@@ -45,23 +46,44 @@ foreach ($r in $rows) {
 
 if (-not $plan) { Write-Host 'ERROR 名单里没有可用行'; exit 2 }
 
+$Group = 'anc-vault-readers'
+if (-not $DryRun) {
+    if (-not (Get-LocalGroup -Name $Group -ErrorAction SilentlyContinue)) {
+        New-LocalGroup -Name $Group -Description 'ANC vault 只读共享账号（拒绝本地登录策略作用于此组）' | Out-Null
+        Write-Host "created group $Group"
+    }
+    # 凭据目录先收紧再写文件：新建目录会继承 ProgramData 的默认 ACL（Users 可读）
+    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+    & icacls $OutDir /inheritance:r /grant:r 'Administrators:(OI)(CI)F' 'SYSTEM:(OI)(CI)F' | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR 收紧 $OutDir 权限失败（icacls 退出码 $LASTEXITCODE），不写凭据"; exit 2 }
+}
+
 $created = @()
 foreach ($p in $plan) {
     $exists = [bool](Get-LocalUser -Name $p.user -ErrorAction SilentlyContinue)
-    if ($exists) { Write-Host ("skip 已存在: " + $p.user); continue }
-    if ($DryRun) { Write-Host ("dry-run 将创建: " + $p.user + " (" + $p.name + ")"); continue }
+    if ($DryRun) {
+        Write-Host ($(if ($exists) { "dry-run 已存在（确保在 $Group 组）: " } else { "dry-run 将创建并加入 ${Group}: " }) + $p.user + " (" + $p.name + ")")
+        continue
+    }
+    if ($exists) {
+        # 旧版脚本开的账号没进组：补上（幂等），不改密码
+        Add-LocalGroupMember -Group $Group -Member $p.user -ErrorAction SilentlyContinue
+        Write-Host ("skip 已存在（已确保在 $Group）: " + $p.user)
+        continue
+    }
     $pwd = New-Password
     New-LocalUser -Name $p.user -Password (ConvertTo-SecureString $pwd -AsPlainText -Force) -Description ("ANC vault read-only: " + $p.name) -PasswordNeverExpires | Out-Null
+    Add-LocalGroupMember -Group $Group -Member $p.user
     $created += [pscustomobject]@{ name = $p.name; id = $p.id; user = $p.user; password = $pwd }
     Write-Host ("created " + $p.user + " (" + $p.name + ")")
 }
 
 if ($created.Count -gt 0) {
-    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
     $file = Join-Path $OutDir ("provisioned-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".csv")
     $created | Export-Csv -Path $file -NoTypeInformation -Encoding UTF8
-    # 凭据只给管理员与 SYSTEM：bot 账号（标准用户）不得读取
-    & icacls $file /inheritance:r /grant "Administrators:(R,W)" "SYSTEM:(R,W)" 2>&1 | Out-Null
+    # 凭据只给管理员与 SYSTEM：bot 账号（标准用户）不得读取；目录已先收紧，这里再对文件确认一次
+    & icacls $file /inheritance:r /grant:r 'Administrators:F' 'SYSTEM:F' | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR 收紧凭据文件权限失败，立即删除: $file"; Remove-Item -LiteralPath $file -Force; exit 2 }
     Write-Host ("凭据已写入: " + $file)
     Write-Host '提醒：把凭据发到本人手上后删除该文件；不要提交进仓库。'
 }

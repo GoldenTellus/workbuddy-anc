@@ -1,5 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, cpSync, rmSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import {
+  existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, cpSync, rmSync,
+  realpathSync, lstatSync, openSync, closeSync, rmdirSync,
+} from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { IngestError, normalizeTarget, assertTextSize, blobHash, assertFrontmatter } from './validate.ts';
 
 export interface BatchFile {
@@ -47,20 +50,25 @@ export function applyBatch(batchDir: string, vaultDir: string): ApplyResult {
   if (!meta.batch_id) throw new IngestError('BAD_META', 'meta.json 缺少 batch_id');
   if (!Array.isArray(meta.files) || meta.files.length === 0) throw new IngestError('BAD_META', 'meta.json 没有 files');
 
-  const plan: Array<{ src: string; target: string; kind: BatchFile['kind']; content: Buffer; existed: boolean; old?: Buffer }> = [];
+  const plan: PlanItem[] = [];
+
+  // 先解析真实路径：resolve 不跟链接，junction / 符号链接能把「批次内」的路径指到批次外
+  const base = realpathSync(resolve(batchDir));
+  const vaultReal = realpathSync(resolve(vaultDir));
 
   for (const f of meta.files) {
     const target = normalizeTarget(f.target);
     // src 必须在批次目录内：meta.json 来自 bot，不能让它读批次外的文件
-    const base = resolve(batchDir);
     const srcPath = resolve(base, f.src);
-    if (srcPath !== base && !srcPath.startsWith(base + sep)) {
-      throw new IngestError('BAD_PATH', '批次文件越界: ' + f.src);
-    }
+    if (!isInside(base, srcPath)) throw new IngestError('BAD_PATH', '批次文件越界: ' + f.src);
     if (!existsSync(srcPath)) throw new IngestError('MISSING_SRC', '批次里缺少文件: ' + f.src);
+    const st = lstatSync(srcPath);
+    if (st.isSymbolicLink() || !st.isFile()) throw new IngestError('BAD_PATH', '批次文件必须是普通文件（不收链接/目录）: ' + f.src);
+    if (!isInside(base, realpathSync(srcPath))) throw new IngestError('BAD_PATH', '批次文件经链接指向批次外: ' + f.src);
     const content = readFileSync(srcPath);
 
-    const dest = join(vaultDir, target);
+    const dest = join(vaultReal, target);
+    assertNoLinkOnPath(vaultReal, dest);
     const existed = existsSync(dest);
     let old: Buffer | undefined;
     if (existed) old = readFileSync(dest);
@@ -80,40 +88,118 @@ export function applyBatch(batchDir: string, vaultDir: string): ApplyResult {
     plan.push({ src: srcPath, target, kind: f.kind, content, existed, old });
   }
 
-  // 大小写冲突检查（Windows）
+  // 同一批次内：同一路径出现两次、或仅大小写不同（Windows 上是同一个文件）都拒绝
   const seen = new Map<string, string>();
   for (const p of plan) {
     const key = p.target.toLowerCase();
-    if (seen.has(key) && seen.get(key) !== p.target) throw new IngestError('CASE_CONFLICT', '仅大小写不同的路径冲突: ' + p.target);
+    if (seen.has(key)) {
+      throw new IngestError(seen.get(key) === p.target ? 'DUPLICATE_TARGET' : 'CASE_CONFLICT', '批次内目标路径重复: ' + p.target);
+    }
     seen.set(key, p.target);
+  }
+
+  return withVaultLock(vaultReal, () => writePlan(vaultReal, plan));
+}
+
+type PlanItem = { src: string; target: string; kind: BatchFile['kind']; content: Buffer; existed: boolean; old?: Buffer };
+
+function isInside(root: string, p: string): boolean {
+  const rel = relative(root, p);
+  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/** 目标路径上已存在的每一级都不能是链接：否则写入会穿到 vault 外。 */
+function assertNoLinkOnPath(root: string, dest: string): void {
+  let cur = root;
+  for (const part of relative(root, dest).split(sep)) {
+    cur = join(cur, part);
+    if (!existsSync(cur)) return;
+    if (lstatSync(cur).isSymbolicLink() || !isInside(root, realpathSync(cur))) {
+      throw new IngestError('BAD_PATH', '目标路径经链接指向 vault 外: ' + relative(root, dest));
+    }
+  }
+}
+
+/**
+ * vault 级独占锁：两个入库进程同时改同一文件、带同一个 base_hash 时，
+ * 计划阶段都能通过，后写的会覆盖先写的。拿锁后在写入前再核一次 hash。
+ */
+function withVaultLock<T>(vault: string, fn: () => T): T {
+  const lock = join(vault, '.git', 'anc-ingest.lock');
+  const lockPath = existsSync(join(vault, '.git')) ? lock : join(vault, '.anc-ingest.lock');
+  let fd: number;
+  try {
+    fd = openSync(lockPath, 'wx');
+  } catch {
+    throw new IngestError('VAULT_BUSY', '另一个入库正在进行（锁文件 ' + lockPath + '）；稍后重试，确认没有进程在跑时可删掉锁文件');
+  }
+  try {
+    return fn();
+  } finally {
+    try { closeSync(fd); } catch { /* ignore */ }
+    try { unlinkSync(lockPath); } catch { /* ignore */ }
+  }
+}
+
+function writePlan(vault: string, plan: PlanItem[]): ApplyResult {
+  // 拿到锁后再核一次：计划阶段到现在之间别的进程可能改过
+  for (const p of plan) {
+    const dest = join(vault, p.target);
+    const nowExists = existsSync(dest);
+    if (nowExists !== p.existed) throw new IngestError('BASE_HASH_MISMATCH', '目标在校验后被改动: ' + p.target);
+    if (nowExists && blobHash(readFileSync(dest)) !== blobHash(p.old!)) throw new IngestError('BASE_HASH_MISMATCH', '目标在校验后被改动: ' + p.target);
   }
 
   const result: ApplyResult = { added: [], modified: [], originals: [] };
   const created: string[] = [];
+  const createdDirs: string[] = [];
   const replaced: Array<{ path: string; old: Buffer }> = [];
 
   try {
     for (const p of plan) {
-      const dest = join(vaultDir, p.target);
-      mkdirSync(dirname(dest), { recursive: true });
-      if (p.existed) {
-        replaced.push({ path: dest, old: p.old! });
-        writeFileSync(dest, p.content);
-        if (p.kind === 'markdown') result.modified.push(p.target);
-      } else {
-        writeFileSync(dest, p.content);
-        created.push(dest);
-        if (p.kind === 'markdown') result.added.push(p.target);
-        else result.originals.push(p.target);
-      }
+      const dest = join(vault, p.target);
+      for (const d of missingDirs(vault, dirname(dest))) { mkdirSync(d); createdDirs.push(d); }
+      if (p.existed) replaced.push({ path: dest, old: p.old! });
+      writeAtomic(dest, p.content);
+      if (!p.existed) created.push(dest);
+      if (p.kind === 'original') result.originals.push(p.target);
+      else (p.existed ? result.modified : result.added).push(p.target);
     }
   } catch (e) {
-    for (const c of created) { try { unlinkSync(c); } catch { /* ignore */ } }
-    for (const r of replaced) { try { writeFileSync(r.path, r.old); } catch { /* ignore */ } }
-    throw e;
+    // 回滚失败不能吞掉：vault 可能半新半旧，必须让人知道去哪儿修
+    const rollbackErrors: string[] = [];
+    for (const c of created) { try { unlinkSync(c); } catch (re) { rollbackErrors.push('删除 ' + relative(vault, c) + ': ' + (re as Error).message); } }
+    for (const r of replaced) { try { writeAtomic(r.path, r.old); } catch (re) { rollbackErrors.push('恢复 ' + relative(vault, r.path) + ': ' + (re as Error).message); } }
+    for (const d of createdDirs.reverse()) { try { rmdirSync(d); } catch { /* 非空或已删，不影响内容 */ } }
+    const err = e instanceof IngestError ? e : new IngestError('WRITE_FAILED', (e as Error).message);
+    if (rollbackErrors.length) {
+      err.code = 'ROLLBACK_INCOMPLETE';
+      err.message += '；回滚未完成，vault 需人工检查: ' + rollbackErrors.join('；');
+    }
+    throw err;
   }
 
   return result;
+}
+
+/** 从 root 到 dir 之间还不存在的目录（由浅到深）。 */
+function missingDirs(root: string, dir: string): string[] {
+  const out: string[] = [];
+  let cur = dir;
+  while (cur !== root && isInside(root, cur) && !existsSync(cur)) { out.unshift(cur); cur = dirname(cur); }
+  return out;
+}
+
+/** 先写同目录临时文件再改名：进程中途退出不会留下写了一半的目标文件。 */
+function writeAtomic(dest: string, content: Buffer): void {
+  const tmp = join(dirname(dest), '.tmp-' + process.pid + '-' + Date.now() + '-' + basename(dest));
+  try {
+    writeFileSync(tmp, content, { flag: 'wx' });
+    renameSync(tmp, dest);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+    throw e;
+  }
 }
 
 /** 从 `…\<inbox>\pending\<id>` 推断 inbox 目录；不匹配返回 null。 */

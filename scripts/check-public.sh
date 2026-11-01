@@ -35,4 +35,13 @@ while IFS= read -r f; do
   fi
 done < <(git ls-files '*.ps1')
 
+# 5) .json 不得带 BOM：JSON.parse 遇到 BOM 直接报错（package.json 曾因此被写坏）
+while IFS= read -r f; do
+  head=$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')
+  if [ "$head" = "efbbbf" ]; then
+    echo "FAIL: $f 带 UTF-8 BOM（JSON.parse 会失败；用 UTF-8 无 BOM 保存）"
+    fail=1
+  fi
+done < <(git ls-files '*.json')
+
 exit $fail

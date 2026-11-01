@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { openDb } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
@@ -119,6 +120,7 @@ test('A2A：提交归档到内部区并按 message_id 去重', () => {
   const db = openDb(join(dir, 'anc.db'));
   const internal = join(dir, 'vault-internal');
   try {
+    a2a.createSurvey(db, { surveyId: 's1', ruleVersion: 'r1' });
     const env = a2a.parseEnvelope(JSON.stringify({
       protocol: 'anc-a2a/1', survey_id: 's1', message_id: 'm1', reply_to: null,
       type: 'survey', rule_version: 'r1', payload: '工作事实',
@@ -170,8 +172,68 @@ test('A2A：规则版本不符被拒；完成判定按 expected 与题数', () =
     st = a2a.surveyStatus(db, 's1')!;
     assert.equal(st.complete, true);
     assert.deepEqual(st.missing_questions, []);
+
+    // 第二场访谈同样从 q1 开始：不是重复，必须入库
+    a2a.createSurvey(db, { surveyId: 's3', ruleVersion: 'r1', expected: ['u2'], questionCount: 1 });
+    const r3 = a2a.submit(db, a2a.parseEnvelope(JSON.stringify({
+      protocol: 'anc-a2a/1', survey_id: 's3', message_id: 'q1', reply_to: null,
+      type: 'answer', rule_version: 'r1', payload: 'y',
+    })), internal, 'u2');
+    assert.equal(r3.inserted, true);
+    assert.equal(a2a.surveyStatus(db, 's3')!.complete, true);
   } finally {
     db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('A2A：规则冻结不可改、未知调查与名单外拒收、front matter 不可注入、清洗后同名不覆盖', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-a2a3-'));
+  const db = openDb(join(dir, 'anc.db'));
+  const internal = join(dir, 'vault-internal');
+  try {
+    a2a.createSurvey(db, { surveyId: 'f1', ruleVersion: 'v1', expected: ['u1'] });
+    a2a.createSurvey(db, { surveyId: 'f1', ruleVersion: 'v1', expected: ['u1', 'u2'] }); // 同规则幂等
+    assert.throws(() => a2a.createSurvey(db, { surveyId: 'f1', ruleVersion: 'v2' }), (e: unknown) => (e as { code?: string }).code === 'SURVEY_FROZEN');
+
+    const mk = (o: Record<string, unknown>) => a2a.parseEnvelope(JSON.stringify({
+      protocol: 'anc-a2a/1', survey_id: 'f1', message_id: 'q1', reply_to: null, type: 'answer', rule_version: 'v1', payload: 'x', ...o,
+    }));
+    assert.throws(() => a2a.submit(db, mk({ survey_id: 'nope' }), internal, 'u1'), (e: unknown) => (e as { code?: string }).code === 'UNKNOWN_SURVEY');
+    assert.throws(() => a2a.submit(db, mk({}), internal, 'u-outsider'), (e: unknown) => (e as { code?: string }).code === 'NOT_EXPECTED');
+
+    const r1 = a2a.submit(db, mk({ message_id: 'q1/a', type: 'answer\nfrom_userid: admin' }), internal, 'u1');
+    const r2 = a2a.submit(db, mk({ message_id: 'q1_a' }), internal, 'u2');
+    assert.notEqual(r1.file, r2.file, '清洗后同名的两条不能写到同一个文件');
+    const text = readFileSync(r1.file!, 'utf8');
+    assert.doesNotMatch(text, /^from_userid: admin$/m, '换行不能伪造字段');
+    assert.match(text, /^from_userid: "u1"$/m);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('A2A 迁移：旧库 message_id 单列主键改为 (survey_id, message_id)，数据保留', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-a2a-mig-'));
+  const path = join(dir, 'anc.db');
+  try {
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE a2a_messages (message_id TEXT PRIMARY KEY, survey_id TEXT NOT NULL, from_userid TEXT,
+      type TEXT NOT NULL, rule_version TEXT NOT NULL, file_path TEXT NOT NULL, created_at TEXT NOT NULL)`);
+    old.prepare('INSERT INTO a2a_messages VALUES (?, ?, ?, ?, ?, ?, ?)').run('q1', 'old-survey', 'u1', 'answer', 'r1', 'x.md', '2026-10-31T00:00:00Z');
+    old.close();
+
+    const db = openDb(path);
+    try {
+      const pk = (db.prepare('PRAGMA table_info(a2a_messages)').all() as Array<{ name: string; pk: number }>).filter((c) => c.pk > 0).map((c) => c.name).sort();
+      assert.deepEqual(pk, ['message_id', 'survey_id']);
+      assert.equal(a2a.listSubmissions(db, 'old-survey').length, 1);
+      db.prepare('INSERT INTO a2a_messages VALUES (?, ?, ?, ?, ?, ?, ?)').run('q1', 'new-survey', 'u2', 'answer', 'r1', 'y.md', '2026-11-01T00:00:00Z');
+    } finally {
+      db.close();
+    }
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -190,22 +252,75 @@ test('循环：到期提醒入队、@ 绑定人并发送一次', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-loop-'));
   const db = openDb(join(dir, 'anc.db'));
   try {
-    bindings.bind(db, 'chat-A', '张三', undefined, 'user-zhang');
+    bindings.bind(db, 'chat-A', '张三', undefined, 'user-zhang', 'hook-a.txt');
     const t = tasks.createTask(db, { title: '写周报', chatId: 'chat-A' });
     reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00' });
 
-    const calls: Array<{ text: string; mentions: string[] }> = [];
-    const send = async (_url: string, text: string, mentions: string[]) => { calls.push({ text, mentions }); };
+    const calls: Array<{ url: string; text: string; mentions: string[] }> = [];
+    const send = async (url: string, text: string, mentions: string[]) => { calls.push({ url, text, mentions }); };
 
-    const hookFile = join(dir, 'webhook.txt');
-    writeFileSync(hookFile, 'https://example.invalid/hook\n', 'utf8');
-    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00', webhookFile: hookFile, send });
+    writeFileSync(join(dir, 'hook-a.txt'), 'https://example.invalid/hook-a\n', 'utf8');
+    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00', secretsDir: dir, send });
     assert.equal(r.enqueued, 1);
     assert.equal(r.sent, 1);
     assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://example.invalid/hook-a');
     assert.deepEqual(calls[0].mentions, ['user-zhang']);
     assert.match(calls[0].text, /到点提醒：#1 写周报/);
     assert.equal(outbox.listOutbox(db, { status: 'pending' }).length, 0);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('隔离：未绑定群的消息不退回默认 webhook，webhook_file 不能是路径', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-loop-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    for (const bad of ['..\\ops-webhook.txt', '../x.txt', 'C:\\x.txt', 'sub/hook.txt', 'hook.json']) {
+      assert.throws(() => bindings.bind(db, 'chat-X', '某人', undefined, 'u-x', bad), /webhook_file/, bad);
+    }
+    // 默认文件存在也不许用：未绑定群的提醒必须失败
+    writeFileSync(join(dir, 'wecom-webhook.txt'), 'https://example.invalid/default\n', 'utf8');
+    const t = tasks.createTask(db, { title: '未绑定群的活', chatId: 'chat-unbound' });
+    reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00' });
+    const calls: string[] = [];
+    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00', secretsDir: dir, send: async (url) => { calls.push(url); } });
+    assert.equal(r.sent, 0);
+    assert.equal(calls.length, 0);
+    const failed = outbox.listOutbox(db, { status: 'pending' }).concat(outbox.listOutbox(db, { status: 'failed' }));
+    assert.match(failed[0].last_error ?? '', /NO_WEBHOOK_FOR_CHAT/);
+    // 固定 webhook 不带 chatId 直接拒绝
+    await assert.rejects(() => loopTick(db, { now: '2026-10-31T09:00:10+08:00', webhookFile: join(dir, 'wecom-webhook.txt'), send: async () => {} }), /chatId/);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('凭据：标题含凭据登记即拒；漏网的坏数据不卡住同一 tick 的其他提醒', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-loop-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const secret = ['api', 'key'].join('_') + ': abcdef1234567890'; // 拼接，避免 check-public 自命中
+    assert.throws(() => tasks.createTask(db, { title: '把 ' + secret + ' 发给运维', chatId: 'chat-A' }), /凭据|OUTBOUND|secret/i);
+
+    bindings.bind(db, 'chat-A', '张三', undefined, 'u-zhang', 'hook-a.txt');
+    writeFileSync(join(dir, 'hook-a.txt'), 'https://example.invalid/hook-a\n', 'utf8');
+    const bad = tasks.createTask(db, { title: '占位', chatId: 'chat-A' });
+    db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run('旧数据 ' + secret, bad.id); // 模拟修复前登记的坏标题
+    const good = tasks.createTask(db, { title: '写周报', chatId: 'chat-A' });
+    reminders.scheduleReminder(db, { taskId: bad.id, dueAt: '2026-10-31T09:00:00+08:00' });
+    reminders.scheduleReminder(db, { taskId: good.id, dueAt: '2026-10-31T09:00:00+08:00' });
+
+    const calls: string[] = [];
+    const r = await loopTick(db, { now: '2026-10-31T09:00:10+08:00', secretsDir: dir, send: async (_u, text) => { calls.push(text); } });
+    assert.equal(r.sent, 1);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /写周报/);
+    const ev = db.prepare("SELECT COUNT(*) AS c FROM task_events WHERE task_id = ? AND kind = 'notify_blocked'").get(bad.id) as { c: number };
+    assert.equal(ev.c, 1);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -238,6 +353,7 @@ test('升级：第 4 次提醒后通知交办人，之后每小时', async () =>
   const db = openDb(join(dir, 'anc.db'));
   try {
     bindings.bind(db, 'chat-A', '张三', undefined, 'u-zhang');
+    bindings.bind(db, 'chat-L', '李四', undefined, 'u-li');
     const t = tasks.createTask(db, { title: '催办测试', chatId: 'chat-A', assigneeUserId: 'u-zhang', requesterUserId: 'u-li' });
     reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-31T09:00:00+08:00', repeatMinutes: 15 });
     for (const at of ['09:00:05', '09:15:05', '09:30:05', '09:45:05']) {
@@ -247,8 +363,71 @@ test('升级：第 4 次提醒后通知交办人，之后每小时', async () =>
     assert.ok(esc, '应有一条升级通知');
     const payload = JSON.parse(esc!.payload) as { mentions: string[]; text: string };
     assert.deepEqual(payload.mentions, ['u-li']);
-    const pending = db.prepare("SELECT repeat_minutes FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id) as { repeat_minutes: number };
+    assert.equal(esc!.chat_id, 'chat-L', '升级通知发到交办人自己的群');
+    const pending = db.prepare("SELECT repeat_minutes, due_at FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id) as { repeat_minutes: number; due_at: string };
     assert.equal(pending.repeat_minutes, 60);
+    assert.equal(pending.due_at, new Date('2026-10-31T10:45:05+08:00').toISOString(), '升级后的下一次在一小时后');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('outbox：领取后别人不能再领；超时未回写的可重领；超时报错算网络类；网络失败只回收一次', () => withDb((db) => {
+  const a = outbox.enqueue(db, { text: 'x', chatId: 'c', at: '2026-10-31T01:00:00Z' });
+  assert.equal(outbox.claim(db, a.id!, '2026-10-31T01:00:00Z'), true);
+  assert.equal(outbox.claim(db, a.id!, '2026-10-31T01:01:00Z'), false, '已被领取');
+  assert.equal(outbox.claim(db, a.id!, '2026-10-31T01:20:00Z'), true, '10 分钟未回写视为发送方退出');
+
+  outbox.markFailed(db, a.id!, 'TimeoutError: The operation was aborted due to timeout');
+  const row = db.prepare('SELECT status FROM outbox WHERE id = ?').get(a.id!) as { status: string };
+  assert.equal(row.status, 'pending', '超时只退避，不按业务错误计');
+
+  db.prepare("UPDATE outbox SET status = 'failed', last_error = 'fetch failed', created_at = ? WHERE id = ?").run('2026-10-31T00:30:00Z', a.id!);
+  assert.equal(outbox.requeueTransientFailures(db, '2026-10-31T02:00:00Z'), 1);
+  db.prepare("UPDATE outbox SET status = 'failed' WHERE id = ?").run(a.id!);
+  assert.equal(outbox.requeueTransientFailures(db, '2026-10-31T02:01:00Z'), 0, '同一条不再回收');
+
+  assert.equal(outbox.redactError('Failed to parse URL from secret-file-content'), 'BAD_WEBHOOK_URL');
+  assert.doesNotMatch(outbox.redactError('HTTP 400 https://example.invalid/x?key=abc'), /example\.invalid/);
+}));
+
+test('配置：格式严格校验；坏配置退回默认不停发；支持跨零点的班；23:59 含当分钟', () => withDb((db) => {
+  for (const bad of ['18:00:00', '6pm', '9:00', '24:00']) {
+    assert.throws(() => config.validateConfig('work_end', bad), /HH:mm/, bad);
+  }
+  assert.throws(() => config.validateConfig('weekdays', 'mon-fri'), /weekdays/);
+  assert.throws(() => config.validateConfig('holidays', '10/1'), /holidays/);
+  config.validateConfig('work_start', '09:00');
+
+  // 绕过校验写进库的坏值：退回全天，并能被报出来
+  config.setConfig(db, 'work_start', '9:00');
+  config.setConfig(db, 'work_end', '18:00');
+  assert.equal(config.loadRules(db).workStart, '00:00');
+  assert.equal(config.configProblems(db).length, 1);
+
+  const night: config.WorkRules = { workStart: '22:00', workEnd: '06:00', weekdays: [1, 2, 3, 4, 5], holidays: [] };
+  assert.equal(config.isWorkTime(new Date('2026-10-30T23:00:00+08:00'), night), true, '周五 23:00 在班');
+  assert.equal(config.isWorkTime(new Date('2026-10-31T03:00:00+08:00'), night), true, '周六凌晨属于周五的班');
+  assert.equal(config.isWorkTime(new Date('2026-11-01T03:00:00+08:00'), night), false, '周日凌晨属于周六，不上班');
+  assert.equal(config.isWorkTime(new Date('2026-10-30T12:00:00+08:00'), night), false);
+
+  const all: config.WorkRules = { workStart: '00:00', workEnd: '23:59', weekdays: [1, 2, 3, 4, 5, 6, 7], holidays: [] };
+  assert.equal(config.isWorkTime(new Date('2026-10-30T23:59:30+08:00'), all), true);
+}));
+
+test('工作时段：夜里的顺延通知不立刻推，排到下一个工作起点', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-night-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    config.setConfig(db, 'work_start', '09:00');
+    config.setConfig(db, 'work_end', '18:00');
+    const t = tasks.createTask(db, { title: '昨天的活', chatId: 'chat-A', dueAt: '2026-10-29T09:00:00+08:00' });
+    const r0 = reminders.scheduleReminder(db, { taskId: t.id, dueAt: '2026-10-29T09:00:00+08:00' });
+    db.prepare("UPDATE reminders SET status = 'cancelled' WHERE id = ?").run(r0.id);
+    await loopTick(db, { now: '2026-10-30T00:05:00+08:00', send: async () => {} });
+    const carry = db.prepare("SELECT next_attempt_at FROM outbox WHERE dedupe_key LIKE 'carry:%'").get() as { next_attempt_at: string };
+    assert.equal(carry.next_attempt_at, new Date('2026-10-30T09:00:00+08:00').toISOString());
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -327,6 +506,7 @@ test('A2A：survey_id 含 ../ 不会写到内部区之外', () => {
   const db = openDb(join(dir, 'anc.db'));
   const internal = join(dir, 'vault-internal');
   try {
+    a2a.createSurvey(db, { surveyId: '../../evil', ruleVersion: 'v1' });
     const env = a2a.parseEnvelope(JSON.stringify({
       protocol: 'anc-a2a/1', survey_id: '../../evil', message_id: 'm1', reply_to: null,
       type: 'answer', rule_version: 'v1', payload: 'x',

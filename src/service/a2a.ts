@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { nowIso } from './db.ts';
+import { nowIso, tx } from './db.ts';
 
 export const PROTOCOL = 'anc-a2a/1';
 
@@ -73,10 +73,16 @@ export function createSurvey(db: DatabaseSync, input: CreateSurveyInput): { surv
   const ruleHash = input.ruleFile ? sha256(readFileSync(input.ruleFile)) : null;
   const expected = input.expected ?? [];
   const questionCount = input.questionCount ?? 0;
+  // 规则冻结（FORK §5.5）：已开的调查不能换规则，只能对新开的调查生效。
+  // 同一规则再 create 是幂等的（访谈中断后重跑技能），名单与题数允许更新。
+  const existing = db.prepare('SELECT rule_version, rule_hash FROM a2a_surveys WHERE survey_id = ?').get(input.surveyId) as { rule_version: string; rule_hash: string | null } | undefined;
+  if (existing && (existing.rule_version !== input.ruleVersion || (existing.rule_hash ?? null) !== ruleHash)) {
+    throw new A2AError('SURVEY_FROZEN', `调查 ${input.surveyId} 已按 ${existing.rule_version} 冻结；新规则请开新的 survey_id`);
+  }
   db.prepare(
     `INSERT INTO a2a_surveys (survey_id, rule_version, rule_hash, expected, question_count, created_at)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(survey_id) DO UPDATE SET rule_version = excluded.rule_version, rule_hash = excluded.rule_hash, expected = excluded.expected, question_count = excluded.question_count`
+     ON CONFLICT(survey_id) DO UPDATE SET expected = excluded.expected, question_count = excluded.question_count`
   ).run(input.surveyId, input.ruleVersion, ruleHash, JSON.stringify(expected), questionCount, nowIso());
   return { survey_id: input.surveyId, rule_version: input.ruleVersion, rule_hash: ruleHash, expected, question_count: questionCount };
 }
@@ -90,11 +96,18 @@ export interface SubmitResult {
 
 /** 提交：校验 → 规则版本对得上 → 去重 → 归档到内部区。 */
 export function submit(db: DatabaseSync, env: Envelope, internalDir: string, fromUserid?: string): SubmitResult {
-  const survey = db.prepare('SELECT survey_id, rule_version FROM a2a_surveys WHERE survey_id = ?').get(env.survey_id) as { survey_id: string; rule_version: string } | undefined;
-  if (survey && survey.rule_version !== env.rule_version) {
+  const survey = db.prepare('SELECT survey_id, rule_version, expected FROM a2a_surveys WHERE survey_id = ?').get(env.survey_id) as { survey_id: string; rule_version: string; expected: string } | undefined;
+  // 没 create 过的调查不收：否则版本检查被跳过，任意 survey_id 都能往内部区写
+  if (!survey) throw new A2AError('UNKNOWN_SURVEY', `没有这场调查: ${env.survey_id}（先 a2a create）`);
+  if (survey.rule_version !== env.rule_version) {
     throw new A2AError('RULE_MISMATCH', `这次调查冻结的是 ${survey.rule_version}，信封是 ${env.rule_version}；旧调查不能用新规则`);
   }
-  const dup = db.prepare('SELECT message_id FROM a2a_messages WHERE message_id = ?').get(env.message_id);
+  const expected = JSON.parse(survey.expected || '[]') as string[];
+  if (expected.length && (!fromUserid || !expected.includes(fromUserid))) {
+    throw new A2AError('NOT_EXPECTED', '提交人不在这场调查的名单里');
+  }
+  // 去重在同一场调查内：每场访谈都用 q1..qN，跨调查同名不是重复
+  const dup = db.prepare('SELECT message_id FROM a2a_messages WHERE survey_id = ? AND message_id = ?').get(env.survey_id, env.message_id);
   if (dup) return { inserted: false, message_id: env.message_id, survey_id: env.survey_id, file: null };
 
   // survey_id 会进文件路径：只保留安全字符，去掉 .. 片段，避免穿越
@@ -104,27 +117,35 @@ export function submit(db: DatabaseSync, env: Envelope, internalDir: string, fro
     .replace(/^\.+/, '_') || '_invalid';
   const dir = join(internalDir, 'surveys', safeSurvey || '_invalid');
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, env.message_id.replace(/[^A-Za-z0-9._-]/g, '_') + '.md');
+  // 清洗会把不同 id 映射成同名（q1/a 与 q1_a）：清洗改动过的 id 加短 hash，避免互相覆盖
+  const cleanId = env.message_id.replace(/[^A-Za-z0-9._-]/g, '_');
+  const base = cleanId === env.message_id ? cleanId : cleanId + '-' + sha256(env.message_id).slice(0, 8);
+  const file = join(dir, base + '.md');
+  // front matter 的值统一 JSON 转义：带换行的 survey_id / type / reply_to 不能伪造 from_userid 等字段
+  const fm = (k: string, v: unknown) => `${k}: ${JSON.stringify(v ?? '')}`;
   const body = [
     '---',
-    `survey_id: ${env.survey_id}`,
-    `message_id: ${env.message_id}`,
-    `type: ${env.type}`,
-    `rule_version: ${env.rule_version}`,
-    `reply_to: ${env.reply_to ?? ''}`,
-    `from_userid: ${fromUserid ?? ''}`,
-    `submitted_at: ${nowIso()}`,
+    fm('survey_id', env.survey_id),
+    fm('message_id', env.message_id),
+    fm('type', env.type),
+    fm('rule_version', env.rule_version),
+    fm('reply_to', env.reply_to ?? ''),
+    fm('from_userid', fromUserid ?? ''),
+    fm('submitted_at', nowIso()),
     '---',
     '',
     env.payload,
     '',
   ].join('\n');
-  writeFileSync(file, body, 'utf8');
 
-  db.prepare(
-    `INSERT INTO a2a_messages (message_id, survey_id, from_userid, type, rule_version, file_path, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(env.message_id, env.survey_id, fromUserid ?? null, env.type, env.rule_version, file, nowIso());
+  // 先插库再写文件，同一事务：写文件失败（含 wx 撞名）会回滚插入，不会留下有记录没文件或覆盖旧文件
+  tx(db, () => {
+    db.prepare(
+      `INSERT INTO a2a_messages (message_id, survey_id, from_userid, type, rule_version, file_path, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(env.message_id, env.survey_id, fromUserid ?? null, env.type, env.rule_version, file, nowIso());
+    writeFileSync(file, body, { encoding: 'utf8', flag: 'wx' });
+  });
 
   return { inserted: true, message_id: env.message_id, survey_id: env.survey_id, file };
 }

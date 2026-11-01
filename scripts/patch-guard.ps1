@@ -5,7 +5,7 @@
 param(
     [string]$StateFile = "$env:ProgramData\anc\data\patch-state.json",
     [string]$SelfHeal = "$env:ProgramData\anc\bin\anc-selfheal.ps1",
-    [string]$Repo = 'E:\workbuddy-anc'
+    [string]$PatchDir = "$env:ProgramData\anc\patch"
 )
 
 $ErrorActionPreference = 'Continue'
@@ -23,6 +23,14 @@ $main = Get-CimInstance Win32_Process -Filter "Name='WorkBuddy.exe'" |
     Select-Object -First 1
 
 # 没在跑（崩溃/维护后）：交给自愈拉起；guard 自己记上次拉起时间，10 分钟内不重复
+$healState = "$env:ProgramData\anc\data\selfheal.state.json"
+$hs = $null
+if (Test-Path $healState) {
+    try { $hs = [IO.File]::ReadAllText($healState, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json } catch { $hs = $null }
+}
+# 自愈 Worker 正在重启（空档里没有主进程是正常的），5 分钟内不插手
+if ($hs -and $hs.status -eq 'restarting' -and ((Get-Date) - [datetime]$hs.at).TotalMinutes -lt 5) { exit 0 }
+
 if (-not $main) {
     $guardState = "$env:ProgramData\anc\data\patch-guard.state.json"
     $last = $null
@@ -35,7 +43,7 @@ if (-not $main) {
     if ($last -and ((Get-Date) - $last).TotalMinutes -lt 10) { exit 0 }
     [pscustomobject]@{ lastStartAt = (Get-Date).ToString('o') } | ConvertTo-Json |
         Set-Content $guardState -Encoding utf8 -ErrorAction SilentlyContinue
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $SelfHeal -Apply -Force -Repo $Repo *> $null
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $SelfHeal -Apply -PatchDir $PatchDir *> $null
     exit 0
 }
 
@@ -45,8 +53,8 @@ if (Test-Path $StateFile) {
         $raw = [IO.File]::ReadAllText($StateFile, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)
         $s = $raw | ConvertFrom-Json
         $at = [datetime]$s.at
-        # 只有「成功打补丁」的模式才算已打补丁；锚点缺失/inspect 失败的状态不算
-        $okMode = ($s.mode -eq 'hash' -or $s.mode -eq 'anchor')
+        # 只认补丁体包装成功后写下的 applied=true（注入了但没找到类的不算）
+        $okMode = [bool]$s.applied
         if ($okMode -and $at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true }
     } catch { }
 }
@@ -65,15 +73,11 @@ if (Test-Path $canaryFile) {
 }
 
 # 自愈已判定「修不了」（锚点缺失/inspect 失败）时别每分钟再拉一次进程
-$healState = "$env:ProgramData\anc\data\selfheal.state.json"
-if (Test-Path $healState) {
-    try {
-        $hs = [IO.File]::ReadAllText($healState, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
-        $blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'inspect-failed')
-        if ($blocked -and ((Get-Date) - [datetime]$hs.at).TotalMinutes -lt 60) { exit 0 }
-    } catch { }
+if ($hs) {
+    $blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'inspect-failed' -or $hs.status -eq 'restart-failed')
+    if ($blocked -and ((Get-Date) - [datetime]$hs.at).TotalMinutes -lt 60) { exit 0 }
 }
 
 # 在跑但没打补丁 → 自愈（内部有 10 分钟冷却）
-& powershell -NoProfile -ExecutionPolicy Bypass -File $SelfHeal -Apply -Repo $Repo *> $null
+& powershell -NoProfile -ExecutionPolicy Bypass -File $SelfHeal -Apply -PatchDir $PatchDir *> $null
 exit 0

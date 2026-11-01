@@ -13,14 +13,26 @@ $results = @()
 function Add-Result([string]$name, [string]$state, [string]$detail, [string]$fix) {
     $script:results += [pscustomobject]@{ check = $name; state = $state; detail = $detail; fix = $fix }
 }
+# PS 5.1 的 Get-LocalGroupMember 遇到孤立 SID 会报错返回空，会误报「非管理员」。
+# 失败时用 net localgroup 兜底；两者都拿不到结果就按「是管理员」处理（fail-closed）。
+function Test-AdminMember([string]$name) {
+    try {
+        $m = Get-LocalGroupMember -Group Administrators -ErrorAction Stop
+        return [bool]($m | Where-Object { ($_.Name -split '\\')[-1] -ieq $name })
+    } catch {
+        $out = & net localgroup Administrators 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $out) { return $true }
+        return [bool]($out | Where-Object { $_.Trim() -ieq $name -or ($_.Trim() -split '\\')[-1] -ieq $name })
+    }
+}
 function Get-Sha([string]$p) { if (Test-Path $p) { (Get-FileHash $p -Algorithm SHA256).Hash.ToLower() } else { $null } }
 
 # 1 专用用户
 $bot = Get-LocalUser -Name 'anc-bot' -ErrorAction SilentlyContinue
 if (-not $bot) {
     Add-Result 'dedicated-user' 'FAIL' '没有 anc-bot 用户' '跑 scripts\provision 或在 OPS.md 里建；上线前必须'
-} elseif (Get-LocalGroupMember -Group Administrators | Where-Object { $_.Name -match 'anc-bot' }) {
-    Add-Result 'dedicated-user' 'FAIL' 'anc-bot 在管理员组' '移出管理员组'
+} elseif (Test-AdminMember 'anc-bot') {
+    Add-Result 'dedicated-user' 'FAIL' 'anc-bot 在管理员组（或无法确认）' '移出管理员组；若是查询失败，用 net localgroup Administrators 人工确认'
 } else {
     Add-Result 'dedicated-user' 'PASS' 'anc-bot 存在且非管理员' '-'
 }
@@ -31,8 +43,10 @@ try {
     $cfgRaw = & node "$env:ProgramData\anc\service\cli.ts" --db "$env:ProgramData\anc\data\anc.db" --json config list 2>$null | Out-String
     $cfg = $cfgRaw | ConvertFrom-Json
     $start = $cfg.config.work_start; $end = $cfg.config.work_end
-} catch { }
-if ($start -and $end) { Add-Result 'work-hours' 'PASS' "$start–$end" '-' } else { Add-Result 'work-hours' 'WARN' '未配置工作时段（默认全天）' '需要时 config set work_start/work_end' }
+    $cfgProblems = @($cfg.problems)
+} catch { $cfgProblems = @() }
+if ($cfgProblems.Count -gt 0) { Add-Result 'work-hours' 'FAIL' ('配置有误（已按全天处理）: ' + ($cfgProblems -join '；')) 'config set work_start/work_end 用 HH:mm，且两者不同' }
+elseif ($start -and $end) { Add-Result 'work-hours' 'PASS' "$start–$end" '-' } else { Add-Result 'work-hours' 'WARN' '未配置工作时段（默认全天）' '需要时 config set work_start/work_end' }
 
 # 3 计划任务
 foreach ($t in 'anc-service', 'anc-backup', 'anc-boot-alert', 'anc-cleanup', 'anc-watchdog') {
@@ -73,12 +87,13 @@ elseif ($mf -and (Get-Item $exe).VersionInfo.FileVersion -ne $mf.workbuddyVersio
 $plog = "$env:USERPROFILE\anc\workbuddy-patch.log"
 if (Test-Path $plog) {
     $last = Get-Content $plog -Tail 200
-    $patched = [bool]($last | Select-String -Pattern 'PATCHED' -Quiet)
-    $anchor = [bool]($last | Select-String -Pattern 'ANCHOR-PATCH' -Quiet)
+    # 只看最近一次 APPLIED / ANCHOR-MISS：APPLIED 由补丁体在包装成功后写，旧的 PATCHED 行不再算
+    $lastApply = $last | Select-String -Pattern 'APPLIED mode=|ANCHOR-MISS' | Select-Object -Last 1
     $hook = [bool]($last | Select-String -Pattern 'update-hook installed' -Quiet)
-    if ($patched -and $hook) { Add-Result 'patch' 'PASS' 'PATCHED + update-hook' '-' }
-    elseif ($anchor -and $hook) { Add-Result 'patch' 'WARN' '锚点模式（版本未登记）' '按 docs/WORKBUDDY-PATCH.md 回归后更新 manifest 的 version/sha256' }
-    else { Add-Result 'patch' 'FAIL' '日志里缺 PATCHED/ANCHOR 或 update-hook' '重启补丁启动器，看 workbuddy-patch.log' }
+    if ($lastApply -and $lastApply.Line -match 'APPLIED mode=hash' -and $hook) { Add-Result 'patch' 'PASS' 'APPLIED(hash) + update-hook' '-' }
+    elseif ($lastApply -and $lastApply.Line -match 'APPLIED mode=anchor' -and $hook) { Add-Result 'patch' 'WARN' '锚点模式（版本未登记）' '按 docs/WORKBUDDY-PATCH.md 回归后更新 manifest 的 version/sha256' }
+    elseif ($lastApply -and $lastApply.Line -match 'ANCHOR-MISS') { Add-Result 'patch' 'FAIL' '补丁已注入但没找到 emitMessage' '按 light/skills/anc-wb-patch 重找注入点' }
+    else { Add-Result 'patch' 'FAIL' '日志里缺 APPLIED 或 update-hook' '重启补丁启动器，看 workbuddy-patch.log' }
 } else { Add-Result 'patch' 'WARN' '没有补丁日志（可能未用启动器）' '用 launch-patched.ps1 启动' }
 
 # 7 SMB 与 NTFS
@@ -86,21 +101,30 @@ $share = Get-SmbShare -Name 'anc-vault-shared' -ErrorAction SilentlyContinue
 if (-not $share) { Add-Result 'smb' 'FAIL' '共享不存在' 'New-SmbShare -Name anc-vault-shared -Path D:\anc\vault-shared' }
 else {
     $access = Get-SmbShareAccess -Name 'anc-vault-shared'
-    $bad = $access | Where-Object { $_.AccountName -match 'Everyone' -and $_.AccessRight -ne 'Read' }
-    if ($bad) { Add-Result 'smb' 'FAIL' 'Everyone 有写权限' '收掉 Everyone 写权限' }
-    else { Add-Result 'smb' 'PASS' '共享存在且无 Everyone 写' '-' }
+    $bad = $access | Where-Object { $_.AccountName -match 'Everyone|Authenticated Users|\\Users$' -and $_.AccessControlType -eq 'Allow' -and $_.AccessRight -ne 'Read' }
+    if ($bad) { Add-Result 'smb' 'FAIL' ('共享对广泛组有写权限: ' + (($bad | ForEach-Object { $_.AccountName }) -join ', ')) '收成 Read' }
+    else { Add-Result 'smb' 'PASS' '共享存在且 Everyone/Authenticated Users/Users 只读' '-' }
 }
 $shared = 'D:\anc\vault-shared'
 if (Test-Path $shared) {
-    $users = (Get-Acl $shared).Access | Where-Object { $_.IdentityReference -match 'Users' -and $_.FileSystemRights -match 'Modify|Write' -and $_.AccessControlType -eq 'Allow' }
-    if ($users) { Add-Result 'vault-acl' 'FAIL' '共享区 Users 有写权限' 'icacls 收成 ReadAndExecute' }
-    else { Add-Result 'vault-acl' 'PASS' '共享区 Users 只读' '-' }
+    # 按权限位判定：FullControl / GENERIC_ALL 这类不含「Write」字样，按字符串匹配会漏判
+    $writeBits = [int]([Security.AccessControl.FileSystemRights]::WriteData -bor [Security.AccessControl.FileSystemRights]::AppendData -bor [Security.AccessControl.FileSystemRights]::Delete -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership)
+    $genericWrite = 0x40000000 -bor 0x10000000   # GENERIC_WRITE | GENERIC_ALL
+    $broad = 'Users$|Everyone$|Authenticated Users$|^S-1-5-32-545$|^S-1-1-0$|^S-1-5-11$'
+    $users = (Get-Acl $shared).Access | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $broad -and
+        ((([int]$_.FileSystemRights) -band $writeBits) -or (([int64]$_.FileSystemRights) -band $genericWrite))
+    }
+    if ($users) { Add-Result 'vault-acl' 'FAIL' ('共享区对广泛组有写权限: ' + (($users | ForEach-Object { $_.IdentityReference.Value }) -join ', ')) 'icacls 收成 ReadAndExecute' }
+    else { Add-Result 'vault-acl' 'PASS' '共享区对 Users/Everyone/Authenticated Users 只读' '-' }
 } else { Add-Result 'vault-acl' 'WARN' '共享区目录不存在' '按 docs/OPS.md 建 D:\anc\vault-shared' }
 
 # 8 密钥不进 git（看内容里的真实形态，不看文件名）
 if (Test-Path (Join-Path $Repo '.git')) {
     $hits = & git -C $Repo grep -I -n -E 'qyapi\.weixin\.qq\.com/cgi-bin/webhook/send\?key=[A-Za-z0-9-]{8,}|corpsecret[[:space:]]*=[[:space:]]*[A-Za-z0-9]{8,}' -- ':!*.test.ts' ':!*.test.mjs' ':!docs/*' 2>$null
-    if ($hits) { Add-Result 'secrets-in-git' 'FAIL' ('仓库内容里有疑似密钥: ' + (($hits | Select-Object -First 2) -join ' | ')) '删掉并改用占位符；密钥只放 ProgramData' }
+    # 只报位置，不回显命中内容：doctor 的输出可能被 bot 贴进群里
+    $where = $hits | Select-Object -First 3 | ForEach-Object { ($_ -split ':', 3)[0..1] -join ':' }
+    if ($hits) { Add-Result 'secrets-in-git' 'FAIL' ('仓库内容里有疑似密钥，位置: ' + ($where -join ', ')) '删掉并改用占位符；密钥只放 ProgramData' }
     else { Add-Result 'secrets-in-git' 'PASS' '仓库内容未见真实密钥' '-' }
 } else { Add-Result 'secrets-in-git' 'WARN' "不是 git 仓库: $Repo" '传对 -Repo' }
 
@@ -113,6 +137,22 @@ else { Add-Result 'timezone' 'WARN' "当前 $tz" '设计默认 Asia/Shanghai；�
 $db = "$env:ProgramData\anc\data\anc.db"
 if (Test-Path $db) { Add-Result 'database' 'PASS' ((Get-Item $db).Length.ToString() + ' B') '-' }
 else { Add-Result 'database' 'FAIL' '数据库不存在' '跑一次 service cli 初始化' }
+
+# 10.5 绑定：提醒按群的 webhook_file 选文件，没登记就发不出去
+try {
+    $braw = & node "$env:ProgramData\anc\service\cli.ts" --db "$env:ProgramData\anc\data\anc.db" --json bind list 2>$null | Out-String
+    $b = ($braw | ConvertFrom-Json).bindings
+    if (-not $b -or $b.Count -eq 0) {
+        Add-Result 'bindings' 'WARN' '没有任何群绑定' 'bind import --from groups.json 或 bind set'
+    } else {
+        $missing = @($b | Where-Object { -not $_.webhook_file })
+        if ($missing.Count -gt 0) {
+            Add-Result 'bindings' 'FAIL' ("$($missing.Count)/$($b.Count) 个群没登记 webhook_file，提醒会发不出去") 'bind set --chat-id <chatid> --employee <名> --webhook-file wecom-webhook.txt'
+        } else {
+            Add-Result 'bindings' 'PASS' ("$($b.Count) 个绑定都登记了 webhook") '-'
+        }
+    }
+} catch { Add-Result 'bindings' 'WARN' '读绑定失败' '检查数据库与 cli.ts' }
 
 # 11 canary：补丁生效后真实收到的消息里有没有 chatId
 $canary = "$env:ProgramData\anc\data\patch-canary.json"

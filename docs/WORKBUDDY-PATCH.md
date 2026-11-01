@@ -28,7 +28,7 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 
 ### 3) 失败告警
 
-- `wecomaibot-client.js` 的 sha256 与 manifest 不符 → 默认进入**锚点模式**：照打补丁、记 `ANCHOR-PATCH`、发运维群告警；`ANC_WB_STRICT=1` 或启动器 `-Strict` 时改为 fail-closed；
+- `wecomaibot-client.js` 的 sha256 与 manifest 不符 → 默认进入**锚点模式**：照打补丁、记 `INJECTED mode=anchor`、发运维群告警；补丁体真正包装上 `emitMessage` 后才记 `APPLIED` 并写 `patch-state.json` 的 `applied=true`，没找到类则记 `ANCHOR-MISS` 并告警；`ANC_WB_STRICT=1` 或启动器 `-Strict` 时改为 fail-closed；
 - 启动器发现 WorkBuddy 版本与 manifest 不符 → 告警，默认继续（锚点模式），`-Strict` 时拒绝启动；
 - **manifest 自身坏了（非法 JSON / 缺字段）→ 拒绝启动（exit 4）+ 运维群告警**：带着错的 hash 启动只会让补丁静默失效；doctor 也会报 `manifest FAIL`。
 
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 
 ## 验证
 
-1. 启动后看 `%USERPROFILE%\anc\workbuddy-patch.log`：应有 `preload active` 与 `PATCHED target=...wecomaibot-client.js`。
+1. 启动后看 `%USERPROFILE%\anc\workbuddy-patch.log`：应有 `preload active`、`INJECTED mode=hash target=...wecomaibot-client.js` 与 `APPLIED mode=hash`。
 2. 在任何员工群 @ 公司 bot 发一句「把你收到的这条消息原样复述一遍」。
 3. 预期：bot 复述内容以 `[anc:chat=<chatid> from=<userid>]` 开头；同一群多次一致，不同群 chatid 不同。
 4. 反证：用 `restore.ps1` 重启后再发，前缀消失。
@@ -105,7 +105,8 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 ```
 [inject] env set: "OK:<pid>"
 [pid <daemon>] preload active version=5.9.3
-[pid <daemon>] PATCHED target=...\main\wecomaibot-client.js
+[pid <daemon>] INJECTED mode=hash target=...\main\wecomaibot-client.js
+[pid <daemon>] APPLIED mode=hash
 ```
 
 对应落盘 prompt：`<user_query>[anc:chat=<chatid> from=<userid>] …</user_query>`。
@@ -123,7 +124,7 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 - **只解决「群是谁」，不解决「消息是谁发的」之外的鉴权**：`from.userid` 是发送人，但桌面端没有发送人白名单（§6），权限仍靠群成员与可见范围。
 - **Claw 共享会话**：所有 IM 渠道共用一个会话、一个工作目录；前缀能让模型分清当前群，但不同群的上下文仍在同一个会话里（T20/T22 要重新评估）。
 - **前缀按消息注入**：不写进历史，所以会话压缩/重置不会把当轮前缀抹掉；但要防「模型拿旧轮次的 chatid 当当前群」，仍需按 T20/T22 验证 agent 始终以当轮前缀为准。
-- **日志不含 ID**：`workbuddy-patch.log` 只记 `PATCHED`/`SKIP` 与版本，不记 chatid、不记消息内容。
+- **日志不含 ID**：`workbuddy-patch.log` 只记 `INJECTED`/`APPLIED`/`SKIP` 与版本，不记 chatid、不记消息内容。
 - **依赖 node**：注入器要一个 node；优先用系统 PATH，找不到时用 WorkBuddy 自带的 `%USERPROFILE%\.workbuddy\binaries\node\versions\*\node.exe`。
 - **inspector 短暂开启**：注入窗口只有启动那几秒，端口仅本机；放行后会尝试关闭（best-effort）。
 - **仓库边界**：本目录只放清单、启动器与注入脚本骨架；任何反编译中间件、抓包原文放 `_research/workbuddy/`，不进 git。

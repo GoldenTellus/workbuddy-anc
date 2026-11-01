@@ -9,10 +9,10 @@
 | `anc-service` | 开机 + 每分钟 | `LOCAL SERVICE` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
 | `anc-backup` | 每小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `VACUUM INTO` 快照，保留 14 份并复制到 `E:\anc-backup`；错过 02:00 会自动补 |
 | `anc-boot-alert` | 开机 + 每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | WorkBuddy 没起来就经运维群 webhook 告警 |
-| `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM） |
+| `anc-cleanup` | 每天 03:00 | `SYSTEM` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM）；遇到 junction / 符号链接一律跳过，不跟进去删 |
 | `anc-watchdog` | 每 10 分钟 | `LOCAL SERVICE` | 心跳 >10 分钟、outbox 积压 ≥50、WorkBuddy 不在跑 → 运维群告警（同类问题 30 分钟冷却） |
 | `anc-workbuddy-launch` | 登录后 30 秒 | 登录用户（Interactive） | 用补丁启动器拉起 WorkBuddy，杜绝「登录自动起了无补丁实例」 |
-| `anc-patch-guard` | 登录即跑 + 每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；在跑但补丁记录对不上 → 触发自愈重启（10 分钟冷却） |
+| `anc-patch-guard` | 登录即跑 + 每分钟 | 登录用户（Interactive） | 读 `patch-state.json`；只认补丁体包装成功后写的 `applied=true`，否则触发自愈重启（10 分钟冷却；重启中、重启失败、锚点缺失时 60 分钟内不再触发） |
 | `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | 请求厂商更新接口：有新版本就发运维群（同一版本只告警一次），提示按 skill 走回归 |
 
 ## 账号与凭据
@@ -42,6 +42,14 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 ```
 
 `.cmd` 里再 `powershell -WindowStyle Hidden -File ...`。自愈的 Worker 与重启也都经 `.vbs` 由 Explorer 拉起，全程无窗口。改动后实测：手动触发守卫与自愈，均无可见窗口。
+
+## 补丁的唯一来源
+
+线上只从 `%ProgramData%\anc\patch\` 跑补丁（`launch-patched.ps1` / `preload.cjs` / `inspect.mjs` / `manifest.json`）；守卫与自愈默认 `-PatchDir` 也指向这里。**不从 git 工作副本跑**：在仓库里切分支会直接改到线上补丁，两份 manifest 也会漂移。部署补丁 = 把 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\patch\`。
+
+`%ProgramData%\anc\bin\anc-launch.cmd` 里的启动器路径也要指向 `%ProgramData%\anc\patch\launch-patched.ps1`（`.cmd` 在主机上手写，不在仓库里）。
+
+公司 bot 看到消息没有 `[anc:chat=…]` 前缀时**不再自己跑自愈**，只回「身份识别暂不可用」；修复完全交给守卫。任何群成员都能发消息，交给 bot 触发等于让人随意重启 WorkBuddy。
 ## 体检与告警
 
 ```powershell
@@ -112,7 +120,7 @@ powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1 -Destination "\\
 2. 在该用户下装 WorkBuddy（企业版），登录企业微信（扫码）；
 3. 把补丁目录拷到该用户可读的位置（如 `C:\ProgramData\anc\patch\`），或用共享；
 4. 用补丁启动器起 WorkBuddy：`powershell -File launch-patched.ps1`；
-5. 确认 `workbuddy-patch.log` 里 `PATCHED` 与 `update-hook installed` 都在；
+5. 确认 `workbuddy-patch.log` 里 `APPLIED mode=hash` 与 `update-hook installed` 都在；
 6. 在该用户下装技能：把 `~/.workbuddy/skills/anc-*` 复制过去（或跑 `render onboard --home`）；
 7. 群里发「今天有什么任务」→ 有回复即 T4 复测通过；
 8. 回填 [VERIFY.md](./VERIFY.md) 的 T4 行，并把本清单标记完成。

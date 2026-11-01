@@ -40,10 +40,12 @@ try {
   const err = e as IngestError;
   const code = err.code || 'ERROR';
   let moved: string | null = null;
+  let moveError: string | null = null;
   if (inbox && existsSync(batch)) {
-    try { moved = failBatch(batch, inbox, `${code}: ${err.message}`); } catch { /* ignore */ }
+    try { moved = failBatch(batch, inbox, `${code}: ${err.message}`); } catch (me) { moveError = (me as Error).message; }
   }
-  fail(err.message + (moved ? `（批次已移到 ${moved}）` : ''), code);
+  // 转移失败也要说出来：批次会留在 pending，调度可能反复重试同一个坏批次
+  fail(err.message + (moved ? `（批次已移到 ${moved}）` : '') + (moveError ? `（转移到 failed 失败：${moveError}，批次仍在 pending）` : ''), code);
 }
 
 // 到这里文件已经写进 vault：归档/提交的失败只报告，不再判入库失败
@@ -58,7 +60,8 @@ let commitError: string | null = null;
 if (doCommit) {
   try {
     const changed = [...result.added, ...result.modified];
-    commit = commitVault(shared, `ingest: ${changed.join(', ') || 'batch ' + batch}`);
+    // 只提交本批写入的文件（含原件），不带上其他未复核的改动
+    commit = commitVault(shared, `ingest: ${changed.join(', ') || 'batch ' + batch}`, [...changed, ...result.originals]);
   } catch (e) { commitError = (e as Error).message; }
 }
 

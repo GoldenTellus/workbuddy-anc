@@ -3,7 +3,7 @@
 // 用法见 docs/LOCAL-SERVICE.md；所有命令支持 --db 与 --json。
 
 import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { openDb, DEFAULT_DB } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
@@ -93,10 +93,17 @@ try {
     } else fail('未知 bind 子命令');
   } else if (group === 'task') {
     if (cmd === 'add') {
+      // 发起人必须登记：没有 userid 的任务任何人都能完成/取消（权限校验只对登记过 userid 的任务生效）
+      if (typeof args['requester-userid'] !== 'string' || !args['requester-userid'].trim()) {
+        fail('缺少 --requester-userid（用消息前缀里的 from）');
+      }
       let dueAt: string | undefined = typeof args.due === 'string' ? args.due : undefined;
       if (typeof args['due-local'] === 'string') {
-        // 本地时间（如 "2026-10-31 17:30"）→ UTC ISO，避免模型自己做时区换算
-        const d = new Date(String(args['due-local']).replace(' ', 'T'));
+        // 本地时间（如 "2026-10-31 17:30"）→ UTC ISO，避免模型自己做时区换算。
+        // 格式必须完整：只写日期会被按 UTC 零点解析（北京时间 08:00），「Oct 31」这类也会被 Date 接受
+        const raw = String(args['due-local']).trim();
+        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(raw)) fail('--due-local 必须是 "YYYY-MM-DD HH:mm"');
+        const d = new Date(raw.replace(' ', 'T'));
         if (Number.isNaN(d.getTime())) fail('--due-local 不是合法时间（用 "YYYY-MM-DD HH:mm"）');
         dueAt = d.toISOString();
       }
@@ -120,7 +127,7 @@ try {
     } else if (cmd === 'done') {
       const id = num('id');
       const text = typeof args.text === 'string' ? args.text : `#${id} 已完成`;
-      assertSafeOutbound(text);
+      // 不在这里预扫：completeTask 内部只拦通知、不拦完成（「通知被拦不影响完成」）
       const r = tasks.completeTask(
         db,
         id,
@@ -144,35 +151,10 @@ try {
     if (cmd === 'list') {
       out({ ok: true, messages: outbox.listOutbox(db, { status: args.status as never, limit: numArg(args.limit, 50, 1, 200) }) });
     } else if (cmd === 'flush') {
-      const file = typeof args['webhook-file'] === 'string'
-        ? args['webhook-file']
-        : join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets', 'wecom-webhook.txt');
-      let url = '';
-      try { url = readFileSync(file, 'utf8').trim(); } catch { fail('读不到 webhook 文件: ' + file); }
-      if (!url) fail('webhook 文件为空: ' + file);
-      const limit = numArg(args.limit, 20, 1, 200);
-      const pend = outbox.listOutbox(db, { status: 'pending', limit });
-      let sent = 0; let failed = 0;
-      for (const m of pend) {
-        const payload = JSON.parse(m.payload) as { text: string; mentions?: string[] };
-        try {
-          assertSafeOutbound(payload.text);
-          const text: Record<string, unknown> = { content: payload.text };
-          if (payload.mentions && payload.mentions.length) text.mentioned_list = payload.mentions;
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ msgtype: 'text', text }),
-          });
-          const body = await res.json().catch(() => ({}));
-          if (res.ok && (body as { errcode?: number }).errcode === 0) { outbox.markSent(db, m.id); sent++; }
-          else { outbox.markFailed(db, m.id, `HTTP ${res.status} ${JSON.stringify(body).slice(0, 200)}`); failed++; }
-        } catch (e) {
-          outbox.markFailed(db, m.id, (e as Error).message);
-          failed++;
-        }
-      }
-      out({ ok: failed === 0, sent, failed });
+      // 与 tick 同一套发送逻辑：按每条消息的群绑定选 webhook，不再把所有群的消息发到一个 URL
+      if (typeof args['webhook-file'] === 'string') fail('outbox flush 不接受 --webhook-file：按群绑定发送；联调请用 loop --once --webhook-file --chat-id');
+      const r = await loop.sendPending(db, { limit: numArg(args.limit, 20, 1, 200) });
+      out({ ok: r.failed === 0, sent: r.sent, failed: r.failed });
     } else fail('未知 outbox 子命令');
   } else if (group === 'a2a') {
     if (cmd === 'create') {
@@ -208,7 +190,8 @@ try {
     out({ ok: true, path: backup.backup(db, to) });
   } else if (group === 'config') {
     if (cmd === 'list') {
-      out({ ok: true, config: config.listConfig(db) });
+      const problems = config.configProblems(db);
+      out({ ok: problems.length === 0, config: config.listConfig(db), problems });
     } else if (cmd === 'get') {
       const key = String(args.key ?? '');
       const v = config.getConfig(db, key);
@@ -217,19 +200,25 @@ try {
     } else if (cmd === 'set') {
       const key = String(args.key ?? '');
       if (!key) fail('缺少 --key');
-      config.setConfig(db, key, String(args.value ?? ''));
+      config.validateConfig(key, String(args.value ?? ''));
+      const nextStart = key === 'work_start' ? String(args.value) : config.getConfig(db, 'work_start');
+      const nextEnd = key === 'work_end' ? String(args.value) : config.getConfig(db, 'work_end');
+      if (nextStart && nextEnd && nextStart.trim() === nextEnd.trim()) fail('work_start 与 work_end 不能相同');
+      config.setConfig(db, key, String(args.value ?? '').trim());
       out({ ok: true, key, value: config.getConfig(db, key) });
     } else fail('未知 config 子命令');
   } else if (group === 'loop') {
     const explicit = typeof args['webhook-file'] === 'string' ? args['webhook-file'] : null;
-    const secretsDir = explicit ? dirname(explicit) : join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');
+    const chatId = typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined;
+    if (explicit && !chatId) fail('--webhook-file 只用于联调单个群，必须同时给 --chat-id');
+    const secretsDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');
     if (args.once === true) {
-      const r = await loop.tick(db, { webhookFile: explicit ?? undefined, secretsDir });
+      const r = await loop.tick(db, { webhookFile: explicit ?? undefined, chatId, secretsDir });
       out({ ok: true, ...r });
     } else {
       const intervalMs = numArg(args['interval-ms'], 60000, 1000, 3600000);
       process.on('SIGINT', () => { try { db.close(); } catch { /* ignore */ } process.exit(0); });
-      await loop.run(db, { webhookFile: explicit ?? undefined, secretsDir, intervalMs });
+      await loop.run(db, { webhookFile: explicit ?? undefined, chatId, secretsDir, intervalMs });
     }
   } else {
     fail('未知命令组: ' + group);

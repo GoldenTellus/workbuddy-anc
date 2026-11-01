@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,7 +69,8 @@ test('入库：路径穿越与保留名被拒', () => {
   const { dir, vault, batch } = setup();
   try {
     writeFileSync(join(batch, 'a.md'), MD, 'utf8');
-    for (const target of ['../evil.md', 'C:/evil.md', 'company/CON.md', 'company/x:.md', 'company/..']) {
+    for (const target of ['../evil.md', 'C:/evil.md', 'company/CON.md', 'company/x:.md', 'company/..', '.git/hooks/pre-commit', '.GIT/config', 'GIT~1/hooks/pre-commit', 'company/.git/x',
+      'company/CONIN$.md', 'company/a?.md', 'company/a|b.md', 'company/a<b.md', 'company/a\u0001.md']) {
       meta(batch, [{ src: 'a.md', target, kind: 'markdown' }]);
       assert.throws(() => applyBatch(batch, vault), (e: unknown) => (e as IngestError).code === 'BAD_PATH', target);
     }
@@ -163,6 +164,17 @@ test('提交：--commit 生成提交，无改动返回 null', () => {
     assert.equal(msg, 'ingest: company/术语.md');
 
     assert.equal(commitVault(vault, 'again'), null);
+
+    // 仓库里的 hook 不会被执行
+    const marker = join(dir, 'hook-ran');
+    writeFileSync(join(vault, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho x > "' + marker.replace(/\\/g, '/') + '"\n', 'utf8');
+    // 本地配置显式指向仓库 hooks（盖过机器上的全局 hooksPath），没有防护时 hook 一定会跑
+    execFileSync('git', ['config', 'core.hooksPath', '.git/hooks'], { cwd: vault });
+    writeFileSync(join(batch, 'a.md'), MD.replace('术语', '术语二'), 'utf8');
+    meta(batch, [{ src: 'a.md', target: 'company/术语二.md', kind: 'markdown' }]);
+    applyBatch(batch, vault);
+    assert.ok(commitVault(vault, 'ingest: hook test'));
+    assert.ok(!existsSync(marker), 'pre-commit hook 不应被执行');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -182,6 +194,86 @@ test('越界 src 被拒：meta 指向批次目录之外', () => {
   try {
     assert.throws(() => applyBatch(batch, vault), (e: unknown) => e instanceof IngestError && (e as IngestError).code === 'BAD_PATH');
     assert.ok(!existsSync(join(vault, 'a', 'b.md')), '不应写盘');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+const codeOf = (c: string) => (e: unknown) => (e as IngestError).code === c;
+
+test('入库：中途写失败时回滚已写入的文件，vault 不留半成品', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    writeFileSync(join(vault, 'blocker'), 'i am a file', 'utf8'); // 第二个目标的父路径是文件 → 写入必然失败
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    writeFileSync(join(batch, 'b.md'), MD, 'utf8');
+    meta(batch, [
+      { src: 'a.md', target: 'company/新文件.md', kind: 'markdown' },
+      { src: 'b.md', target: 'blocker/x.md', kind: 'markdown' },
+    ]);
+    assert.throws(() => applyBatch(batch, vault));
+    assert.ok(!existsSync(join(vault, 'company/新文件.md')), '第一个文件应被回滚');
+    assert.ok(!existsSync(join(vault, 'company')), '新建的目录也应清掉');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('入库：同一目标出现两次、vault 被占用（锁）都拒绝', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    meta(batch, [
+      { src: 'a.md', target: 'company/x.md', kind: 'markdown' },
+      { src: 'a.md', target: 'company/x.md', kind: 'markdown' },
+    ]);
+    assert.throws(() => applyBatch(batch, vault), codeOf('DUPLICATE_TARGET'));
+
+    meta(batch, [{ src: 'a.md', target: 'company/x.md', kind: 'markdown' }]);
+    writeFileSync(join(vault, '.anc-ingest.lock'), '', 'utf8');
+    assert.throws(() => applyBatch(batch, vault), codeOf('VAULT_BUSY'));
+    rmSync(join(vault, '.anc-ingest.lock'));
+    applyBatch(batch, vault);
+    assert.ok(!existsSync(join(vault, '.anc-ingest.lock')), '用完要释放锁');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('入库：批次内的 junction 指向批次外、vault 内的 junction 指向 vault 外，都拒绝', () => {
+  const { dir, vault, batch } = setup();
+  const outside = join(dir, 'outside');
+  mkdirSync(outside);
+  writeFileSync(join(outside, 'secret.md'), MD, 'utf8');
+  try {
+    try {
+      symlinkSync(outside, join(batch, 'lnk'), 'junction');
+      symlinkSync(outside, join(vault, 'vlnk'), 'junction');
+    } catch {
+      return; // 环境不允许建 junction 时跳过
+    }
+    meta(batch, [{ src: 'lnk/secret.md', target: 'company/x.md', kind: 'markdown' }]);
+    assert.throws(() => applyBatch(batch, vault), codeOf('BAD_PATH'));
+
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    meta(batch, [{ src: 'a.md', target: 'vlnk/pwn.md', kind: 'markdown' }]);
+    assert.throws(() => applyBatch(batch, vault), codeOf('BAD_PATH'));
+    assert.ok(!existsSync(join(outside, 'pwn.md')), '不能经 junction 写到 vault 外');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('提交：只提交本批文件，别的未复核改动不被带进去', () => {
+  const { dir, vault, batch } = setup();
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: vault });
+    writeFileSync(join(vault, '别人的草稿.md'), 'draft', 'utf8');
+    writeFileSync(join(batch, 'a.md'), MD, 'utf8');
+    meta(batch, [{ src: 'a.md', target: 'company/本批.md', kind: 'markdown' }]);
+    const r = applyBatch(batch, vault);
+    assert.ok(commitVault(vault, 'ingest: 本批', [...r.added, ...r.modified, ...r.originals]));
+    const files = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=', 'HEAD'], { cwd: vault, encoding: 'utf8' }).trim().split('\n');
+    assert.deepEqual(files, ['company/本批.md']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

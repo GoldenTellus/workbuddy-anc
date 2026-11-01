@@ -68,9 +68,12 @@ global.__ancCanaryWrite = function (obj) {
   } catch (_) { /* ignore */ }
 };
 // 记录安装路径：计划任务以 LOCAL SERVICE 运行，看不到用户目录，靠这个文件定位
+// NODE_OPTIONS 会被 node 子进程继承（agent 跑的 node cli.ts 等），只有 WorkBuddy.exe 自己才写
 try {
-  fs.mkdirSync(path.dirname(STATE), { recursive: true });
-  fs.writeFileSync(path.join(path.dirname(STATE), 'workbuddy-path.txt'), process.execPath);
+  if (path.basename(process.execPath).toLowerCase() === 'workbuddy.exe') {
+    fs.mkdirSync(path.dirname(STATE), { recursive: true });
+    fs.writeFileSync(path.join(path.dirname(STATE), 'workbuddy-path.txt'), process.execPath);
+  }
 } catch (_) { /* ignore */ }
 
 function alertOps(text) {
@@ -90,6 +93,19 @@ function alertOps(text) {
   }
 }
 
+// 补丁体真正包装上 emitMessage 之后才算生效：由补丁体回调，而不是拼接时就记「已生效」
+let pendingMode = null;
+global.__ancMarkApplied = function () {
+  writeState({ mode: pendingMode || 'unknown', applied: true });
+  log('APPLIED mode=' + (pendingMode || 'unknown'));
+};
+global.__ancMarkMiss = function () {
+  writeState({ mode: pendingMode || 'unknown', applied: false, miss: true });
+  log('ANCHOR-MISS emitMessage class not found mode=' + (pendingMode || 'unknown'));
+  alertOps('补丁已注入但没找到 emitMessage（导出名可能变了），群身份未生效，需人工按 anc-wb-patch 处理');
+};
+
+// 用户正文里的 [anc: 一律中和，防止自己写前缀冒充群或发送人；真前缀每次都由补丁加
 const PATCH_BODY = [
   ';var __ancIdentityPatch = true;',
   ';try {',
@@ -98,8 +114,10 @@ const PATCH_BODY = [
   '    var __ancOrig = __ancCls.prototype.emitMessage;',
   '    __ancCls.prototype.emitMessage = function (m) {',
   '      try {',
-  '        if (m && m.chatId && typeof m.content === "string" && m.content.indexOf("' + PREFIX + '") !== 0) {',
-  '          m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + "] " + m.content;',
+  '        if (m && typeof m.content === "string" && !m.__ancTagged) {',
+  '          m.content = m.content.replace(/\\[\\s*anc\\s*[:\\uFF1A]/gi, "[anc-quoted:");',
+  '          if (m.chatId) m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + "] " + m.content;',
+  '          try { Object.defineProperty(m, "__ancTagged", { value: true, enumerable: false }); } catch (e) {}',
   '        }',
   '        try { if (global.__ancCanaryWrite) global.__ancCanaryWrite({ at: new Date().toISOString(), chatId: !!(m && m.chatId), user: !!(m && m.user), contentStr: !!(m && typeof m.content === "string") }); } catch (e) {}',
   '      } catch (e) {}',
@@ -107,8 +125,11 @@ const PATCH_BODY = [
   '    };',
   '    __ancCls.prototype.__ancPatched = true;',
   '    try { process.__ancIdentityApplied = true; } catch (e) {}',
+  '    try { if (global.__ancMarkApplied) global.__ancMarkApplied(); } catch (e) {}',
+  '  } else if (!(__ancCls && __ancCls.prototype && __ancCls.prototype.__ancPatched)) {',
+  '    try { if (global.__ancMarkMiss) global.__ancMarkMiss(); } catch (e) {}',
   '  }',
-  '} catch (e) {}',
+  '} catch (e) { try { if (global.__ancMarkMiss) global.__ancMarkMiss(); } catch (e2) {} }',
   ''
 ].join('\n');
 
@@ -163,8 +184,8 @@ Module.prototype._compile = function (content, filename) {
         if (content.indexOf('__ancIdentityPatch') === -1) {
           content += '\n' + PATCH_BODY;
           applied += 1;
-          writeState({ mode: 'hash' });
-          log('PATCHED target=' + filename);
+          pendingMode = 'hash';
+          log('INJECTED mode=hash target=' + filename);
         }
       } else if (strict === '1' || strict === 'true') {
         log('STRICT-SKIP hash-mismatch target=' + filename + ' got=' + digest + ' expected=' + EXPECTED);
@@ -173,8 +194,8 @@ Module.prototype._compile = function (content, filename) {
         if (content.indexOf('__ancIdentityPatch') === -1) {
           content += '\n' + PATCH_BODY;
           applied += 1;
-          writeState({ mode: 'anchor' });
-          log('ANCHOR-PATCH version-unverified target=' + filename + ' got=' + digest);
+          pendingMode = 'anchor';
+          log('INJECTED mode=anchor version-unverified target=' + filename + ' got=' + digest);
           alertOps('WorkBuddy 版本变化，已按结构锚点打补丁（未登记版本）；请在测试群回归后更新 manifest');
         }
       } else {

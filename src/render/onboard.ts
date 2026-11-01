@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, basename } from 'node:path';
+import { backupUnique } from './render.ts';
 
 export interface OnboardOptions {
   packageDir: string;
@@ -18,13 +19,10 @@ export interface OnboardResult {
 }
 
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
-// 纯数字时间戳：带结尾点会被 Windows 截断，同一秒内两次安装会互相覆盖
-const stamp = () => new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 
+// 毫秒时间戳 + 不覆盖：同一秒内两次 --adopt 不会让第二次备份盖掉员工原来的 persona
 function backupFile(file: string): string {
-  const dst = `${file}.bak-${stamp()}`;
-  copyFileSync(file, dst);
-  return dst;
+  return backupUnique(file, file);
 }
 
 /** 把渲染好的个人接入包装到员工机（模拟 home 目录，便于测试）。 */

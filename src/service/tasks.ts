@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { nowIso, toIso, tx } from './db.ts';
 import { enqueue } from './outbox.ts';
+import { assertSafeOutbound } from './outbound-scan.ts';
 
 export type TaskStatus = 'open' | 'done' | 'cancelled';
 
@@ -35,6 +36,8 @@ const FIELDS = 'id, title, chat_id, assignee, requester, assignee_userid, reques
 
 export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
   if (!input.title || !input.title.trim()) throw new Error('title 必填');
+  // 标题会进每一条提醒：含凭据就在登记时拒绝，不要等到发送时卡住整个循环
+  assertSafeOutbound(input.title);
   const t = nowIso();
   return tx(db, () => {
     const r = db.prepare(

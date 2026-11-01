@@ -22,7 +22,8 @@ function Find-InstallDir {
     $marker = "$env:ProgramData\anc\data\workbuddy-path.txt"
     if (Test-Path $marker) {
         $p = (Get-Content $marker -Raw -Encoding UTF8).Trim()
-        if ($p -and (Test-Path $p)) { return (Split-Path $p -Parent) }
+        # 只认指向 WorkBuddy.exe 的记录（旧版 preload 可能被 node 子进程覆盖成 node.exe 路径）
+        if ($p -and (Split-Path $p -Leaf) -ieq 'WorkBuddy.exe' -and (Test-Path $p)) { return (Split-Path $p -Parent) }
     }
     $candidates = @()
     if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\WorkBuddy') }
@@ -48,7 +49,8 @@ $url = "https://www.workbuddy.cn/v2/update?platform=$Platform&version=$cur"
 $status = 0
 $body = ''
 try {
-    $resp = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 20 -ErrorAction Stop
+    # -UseBasicParsing：服务账号没跑过 IE 首次运行，PS 5.1 默认解析会直接抛错
+    $resp = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 20 -UseBasicParsing -ErrorAction Stop
     $status = [int]$resp.StatusCode
     $body = $resp.Content
 } catch {
@@ -75,6 +77,7 @@ if (Test-Path $StateFile) {
 }
 if ($seen -contains $new) { Write-Log "already alerted for $new"; exit 0 }
 
+$alerted = $false
 if (Test-Path $WebhookFile) {
     try {
         $hook = (Get-Content $WebhookFile -Raw).Trim()
@@ -83,9 +86,12 @@ if (Test-Path $WebhookFile) {
             $payload = @{ msgtype = 'text'; text = @{ content = $msg } } | ConvertTo-Json -Depth 4 -Compress
             Invoke-RestMethod -Uri $hook -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 15 | Out-Null
             Write-Log "alerted $new"
+            $alerted = $true
         }
     } catch { Write-Log "alert failed: $($_.Exception.Message)" }
 }
+# 告警没发出去就不记为已见：明天再查时会重发，不会因为一次 webhook 失败永久沉默
+if (-not $alerted) { Write-Log "not marking $new as seen (alert not delivered)"; exit 2 }
 
 $seen += $new
 [pscustomobject]@{ seen = $seen; at = (Get-Date).ToString('o') } | ConvertTo-Json |

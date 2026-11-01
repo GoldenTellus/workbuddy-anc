@@ -55,7 +55,10 @@ if ($problems.Count -eq 0) { exit 0 }
 
 # 冷却
 $state = @{}
-if (Test-Path $StateFile) { try { $state = Get-Content $StateFile -Raw | ConvertFrom-Json -AsHashtable } catch { $state = @{} } }
+# -AsHashtable 是 PS 6+ 才有的参数，5.1 下会抛错被吞掉，冷却永远不生效；用 PSCustomObject 读即可
+if (Test-Path $StateFile) {
+    try { $state = [IO.File]::ReadAllText($StateFile, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json } catch { $state = @{} }
+}
 $now = Get-Date
 $key = ($problems -join '|')
 if ($state.key -eq $key -and $state.at) {

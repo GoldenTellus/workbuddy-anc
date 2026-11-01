@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import { nowIso, toIso } from './db.ts';
 import { dueReminders, markReminderSent, scheduleReminder } from './reminders.ts';
 import { getTask } from './tasks.ts';
-import { resolve } from './bindings.ts';
-import { enqueue, listPendingDue, markSent, markFailed, requeueTransientFailures } from './outbox.ts';
+import { resolve, resolveByUserid, assertWebhookFileName } from './bindings.ts';
+import { enqueue, listPendingDue, claim, markSent, markFailed, requeueTransientFailures } from './outbox.ts';
+
+/** 到点提醒的有效期：超过这么久还没发出去（断网、积压）就作废，不补发。 */
+const REMINDER_TTL_MIN = 60;
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { loadRules, isWorkTime, nextWorkStart } from './config.ts';
 
@@ -14,8 +17,10 @@ export type Sender = (url: string, text: string, mentions: string[]) => Promise<
 export interface TickOptions {
   /** 逻辑时间，测试用；默认当前时间 */
   now?: string;
-  /** 固定 webhook 文件（测试或单群部署）；不传则按群绑定里的 webhook_file 选，默认 wecom-webhook.txt */
+  /** 固定 webhook 文件（联调/测试）；必须同时给 chatId，只发这个群的消息。不传则按群绑定里的 webhook_file 选 */
   webhookFile?: string;
+  /** 只处理这个群的待发消息（配合 webhookFile 联调） */
+  chatId?: string;
   /** 密钥目录，默认 %ProgramData%\anc\secrets */
   secretsDir?: string;
   /** 注入发送器，测试用；默认走 fetch */
@@ -29,6 +34,18 @@ export interface TickResult {
   failed: number;
   skipped: number;
   requeued: number;
+}
+
+/** 出站内容含凭据：记事件、不入队，返回 true。单条坏数据不能让整个 tick 抛错停摆。 */
+function blockedBySecret(db: DatabaseSync, taskId: number, text: string, now: string): boolean {
+  try {
+    assertSafeOutbound(text);
+    return false;
+  } catch {
+    db.prepare("INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, 'notify_blocked', ?, ?)")
+      .run(taskId, JSON.stringify({ reason: 'OUTBOUND_SECRET_BLOCKED' }), toIso(now));
+    return true;
+  }
 }
 
 async function defaultSender(url: string, text: string, mentions: string[]): Promise<void> {
@@ -64,8 +81,12 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
   let requeued = 0;
   try { requeued = requeueTransientFailures(db, toIso(now)); } catch { /* ignore */ }
 
+  let skipped = 0;
+  const rules = loadRules(db);
   // 0) 次日顺延
   const nowDate = new Date(toIso(now));
+  // 系统主动发的通知（顺延、升级）不在夜里推：非工作时段入队，但最早可发时间排到下一个工作起点
+  const sendAt = isWorkTime(nowDate, rules) ? toIso(now) : nextWorkStart(nowDate, rules).toISOString();
   const dayStart = new Date(nowDate); dayStart.setHours(0, 0, 0, 0);
   const stale = db.prepare(
     "SELECT id, title, due_at, chat_id FROM tasks WHERE status = 'open' AND due_at IS NOT NULL AND due_at < ?"
@@ -78,21 +99,22 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     const next = new Date(nowDate);
     next.setHours(due.getHours(), due.getMinutes(), 0, 0);
     if (next.getTime() <= nowDate.getTime()) next.setDate(next.getDate() + 1);
-    scheduleReminder(db, { taskId: t.id, dueAt: next.toISOString() });
     const at = due.toLocaleString('sv-SE').slice(0, 16);
     const nextLabel = next.toLocaleString('sv-SE').slice(0, 16);
+    const text = `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，已顺延到 ${nextLabel}`;
+    // 先检查再排期：被拦的任务不再顺延，免得每天都卡在这里
+    if (blockedBySecret(db, t.id, text, now)) { skipped += 1; continue; }
+    scheduleReminder(db, { taskId: t.id, dueAt: next.toISOString() });
     const q = enqueue(db, {
-      text: `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，已顺延到 ${nextLabel}`,
+      text,
       chatId: t.chat_id,
       dedupeKey: `carry:${t.id}:${dayStart.toISOString().slice(0, 10)}`,
-      at: now,
+      at: sendAt,
     });
     if (q.inserted) enqueued += 1;
   }
 
   const due = dueReminders(db, now);
-  let skipped = 0;
-  const rules = loadRules(db);
 
   for (const r of due) {
     // 非工作时段/节假日：顺延到下一个工作时段起点，不发
@@ -113,45 +135,87 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     const binding = task.chat_id ? resolve(db, task.chat_id) : null;
     const mentions = binding?.userid ? [binding.userid] : [];
     const text = `到点提醒：#${task.id} ${task.title}\n回复「@公司bot #${task.id} 完成」停止提醒`;
+    if (blockedBySecret(db, task.id, text, now)) {
+      db.prepare("UPDATE reminders SET status = 'cancelled' WHERE id = ?").run(r.id);
+      skipped += 1;
+      continue;
+    }
+    // 先把提醒标成已发（只在仍是 pending 时生效）再入队：
+    // 期间任务被完成、提醒被取消的话这里拿到 null，就不会再发一条过期提醒
+    if (!markReminderSent(db, r.id, now, { ifPending: true })) { skipped += 1; continue; }
     const q = enqueue(db, {
       text,
       chatId: task.chat_id,
       dedupeKey: `reminder:${r.id}`,
       mentions,
       at: now,
+      // 到点提醒迟到超过一小时就不发了：网络恢复后补发一堆旧提醒没有意义
+      expiresAt: new Date(nowDate.getTime() + REMINDER_TTL_MIN * 60_000).toISOString(),
     });
     if (q.inserted) enqueued += 1;
-    markReminderSent(db, r.id, now);
 
-    // 连续 4 次没回应 → 通知交办人一次，并把后续提醒改成每小时
+    // 连续 4 次没回应 → 在交办人自己的群里通知一次，并把后续提醒改成每小时
     const sentCount = (db.prepare("SELECT COUNT(*) AS c FROM task_events WHERE task_id = ? AND kind = 'reminder_sent'").get(task.id) as { c: number }).c;
-    if (sentCount >= 4) {
+    const escText = `任务 #${task.id} ${task.title} 已提醒 ${sentCount} 次仍未回应，请交办人跟进`;
+    if (sentCount >= 4 && !blockedBySecret(db, task.id, escText, now)) {
+      const reqGroup = task.requester_userid ? resolveByUserid(db, task.requester_userid) : null;
+      if (!reqGroup) {
+        db.prepare("INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, 'escalate_no_group', ?, ?)")
+          .run(task.id, JSON.stringify({ fallback: 'task_chat' }), toIso(now));
+      }
       const esc = enqueue(db, {
-        text: `任务 #${task.id} ${task.title} 已提醒 ${sentCount} 次仍未回应，请交办人跟进`,
-        chatId: task.chat_id,
+        text: escText,
+        // 交办人在一人一群里通常不在执行人的群：优先发到交办人的群；查不到才退回任务所在群
+        chatId: reqGroup?.chat_id ?? task.chat_id,
         dedupeKey: `escalate:${task.id}`,
         mentions: task.requester_userid ? [task.requester_userid] : [],
-        at: now,
+        at: sendAt,
       });
       if (esc.inserted) enqueued += 1;
-      db.prepare("UPDATE reminders SET repeat_minutes = 60 WHERE task_id = ? AND status = 'pending'").run(task.id);
+      // markReminderSent 已按旧间隔（15 分钟）排好下一次：一并改到一小时后
+      db.prepare("UPDATE reminders SET repeat_minutes = 60, due_at = ? WHERE task_id = ? AND status = 'pending'")
+        .run(new Date(nowDate.getTime() + 60 * 60_000).toISOString(), task.id);
     }
   }
 
+  const r = await sendPending(db, { ...opts, now: toIso(now) });
+  return { enqueued, sent: r.sent, failed: r.failed, skipped, requeued };
+}
+
+/** 发送到点的 pending 消息：每条按自己群的绑定选 webhook，查不到就失败，不退回默认群。 */
+export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Promise<{ sent: number; failed: number }> {
+  if (opts.webhookFile && !opts.chatId) throw new Error('webhookFile 只能配合 chatId 使用（联调单个群），避免把所有群的消息发到同一个 webhook');
   let sent = 0;
   let failed = 0;
   const send = opts.send ?? defaultSender;
   const fixedUrl = opts.webhookFile ? readFileSync(opts.webhookFile, 'utf8').trim() : '';
   const secretsDir = opts.secretsDir ?? join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'secrets');
-  const pending = listPendingDue(db, toIso(now), opts.limit ?? 20);
+  const pending = listPendingDue(db, opts.now ?? nowIso(), opts.limit ?? 20)
+    .filter((m) => !opts.chatId || m.chat_id === opts.chatId);
 
+  const nowStr = toIso(opts.now ?? nowIso());
   for (const m of pending) {
-    const binding = m.chat_id ? resolve(db, m.chat_id) : null;
-    const file = binding?.webhook_file || 'wecom-webhook.txt';
+    // 先领取：别的发送方（重叠的 tick、outbox flush）已经拿走的就跳过
+    if (!claim(db, m.id, nowStr)) continue;
+    const exp = (m as { expires_at?: string | null }).expires_at;
+    if (exp && exp < nowStr) {
+      db.prepare("UPDATE outbox SET status = 'failed', last_error = 'EXPIRED', claimed_at = NULL, updated_at = ? WHERE id = ?").run(nowIso(), m.id);
+      failed += 1;
+      continue;
+    }
     let url = fixedUrl;
+    let file = '(fixed)';
     if (!url) {
+      // 一人一群：只发到这条消息所属群自己的 webhook；查不到就失败，不退回任何默认群
+      const binding = m.chat_id ? resolve(db, m.chat_id) : null;
+      if (!binding?.webhook_file) {
+        markFailed(db, m.id, 'NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_file');
+        failed += 1;
+        continue;
+      }
+      file = binding.webhook_file;
       try {
-        url = readFileSync(join(secretsDir, file), 'utf8').trim();
+        url = readFileSync(join(secretsDir, assertWebhookFileName(file)), 'utf8').trim();
       } catch {
         markFailed(db, m.id, '读不到 webhook 文件: ' + file);
         failed += 1;
@@ -160,6 +224,12 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     }
     if (!url) {
       markFailed(db, m.id, 'webhook 文件为空: ' + file);
+      failed += 1;
+      continue;
+    }
+    // 不是 https URL 就别交给 fetch：它的报错会把文件原文带进 last_error
+    if (!/^https:\/\/\S+$/i.test(url)) {
+      markFailed(db, m.id, 'webhook 文件内容不是 https URL: ' + file);
       failed += 1;
       continue;
     }
@@ -174,7 +244,7 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     }
   }
 
-  return { enqueued, sent, failed, skipped, requeued };
+  return { sent, failed };
 }
 
 export interface RunOptions extends TickOptions {

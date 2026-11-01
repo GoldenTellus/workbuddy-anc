@@ -64,7 +64,7 @@ node scripts\anc-bind\bind.mjs list
 ## 隐私与边界
 
 - chatid、userid 都是标识符，不是凭据；库只在本机，`*.db` 不入 git。
-- 日志里不写 chatid：`workbuddy-patch.log` 只记 `PATCHED`/`SKIP`。
+- 日志里不写 chatid：`workbuddy-patch.log` 只记 `INJECTED`/`APPLIED`/`SKIP`。
 - 与 D13/D14 一致：原件与敏感数据不进 git；绑定表属于内部区数据，转公开前确认不在仓库里。
 
 ## 待办

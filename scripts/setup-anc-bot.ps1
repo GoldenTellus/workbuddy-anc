@@ -40,5 +40,5 @@ if (Test-Path $skillsSrc) {
 Write-Host ''
 Write-Host '完成。下一步：' -ForegroundColor Green
 Write-Host ("  powershell -NoProfile -ExecutionPolicy Bypass -File `"" + (Join-Path $patchDst 'launch-patched.ps1') + "`"")
-Write-Host '启动后扫码登录企业微信；确认 %USERPROFILE%\anc\workbuddy-patch.log 里有 PATCHED。'
+Write-Host '启动后扫码登录企业微信；确认 %USERPROFILE%\anc\workbuddy-patch.log 里有 APPLIED。'
 exit 0

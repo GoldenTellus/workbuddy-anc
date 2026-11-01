@@ -1,6 +1,6 @@
 {
     "name":  "anc-workbuddy-identity-injection",
-    "description":  "閹跺﹣绱掓稉姘簳娣?AIBot 閸ョ偠鐨熼柌宀€娈?chatId / 閸欐垿鈧椒姹夊▔銊ュ弳濞戝牊浼呭锝嗘瀮閿涘矁顔€ agent 閼冲€燁嚢閸掓壆鍏㈤煬顐″敜",
+    "description":  "把企微 AIBot 回调里的 chatId / 发送人注入消息正文，让 agent 能读到群身份",
     "workbuddyVersion":  "5.9.3",
     "electron":  "37.10.3",
     "target":  "main/wecomaibot-client.js",

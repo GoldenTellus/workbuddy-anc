@@ -19,11 +19,19 @@ function clean(v: string | undefined, field: string): string {
   return s;
 }
 
+/** webhook 文件只能是 secrets 目录下的一个纯文件名：不许路径分隔符、..、盘符，防止让服务身份读任意文件。 */
+export function assertWebhookFileName(name: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.txt$/.test(name) || name.includes('..')) {
+    throw new Error('webhook_file 只能是 secrets 目录下的文件名（字母数字._-，以 .txt 结尾）: ' + name);
+  }
+  return name;
+}
+
 export function bind(db: DatabaseSync, chatId: string, employee: string, note?: string, userid?: string, webhookFile?: string): { action: 'created' | 'updated'; binding: Binding } {
   const cid = clean(chatId, 'chat_id');
   const emp = clean(employee, 'employee');
   const uid = userid ? clean(userid, 'userid') : null;
-  const hook = webhookFile ? clean(webhookFile, 'webhook_file') : null;
+  const hook = webhookFile ? assertWebhookFileName(clean(webhookFile, 'webhook_file')) : null;
   const t = nowIso();
   const exists = db.prepare('SELECT chat_id FROM chat_bindings WHERE chat_id = ?').get(cid);
   if (exists) {
@@ -34,6 +42,12 @@ export function bind(db: DatabaseSync, chatId: string, employee: string, note?: 
       .run(cid, emp, uid, hook, note ?? null, t, t);
   }
   return { action: exists ? 'updated' : 'created', binding: resolve(db, cid)! };
+}
+
+/** 按企微 userid 找这个人自己的群（一人一群：交办人的通知要发到交办人的群）。 */
+export function resolveByUserid(db: DatabaseSync, userid: string): Binding | null {
+  const row = db.prepare('SELECT * FROM chat_bindings WHERE userid = ? ORDER BY updated_at DESC LIMIT 1').get(userid);
+  return (row as Binding | undefined) ?? null;
 }
 
 export function resolve(db: DatabaseSync, chatId: string): Binding | null {

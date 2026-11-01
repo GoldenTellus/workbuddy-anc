@@ -1,26 +1,26 @@
 ---
 name: anc-wb-patch
-description: WorkBuddy 升级后重放补丁并做回归。发现版本变化、日志出现 ANCHOR-PATCH、或 doctor 报 workbuddy/patch 失败时使用。触发词：升级 WorkBuddy、重放补丁、补丁失效、ANCHOR-PATCH、patch。
+description: WorkBuddy 升级后重放补丁并做回归。发现版本变化、日志出现 INJECTED mode=anchor 或 ANCHOR-MISS、或 doctor 报 workbuddy/patch 失败时使用。触发词：升级 WorkBuddy、重放补丁、补丁失效、ANCHOR-MISS、patch。
 ---
 
 # anc-wb-patch（升级重放）
 
 目标：WorkBuddy 升级后，用最少步骤确认补丁还能用；不能用就改锚点，最后更新台账。
 
-## 0. 自愈（消息里没有前缀时）
+## 0. 自愈（只由守卫或管理员触发）
 
-**只给建议不执行 = 失败**。必须真的跑命令，并把返回码与日志贴出来。
+群消息里没有前缀时，bot **不**自己跑自愈：任何群成员都能发消息，交给 bot 触发等于让人随意重启主机上的 WorkBuddy。
 
-1. 先回一句：「补丁没生效，我自愈一下，可能离线十几秒」；
-2. 执行：
+1. 计划任务 `anc-patch-guard` 每分钟检查 `patch-state.json` 的 `applied`，不对就调用自愈（内部 10 分钟冷却；重启中、重启失败、锚点缺失时守卫 60 分钟内不再触发）；
+2. 管理员人工排障可执行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\anc-selfheal.ps1 -Apply
 ```
 
 3. 退出码：`0` 已安排重启；`3` 锚点缺失（别重启，叫人）；其他 = 环境错误，贴日志；
-4. 重启由 Worker 完成：停 WorkBuddy → 经 Explorer 用启动器拉起 → 轮询补丁日志，最多重试 1 次，结果写 `C:\ProgramData\anc\data\selfheal.log`；
-5. 冷却 10 分钟，重复触发会被跳过（人工可用 `-Force` 绕过）。
+4. 重启由 Worker 完成：先写 `restarting` → 停 WorkBuddy → 经 Explorer 用启动器拉起 → 只认本次启动后补丁体写下的 `applied=true`，最多重试 1 次，失败写 `restart-failed`，结果见 `C:\ProgramData\anc\data\selfheal.log`；
+5. 冷却 10 分钟，重复触发会被跳过（管理员可用 `-Force` 绕过）。
 
 > 登录时另有一个确定性启动项 `anc-workbuddy-launch`：开机/登录 30 秒后就用启动器拉起，避免「登录后自动起了无补丁实例」。
 
@@ -47,7 +47,7 @@ powershell -File C:\ProgramData\anc\bin\doctor.ps1
 powershell -ExecutionPolicy Bypass -File E:\workbuddy-anc\scripts\workbuddy-patch\launch-patched.ps1
 ```
 
-确认日志出现 `ANCHOR-PATCH version-unverified`，然后走第 3 步回归。
+确认日志出现 `INJECTED mode=anchor version-unverified` 和随后的 `APPLIED mode=anchor`（只有前者、或出现 `ANCHOR-MISS` = 没生效），然后走第 3 步回归。
 
 **B. 锚点缺失（函数改名/换模块）**
 
