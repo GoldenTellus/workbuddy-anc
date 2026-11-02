@@ -6,13 +6,15 @@ param(
     [string]$Repo = '',
     [string]$Root = '',
     [string]$Manifest = '',
-    [string]$BotUser = 'anc-bot',
+    # D25：默认取"当前部署账号"，不再硬编码专用用户；换部署形态时用 -BotUser 覆盖。
+    [string]$BotUser = '',
     [switch]$Json,
     [switch]$SelfTest
 )
 
 $ErrorActionPreference = 'Continue'
 if (-not $Root) { $Root = Join-Path $env:ProgramData 'anc' }
+if (-not $BotUser) { $BotUser = $env:USERNAME }
 # 线上以部署目录为准：manifest 默认取 %ProgramData%\anc\patch 的那份，不再从 git 工作副本读
 if (-not $Manifest) { $Manifest = Join-Path $Root 'patch\manifest.json' }
 $results = @()
@@ -194,11 +196,13 @@ if ($SelfTest) {
 # 1 专用用户（账号存在且不在管理员组）
 $bot = Get-LocalUser -Name $BotUser -ErrorAction SilentlyContinue
 if (-not $bot) {
-    Add-Result 'dedicated-user' 'FAIL' ("没有 $BotUser 用户") '按 OPS.md 建专用标准用户；上线前必须'
+    Add-Result 'dedicated-user' 'FAIL' ("身份 $BotUser 不存在") '检查 -BotUser 参数，或用 net user 确认部署账号名'
 } elseif (Test-AdminMember $BotUser) {
-    Add-Result 'dedicated-user' 'FAIL' ("$BotUser 在管理员组（或无法确认）") '移出管理员组；若是查询失败，用 net localgroup Administrators 人工确认'
+    # D25（2026-11-02 维护者决定）：部署约定直接用管理员账号，不再要求专用标准用户。
+    # 仍然报出来，是为了让"身份意外变化"可见——例如被换成 SYSTEM 或别的账号。
+    Add-Result 'dedicated-user' 'PASS' ("$BotUser（管理员组，按 D25 约定）") '若将来要收紧：改 -BotUser 并把该账号移出管理员组'
 } else {
-    Add-Result 'dedicated-user' 'PASS' ("$BotUser 存在且非管理员") '-'
+    Add-Result 'dedicated-user' 'PASS' ("$BotUser（标准用户）") '-'
 }
 
 # 2 公司 bot 实际跑在谁名下（账号对不等于进程对）

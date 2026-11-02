@@ -55,12 +55,18 @@ powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
 
 ## 4. 恢复 bot
 
-1. 建专用标准用户 `anc-bot`；
-2. 登录该用户，安装 WorkBuddy（企业版），扫码登录企业微信；
+**按 D25：直接用管理员账号部署，不建专用用户。**
+
+1. 用管理员账号登录（不开自动登录、本机不存密码——这两条仍然有效）；
+2. 安装 WorkBuddy（企业版），扫码登录企业微信；
 3. 用补丁启动器启动：`launch-patched.ps1`，确认日志里 `APPLIED mode=hash` + `update-hook installed`；
-4. 安装技能到该用户 `~/.workbuddy/skills/`（或 `render onboard`）；
+   - 若启动器报"已启动"但进程数为 0，多半是 `--inspect-brk` 卡在等调试器，重跑一次即可；
+4. 安装技能到 `%USERPROFILE%\.workbuddy\skills\`（或 `render onboard`）；
 5. 群里发「今天有什么任务」，有回复即可。
 
+> **代价是知情的**（D25）：WorkBuddy 及其 `preload.cjs` 补丁在这个账号下拿到管理员权限。
+> 它或它加载的任何东西出问题，损失是整台主机。要收紧时的做法：建一个标准用户，
+> 把两个 Interactive 计划任务与 WorkBuddy 迁过去，再用 `doctor -BotUser <该用户>` 复核。
 ## 5. 验收
 
 ```powershell

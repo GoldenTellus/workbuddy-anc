@@ -188,22 +188,23 @@ powershell -File scripts\offboard-member.ps1 ... -Apply -DeleteAccount -AccountN
 
 补丁启动器在网络层拦掉 `/v2/update`，并会在版本/hash 不符时向运维群告警，见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md)。
 
-## 专用用户切换清单（上线门槛）
+## 运行身份（D25，2026-11-02）
 
-机器侧已就绪（2026-10-31）：标准用户 `anc-bot`（非管理员）已建，`%ProgramData%\anc\data` 给了 Modify，`secrets` / `service` / `skills` 给了 ReadAndExecute；密码写在 `%ProgramData%\anc\accounts\anc-bot.txt`（只有管理员能读，交付后删除）。
+本部署约定**直接用管理员账号**跑 bot 与两个 Interactive 计划任务，不建专用标准用户。
 
-剩下是**交互**部分，按顺序做一次：
+`doctor` 的 `dedicated-user` / `bot-process-owner` / `task-anc-*` 之间的一致性检查仍然保留，
+但期望值改为「当前部署账号」（`-BotUser` 可覆盖），管理员组不再算 FAIL——实际身份仍会打出来，
+便于发现意外变更（例如被换成 `SYSTEM` 或别的账号）。
 
-1. 注销 Administrator，用 `anc-bot` 登录；
-2. 在该用户下装 WorkBuddy（企业版），登录企业微信（扫码）；
-3. 把补丁目录拷到该用户可读的位置（如 `C:\ProgramData\anc\patch\`），或用共享；
-4. 用补丁启动器起 WorkBuddy：`powershell -File launch-patched.ps1`；
-5. 确认 `workbuddy-patch.log` 里 `APPLIED mode=hash` 与 `update-hook installed` 都在；
-6. 在该用户下装技能：把 `~/.workbuddy/skills/anc-*` 复制过去（或跑 `render onboard --home`）；
-7. 群里发「今天有什么任务」→ 有回复即 T4 复测通过；
-8. 回填 [VERIFY.md](./VERIFY.md) 的 T4 行，并把本清单标记完成。
+**代价（知情接受）**：WorkBuddy 及其 `preload.cjs` 补丁在这个账号下拿到管理员权限，
+它或它加载的任何东西出问题，损失是整台主机。D6 的另外两条仍然有效：不开自动登录、本机不存密码。
 
-> 注意：切换后别再回 Administrator 跑 WorkBuddy，否则又回到「bot 在管理员会话里」的状态。
+要收紧到专用标准用户时的做法：
+
+1. 建一个标准用户（不进管理员组）；
+2. 把 `anc-workbuddy-launch` 与 `anc-patch-guard` 的 principal 改成该用户 + Interactive；
+3. 在该用户下装 WorkBuddy、扫码登录、`launch-patched.ps1` 起补丁、装技能；
+4. `doctor -BotUser <该用户>` 复核 —— 此时 `dedicated-user` 会报「标准用户」，其余项期望值同步。
 
 ## 常用命令
 
