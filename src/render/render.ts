@@ -8,11 +8,18 @@ export const LENGTH_WARN = 6500;
 export const LENGTH_ERROR = 7500;
 
 export function renderTemplate(tpl: string, vars: Record<string, string>): string {
-  return tpl.replace(/\{\{([a-z0-9_]+)\}\}/gi, (_m, key: string) => {
+  const out = tpl.replace(/\{\{([a-z0-9_]+)\}\}/gi, (_m, key: string) => {
     const v = vars[key];
     if (v === undefined) throw new Error('模板占位符没有值: {{' + key + '}}');
     return v;
   });
+  // 渲染后还留着 {{…}} = 模板里写了个变量名但传参对不上（拼错、或用了个不存在的键）。
+  // 不拦的话它会原样进 CODEBUDDY.md，bot 读到字面量 {{xxx}} 也照做，坏得无声无息。
+  // 这里必须比替换正则更宽（[^}]*）：{{ name }}、{{member-name}} 这类非法形态替换不到，
+  // 只查 [a-z0-9_] 会漏掉它们。
+  const left = out.match(/\{\{[^}]*\}\}/);
+  if (left) throw new Error('模板渲染后仍有残留占位符: ' + left[0] + '（检查模板拼写与传参键名）');
+  return out;
 }
 
 export function fingerprint(inputs: Array<{ path: string; content: string }>): string {

@@ -40,6 +40,20 @@ const MEMBER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 /** 会原样进 persona 的文本字段：拒绝控制字符、反引号、HTML 注释，限制长度，免得夹带指令或破坏 markdown */
 const PERSONA_TEXT_FIELDS = ['name', 'role', 'userid', 'chat_id'] as const;
 
+/** 允许出现的 frontmatter 键。拼错一个键会被静默忽略（字段没生效但不报错），所以白名单要收死。 */
+const KNOWN_KEYS: Record<string, string[]> = {
+  company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir'],
+  member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled'],
+  role: ['id', 'name', 'duties'],
+};
+
+function assertKnownKeys(file: string, kind: 'company' | 'member' | 'role', fm: Record<string, string>): void {
+  const allowed = KNOWN_KEYS[kind];
+  const unknown = Object.keys(fm).filter((k) => !allowed.includes(k));
+  if (unknown.length > 0) {
+    throw new Error(file + ' 有不认识的字段: ' + unknown.join(', ') + '（允许: ' + allowed.join(', ') + '）');
+  }
+}
 function assertMemberFields(file: string, id: string, fm: Record<string, string>): void {
   if (!MEMBER_ID.test(id)) throw new Error(`成员 id 不合规（小写字母数字 _ -，≤64）: ${id}（${file}）`);
   for (const k of PERSONA_TEXT_FIELDS) {
@@ -62,11 +76,13 @@ export function loadOrg(dir: string): Org {
   const companyPath = join(dir, 'company.md');
   if (!existsSync(companyPath)) throw new Error('缺少 org/company.md: ' + companyPath);
   const company = parseFrontmatter(readFileSync(companyPath, 'utf8')).fm;
+  assertKnownKeys('company.md', 'company', company);
 
   const roles = new Map<string, Record<string, string>>();
   for (const f of readDir(join(dir, 'roles'))) {
     const { fm } = parseFrontmatter(readFileSync(join(dir, 'roles', f), 'utf8'));
     const id = fm.id || basename(f, '.md');
+    assertKnownKeys('roles/' + f, 'role', fm);
     roles.set(id, { ...fm, id });
   }
 
@@ -75,6 +91,7 @@ export function loadOrg(dir: string): Org {
     const { fm } = parseFrontmatter(readFileSync(join(dir, 'members', f), 'utf8'));
     const id = fm.id || basename(f, '.md');
     if (!fm.name) throw new Error('成员缺少 name: ' + f);
+    assertKnownKeys('members/' + f, 'member', fm);
     assertMemberFields(f, id, fm);
     members.push({
       id,
@@ -95,6 +112,10 @@ export function loadOrg(dir: string): Org {
   for (const m of members) {
     if (seen.has(m.id)) throw new Error('成员 id 重复: ' + m.id);
     seen.add(m.id);
+    // 引用了不存在的角色 → persona 里的 role 字段会落空，行为与预期不符且不报错
+    if (m.role && !roles.has(m.role)) {
+      throw new Error('成员 ' + m.id + ' 引用了不存在的角色: ' + m.role + '（roles/ 下有: ' + [...roles.keys()].join(', ') + '）');
+    }
   }
   return { company, roles, members };
 }

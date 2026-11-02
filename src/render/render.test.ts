@@ -119,6 +119,9 @@ test('org：成员 id 重复要报错（否则渲染会互相覆盖）', () => {
   try {
     writeFileSync(join(dir, 'company.md'), '---\nname: 示例\ncompany_bot_name: 公司bot\nvault_shared: \\\\host\\vault\nvault_internal: D:\\vault-internal\nlocal_workdir: D:\\work\n---\n');
     mkdirSync(join(dir, 'members'), { recursive: true });
+    // 角色必须存在：这条用例只测 id 重复，所以先把 销售 建出来
+    mkdirSync(join(dir, 'roles'), { recursive: true });
+    writeFileSync(join(dir, 'roles', '销售.md'), '---\nid: 销售\nname: 销售\n---\n');
     const body = '---\nid: same\nname: 张三\nrole: 销售\n---\n';
     writeFileSync(join(dir, 'members', 'a.md'), body);
     writeFileSync(join(dir, 'members', 'b.md'), body);
@@ -202,4 +205,38 @@ test('org：frontmatter 混入说明文字时解析报错（不静默跳过）',
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('org：未知字段要报错（拼错的键会被静默忽略，字段没生效却不报错）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-org-unk-'));
+  try {
+    mkdirSync(join(dir, 'members'), { recursive: true });
+    writeFileSync(join(dir, 'company.md'), '---\nname: 示例\ncompany_bot_name: 公司bot\nvault_shared: \\\\host\\vault\nvault_internal: D:\\vi\nlocal_workdir: D:\\w\n---\n');
+    // usrid 是拼错的（应为 userid）
+    writeFileSync(join(dir, 'members', 'a.md'), '---\nid: a\nname: 甲\nusrid: u-x\n---\n');
+    assert.throws(() => loadOrg(dir), /不认识的字段: usrid/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('org：member.role 引用了不存在的角色要报错', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-org-role-'));
+  try {
+    mkdirSync(join(dir, 'members'), { recursive: true });
+    writeFileSync(join(dir, 'company.md'), '---\nname: 示例\ncompany_bot_name: 公司bot\nvault_shared: \\\\host\\vault\nvault_internal: D:\\vi\nlocal_workdir: D:\\w\n---\n');
+    writeFileSync(join(dir, 'members', 'a.md'), '---\nid: a\nname: 甲\nrole: 不存在的角色\n---\n');
+    assert.throws(() => loadOrg(dir), /引用了不存在的角色: 不存在的角色/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('renderTemplate：拼错的变量抛「没有值」，非法形态的占位符抛「残留」', () => {
+  // 键名拼错但形态合法：正则能匹配，查表查不到 → 当场抛
+  assert.throws(() => renderTemplate('你好 {{nmae}}', { name: '甲' }), /占位符没有值/);
+  // 形态非法（带空格/连字符）：正则匹配不了，会原样留在产物里 → 由残留检查兜住
+  assert.throws(() => renderTemplate('你好 {{ name }}', { name: '甲' }), /残留占位符/);
+  assert.throws(() => renderTemplate('你好 {{member-name}}', { name: '甲' }), /残留占位符/);
+  assert.equal(renderTemplate('你好 {{name}}', { name: '甲' }), '你好 甲');
 });
