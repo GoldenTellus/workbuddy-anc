@@ -51,6 +51,7 @@ updated_at: <YYYY-MM-DD>
 }
 ```
 
+- **`meta.json` 必须逐字按上面的模板写**：`files` 数组不能省、`src` 与 `target` 不能缺。缺字段的批次会被直接移进 `failed`，整批作废（这不是"格式小问题"，是批次失败）。
 - **目录按 vault 根路由选**：公司概况/名单/术语 → `company/`；协作模板 → `collab/`；技能 → `skills/<名字>/`。拿不准就先问用户，不要猜。
 - **覆盖已有文件**：先用 `git -C D:\anc\vault-shared hash-object <目标路径>` 取当前 blob hash，填进 `base_hash`；新文件不要填 `base_hash`。
 - 原件已存在会被拒；这种情况告诉用户「原件已经在库里」，不要改名重投。
@@ -62,7 +63,38 @@ node C:\ProgramData\anc\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --
 ```
 
 - 成功：批次会自动移到 `D:\anc\inbox\done\`；把 `added` / `modified` / `original` 转成中文摘要；
-- 失败：批次自动移到 `D:\anc\inbox\failed\` 并附 `reason.txt`；把错误码与原因**原样转告**，不要自行删改重试。
+- 失败：批次自动移到 `D:\anc\inbox\failed\` 并附 `reason.txt`；把错误码与原因**原样转告**。
+- **`failed` 里的批次一个字节都不要改**：不要补 frontmatter、不要改 `meta.json`、不要重跑它。那批已经作废，正确的做法是**重新建一个批次**从头来。改 failed 批次等于绕过校验，是事故。
+
+## 执行方式（硬约束，违反即事故）
+
+**只准通过 CLI 入库**：
+
+```
+node C:\ProgramData\anc\ingest\cli.ts apply --batch <批次目录> --shared D:\anc\vault-shared --inbox D:\anc\inbox --json
+```
+
+- **不许自己把文件复制进 `D:\anc\vault-shared\` 的任何子目录**（`collab/`、`company/`、`skills/`、`_originals/`…）。你有文件系统权限不等于可以绕过入库进程——路径校验、原件去重、入库锁、事件记录全在 CLI 里；
+- **批次进 `failed` 就是失败**：重新建一个新批次从头来。不许改 `failed` 里的任何文件（补 frontmatter、改 meta.json 都算事故）；
+- **只有 CLI 返回 `"ok": true`** 才能说「入库成功」；返回非 0 或 `ok:false` 一律按失败回复，并原样转告错误码。
+
+## 回复模板（硬约束，违反即事故）
+
+整条回复**只能**是这一句，说完就停：
+
+```
+已入库：<路径>（原件 <文件名>，<字数>）
+```
+
+- **不许描述你做了什么**：建批次、拷原件、写 meta、执行入库——过程话一句都不发；
+- **不许列举章节、主题、决策点、摘要、要点**；「提炼 / 结构化 / 整理成 / 超集 / N 节」这类词一律不出现（FORK D19：只报路径与标题）；
+- **不许自己定目录**：拿不准就先问一句，别先做了再说「如果你觉得该单独放…说一声」；
+- 失败时只回 `入库失败：<错误码> <原因>`，原样转告。
+
+反例（下面这些都禁止）：
+
+- 「我先看一下之前入库批次的格式约定」「我找一下 meta.json」「格式清楚了」「批次就绪」「现在写整理文档」「文件就绪，执行入库」——工具旁白；
+- 「提炼成 15 节锁定决策：项目定位、市场与首版范围…」——内容复述。
 
 ## 4. 回执
 
