@@ -17,6 +17,26 @@ function arg(name: string, def = ''): string {
 const json = argv.includes('--json');
 const doCommit = argv.includes('--commit');
 const cmd = argv[0];
+
+/**
+ * 护栏（D24，2026-11-02 实测后加）：vault 对 bot 的账号只读，入库只能由服务身份执行。
+ * 非服务身份直接调这个 CLI 会在写 vault 时撞 EPERM——更糟的是，撞墙的 bot 可能试图去
+ * "修" ACL（它是管理员，做得到），把权限防线拆掉。所以在入口就拦住并指路。
+ * 确实要手工入库时：设 ANC_ALLOW_LOCAL_INGEST=1。
+ */
+if (cmd === 'apply' && process.env.ANC_ALLOW_LOCAL_INGEST !== '1') {
+  const who = (process.env.USERNAME || '').trim();
+  const isService = /^(SYSTEM|LOCAL SERVICE|NETWORK SERVICE)$/i.test(who);
+  if (!isService) {
+    process.stderr.write(
+      'ERROR 入库必须通过本地服务的 HTTP 端点（POST /__anc_ingest），不要直接调本 CLI。\n' +
+      '      原因：vault 对 ' + (who || '当前身份') + ' 是只读的，写操作只能由服务身份完成（D24）。\n' +
+      '      做法：把批次写到 <ProgramData>\\anc\\inbox\\pending\\<id>，再 POST 给 /__anc_ingest。\n' +
+      '      确实要手工入库时：设 ANC_ALLOW_LOCAL_INGEST=1。\n'
+    );
+    process.exit(2);
+  }
+}
 const batch = arg('--batch');
 const shared = arg('--shared');
 // 没给 --inbox 时，从 …\pending\<id> 推断，保证归档不会漏

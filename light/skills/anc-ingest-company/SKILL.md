@@ -70,6 +70,14 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:17891/__anc_ingest -Headers
 ## 执行方式（硬约束，违反即事故）
 
 **只准通过本地服务入库**（D24）：vault 对 bot 是只读的，写操作只能由服务身份完成。
+
+> 2026-11-02 实测教训（务必照做）：
+> - **不要用 `node ... cli.ts ingest apply`**——那是服务内部的入口，bot 直接调会因 vault 只读而失败；
+>   必须发 HTTP 请求给 `/__anc_ingest`，由服务身份去写。
+> - **不要 `git commit` / `git add`**。vault 的 `.git` 对 bot 也是只读的，而且提交是**管理员复核后**的步骤，
+>   不是入库的一部分。撞到 `Permission denied` 就停手，不要反复重试、也不要提议"放开权限"。
+> - **失败就是失败**：HTTP 返回 `ok:false` 时，把 `error` 原样转告用户，不要说"已入库"。
+>   判据只有一条——响应里 `ok` 为 `true` 且 `added` 列出了文件。
 你把批次写进 `C:\ProgramData\anc\inbox\pending\<id>`，再 POST 给 `/__anc_ingest`，由它去写 vault。
 
 **执行命令**：
@@ -89,6 +97,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:17891/__anc_ingest -Headers
 
 ```
 已入库：<路径>（原件 <文件名>，<字数>）
+
+入库失败时：`入库失败：<服务返回的 error 原文>`（不要解释成"稍后重试"之类，也不要说成功）
 ```
 
 - **不许描述你做了什么**：建批次、拷原件、写 meta、执行入库——过程话一句都不发；
