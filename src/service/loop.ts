@@ -207,12 +207,14 @@ export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Pro
   let sent = 0;
   let failed = 0;
   const send = opts.send ?? defaultSender;
+  // 同一个 tick 内所有时间判断用同一个 now：分别调 nowIso() 会跨毫秒，边界上可能自相矛盾
+  const now = opts.now ?? nowIso();
   const fixedUrl = opts.webhookFile ? readFileSync(opts.webhookFile, 'utf8').trim() : '';
   const secretsDir = opts.secretsDir ?? join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'secrets');
-  const pending = listPendingDue(db, opts.now ?? nowIso(), opts.limit ?? 20)
+  const pending = listPendingDue(db, now, opts.limit ?? 20)
     .filter((m) => !opts.chatId || m.chat_id === opts.chatId);
 
-  const nowStr = toIso(opts.now ?? nowIso());
+  const nowStr = toIso(now);
   for (const m of pending) {
     // 先领取：别的发送方（重叠的 tick、outbox flush）已经拿走的就跳过
     if (!claim(db, m.id, nowStr)) continue;
