@@ -115,7 +115,11 @@ function Get-TaskCoverage([hashtable]$Expected) {
         $uid = [string]$task.Principal.UserId
         $short = ($uid -split '\\')[-1]
         $want = [string]$Expected[$t]
-        if ($task.State -ne 'Ready' -and $task.State -ne 'Running') {
+        if ($task.State -eq 'Disabled') {
+            # 被禁用 = 功能停摆，不是"也许没事"。维护期间要临时停用，就显式改 PLAN 并在这里加豁免，
+            # 别让它悄悄 WARN——WARN 攒多了没人看，真出问题时也分不清哪些是新的
+            $out += @{ name = $t; state = 'FAIL'; detail = '任务被禁用'; fix = 'Enable-ScheduledTask 恢复；确实要长期停用请改 PLAN 并在 doctor 加豁免' }
+        } elseif ($task.State -ne 'Ready' -and $task.State -ne 'Running') {
             $out += @{ name = $t; state = 'WARN'; detail = ('状态 ' + $task.State); fix = '检查触发器与上次结果' }
         } elseif ($want -and $short -and $short -ine $want) {
             $out += @{ name = $t; state = 'FAIL'; detail = ('principal=' + $uid + '，期望 ' + $want); fix = '按 OPS.md 修正运行身份（PLAN R1 的一部分）' }

@@ -418,3 +418,44 @@ Windows 的目录 `(W)` 只拦「创建新文件」，而 SQLite 是**就地更�
 ### 没做到的（诚实标注）
 
 PLAN V2 的完整验收是「对每条 fail 分支注入」。本轮只做了**静态扫 + 10 处人工判定**，注入覆盖的是关键路径（V3 的五项 + 93 个单测），**没有对 53 个 catch 逐个注入**。这一步留作后续：改一处 catch 就补一条注入，而不是一次性补齐。
+
+## 9. V4 证明有效（2026-11-02）
+
+两个层次：`doctor -SelfTest` 验"函数逻辑对不对"，`scripts/verify-doctor.mjs` 验"真实环境里该 FAIL 的时候真的 FAIL"。
+
+### 自检（fixture）
+
+```
+SELFTEST PASS  secrets-acl 能识别广泛组可读  (FAIL)
+SELFTEST PASS  secrets-acl 收紧后放行  (PASS)
+SELFTEST PASS  deploy-layout 能识别"目录被复制成文件"  (FAIL)
+SELFTEST PASS  task-coverage 能识别缺任务  ()
+SELFTEST PASS  bot-process-owner 能分辨 owner 不符  (FAIL)
+SELFTEST PASS  secrets-in-git 走 git grep
+SELFTEST RESULT: ALL PASS
+```
+
+### 实机抽查（真注入、真恢复）
+
+`node scripts/verify-doctor.mjs`：每一项都跑三遍 doctor——注入前应 PASS、注入后应 **FAIL**、恢复后应回 PASS，且失败项必须**是对应那一项**（"报了但报错了地方"比不报更糟）。
+
+| 抽查 | 注入 | 注入后 | 恢复后 |
+|---|---|---|---|
+| ACL | 给 `secrets` 加 `BUILTIN\Users:(OI)(CI)RX` | `secrets-acl` FAIL ✅ | PASS ✅ |
+| 计划任务 | `Disable-ScheduledTask anc-watchdog` | `task-anc-watchdog` FAIL ✅ | PASS ✅ |
+| 补丁文件 | 往 `patch/preload.cjs` 尾部加一行注释 | `deploy-layout` FAIL ✅ | PASS ✅ |
+
+```
+汇总：3 PASS · 0 FAIL
+```
+
+恢复核对：`secrets` 无 Users 项、`anc-watchdog` 回到 Ready、`preload.cjs` 与仓库 hash 一致。
+
+### 抽查逼出的一处判定问题
+
+第一轮 `task` 项拿到 **WARN 而不是 FAIL**：`doctor` 把「任务被禁用」和「任务在跑/排队」混在同一档。被禁用等于功能停摆，不该和"正在跑"同档。已拆开：
+
+- `Disabled` → **FAIL**（要在维护期间停用，就显式改 PLAN 并在 doctor 加豁免，别让它悄悄 WARN）
+- 其他非 Ready/Running 状态 → WARN
+
+改动后 `task` 项抽查转 PASS。
