@@ -59,7 +59,8 @@ updated_at: <YYYY-MM-DD>
 ## 3. 跑入库进程
 
 ```powershell
-node C:\ProgramData\anc\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --shared D:\anc\vault-shared --inbox D:\anc\inbox --json
+$tk = (Get-Content C:\ProgramData\anc\secrets\service-token.txt -Raw).Trim()
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:17891/__anc_ingest -Headers @{ Authorization = "Bearer $tk" } -ContentType 'application/json' -Body (@{ batch = 'C:\ProgramData\anc\inbox\pending\<id>' } | ConvertTo-Json -Compress)
 ```
 
 - 成功：批次会自动移到 `D:\anc\inbox\done\`；把 `added` / `modified` / `original` 转成中文摘要；
@@ -68,13 +69,17 @@ node C:\ProgramData\anc\ingest\cli.ts apply --batch D:\anc\inbox\pending\<id> --
 
 ## 执行方式（硬约束，违反即事故）
 
-**只准通过 CLI 入库**：
+**只准通过本地服务入库**（D24）：vault 对 bot 是只读的，写操作只能由服务身份完成。
+你把批次写进 `C:\ProgramData\anc\inbox\pending\<id>`，再 POST 给 `/__anc_ingest`，由它去写 vault。
+
+**执行命令**：
 
 ```
-node C:\ProgramData\anc\ingest\cli.ts apply --batch <批次目录> --shared D:\anc\vault-shared --inbox D:\anc\inbox --json
+$tk = (Get-Content C:\ProgramData\anc\secrets\service-token.txt -Raw).Trim()
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:17891/__anc_ingest -Headers @{ Authorization = "Bearer $tk" } -ContentType 'application/json' -Body (@{ batch = '<批次目录>' } | ConvertTo-Json -Compress)
 ```
 
-- **不许自己把文件复制进 `D:\anc\vault-shared\` 的任何子目录**（`collab/`、`company/`、`skills/`、`_originals/`…）。你有文件系统权限不等于可以绕过入库进程——路径校验、原件去重、入库锁、事件记录全在 CLI 里；
+- **不许自己把文件复制进 `D:\anc\vault-shared\` 的任何子目录**（它对你是只读的，强写会被拒）（`collab/`、`company/`、`skills/`、`_originals/`…）。你有文件系统权限不等于可以绕过入库进程——路径校验、原件去重、入库锁、事件记录全在 CLI 里；
 - **批次进 `failed` 就是失败**：重新建一个新批次从头来。不许改 `failed` 里的任何文件（补 frontmatter、改 meta.json 都算事故）；
 - **只有 CLI 返回 `"ok": true`** 才能说「入库成功」；返回非 0 或 `ok:false` 一律按失败回复，并原样转告错误码。
 

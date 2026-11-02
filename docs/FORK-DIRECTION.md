@@ -76,6 +76,7 @@ Windows 主机(7×24)
 | D21 | **入库复核永久保留** | 2026-11-02 裁决不取消。复核是"入站按敌意处理"的最后一道人工闸,且覆盖写不可逆;入库永远走"校验 → 管理员看 diff → 手动提交",`--commit` 只在复核通过后使用 |
 | D22 | **后台长任务的形态**:执行器仍是 WorkBuddy,小服务只管状态机 | §5.5 只写了"按发送者隔离 + needs_review + 不自动重试",没定执行器。本库不写 agent,所以任务不会自己跑:任务是 SQLite 行(`kind=background`),由公司 bot 在群里被指派后执行;小服务负责状态、超时判定、`needs_review` 与"不自动重试",不负责调度执行器;产出走 outbox 或 inbox |
 | D23 | **A2A 默认走员工转发;T14 列为触发型实测** | 2026-11-02 只读探测 `main/wecomaibot-client.js`(27,427 B):存在 `sendReply` / `sendMessage` / `sendCustomCmd` / `sendMediaMessage` / `sendStreamChunk`,说明客户端具备出站能力;但这些是"回复当前 AIBot 会话"的方法,主动推送仍只能靠群机器人 webhook(D10)。能否"以员工身份发到群里"取决于个人 bot 的会话与"仅个人使用"设置(T5),而本机只有公司账号,无法实测。裁决:默认维持 D9 员工转发;T14 在第一个员工装好个人 bot 当天实测,通则由 C4 实现自动通道,不通则员工转发写死。**不阻塞 gate A** |
+| D24 | **入库写权限收到服务身份**：vault 对 bot 只读，bot 只能写 `inbox`；入库由 `POST /__anc_ingest` 交给服务身份（`LOCAL SERVICE`）执行 | 2026-11-02 实测：bot 会绕过 CLI 直接往 `collab/` 与 `_originals/` 复制文件，路径校验、原件去重、入库锁、事件记录**全部没跑**。技能里写"只准走 CLI"是纪律不是约束——它有文件系统权限。**边界**：管理员仍能改 ACL 或取得所有权，所以这是防误操作与防"顺手写"，不是防恶意 |
 
 ## 5. 组件设计
 
@@ -328,7 +329,7 @@ D16 放开了手脚,但改动要留下账。这一节就是账本规则;**改了
 | 前缀防伪(D17 配套) | 同 D17 | 同 D17 | 正文里出现的 `[anc:`(含全角冒号、空格变体)一律改写成 `[anc-quoted:`,真前缀每次都由补丁加在最前;私聊无 chatId 时也中和但不加前缀。防止员工自己打前缀冒充别的群或管理员 | 随 `ANC_WB_PATCH` | 同 D17 |
 | canary(语义漂移探测) | 5.9.3+ | 每次 `emitMessage` 写 `patch-canary.json`(chatId/user/contentStr) | 打上了但字段改名时,doctor/watchdog 能在一条消息内发现 | 无开关(只读观测);删文件即重置 | 不改变 WorkBuddy 行为 |
 | **出站旁白过滤(已上线,2026-11-02)** | 5.9.3 / Electron 37.10.3 | 包 `wecomaibot-client.sendReply(chatId, text)`:按行匹配 `NARRATION_RE` 丢弃过程话;单行不动、全被过滤时保留最后一句、过滤后为空则不发。`sendStreamChunk` 不动(流式块太小判不了整句) | T21 实测命中:多步工具链会漏 6–15 段过程话,persona 禁止词表无效。正则收紧过一次:裸「我来」误杀「我来说明一下这个流程」,已改成带动作限定;「现在写」也只认「现在写整理/文档/meta」 | 随 `ANC_WB_PATCH` 一键关闭 | 重启即失效;`scripts/workbuddy-patch/narration.test.mjs` 有 8 条正反例 |
-| **bot 不得直写 vault(待做,2026-11-02 登记)** | — | 权限层:vault 共享区对 bot 用户只读(bot 只写 `inbox`),入库由 `LOCAL SERVICE` 侧进程执行 | 2026-11-02 实测:批校失败后 bot 直接把文件复制进 `collab/` 与 `_originals/`,绕过路径校验、原件去重、入库锁与事件记录。技能里「只准走 CLI」是纪律不是约束,它照样违反 | 需要新裁决(权限隔离方案),随 R1 迁移一起做 | 恢复 ACL 即回退 |
+| **bot 不得直写 vault(进行中,2026-11-02)** | — | 权限层：bot 只写 `inbox`；入库走 `POST /__anc_ingest`（D24 方案 B），由 `anc-http`（`LOCAL SERVICE`）执行 `applyBatch`。端点只认 `inbox/pending` 下的目录，避免变成"以服务身份写任意路径" | 实测 bot 会绕过 CLI 直写 vault，绕过全部校验 | 随 token 与 ACL 一起；关掉端点后 bot 回到 CLI（ACL 未收紧前仍然可用） | `_research/vault-acl-before-d24.txt` 有收紧前的 ACL 原状 |
 | 团队 IM 授权判定,配套服务 bundle(未改,仅定位) | 5.9.3 / `<build>` | `main/netdrive-env-route.js` `ad05f474…0e16`(45,371 B) | `captureActivation` / `[channel-entry]` 在本文件,用于判读日志 | — | — |
 
 > 2026-10-31 实测结论:本地判定可以被绕开,但放行后 `POST {endpoint}/im/api/channel-entry/settings` 连续 4 次失败(`http:failed`,`state=error:load`),`allowed` 因 `entry.status!=='ready'` 仍为 false,工具返回同一句话。**门槛在账号/租户侧,本地 patch 拿不到数据**;客户端不记录 HTTP 状态码,属观测盲区。

@@ -112,7 +112,23 @@ if ($preload -match '\s') {
     Fail "preload 路径含空白：$preload" '把 scripts/workbuddy-patch 整个复制到不含空格的路径（例如 C:\anc\workbuddy-patch）后从那里运行' 2
 }
 
-# 1) 以 --inspect-brk 启动，进程会暂停等待调试器
+# 可选：NODE_OPTIONS 方式（`-EnvMethod` 显式开启）。
+#
+# 2026-11-02 实测：这条路**会让 WorkBuddy 主进程崩溃**（事件日志里是 WorkBuddy.exe 自己
+# 错误退出，ExitCode -1），而且不一定立刻崩——偶尔能起来，造成"可用"的错觉。
+# 所以默认仍走下面的 --inspect-brk：它虽然会在 inject 连不上时卡住（需要重跑一次），
+# 但至少不会把进程弄崩。要试环境变量方式，设 ANC_WB_METHOD=env 并自己盯崩溃日志。
+if ($env:ANC_WB_METHOD -eq 'env') {
+    Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 2
+    $env:NODE_OPTIONS = '--require ' + $preload
+    Write-Host "[anc] NODE_OPTIONS = $env:NODE_OPTIONS（实验路径，注意主进程可能崩）"
+    Start-WorkBuddy $exe $InstallDir @()
+    Write-Host '[anc] 已启动（NODE_OPTIONS 方式）'
+    exit 0
+}
+
+# 默认路径：以 --inspect-brk 启动，进程会暂停等待调试器
 Start-WorkBuddy $exe $InstallDir @("--inspect-brk=$Port")
 Start-Sleep -Milliseconds 800
 
