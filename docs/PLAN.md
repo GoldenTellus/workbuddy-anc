@@ -35,6 +35,15 @@
 
 四个阶段可以部分并行，但 **S 必须在 L 之前**——一个会自己改代码的系统，不能建在会随机起不来的底座上。
 
+另外两条依赖（不是并列关系）：
+
+| 依赖 | 原因 |
+|---|---|
+| **O2 → L 的形态** | `CODEBUDDY.md` 是每轮读还是启动读，决定夜间轮换是"复制两个文件"还是"配一次重启"。不先测，L4 没法设计 |
+| **S1 → R7** | 补丁启动链路不通，升级回归一跑就掉线（已在 VERIFY §16 踩过） |
+
+**可以并行的**：O1（出站观测）与 S1 之间无依赖；L1/L2（收集与 issue）不依赖 S，可以先做。
+
 ---
 
 ## 1. 现状基线（2026-11-03 00:20）
@@ -138,6 +147,44 @@ FORK D16 已裁决：允许修改、封装 WorkBuddy，允许读取它的凭据�
 
 > gate S 的判据：**把主机彻底重启一次，bot 在 3 分钟内恢复到"补丁已加载 + 群里能应答"。**
 
+### S0 开工前先确认现状（15 分钟）
+
+**为什么要有这一步**：2026-11-02 那天动过重启、ACL、补丁守卫，状态可能和文档写的不一致。
+在"加固"之前先确认"现在是什么样"，否则改完了没法判断是改好了还是本来就坏。
+
+```powershell
+# 1) bot 在线
+(Get-Process WorkBuddy -ErrorAction SilentlyContinue).Count     # 期望 6-7
+
+# 2) 补丁已加载 —— applied 必须 true，**且那个 pid 必须还活着**
+#    （只看 applied:true 会被残留骗，见 VERIFY §16）
+$st = Get-Content "C:\ProgramData\anc\data\patch-state.json" | ConvertFrom-Json
+$st.applied
+Get-Process -Id $st.pid -ErrorAction SilentlyContinue   # 必须能查到
+
+# 3) 体检
+powershell -File "C:\ProgramData\anc\bin\doctor.ps1" -Repo .   # 期望 FAIL=0
+
+# 4) 测试
+npm test                                                          # 期望 107/107
+
+# 5) 工作区干净（除预期的未提交项）
+git status --short
+```
+
+**任一项不符就先停下来修**，不要在不确定的底座上做加固。
+
+记下当前状态（一组数字），后面每次改动都跟这组比，才知道有没有把东西弄坏。
+
+**2026-11-03 00:50 实测的基线**（S0 第一次跑的结果，可用作对照）：
+
+| 项 | 值 |
+|---|---|
+| WorkBuddy 进程 | 6（都是 23:33–23:34 启动） |
+| patch-state | `pid 8520` · `applied: true` · `mode: hash` · **pid 8520 确认存活** |
+| 补丁日志 | `[pid 8520] INJECTED mode=hash` + `APPLIED` |
+| doctor | `FAIL=0 WARN=1`（WARN 是 `vault-ingest-audit`，基线即 WARN） |
+| npm test | 107/107 |
 ### S1 补丁启动链路加固 ★核心
 
 **问题**（VERIFY §16）：`--inspect-brk` + inject 设 `NODE_OPTIONS` 这条路在彻底重启后走不通。现在靠 `patch-guard` 每分钟兜底，但这是"补救"不是"设计"。
@@ -170,10 +217,12 @@ FORK D16 已裁决：允许修改、封装 WorkBuddy，允许读取它的凭据�
 
 ```
 □ 冷启动 3 次，3 次都在 60 秒内 APPLIED
-□ 注入失败时，群里收到告警
-□ R7 待触发（不阻塞，但 S1 完成后才可执行）
-□ 真实逾期任务被正常提醒
+□ 注入失败时，群里收到告警（人为让注入失败一次，看告警到不到）
+□ 一个真实逾期任务被正常提醒（等它自然发生，不专门造）
 ```
+
+> **R7 不在 gate 里**：它是事件触发型（等厂商发版），不是"做不做"的事。
+> 但 S1 不通就没法跑 R7——所以 S1 完成是 R7 的前置，而不是 R7 是 gate S 的项。
 
 ---
 
@@ -235,7 +284,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ```
 □ narration-filter.log 有数据，且能判定属于哪一种情况
 □ CODEBUDDY.md 的读盘时机有明确结论
-□ doctor 27/28 项（只差 vault-ingest-audit 的注入，它已有真实观察）
+□ doctor 的 28 项都有结论：26 项已注入验证 · 1 项（`vault-ingest-audit`）有真实触发观察 · 1 项（`database`）已裁决不做
 ```
 
 ---
@@ -281,7 +330,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 |---|---|---|---|
 | **L1** | `submission` 表 + 收集技能：识别"引用文件 @公司bot" → 落一条记录（文件 + 文本 + 谁 + 何时） | — | 群里走一次，表里有记录 |
 | **L2** | `cli issue draft`：submission → 结构化 issue（规则表：关键词 → 技能 → 段落） | L1 | 一条 submission 出一个 issue |
-| **L3** | `cli patch draft`（**模板版**）：issue → 定位段落 → 插入 `patch_hint` → 输出 diff | L2 | 用 3 条假 issue 验证 diff 可读 |
+| **L3** | `cli patch draft`（**模板版**）：issue → 定位段落 → 插入 `patch_hint` → 输出 diff | L2。**前提已验证**：技能文件有清楚的 `## 标题`（如 `## 查任务`、`## 登记任务`、`## 完成 / 取消`），能按 section 定位 | 用 3 条假 issue 验证 diff 可读 |
 | **L4** | **devbot 全自动**：夜间切 persona → 读 issue 队列 → 改 → 出分支（对齐上游：从问题到补丁无人介入） | **O2 结论** + S1 | 一次夜间跑出 1 个可用分支 |
 | **L5** | `cli dayend` + 全员下班判定（"所有人都下班" → 开夜间窗口） | L1 | 群里说"下班"，表里有记录 |
 | **L6** | eval runner：驱动 WorkBuddy 回放一条用例，比对回答 | L4 | 一条用例能跑出 pass/fail |
@@ -305,9 +354,10 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 
 ```
 □ 群里"引用文件 @公司bot"能落 submission
+□ 群里"@个人bot 说下班"能落 dayend 记录（L5）
 □ submission 能转成结构化 issue
 □ patch draft 的 diff 你愿意合入（至少一条）
-□ 夜间跑出一批分支
+□ devbot **全自动**跑出一个可用分支（从读 issue 到出分支，无人介入）
 □ eval 能判定 pass/fail
 □ 端到端走通一次，全程有记录
 ```
