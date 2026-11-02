@@ -28,8 +28,8 @@
 | 3 | Vault（共享知识库，git repo） | SPEC §2.3 | ✅ | `D:\anc\vault-shared` / `vault-internal`（D14 两区） |
 | 4 | 写路径：inbox 自动结构化入库 | SPEC §2.4 | ✅ | `src/ingest/`（apply / validate / git）+ 技能 `anc-ingest-company` |
 | 5 | 问题模型（vault 诊断层） | SPEC §2.5 | ✅ | `light/templates/vault/company/problem-model.md` |
-| 6 | Gateway 层（cc-connect） | SPEC §3.1 | ➖ | 改用企业微信直连 + WorkBuddy 内置通道（D18） |
-| 7 | Harness 层（统一接口，双后端） | SPEC §3.2 | ➖ | WorkBuddy 是唯一引擎，无需抽象层 |
+| 6 | Gateway 层（cc-connect） | SPEC §3.1 | ✅ | 功能等价：WorkBuddy 内置企微通道（实现不同，目的达到） |
+| 7 | Harness 层（统一接口，**可换后端**） | SPEC §3.2 | ⬜ | **缺"可换模型"**：锁死在 WorkBuddy 自带模型。补法见 §3.1 |
 | 8 | 部署层（一台常驻机的工程学） | SPEC §3.3 | ✅ | `docs/OPS.md` + `docs/REBUILD.md` + 9 个计划任务 |
 | 9 | Persona 系统（七段式模板） | SPEC §4.1 | ✅ | `light/templates/company-bot.md`、`light/personas/` |
 | 10 | persona-as-code 管线 | SPEC §4.2 | ✅ | `src/render/`（git 变更 → 渲染 → 部署，D15） |
@@ -45,7 +45,9 @@
 | 20 | harness-proxy：`tool-turn-filter` | `tools/harness-proxy/` | 🔄 | **思路已用上**：出站旁白过滤（FORK §11），但位置不同——上游在代理层过滤，我们在补丁里包 `sendReply` |
 | 21 | 三个技能：`anc-ingest` / `anc-join` / `anc-onboard` | `light/skills/` | 🟡 | ingest → `anc-ingest-company`（改写）；join 的名片规则 → `light/skill-cards/`；onboard → 见 #14 |
 
-**统计**：✅ 10 · 🔄 4 · 🟡 3 · ⬜ 1 · ➖ 2（共 20 个功能模块 + 技能分项）
+**统计（2026-11-03 按"零差距"口径重判）**：✅ 11 · 🔄 4 · 🟡 3 · **⬜ 2** · ➖ 0（共 20 个功能模块 + 技能分项）
+
+> ⬜ 两项是 1.0 的硬目标：**迭代闭环**（#13）与 **Harness 可换后端**（#7）。见 §3。
 
 ---
 
@@ -131,28 +133,48 @@ R6 实测过：切到另一个工作区后，读的是该工作区的规则，**
 
 ---
 
-## 3. 结论
+## 3. 距零差距还差什么
 
-### 3.1 真正的空白只有一处
+> **1.0 的要求是"覆盖上游全部功能、没有差距"**（PLAN 1.0 §2 第 5 条）。
+> 这一节列"从现在到零差距"的清单。
 
-**技能迭代闭环（#13）**。其余"没覆盖"的都是不适用或换了机制。
+### 3.1 两个 ➖ 不适用，重新判
 
-这条空白值得单独看：它是上游唯一被称为"灵魂"的东西，也是最难搬的——需要一个会改技能的 agent。
-但它的第一步（记录答错）成本很低，可以作为后续候选。
+之前把 Gateway 和 Harness 标成"不适用"，理由是"本项目没有这两层"。**按功能等价重判，结论不一样**：
 
-### 3.2 换机制的四项，都要在文档里说清代价
+| 模块 | 之前 | 现在 | 理由 |
+|---|---|---|---|
+| **Gateway（cc-connect）** | ➖ | **✅ 功能等价** | 上游要的是"让 bot 接进 IM"。本项目用 WorkBuddy 内置企微通道，这个功能**做到了**。实现不同不算差距 |
+| **Harness（统一接口、可换后端）** | ➖ | **⬜ 缺"可换"** | 上游能换 provider、能挂兜底模型。本项目锁死在 WorkBuddy 自带模型——**这个能力我们没有**，属真差距 |
 
-| 模块 | 换成了什么 | 代价 |
-|---|---|---|
-| 每 bot 一个 cwd | WorkBuddy 工作区 | 靠实测保证，非操作系统强制 |
-| Gateway + Harness | WorkBuddy 内置通道 | 依赖闭源产品，升级要重放补丁 |
-| 包形态 | 部署目录 + CLI | 没有 `npm i -g` 那种分发体验 |
-| vault-service | 本地 vault + git | 没有跨机实时同步 |
-| tool-turn-filter | 补丁里包 `sendReply` | 启发式词表，不如结构判断准 |
+**Harness 怎么补**（PLAN §2.1 的手段）：
 
-### 3.3 两处"部分"，是将来最可能被追问的
+```
+拦模型调用层 → 拿到请求 → 改端点 / 改模型名 → 转发到别的 provider
+```
 
-- **公司级 onboarding（#14）**：新客户从零建库还是手工活。
-- **日报（#16）**：运维有探针但没"人看的摘要"。
+和"拦 https.request 拦升级检查"是同一类手段，只是目标换成模型 API。难点在**先定位模型调用在哪个模块**（需要解包 app.asar 或 hook Module._compile 观察）。
 
-这两条都不影响当前单机运行，但都是"第二个客户进来时会立刻疼"的地方。
+### 3.2 零差距清单（三项）
+
+| # | 缺什么 | 补法 | 在哪 |
+|---|---|---|---|
+| 1 | **迭代闭环全链**（收集 / 汇总 / devbot / eval） | 按上游设计实现，devbot 做**全自动** | PLAN 阶段 L |
+| 2 | **Harness 的可换后端** | 拦模型调用层 + 换端点 | PLAN §2.1 手段表 |
+| 3 | **eval 能测模型遵从度** | 驱动 WorkBuddy 回放，比对回答（CDP 已有） | PLAN L6 |
+
+**这三项补完，20 个模块就没有 ⬜ 了。**
+
+### 3.3 还剩下的差异（不算差距，但要写明）
+
+| 项 | 上游 | 本项目 | 为什么不算差距 |
+|---|---|---|---|
+| 每 bot 一个 cwd | 进程级隔离 | WorkBuddy 工作区（R6 实测不串） | 隔离这个**目的**达到了 |
+| 包形态 | npm 包 + anc CLI | 部署目录 + cli.ts | "有命令面"达到了 |
+| vault-service | R2 + MCP + _history/ | 本地 + git + CLI | "版本历史 + 读写接口"达到了 |
+| tool-turn-filter | 结构判断 | 词表启发式 | **这个算差距**（判据弱），在 PLAN 阶段 O 处理 |
+
+### 3.4 结论
+
+**零差距可达到**，工作量集中在三项（迭代闭环 / Harness 可换后端 / eval 测遵从度）。
+没有一项被"闭源"卡死——闭源只是换成"加一层"的做法（PLAN §2.1）。
