@@ -17,6 +17,53 @@
 | 主机运维 | `scripts/*.ps1` | 体检、watchdog、备份、开机提醒、附件清理、更新探测、自愈 |
 | 技能与 persona | `light/` | 公司 bot 的技能、persona、渲染模板、vault 模板、个人 bot 的技能名片 |
 
+## 能实现什么（举例）
+
+一句话：**员工在群里说人话，公司拿到确定的结果。** 凡是"该不该提醒、算不算做完、消息发没发出去、资料有没有进库"这种不能靠猜的事，都由本地代码判定，模型只负责听懂和复述。
+
+### 员工视角：在群里 @ 公司 bot
+
+| 你说 | 系统实际做什么 | 结果落在哪里 |
+|---|---|---|
+| `提醒我明天 10 点交周报` | 登记成任务并把 `due_at` 换算成 UTC；到点由本地服务入队，经**该群自己的**群机器人 webhook 发出并 @ 你 | `tasks` / `reminders` / `outbox` 三张表 |
+| `今天有什么任务` | 只列 `status=open`，不把已完成的翻出来 | 库；同一份内容投影到 `<内部区>/collab/tasks.md` |
+| `做完了` | 状态转 `done`、停掉未发的提醒、往群里发一条完成公告；同一个人重复说只算一次 | `task_events` 留一条 `completed` |
+| `这周先不催了` | 任务转 `cancelled`，**连带**取消它还没发出的提醒，不会出现"任务取消了但提醒还在响" | `task_events` 留 `cancelled` |
+| 引用一份 PDF 说 `入库` | 整理成 markdown + `meta.json` 写进批次目录 → 入库进程校验（路径不许跳出 vault、覆盖写必须带读取时的 base hash、原件只许新建）→ 写进共享区**工作区** | 批次归档到 `inbox/done`；文件等人复核后才 `--commit` |
+| `上次那个报价模型在哪` | 只回**路径与标题**，正文不喂给模型（D19：资料不上云），要看内容在本机打开文件 | vault 里的文件 |
+| （访谈到点，不用你说） | 按规则版本、题数、`expected` 名单校验答案，归档到内部区；答不上来超时进 `needs_review` | `a2a` / `outbox` |
+
+工作时段外说"提醒我 3 点"，不会 3 点把人叫起来——自动推到下一个工作起点。节假日同理。
+
+### 后台长任务（D22）
+
+| 场景 | 行为 |
+|---|---|
+| `跑一下月度汇总` | 登记成 `kind=background` 的任务；bot 动手时调 `task start` 记下开始时间 |
+| 跑了 40 分钟没动静 | 超过 `timeout_minutes` 自动转 `needs_review`，通知交办人**一次**（`dedupe_key` 带开始时间，重排后再卡住会重新报） |
+| 你回 `重排` / `关掉` | `task review --decision retry` 回到 open 并清掉开始时间；`close` 直接取消并停提醒 |
+| 关键约束 | `needs_review` 只能由人复核离开；系统**不自动重试**，避免死循环里反复烧钱 |
+
+### 管理员视角
+
+| 操作 | 效果 |
+|---|---|
+| 改 `org/members/*.md` 后 `render deploy` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → 任一失败**整体还原**，不会留"一半新一半旧" |
+| `render verify` | 用指纹 + manifest 检出产物被手改（改过就说明线上与 git 不一致） |
+| 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除（不会再给他重建绑定）、open 任务转交新人、解绑群；**vault 里的档案不动** |
+| `doctor.ps1` | 28 项体检：9 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
+| `backup-anc.ps1` | `VACUUM INTO` 一致性快照 + 完整性校验；离机目标与本地**同盘时告警**（同盘不算离机）；失败必发运维告警；日档 60 份 + 每月 1 号留 12 份 |
+| 查"谁动过库" | `%ProgramData%\anc\data\audit.log` 每次 CLI 调用留一行（只记命令与目标，不记参数值） |
+| 查"资料是不是被绕过入库" | vault 里出现未跟踪文件、但 1 小时内没有成功的 `ingest apply` 记录 → `doctor` 直接 WARN |
+| 探活 | `GET http://127.0.0.1:<端口>/__anc_health` 不用 token；业务路由必须带 token，未配置 token 时一律 503 |
+
+### 明确做不到的
+
+- **不产出文档内容**：入库只做校验、归档与索引，整理稿由 bot 写、由人复核。
+- **没有公网入口**：HTTP 面只绑 `127.0.0.1`，公司 bot 与本机服务都在内网。
+- **模型的旁白挡不住**：多步工具链里它仍会说「我先看一下」这类过程话，persona 禁止词表已验证无效，只能在出站层过滤（待做，见 FORK §11）。
+- **未实测的两项**：员工转发的 A2A 通道（T14）、技能同步到员工机（T15）。
+
 ## 架构一览
 
 ```
@@ -39,7 +86,7 @@ Windows 主机（7×24）
 
 - 里程碑 M0–M4 的功能都已交付：任务提醒、vault 与入库、渲染与接入、访谈与 A2A；补丁侧有锚点模式、自愈与守卫、canary、更新探测，主机上 9 个计划任务。
 - 收尾与后续见 [docs/PLAN.md](./docs/PLAN.md) 2.0：**阶段 R（收尾，含"让 doctor 能自证 FAIL"）→ H（硬化）→ C（补齐）→ V（收口）**，每段一个 gate。
-- `npm test` 60 项（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）。
+- `npm test` 90 项全绿（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）；`doctor` 28 项检查。
 
 ## 从哪里开始读
 

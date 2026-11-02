@@ -675,6 +675,9 @@ test('后台任务：超时转 needs_review 并通知，不自动重试；复核
   try {
     const t = tasks.createTask(db, { title: '跑批', chatId: 'chat-A', kind: 'background', timeoutMinutes: 30 });
     tasks.startBackgroundTask(db, t.id);
+    // started_at 是真实时钟：不拨回去的话，这个用例只在"真实时间比 now 早 30 分钟以上"时通过
+    db.prepare('UPDATE tasks SET started_at = ? WHERE id = ?')
+      .run(new Date(Date.parse('2026-11-02T10:31:00+08:00') - 31 * 60_000).toISOString(), t.id);
     const r = await loopTick(db, { now: '2026-11-02T10:31:00+08:00', send: async () => {} });
     assert.ok(r.enqueued >= 1);
     assert.equal(tasks.getTask(db, t.id)!.status, 'needs_review');
