@@ -26,10 +26,26 @@ $Map = @(
     @{ Target = 'service'; Source = 'src\service'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'ingest';  Source = 'src\ingest';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'render';  Source = 'src\render';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
+    @{ Target = 'shared';  Source = 'src\shared';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'bin';     Source = 'scripts';     Filter = @('*.ps1', '*.cmd', '*.vbs'); Exclude = @() },
     @{ Target = 'patch';   Source = 'scripts\workbuddy-patch'; Filter = @('*'); Exclude = @() }
 )
 
+# 覆盖检查：src 下每个非测试 .ts 都必须能落到某个映射里。
+# 2026-11-02 踩过：加了 src/audit.ts 但映射没跟上，部署后 cli 直接 ERR_MODULE_NOT_FOUND，doctor 全瞎。
+$srcRoot = Join-Path $Repo 'src'
+if (Test-Path $srcRoot) {
+    $sources = @($Map | ForEach-Object { (Join-Path $Repo $_.Source).TrimEnd('\') })
+    $uncovered = @()
+    foreach ($f in @(Get-ChildItem $srcRoot -Recurse -File -Filter '*.ts' | Where-Object { $_.Name -notmatch '\.test\.ts$' })) {
+        $ok = $false
+        foreach ($s2 in $sources) { if ($f.FullName.StartsWith($s2 + '\')) { $ok = $true; break } }
+        if (-not $ok) { $uncovered += $f.FullName.Substring($Repo.Length + 1) }
+    }
+    if ($uncovered.Count -gt 0) {
+        Fail ('这些源文件没有部署目标: ' + ($uncovered -join ', ')) '在 deploy.ps1 的 $Map 里给它加一条，否则线上会 import 失败' 2
+    }
+}
 $plan = @()
 foreach ($m in $Map) {
     $srcDir = Join-Path $Repo $m.Source

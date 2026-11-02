@@ -3,9 +3,11 @@
 // 用法：node src/ingest/cli.ts apply --batch <批次目录> --shared <共享区目录> [--inbox D:\anc\inbox] [--commit] [--json]
 
 import { existsSync } from 'node:fs';
+import { appendAudit, commandName } from '../shared/audit.ts';
 import { applyBatch, archiveBatch, failBatch, inferInbox } from './apply.ts';
 import { commitVault } from './git.ts';
 import { IngestError } from './validate.ts';
+import { join } from 'node:path';
 
 const argv = process.argv.slice(2);
 function arg(name: string, def = ''): string {
@@ -19,6 +21,23 @@ const batch = arg('--batch');
 const shared = arg('--shared');
 // 没给 --inbox 时，从 …\pending\<id> 推断，保证归档不会漏
 const inbox = arg('--inbox') || inferInbox(batch) || '';
+
+// 审计：入库每次调用留一行，targets 记录动到的路径。
+// bot 绕过 CLI 直接往 vault 复制文件时这里不会有记录——doctor 用这个差异发现绕过。
+const dataDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'data');
+const audit = {
+  at: new Date().toISOString(),
+  cmd: 'ingest ' + commandName(argv),
+  ok: true,
+  code: null as string | null,
+  targets: [] as string[],
+};
+process.on('exit', (code) => {
+  // fail() 直接 process.exit，不走 catch：用退出码补上 code，别让审计把失败记成"ok"
+  audit.ok = code === 0 && !audit.code;
+  audit.code = audit.code ?? (code === 0 ? null : 'EXIT_' + code);
+  appendAudit(dataDir, audit);
+});
 
 function fail(msg: string, code: string, exit = 1): never {
   if (json) console.log(JSON.stringify({ ok: false, code, error: msg }));

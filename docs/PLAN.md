@@ -248,7 +248,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | C8 | 员工共享账号 | OPS:76 | 名单 → 开号 → 读通/写拒/不能登录桌面 | 名单 | S |
 | C9 | 渲染器 `rollback` + 部署脚本 | RENDERER:95 | 部署失败一键回滚,产物 hash 对拍 | H9 | S |
 | C10 | 配置化 | §5.7 / `config.ts:116`(isWorkTime 用系统本地时间) | **已落地（2026-11-02）**：新增 `timezone`（只收 Windows 时区 Id，`Asia/Shanghai` 这类 IANA 名会被拒并提示对照）与 `vault_internal`/`vault_shared`（绝对路径校验）；doctor 的时区检查改成「与配置比，不一致 = FAIL」，未配置时按设计默认给 WARN | 非法值实测被拒（IANA 名、相对路径）；doctor `timezone PASS` | S |
-| C13 | 不上云的落地 | D19 / §8 | 内部区与共享区正文都不作为对话内容;只传路径/标题/结构化字段;摘要由本地脚本(不调模型)生成;命中大段正文时拒答并提示"在本机打开文件";审计日志能证明 0 次正文进对话 | — | M |
+| C13 | 不上云的落地 | D19 / §8 | **部分落地（2026-11-02）**：persona 与 `anc-ingest` 技能已写死「只报路径与标题」；审计层上线——`src/shared/audit.ts` + 两个 CLI 的 exit 钩子，每次调用写 `%ProgramData%\anc\data\audit.log`（JSONL，只记命令与目标，不记参数值）；doctor 新增 `vault-ingest-audit`（vault 有未跟踪文件但 1 小时内无成功 ingest 记录 → WARN，**这就是绕过 CLI 的证据**）。待补：查库/问答路径的拒答计数（依赖 C4/C5 定形），以及"摘要由本地脚本生成"还没做 | 审计 3 项单测；实机 `EXIT_1/EXIT_2` 都留痕；doctor 当场抓到当前的 2 个未跟踪文件无入库记录 | M |
 
 **gate C**:11 件全部落地,或带"不做 + 理由"回写 FORK;不存在第三种状态。（原 C11/C12 已按 D21/D20 移入 §8「不做的事」）
 

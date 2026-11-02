@@ -14,6 +14,7 @@ import * as backup from './backup.ts';
 import * as a2a from './a2a.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
+import { appendAudit, commandName } from '../shared/audit.ts';
 import { startServer } from './http.ts';
 import { checkProjection, rebuildProjection, writeProjection } from './project.ts';
 
@@ -37,6 +38,23 @@ function parse(argv: string[]): Args {
 
 const args = parse(process.argv.slice(2));
 const dbPath = typeof args.db === 'string' ? args.db : DEFAULT_DB;
+
+// 审计：每个会改状态的调用留一行（观测手段，写失败不挡主流程）。
+// 绕过 CLI 直接改库/改 vault 时这里不会有记录——doctor 靠这个差异发现绕过。
+const dataDir = dirname(dbPath);
+const audit: { at: string; cmd: string; ok: boolean; code: string | null; targets: string[] } = {
+  at: new Date().toISOString(),
+  cmd: 'service ' + commandName(process.argv.slice(2)),
+  ok: true,
+  code: null,
+  targets: [],
+};
+process.on('exit', (code) => {
+  // fail() 直接 process.exit，不走 catch：用退出码补上 code，别让审计把失败记成"ok"
+  audit.ok = code === 0 && !audit.code;
+  audit.code = audit.code ?? (code === 0 ? null : 'EXIT_' + code);
+  appendAudit(dataDir, audit);
+});
 const json = args.json === true;
 const [group, cmd] = args._;
 
@@ -289,6 +307,7 @@ try {
   }
 } catch (e) {
   const err = e as Error & { code?: string };
+  audit.code = err.code ?? 'ERROR';
   console.error('ERROR ' + err.message);
   if (err.code === 'OUTBOUND_SECRET_BLOCKED') console.error('FIX   出站内容含凭据，先删掉再入队/发送（FORK §5.5）');
   else console.error('FIX   看 docs/LOCAL-SERVICE.md');

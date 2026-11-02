@@ -360,6 +360,30 @@ try {
     }
 }
 
+# 20 vault 改动有没有入库记录（绕过检测）
+$vault = 'D:\anc\vault-shared'
+$untracked = @()
+if (Test-Path (Join-Path $vault '.git')) {
+    $untracked = @(& git -C $vault status --porcelain 2>$null | Where-Object { $_ -match '^\?\?' })
+}
+if ($untracked.Count -eq 0) {
+    Add-Result 'vault-ingest-audit' 'PASS' '共享区无未跟踪改动' '-'
+} else {
+    $auditFile = Join-Path $Root 'data\audit.log'
+    $recent = $false
+    if (Test-Path $auditFile) {
+        $cut = (Get-Date).AddHours(-1).ToString('o')
+        $recent = [bool](Get-Content $auditFile -Tail 300 -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '"cmd":"ingest apply"' -and $_ -match '"ok":true' } |
+            ForEach-Object { try { ($_ | ConvertFrom-Json).at } catch { $null } } |
+            Where-Object { $_ -and $_ -gt $cut })
+    }
+    if ($recent) {
+        Add-Result 'vault-ingest-audit' 'PASS' ("$($untracked.Count) 个未跟踪文件，1 小时内有成功入库记录（待复核）") '-'
+    } else {
+        Add-Result 'vault-ingest-audit' 'WARN' ("$($untracked.Count) 个未跟踪文件，但 1 小时内没有成功入库记录——可能绕过了 CLI 直接写盘") '核对 inbox/done 有没有对应批次；绕过写入的文件不该进 git'
+    }
+}
 $fails = @($results | Where-Object { $_.state -eq 'FAIL' }).Count
 $warns = @($results | Where-Object { $_.state -eq 'WARN' }).Count
 if ($Json) {
