@@ -17,6 +17,7 @@ import { assertSafeOutbound } from './outbound-scan.ts';
 import { appendAudit, commandName } from '../shared/audit.ts';
 import { startServer } from './http.ts';
 import { checkProjection, rebuildProjection, writeProjection } from './project.ts';
+import { summarizeMarkdown } from '../shared/summarize.ts';
 
 type Args = Record<string, string | true> & { _: string[] };
 
@@ -83,10 +84,22 @@ function numArg(v: unknown, def: number, min = 1, max = 1000): number {
 
 const db = openDb(dbPath);
 
-if (!group) fail('缺少命令组（bind / task / reminder / outbox / a2a / config / backup / project / loop / serve）');
+if (!group) fail('缺少命令组（summary / bind / task / reminder / outbox / a2a / config / backup / project / loop / serve）');
 
 try {
-  if (group === 'bind') {
+  if (group === 'summary') {
+  const p = typeof args.path === 'string' ? args.path : '';
+  if (!p) fail('缺少 --path <markdown 文件>');
+  const abs = resolve(p);
+  if (!existsSync(abs)) fail('文件不存在: ' + abs);
+  if (!statSync(abs).isFile()) fail('不是文件: ' + abs);
+  audit.targets.push(abs);
+  const s = summarizeMarkdown(readFileSync(abs, 'utf8'), {
+    maxLines: numArg(args['max-lines'], 8, 1, 50),
+    maxCharsPerLine: numArg(args['max-chars'], 160, 20, 500),
+  });
+  out({ ok: true, path: abs, ...s });
+} else if (group === 'bind') {
     if (cmd === 'set') {
       const r = bindings.bind(
         db,

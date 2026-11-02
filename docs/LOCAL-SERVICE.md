@@ -31,6 +31,9 @@ npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企
 npm run service -- bind resolve --chat-id <chatid>
 npm run service -- bind list
 
+# 本地摘要（D19/C13）：正文不出本机。只读文件、按规则抽要点，不调模型、不发网络请求
+npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--max-chars 160]
+
 # 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
 npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00"
 # 后台任务（D22）：执行器仍是 WorkBuddy，小服务只管超时；start 由 bot 动手时调一次
