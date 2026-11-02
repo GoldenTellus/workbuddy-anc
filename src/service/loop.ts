@@ -230,7 +230,13 @@ async function failConfigAndAlert(db: DatabaseSync, secretsDir: string, chatId: 
   const like = error.split(':')[0] + '%';
   const prior = (db.prepare("SELECT COUNT(*) AS c FROM outbox WHERE chat_id = ? AND status = 'failed' AND last_error LIKE ?")
     .get(chatId ?? '', like) as { c: number }).c;
-  if (prior <= 1) await alertOps(secretsDir, hint + '（chat ' + (chatId ?? '?') + '，修好后用 outbox requeue 重发）');
+  if (prior > 1) return;
+  // 只有"给这个群成功发过消息"才值得喊人：从没成功过的 chat 基本是测试数据或误配，
+  // 在群里发一条"没登记 webhook"只会让人以为线上出了问题。这种情况留给 doctor 的 bindings 检查。
+  const everSent = (db.prepare("SELECT COUNT(*) AS c FROM outbox WHERE chat_id = ? AND status = 'sent'")
+    .get(chatId ?? '') as { c: number }).c;
+  if (everSent === 0) return;
+  await alertOps(secretsDir, hint + '（chat ' + (chatId ?? '?') + '，修好后用 outbox requeue 重发）');
 }
 /**
  * 运维告警：只在"配置坏了、重试没用"时用。发不出去也不能影响主流程——
