@@ -832,3 +832,56 @@ WorkBuddy 不是单个 exe：
 
 > 教训：**改注入代码前，先确认"能不能重启回来"**。这次的观测改动本身无害（preload 能加载），
 > 但它诱使重启，而重启链路是坏的。
+
+### 根因与修复（2026-11-02 23:33 确认）
+
+**根因**：`preload.cjs` 里有一段"劫持 `https.request` 拦自动升级检查"的逻辑，**没有任何进程判断**。
+被 `NODE_OPTIONS=--require` 加载后，**Electron 主进程**也执行了这段劫持 → 破坏 Electron 自身初始化 → 主进程 exit 0。
+这解释了 env 方式下"preload 有日志、主进程随后消失"的怪现象。
+
+**修复**：文件开头加进程守卫——
+
+```js
+const __ancIsMainProc = (process.versions.electron && process.type === "browser");
+if (__ancIsMainProc) { module.exports = {}; return; }
+```
+
+主进程静默返回（不劫持 https），子进程照常注入。
+
+**离线验证**（不碰 WorkBuddy）：
+
+| 模拟进程 | 加载结果 | `https.request` 是否被劫持 |
+|---|---|---|
+| 主进程（electron + browser） | 不崩 | **false**（被守卫挡住） |
+| 渲染进程（electron + renderer） | 不崩 | **true**（正常注入路径） |
+| 普通 node（无 electron） | 不崩 | — |
+
+**实测结果**（`NODE_OPTIONS=--require <preload>` 启动）：
+
+```
+33s  进程=5  preload=3  INJECTED=1
+15:33:54 [pid 8520] INJECTED mode=hash target=...wecomaibot-client.js
+15:33:54 [pid 8520] APPLIED mode=hash
+```
+
+`patch-state.json` → `{pid:8520, applied:true, mode:hash}`；doctor 的 `patch` / `workbuddy` / `deploy-layout` 三项 PASS。
+
+### 还发现一件以前不知道的事
+
+日志里出现了 `[inject] env set` + `[inject] inspector: "scheduled"`，**不是手跑 launch 产生的**，
+而是 **`anc-patch-guard` 计划任务**（每 1 分钟 + 登录 + 开机触发）自动补齐的。
+
+也就是说：补丁起不来时，**不用手跑 `launch-patched.ps1`**，只要 WorkBuddy 在跑，
+`patch-guard` 最多 1 分钟内会自己把注入补上。之前排查时我没等够时间，反而反复杀掉重来。
+
+### 正确的启动与恢复流程（替换前面那段）
+
+```
+1. 杀干净 WorkBuddy（不需要动 Claude 的 CoworkVMService，那是另一个产品）
+2. 启动 WorkBuddy.exe（可以不设 NODE_OPTIONS，也可以设——守卫保证主进程不会崩）
+3. 等 30 秒到 1 分钟：patch-guard 会自动注入，日志出现 INJECTED + APPLIED
+4. 确认 patch-state.json 的 applied:true、doctor 的 patch PASS
+```
+
+> 前一次记录里"杀 WorkBuddy 会让 CoworkVMService 跟着停"是**误判**——那是 Claude Desktop 的服务
+> （`WindowsApps\Claude_*\app\resources\cowork-svc.exe`），与 WorkBuddy 无关，是我自己执行过 `Stop-Service`。

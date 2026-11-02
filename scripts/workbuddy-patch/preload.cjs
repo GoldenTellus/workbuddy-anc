@@ -13,6 +13,29 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+/**
+ * 进程守卫（2026-11-02 加，起因见 VERIFY §16）：
+ * 本文件会被 NODE_OPTIONS=--require 加载，一旦设成系统/服务级，**每个** Node 进程都会跑它。
+ * 而下面有一段"劫持 https.request 拦自动升级"的逻辑——在 Electron 主进程里劫持 https，
+ * 会破坏 Electron 自身的初始化：实测主进程加载后立即 exit 0（env 方式下的现象）。
+ *
+ * 所以主进程（Electron 的 browser 进程）直接什么都不做；
+ * 只有子进程（renderer / utility / daemon 等）才继续。
+ * --inspect-brk + inject 那条路传不到子进程，env 方式能传到，加上这道守卫后 env 才安全。
+ */
+const __ancIsMainProc = (function () {
+  try {
+    const isElectron = !!(process.versions && process.versions.electron);
+    return isElectron && String(process.type || '') === 'browser';
+  } catch (e) {
+    return false;
+  }
+})();
+if (__ancIsMainProc) {
+  module.exports = {};
+  return;
+}
+
 const MANIFEST = path.join(__dirname, 'manifest.json');
 
 let mf = null;
