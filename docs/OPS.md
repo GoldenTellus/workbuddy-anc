@@ -130,6 +130,25 @@ powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1 -Destination "\\
 - 保留策略：本地 `-Keep 14` 份（每天一份约两周）；离机 `-OffsiteKeep 60` + 每月 1 号那份留 `-OffsiteMonthlyKeep 12`（月档不会被日保留挤掉）。
 - 失败一定告警：`cli` 退出码非 0、文件为空/没生成、离机复制失败都会发 `ops-webhook.txt`；`doctor` 的 `backup-freshness` 在最近备份超过 30 小时时 FAIL。
 
+## 离职（一个人走掉时）
+
+前置：`D:\anc\org` 要先存在（渲染器的输入）。当前主机还没建这个目录，所以在建好之前只能做「任务转交 + 解绑」两步。
+
+```powershell
+# 1) 手工在 org/members/<id>.md 的 frontmatter 加 disabled: true（脚本不改 org）
+# 2) 看计划（默认 dry-run）
+powershell -File scripts\offboard-member.ps1 -MemberId zhangsan -ToUserid <新人 userid> -ToName 王五
+# 3) 真做
+powershell -File scripts\offboard-member.ps1 -MemberId zhangsan -ToUserid <新人 userid> -ToName 王五 -Apply
+# 4) 连 Windows 账号一起删（不可逆，默认不做）
+powershell -File scripts\offboard-member.ps1 ... -Apply -DeleteAccount -AccountName <账号名>
+```
+
+- 做四件事：重渲染（清掉该成员 persona、从 `groups.json` 移除）、把 open 任务转给新人（记 `reassigned` 事件）、解绑群、可选删账号；
+- **不删数据**：vault 里的档案与入库记录原样保留（D21 复核保留，离职也一样）；
+- `disabled` 只认字符串 `true`：写 `1` / `yes` 不生效，渲染时会当成在职；
+- 停用后 `groups.json` 里不再出现这个人，`bind import` 不会给他重建绑定。
+
 ## 开机提醒
 
 `anc-boot-alert` 在开机后等 60 秒，检查 `WorkBuddy.exe` 是否在跑；不在就向 `%ProgramData%\anc\secrets\ops-webhook.txt` 发一条「公司 bot 离线，请登录恢复」，之后每 10 分钟重复，2 小时后停（避免无限刷屏）。

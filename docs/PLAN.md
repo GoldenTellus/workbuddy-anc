@@ -244,7 +244,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | C4 | A2A 自动通道 | §5.6 / D23 | 若 T14 通:个人 bot 发群消息 → 自动归档;不通:员工转发写死 | A5 | L |
 | C5 | 技能同步 T15 | §7 | 测通才做;不通则"技能只走名片 + vault"写死 | — | M |
 | C6 | 真离机备份 | §5.10 / REBUILD §6 | 备份在另一物理盘/UNC;含 `_originals` 与 secrets 恢复策略 | — | M |
-| C7 | 离职自动化 | §5.8 | `disabled:true` → 不重建、任务转交、账号删除、索引清理 | C1 | M |
+| C7 | 离职自动化 | §5.8 | **已落地（2026-11-02）**：`org.Member.disabled`（只认字符串 `true`，写 `1`/`yes` 不生效）；渲染跳过停用成员、**清掉其 persona 产物**、`groups.json` 不再含他（否则 `bind import` 会重建绑定）；`task reassign --from/--to/--to-name` 转交 open 任务并记 `reassigned` 事件；`scripts/offboard-member.ps1` 串起四步（重渲染 / 转交 / 解绑 / 可选删账号），默认 dry-run、前置校验 org 里已标 `disabled: true`、**不删 vault 数据**（D21） | 新用例 3 项（停用后产物清掉且 groups 排除、`disabled: 1` 不算停用、转交只动 open 且记事件）；临时 org 跑通 dry-run 三步 | M |
 | C8 | 员工共享账号 | OPS:76 | 名单 → 开号 → 读通/写拒/不能登录桌面 | 名单 | S |
 | C9 | 渲染器 `rollback` + 部署脚本 | RENDERER:95 | **已落地（2026-11-02）**：`deployOrg` 做整组事务——快照 → 渲染 → 逐产物读回对拍 → 任一失败**整体还原**（`writeAtomic` 只管单文件原子，渲染是一组文件，中途失败会留“一半新一半旧”）；`rollbackOutDir` 把每个文件最新的 `.bak-<stamp>` 还原，支持 `--dry-run`；CLI 加 `deploy` / `rollback` | 新用例 4 项（对拍通过、失败整体回滚不留半套、dry-run 不动文件、无备份不抛错）；`npm test` 全绿 | S |
 | C10 | 配置化 | §5.7 / `config.ts:116`(isWorkTime 用系统本地时间) | **已落地（2026-11-02）**：新增 `timezone`（只收 Windows 时区 Id，`Asia/Shanghai` 这类 IANA 名会被拒并提示对照）与 `vault_internal`/`vault_shared`（绝对路径校验）；doctor 的时区检查改成「与配置比，不一致 = FAIL」，未配置时按设计默认给 WARN | 非法值实测被拒（IANA 名、相对路径）；doctor `timezone PASS` | S |

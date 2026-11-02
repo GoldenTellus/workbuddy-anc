@@ -161,6 +161,14 @@ try {
     } else if (cmd === 'start') {
       // 后台任务开始执行（bot 动手时调一次）；超时后 loop 会转 needs_review
       out({ ok: true, task: tasks.startBackgroundTask(db, num('id')) });
+    } else if (cmd === 'reassign') {
+      // 离职转交：把某人的 open 任务全部转到新人名下（--to 传 userid，--to-name 传姓名）
+      const from = String(args.from ?? '');
+      if (!from) fail('缺少 --from <userid 或姓名>');
+      const toUserid = typeof args.to === 'string' ? args.to : null;
+      const toName = typeof args['to-name'] === 'string' ? args['to-name'] : null;
+      if (!toUserid && !toName) fail('缺少 --to <userid> 或 --to-name <姓名>');
+      out({ ok: true, ...tasks.reassignTasks(db, from, { userid: toUserid, name: toName }, typeof args.actor === 'string' ? args.actor : undefined) });
     } else if (cmd === 'cancel') {
       out({ ok: true, task: tasks.cancelTask(db, num('id'), typeof args.actor === 'string' ? args.actor : undefined) });
     } else if (cmd === 'review') {

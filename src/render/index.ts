@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, copyFileSync, unlinkSync, rmSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,8 @@ export interface RenderResult {
   tampered: string[];
   /** 不阻断但要人看的事：成员缺 userid 被跳过、persona 接近上限、manifest 损坏 */
   warnings: string[];
+  /** 本次被清掉产物的停用成员 id */
+  removed: string[];
 }
 
 interface Manifest { input_sha256: string; files: Record<string, string> }
@@ -99,7 +101,18 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
   const cFile = join(outDir, 'company-bot', 'CODEBUDDY.md');
   outputs.push({ file: cFile, bytes: cLen.bytes, sha: track(cFile, companyText) });
 
+  const removed: string[] = [];
   for (const m of org.members) {
+    // 离职（disabled）：不出 persona、不进 groups.json，并把旧产物删掉
+    if (m.disabled) {
+      const dir = join(outDir, 'members', m.id);
+      if (existsSync(dir)) {
+        rmSync(dir, { recursive: true, force: true });
+        removed.push(m.id);
+        warnings.push('成员 ' + m.id + ' 已停用，删除其 persona 产物');
+      }
+      continue;
+    }
     // 没有 userid 就不出个人 persona：否则模板里是字面量 <userid>，个人 bot 认不出主人、只能靠模型猜
     if (!m.userid) {
       warnings.push(`成员 ${m.id} 没有 userid，跳过个人 persona（补上 members/${m.id}.md 的 userid 后重新渲染）`);
@@ -124,14 +137,14 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
   const groups = {
     generated_at: new Date().toISOString(),
     input_sha256: inputSha,
-    members: org.members.map((m) => ({ id: m.id, name: m.name, chat_id: m.chat_id || null, userid: m.userid || null, webhook_file: m.webhook_file || null })),
+    members: org.members.filter((m) => !m.disabled).map((m) => ({ id: m.id, name: m.name, chat_id: m.chat_id || null, userid: m.userid || null, webhook_file: m.webhook_file || null })),
   };
   mkdirSync(outDir, { recursive: true });
   // groups.json 是 bind import 的输入、manifest 是手改检测的基准：都走原子写，半截文件会让下一步误判
   writeAtomic(join(outDir, 'groups.json'), JSON.stringify(groups, null, 2) + '\n');
   writeAtomic(join(outDir, 'manifest.json'), JSON.stringify({ input_sha256: inputSha, generated_at: new Date().toISOString(), files: record }, null, 2) + '\n');
 
-  return { inputSha, outputs, members: org.members.length, warn: cLen.warn || warnings.length > 0, tampered, warnings };
+  return { inputSha, outputs, members: org.members.filter((m) => !m.disabled).length, warn: cLen.warn || warnings.length > 0, tampered, warnings, removed };
 }
 
 // ───────────────────────────── C9：整组部署与回滚 ─────────────────────────────

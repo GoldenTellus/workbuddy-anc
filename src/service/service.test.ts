@@ -708,3 +708,28 @@ test('后台任务：简单任务不能 start；review 只能对 needs_review', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('转交：open 任务转到新人名下并记事件；已完成的不动', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-reassign-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const a = tasks.createTask(db, { title: '离职前没做完', chatId: 'chat-A', assignee: '张三', assigneeUserId: 'u-zhang' });
+    const b = tasks.createTask(db, { title: '已经做完了', chatId: 'chat-A', assignee: '张三', assigneeUserId: 'u-zhang' });
+    tasks.completeTask(db, b.id, { chatId: 'chat-A', text: '完成' }, 'u-zhang');
+    const c = tasks.createTask(db, { title: '别人的活', chatId: 'chat-A', assignee: '李四', assigneeUserId: 'u-li' });
+
+    const r = tasks.reassignTasks(db, 'u-zhang', { userid: 'u-wang', name: '王五' }, 'admin');
+    assert.equal(r.moved, 1, '只转 open 的那条');
+    assert.deepEqual(r.taskIds, [a.id]);
+
+    const moved = tasks.getTask(db, a.id)!;
+    assert.equal(moved.assignee_userid, 'u-wang');
+    assert.equal(moved.assignee, '王五');
+    assert.equal(tasks.getTask(db, b.id)!.assignee_userid, 'u-zhang', '已完成的不动');
+    assert.equal(tasks.getTask(db, c.id)!.assignee_userid, 'u-li', '别人的不动');
+    assert.ok(tasks.taskEvents(db, a.id).some((e) => e.kind === 'reassigned'), '要留转交事件');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

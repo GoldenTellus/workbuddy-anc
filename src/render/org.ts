@@ -9,6 +9,8 @@ export interface Member {
   chat_id?: string;
   webhook_file?: string;
   seat?: string;
+  /** 停用（离职）：不再渲染 persona、不进 groups.json、产物要清掉 */
+  disabled?: boolean;
   bot?: string;
 }
 
@@ -83,6 +85,8 @@ export function loadOrg(dir: string): Org {
       webhook_file: fm.webhook_file,
       seat: fm.seat,
       bot: fm.bot,
+      // 只认字符串 "true"：写成 yes/1 之类不生效，避免"以为停用了其实没有"
+      disabled: fm.disabled === 'true',
     });
   }
 

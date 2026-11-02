@@ -199,6 +199,28 @@ export function reviewTask(db: DatabaseSync, id: number, decision: 'retry' | 'cl
   });
 }
 
+/** 离职转交：把某人的未完成任务全部转给另一个 userid（或清空为未指派），并记事件。 */
+export function reassignTasks(
+  db: DatabaseSync,
+  fromUserid: string,
+  to: { userid: string | null; name: string | null },
+  actor?: string
+): { moved: number; taskIds: number[] } {
+  return tx(db, () => {
+    // 按 userid 或姓名匹配：org 里偶尔只填了姓名，两种都要能转到
+    const rows = db.prepare(
+      "SELECT id FROM tasks WHERE status = 'open' AND (assignee_userid = ? OR assignee = ?)"
+    ).all(fromUserid, fromUserid) as Array<{ id: number }>;
+    const t = nowIso();
+    for (const r of rows) {
+      db.prepare('UPDATE tasks SET assignee_userid = ?, assignee = ?, updated_at = ? WHERE id = ?')
+        .run(to.userid, to.name, t, r.id);
+      db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+        .run(r.id, 'reassigned', JSON.stringify({ from: fromUserid, to: to.userid, to_name: to.name, actor: actor ?? null }), t);
+    }
+    return { moved: rows.length, taskIds: rows.map((r) => r.id) };
+  });
+}
 export function taskEvents(db: DatabaseSync, id: number): Array<{ id: number; kind: string; detail: string | null; created_at: string }> {
   return db.prepare('SELECT id, kind, detail, created_at FROM task_events WHERE task_id = ? ORDER BY id').all(id) as never;
 }
