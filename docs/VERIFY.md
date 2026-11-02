@@ -753,3 +753,59 @@ V4 只抽查了 3 项。O-2 要的是**每一项都证明在该 FAIL 时会 FAIL
 跑完 11 组后：`FAIL=0 WARN=1`；`anc-http` Running、`anc-service` Ready；`anc.db` 完好；
 SMB 权限回到 `Everyone: Read`；vault 无新增改动；无残留测试文件。
 
+## 16. 补丁启动链路在「彻底重启」后失效（2026-11-02 踩到）
+
+**这是一次真实事故的记录**：为了加一行观测，重启了 WorkBuddy，结果 bot 下线约 15 分钟，
+恢复后**补丁没加载**。记下来，因为它暴露的不是"某次操作失误"，是启动链路的根本脆弱。
+
+### 现象
+
+| 启动方式 | 结果 |
+|---|---|
+| `launch-patched.ps1`（`--inspect-brk` + `inject.cjs` 设 `NODE_OPTIONS`） | 主进程被放行后**立即退出**（exit 0），无进程 |
+| 父进程直接设 `NODE_OPTIONS=--require <preload>` 再启动 | preload **能加载**（日志有 `preload active`），但主进程**随后退出** |
+| **不带任何补丁**直接启动 | **能起**（6–8 进程） |
+
+关键证据：env 方式下日志出现了 `[pid N] preload active version=5.9.3`——
+**说明 preload 代码本身没问题**，是被加载后主进程走不下去。
+
+### 真正的原因：`cowork-svc` 与 `CoworkVMService` 的耦合
+
+WorkBuddy 不是单个 exe：
+
+- `WorkBuddy.exe`：启动器，检测到已有实例就把参数转过去、自己 exit 0；
+- `cowork-svc.exe`：真正的后台 daemon，**由 Windows 服务 `CoworkVMService` 拉起**；
+- 多个 `WorkBuddy` 子进程：UI 侧（renderer / gpu / utility）。
+
+踩到的两个陷阱：
+
+1. **杀掉所有 `WorkBuddy` 进程会让 `CoworkVMService` 跟着停**——之后 main 起来连不上 daemon，直接 exit 0。
+2. **`cowork-svc` 在跑时，新启动器会把工作交给它并退出**。所以"带补丁启动"必须让 daemon 也是新的（才能继承新的 `NODE_OPTIONS`），但 daemon 又由服务拉起——两边互相卡住。
+
+可用的恢复顺序（实测）：
+
+```
+1. 杀干净：WorkBuddy + cowork-svc
+2. Start-Service CoworkVMService
+3. 等 8 秒（让服务把 cowork-svc 拉起来）
+4. 启动 WorkBuddy.exe
+5. 等 20 秒左右（3 秒时还是 0，21 秒才有 6 个）——不要因为头几秒是 0 就重跑
+```
+
+### 为什么以前一直没发现
+
+`patch-state.json` 里 `applied:true`、`patch` 项也 PASS——因为**那些是上一次成功启动的残留**。
+只要不彻底重启，进程一直活着，看起来一切正常。**一旦真的重启，补丁就回不来了。**
+
+这正是 R7（真升级回归）要发现的问题，现在提前暴露：**升级后 WorkBuddy 必然重启，补丁大概率起不来**。
+
+### 现在的状态与待办
+
+- bot **在线**（7 进程），但**补丁未加载**——群身份注入缺失，D17 的能力实际不可用；
+- `preload.cjs` 已回滚到加观测之前的版本，与仓库一致；
+- **待办**：补丁启动机制需要重做。两条候选：
+  1. 让 daemon 在服务启动时就能拿到 `NODE_OPTIONS`（改服务配置或包装 cowork-svc 的启动）；
+  2. 不用 `NODE_OPTIONS`，改用 WorkBuddy 自己的扩展点（若有）。
+
+> 教训：**改注入代码前，先确认"能不能重启回来"**。这次的观测改动本身无害（preload 能加载），
+> 但它诱使重启，而重启链路是坏的。
