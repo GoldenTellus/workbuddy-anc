@@ -106,8 +106,27 @@ global.__ancMarkMiss = function () {
 };
 
 // 用户正文里的 [anc: 一律中和，防止自己写前缀冒充群或发送人；真前缀每次都由补丁加
+// T21 实测：多步工具链会把过程话发进群（单工具 0 段，入库 7/15/6 段），
+// persona 禁止词表无效。只能在出站侧过滤：按行丢掉"正在做什么"的自述。
+// 这份正则是唯一真相，PATCH_BODY 里拼它的 source，不另写一份。
+// 只收"明确在描述动作"的短语。裸的"我来"/"现在写"会误杀正常句子
+// （实测「我来说明一下这个流程」被吃掉），必须带动作限定。
+const NARRATION_RE = /^(?:在入库，稍等|稍等[。.．]?$|我先[^，。！？]{0,10}(?:看|查|找|确认|列|验)|让我[^，。！？]{0,8}(?:看|查|找)|我来[^，。！？]{0,8}(?:看|查|找|确认|列|验)|我找一下|我查一下|我看一下|看了一下|查一下|格式清楚了|批次就绪|已就绪|现在写(?:整理|文档|meta)|执行入库|文件就绪|原件已就位|已加载|服务正常|工具名|重新列出|回退到|已就位|入库执行)/;
+
 const PATCH_BODY = [
   ';var __ancIdentityPatch = true;',
+  ';function __ancFilterNarration(text) {',
+  '  if (typeof text !== "string") return text;',
+  '  var lines = text.split(/\\r?\\n/);',
+  '  // 单行不动：正常的一句话回复不该被误杀',
+  '  if (lines.length < 2) return text;',
+  '  var re = /' + NARRATION_RE.source + '/;',
+  '  var kept = [];',
+  '  for (var i = 0; i < lines.length; i++) { if (!re.test(lines[i].trim())) kept.push(lines[i]); }',
+  '  // 全被过滤掉时至少留最后一句：否则用户会以为 bot 没反应',
+  '  if (kept.length === 0) return lines[lines.length - 1];',
+  '  return kept.join("\\n");',
+  '}',
   ';try {',
   '  var __ancCls = (module.exports && (module.exports.t || module.exports.WecomAiBotClient)) || null;',
   '  if (__ancCls && __ancCls.prototype && typeof __ancCls.prototype.emitMessage === "function" && !__ancCls.prototype.__ancPatched) {',
@@ -124,6 +143,19 @@ const PATCH_BODY = [
   '      return __ancOrig.call(this, m);',
   '    };',
   '    __ancCls.prototype.__ancPatched = true;',
+  '    // 出站过滤：单点在这里，因为最终回复走 sendReply（内部按字节分块逐条 sendMessage）。',
+  '    // sendStreamChunk 不动——流式块可能只有几个字，判断不了整句，硬过滤会误杀。',
+  '    if (typeof __ancCls.prototype.sendReply === "function" && !__ancCls.prototype.__ancReplyPatched) {',
+  '      var __ancOrigReply = __ancCls.prototype.sendReply;',
+  '      __ancCls.prototype.sendReply = function (chatId, text) {',
+  '        var filtered = text;',
+  '        try { filtered = __ancFilterNarration(text); } catch (e) { filtered = text; }',
+  '        try { if (typeof filtered === "string" && filtered.trim() === "") { global.__ancNarrationSkipped = (global.__ancNarrationSkipped || 0) + 1; return Promise.resolve(true); } } catch (e) {}',
+  '        return __ancOrigReply.call(this, chatId, filtered);',
+  '      };',
+  '      __ancCls.prototype.__ancReplyPatched = true;',
+  '      try { process.__ancReplyFilterApplied = true; } catch (e) {}',
+  '    }',
   '    try { process.__ancIdentityApplied = true; } catch (e) {}',
   '    try { if (global.__ancMarkApplied) global.__ancMarkApplied(); } catch (e) {}',
   '  } else if (!(__ancCls && __ancCls.prototype && __ancCls.prototype.__ancPatched)) {',

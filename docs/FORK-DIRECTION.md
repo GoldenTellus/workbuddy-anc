@@ -266,7 +266,7 @@ T16 的口径:IM 读取工具被拦只说明工具不可用,不算 T16 不通过
 | T18 | 技能名片放在哪里 WorkBuddy 才认,认不认名片的 frontmatter | 接入脚本要换放置位置或名片格式 |
 | T19 | 8000 字符上限按字符还是按字节算 | 按字节时,中文 persona 的预算只剩约三分之一,长度闸门要改 |
 | T20 | 长会话压缩后,`CODEBUDDY.md` 里的规则是否还在 | 铁律只能靠技能重复;必要时定期让群会话重开 |
-| T21 | 工具调用轮次里的叙述(「让我先查一下」)会不会发进企微 | **已实测(2026-11-02):会漏,且与工具步数成正比。** 单工具场景 0 段;多步入库 7 / 15 / 6 段。`CODEBUDDY.md` 里加禁止词表**无效**(三次实测照旧)。解法只能落在出站侧:补丁包 `wecomaibot-client.sendReply`,按段落过滤过程句(见 §11 待做项)。上游同位置的做法是 `tools/harness-proxy/tool-turn-filter.mjs`(丢含 `tool_use` 轮次的 text) |
+| T21 | 工具调用轮次里的叙述(「让我先查一下」)会不会发进企微 | **已实测(2026-11-02):会漏,且与工具步数成正比。** 单工具场景 0 段;多步入库 7 / 15 / 6 段。`CODEBUDDY.md` 里加禁止词表**无效**(三次实测照旧)。**已在出站侧过滤**(§11):补丁包 `sendReply`,按行丢弃过程话;单行不动、全过滤时留最后一句。上游同位置的做法是 `tools/harness-proxy/tool-turn-filter.mjs`(丢含 `tool_use` 轮次的 text) |
 | T22 | 群会话会不会过期或自动重置 | 跨天的工作流状态完全靠本地小服务,不靠对话上下文 |
 
 ## 8. 安全基线与升级回归
@@ -327,7 +327,7 @@ D16 放开了手脚,但改动要留下账。这一节就是账本规则;**改了
 | 锚点模式(版本无关注入) | 任意 | 运行时按结构找 `WecomAiBotClient.prototype.emitMessage`,不依赖文件 hash | 小版本升级后补丁继续生效;日志记 `INJECTED mode=anchor`,包装成功后记 `APPLIED`,找不到类记 `ANCHOR-MISS`;均发运维告警。**与上面「版本对不上必须 fail-closed」是有意的例外**:hash 不符时仍注入,但只有包装真正成功才算生效(`applied=true`),否则守卫不当成已修好 | `ANC_WB_STRICT=1` 或启动器 `-Strict` 回到 fail-closed | 重启即失效 |
 | 前缀防伪(D17 配套) | 同 D17 | 同 D17 | 正文里出现的 `[anc:`(含全角冒号、空格变体)一律改写成 `[anc-quoted:`,真前缀每次都由补丁加在最前;私聊无 chatId 时也中和但不加前缀。防止员工自己打前缀冒充别的群或管理员 | 随 `ANC_WB_PATCH` | 同 D17 |
 | canary(语义漂移探测) | 5.9.3+ | 每次 `emitMessage` 写 `patch-canary.json`(chatId/user/contentStr) | 打上了但字段改名时,doctor/watchdog 能在一条消息内发现 | 无开关(只读观测);删文件即重置 | 不改变 WorkBuddy 行为 |
-| **出站旁白过滤(待做,2026-11-02 登记)** | 5.9.3+ | 包 `wecomaibot-client.sendReply(chatId, text)`:按段落切、命中过程词表的段丢弃、其余拼回;`sendStreamChunk` 不动(块太小判不了整句) | T21 已实测命中:多步工具链会漏 6–15 段过程话,persona 禁止词表无效 | 随 `ANC_WB_PATCH` 一键关闭 | 重启即失效;旧版 `preload.cjs` 备份在 `_research/host-backup-20261102/` |
+| **出站旁白过滤(已上线,2026-11-02)** | 5.9.3 / Electron 37.10.3 | 包 `wecomaibot-client.sendReply(chatId, text)`:按行匹配 `NARRATION_RE` 丢弃过程话;单行不动、全被过滤时保留最后一句、过滤后为空则不发。`sendStreamChunk` 不动(流式块太小判不了整句) | T21 实测命中:多步工具链会漏 6–15 段过程话,persona 禁止词表无效。正则收紧过一次:裸「我来」误杀「我来说明一下这个流程」,已改成带动作限定;「现在写」也只认「现在写整理/文档/meta」 | 随 `ANC_WB_PATCH` 一键关闭 | 重启即失效;`scripts/workbuddy-patch/narration.test.mjs` 有 8 条正反例 |
 | **bot 不得直写 vault(待做,2026-11-02 登记)** | — | 权限层:vault 共享区对 bot 用户只读(bot 只写 `inbox`),入库由 `LOCAL SERVICE` 侧进程执行 | 2026-11-02 实测:批校失败后 bot 直接把文件复制进 `collab/` 与 `_originals/`,绕过路径校验、原件去重、入库锁与事件记录。技能里「只准走 CLI」是纪律不是约束,它照样违反 | 需要新裁决(权限隔离方案),随 R1 迁移一起做 | 恢复 ACL 即回退 |
 | 团队 IM 授权判定,配套服务 bundle(未改,仅定位) | 5.9.3 / `<build>` | `main/netdrive-env-route.js` `ad05f474…0e16`(45,371 B) | `captureActivation` / `[channel-entry]` 在本文件,用于判读日志 | — | — |
 
