@@ -331,6 +331,7 @@ D16 放开了手脚,但改动要留下账。这一节就是账本规则;**改了
 | canary(语义漂移探测) | 5.9.3+ | 每次 `emitMessage` 写 `patch-canary.json`(chatId/user/contentStr) | 打上了但字段改名时,doctor/watchdog 能在一条消息内发现 | 无开关(只读观测);删文件即重置 | 不改变 WorkBuddy 行为 |
 | **出站旁白过滤(已上线,2026-11-02)** | 5.9.3 / Electron 37.10.3 | 包 `wecomaibot-client.sendReply(chatId, text)`:按行匹配 `NARRATION_RE` 丢弃过程话;单行不动、全被过滤时保留最后一句、过滤后为空则不发。`sendStreamChunk` 不动(流式块太小判不了整句) | T21 实测命中:多步工具链会漏 6–15 段过程话,persona 禁止词表无效。正则收紧过一次:裸「我来」误杀「我来说明一下这个流程」,已改成带动作限定;「现在写」也只认「现在写整理/文档/meta」 | 随 `ANC_WB_PATCH` 一键关闭 | 重启即失效;`scripts/workbuddy-patch/narration.test.mjs` 有 8 条正反例 |
 | **bot 不得直写 vault(进行中,2026-11-02)** | — | 权限层：bot 只写 `inbox`；入库走 `POST /__anc_ingest`（D24 方案 B），由 `anc-http`（`LOCAL SERVICE`）执行 `applyBatch`。端点只认 `inbox/pending` 下的目录，避免变成"以服务身份写任意路径" | 实测 bot 会绕过 CLI 直写 vault，绕过全部校验 | 随 token 与 ACL 一起；关掉端点后 bot 回到 CLI（ACL 未收紧前仍然可用） | `_research/vault-acl-before-d24.txt` 有收紧前的 ACL 原状 |
+| **逾期任务当天不提醒(待裁决,2026-11-02 登记)** | — | 顺延逻辑把逾期任务的提醒排到「次日同一时分」并把当天 pending 提醒 `cancelled`，导致逾期当天只有一条「已顺延」通知、整天无提醒。两种改法见 VERIFY §13：①顺延到"今天的工作时段起点"后照常提醒；②保留"顺延到次日"但当天继续按原间隔提醒 | R3 实测时撞到：本来要累计 4 次提醒触发升级，结果一条都发不出来 | 行为变更，需裁决；不影响已通过的 R3（R3 用不逾期任务验过） | — |
 | 团队 IM 授权判定,配套服务 bundle(未改,仅定位) | 5.9.3 / `<build>` | `main/netdrive-env-route.js` `ad05f474…0e16`(45,371 B) | `captureActivation` / `[channel-entry]` 在本文件,用于判读日志 | — | — |
 
 > 2026-10-31 实测结论:本地判定可以被绕开,但放行后 `POST {endpoint}/im/api/channel-entry/settings` 连续 4 次失败(`http:failed`,`state=error:load`),`allowed` 因 `entry.status!=='ready'` 仍为 false,工具返回同一句话。**门槛在账号/租户侧,本地 patch 拿不到数据**;客户端不记录 HTTP 状态码,属观测盲区。
