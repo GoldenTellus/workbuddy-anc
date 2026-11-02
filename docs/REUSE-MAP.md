@@ -178,12 +178,13 @@
 | docs-debt 的**一机多公司** | 上游 v1 自己也明确不支持（SPEC §12 开放问题 2）。本项目形态是**一机一公司** |
 | PLAN 的 **M1–M5 里程碑** | 里程碑是**项目计划**不是功能。本项目用自己的阶段划分（PLAN 1.0 的 S/O/L/D） |
 
-### 3.3 待补（真缺口，不是"不适用"）
+### 3.3 不做（能做，但判断不值得）
 
-| 上游 | 缺什么 | 补法 |
+| 上游 | 为什么不做 | 什么情况下翻案 |
 |---|---|---|
-| **SPEC §3.2 Harness 接口；`tools/harness-proxy/` 的 `system-prompt-proxy`** | 上游的 Harness 能**换 provider、挂兜底模型**；本项目锁死在 WorkBuddy 自带模型 | 按 D26：**拦模型调用层 → 改端点/模型名 → 转发**。手段与"拦 `https.request` 拦升级检查"同类，只是目标换成模型 API。难点是先定位模型调用在哪个模块（解包 `app.asar` 或 hook `Module._compile` 观察） |
+| **SPEC §3.2 Harness 接口；`tools/harness-proxy/` 的 `system-prompt-proxy`**（可换 provider / 挂兜底模型） | **2026-11-03 裁决**：本项目只跑 WorkBuddy 一个引擎，"可换后端"带来的是维护负担不是能力。拦模型调用层要跟 WorkBuddy 的请求格式绑定，每次升级都要重放，换来的却是一个用不到的开关 | ① 要接第二个引擎；② WorkBuddy 的模型额度/可用性成为瓶颈 |
 
+> **"不做"和"做不到"要分清**：这条是能做（手段见 PLAN §2.1），但判断不值得。判断依据写在这，形态变了直接翻案。
 > `tool-turn-filter.mjs` 已在 §2.9 判为"借鉴"，本项目也落地了同类机制（包 `sendReply` 做出站过滤）。
 > 但**判据强度有差距**（词表 vs 结构判断），这条在 `UPSTREAM-COVERAGE.md` §3.3 标为"算差距"，归 PLAN 阶段 O。
 
