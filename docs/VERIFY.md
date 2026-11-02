@@ -383,3 +383,38 @@ PLAN 阶段 R 的单一清单。带"挂起/待触发"的项写明卡点，不写
 Windows 的目录 `(W)` 只拦「创建新文件」，而 SQLite 是**就地更新**已有的 `anc.db`/`-wal`。
 
 改成 deny 库文件本身之后才测出真实行为（`ok=false`）。**故障注入失败时要先怀疑注入**，别急着判被测代码有 bug。
+
+## 8. V2 静默失败扫描（2026-11-02）
+
+工具：`node scripts/scan-catch.mjs`（`npm run scan`）。逐文件解析 `catch` 块，按"失败被吞掉的程度"分四档：
+
+| 档 | 含义 |
+|---|---|
+| `EMPTY` | 块里只有空白和注释 —— 最可疑 |
+| `LOG_ONLY` | 只 `console.error/warn` —— 留了痕，调用方仍不知道失败 |
+| `SWALLOW` | 有 `return/continue/赋值`，但没有 log 也没有 throw |
+| `HANDLED` | 有 `throw`、或把错误交出去（`fail()` / `markFailed()` / `.push()` / `return {ok:false}` / `lastErr =` / `failed++`） |
+
+**扫描结果（`src/` 下 15 个文件）**：53 个 `catch` —— `EMPTY` 16（**全部带"为什么吞"的注释**）· `SWALLOW` 10 · `LOG_ONLY` 7 · `HANDLED` 20。
+
+**没有任何未声明的空吞。** 10 个 `SWALLOW` 逐个看过：
+
+| 位置 | 写法 | 结论 |
+|---|---|---|
+| `ingest/apply.ts:129` | `return null`（读锁失败） | 合理：调用方按"锁无效/可接管"处理 |
+| `ingest/apply.ts:137` | `alive = false`（`process.kill(pid,0)` 失败） | 合理：就是"进程不存在"的判定本身 |
+| `ingest/apply.ts:256/270` | `cpSync + rmSync`（归档时 rename 跨卷失败） | 合理：跨卷 fallback |
+| `ingest/cli.ts:64/74/84` | `moveError/archiveError/commitError = ...` | 合理：收集后一并输出 |
+| `service/backup.ts:20` | `ok = false` | 合理：紧接 `if (!ok) throw` |
+| `service/cli.ts:284` | `ageMin = null` | 合理：降级成 `health.ok = false` |
+| `service/http.ts:68` | `send(400, ...)` | 合理 |
+
+### 修掉的一处「注释与实现不符」
+
+`loop.ts` 的 `blockedBySecret` 注释写着「单条坏数据不能让整个 tick 抛错停摆」，但它自己写 `task_events` 时**没有保护**——库被锁或磁盘满时照样会抛，把这一轮的所有提醒一起带走。`tasks.ts` 的 `completeTask` 里同样问题（任务已完成的公告被拦时不记事件也不该回滚，但记事件失败会抛）。
+
+两处都补了内层 `try` + `console.error`：**不抛，但也不静默**。
+
+### 没做到的（诚实标注）
+
+PLAN V2 的完整验收是「对每条 fail 分支注入」。本轮只做了**静态扫 + 10 处人工判定**，注入覆盖的是关键路径（V3 的五项 + 93 个单测），**没有对 53 个 catch 逐个注入**。这一步留作后续：改一处 catch 就补一条注入，而不是一次性补齐。

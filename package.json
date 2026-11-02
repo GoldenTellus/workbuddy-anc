@@ -29,7 +29,8 @@
     "ingest": "node src/ingest/cli.ts",
     "test:render": "node --test src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/onboard.test.ts",
     "render": "node src/render/cli.ts",
-    "service": "node src/service/cli.ts"
+    "service": "node src/service/cli.ts",
+    "scan": "node scripts/scan-catch.mjs"
   },
   "private": true
 }

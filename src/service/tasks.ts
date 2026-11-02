@@ -124,8 +124,13 @@ export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: s
         });
         enqueued = q.inserted;
       } catch (e) {
-        db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
-          .run(id, 'notify_blocked', JSON.stringify({ code: (e as Error & { code?: string }).code ?? 'ERROR' }), t);
+        // 同上：任务已经完成，记事件失败也不该让完成操作回滚
+        try {
+          db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+            .run(id, 'notify_blocked', JSON.stringify({ code: (e as Error & { code?: string }).code ?? 'ERROR' }), t);
+        } catch (logErr) {
+          console.error('WARN  记 notify_blocked 事件失败: ' + (logErr as Error).message);
+        }
       }
     }
     return { task: getTask(db, id)!, enqueued };
