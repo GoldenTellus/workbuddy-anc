@@ -10,6 +10,8 @@ param(
     [switch]$Worker,
     [switch]$Force,
     [int]$CooldownMinutes = 10,
+    [string]$LockFile = "$env:ProgramData\anc\data\selfheal.lock",
+    [int]$LockMinutes = 3,
     # 唯一的线上补丁来源：部署脚本复制到这里；不从 git 工作副本跑（切分支会改到线上）
     [string]$PatchDir = "$env:ProgramData\anc\patch",
     [string]$StateFile = "$env:ProgramData\anc\data\selfheal.state.json",
@@ -26,6 +28,33 @@ function Write-Log([string]$m) {
 
 # 工作进程：等回复发出去 → 停掉 WorkBuddy → 用补丁启动器重启
 # 注意：不能用 taskkill /T——Worker 自己是 WorkBuddy 的后代进程，/T 会把它一起杀掉。
+# 单飞锁：守卫每分钟、看门狗、人工同时 -Force 时，只能有一个自愈真正去重启。
+# 锁过期按分钟计；worker 成功或失败都会删锁，坏锁不会永久堵住。
+function Acquire-Lock {
+    try {
+        $fs = [IO.File]::Open($LockFile, 'CreateNew', 'Write', 'None')
+        $bytes = [Text.Encoding]::UTF8.GetBytes((Get-Date).ToString('o'))
+        $fs.Write($bytes, 0, $bytes.Length)
+        $fs.Close()
+        return $true
+    } catch {
+        try {
+            $at = [datetime](([IO.File]::ReadAllText($LockFile)).Trim())
+            if (((Get-Date) - $at).TotalMinutes -lt $LockMinutes) { return $false }
+            [IO.File]::WriteAllText($LockFile, (Get-Date).ToString('o'))
+            Write-Log ("lock: stale (>$LockMinutes min), taking over")
+            return $true
+        } catch {
+            # 锁内容坏了：保守起见按占用处理，等过期由人工清
+            return $false
+        }
+    }
+}
+
+function Release-Lock {
+    try { Remove-Item -LiteralPath $LockFile -Force -ErrorAction SilentlyContinue } catch { }
+}
+
 if ($Worker) {
     $workerStart = Get-Date
     # 先写 restarting：守卫在重启空档里看到它就不再重复拉起
@@ -49,7 +78,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$launcher" > "$out" 2>&1
 "@ | Set-Content $cmdFile -Encoding ascii
 
     # 只认本次启动之后由补丁体写下的 applied=true（旧日志行、拼接时的记录都不算）
-    function Test-Patched {
+    
+function Test-Patched {
         $ps = "$env:ProgramData\anc\data\patch-state.json"
         if (-not (Test-Path $ps)) { return $false }
         try {
@@ -82,10 +112,12 @@ sh.Run """$cmdFile""", 0, False
 
     if ($ok) {
         Write-Log 'worker: 重启成功（补丁已生效）'
+        Release-Lock
         [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'healed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
     }
     else {
         Write-Log 'worker: 两次启动都没见到补丁日志'
+        Release-Lock
         # 标成 restart-failed：守卫 60 分钟内不再触发，避免降级启动—再自愈的循环
         [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'restart-failed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
         if (Test-Path $WebhookFile) {
@@ -174,6 +206,7 @@ if ($DryRun -or -not $Apply) {
 }
 
 # 记录并安排重启
+if (-not (Acquire-Lock)) { Write-Log 'another selfheal in flight; skip'; exit 0 }
 Write-State ([pscustomobject]@{ at = (Get-Date).ToString('o'); version = $r.version; hashMatches = $r.hashMatches })
 
 Write-Log '安排自愈重启（约 5 秒后 bot 短暂离线）'

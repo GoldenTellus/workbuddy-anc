@@ -535,3 +535,22 @@ PLAN V5 的书面要求是「7×24 浸泡」。维护者判定通过，但**实�
 `anc-service` 的任务设置里 `DisallowStartIfOnBatteries = True`、`StopIfGoingOnBatteries = True`。
 本机是台式机/常电供电，不影响；但如果将来迁到靠电池的设备，注销（或拔电）后任务会被静默停掉。
 **既然是 7×24 主机，这两项应当显式改成允许**，避免"看起来在跑、其实被电源策略停了"。
+
+### 第 4 天快照（2026-11-02 17:44）
+
+| 项 | 实测 |
+|---|---|
+| 跨度 | 10-31 14:47 → 11-02 17:44，**约 2.9 天**（仍未满 7 天） |
+| tick | `loop.log` 8049 行 / 604 KB，最后写入 17:43:01，每分钟一条 |
+| 库备份 | 7 份，最新 `anc-20261102-094103.db` |
+| 补丁 | `patch-state` `applied=true` `mode=hash`；`verify-upgrade.ps1` 8 项全 PASS |
+| doctor | `FAIL=0 WARN=1`（WARN 是未带 `-Repo` 时的 `secrets-in-git` 跳过） |
+| 自愈 | 今日 28 次重启（绝大多数是当天的部署/测试与 00:03 风暴），单飞锁跳过 2 次 |
+
+### 今日新发现并修掉
+
+| 问题 | 证据 | 处理 |
+|---|---|---|
+| **自愈风暴**：守卫每分钟、看门狗、人工同时 `-Force` 时各自拉起一次重启 | 00:03 一小时内 9 次「重启成功」，日志同秒出现多条「安排自愈重启」 | `anc-selfheal.ps1` 加单飞锁（`selfheal.lock`，3 分钟过期）；并发两次实测只有一次重启、另一次记 `another selfheal in flight`。修复过程中还发现锁函数被误放进 `if ($Worker)` 分支，主路径看不到——已移到顶层并重新验证 |
+| **电源策略会静默停任务**：9 个任务默认 `DisallowStartIfOnBatteries=True` | 逐任务读出为 True（台式机不影响，但与 7×24 语义相反） | 9 个任务全部改成 `False/False`；`register-tasks.ps1` 默认值同步改，避免重建回归 |
+| E-4 与 D6 冲突：现场 `AutoAdminLogon=1` | `HKLM\…\Winlogon` 实读；无 `DefaultPassword`，疑似 Autologon 工具存 LSA | 已在 ACCEPTANCE E-4 如实记录，**待裁决**（关掉开关，或补裁决写进 §4） |

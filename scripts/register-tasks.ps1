@@ -54,8 +54,8 @@ function New-BootEveryTrigger([int]$minutes, [int]$hours) {
     return $t
 }
 function New-Settings([string]$limit) {
-    # 默认即 DisallowStartIfOnBatteries=True / StopIfGoingOnBatteries=True（与主机现状一致），不用显式传
-    return New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable `
+    # 7×24 主机：电池供电也要跑、断电也不能停（默认 True，会静默停任务）
+    return New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -DisallowStartIfOnBatteries:$false -StopIfGoingOnBatteries:$false `
         -ExecutionTimeLimit (New-TimeSpan -Minutes ([int]($limit -replace 'PT|M', '')))
 }
 
