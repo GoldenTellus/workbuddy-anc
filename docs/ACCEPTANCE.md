@@ -29,7 +29,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | E-1 | 一台 Windows 主机 7×24 跑公司 bot；员工电脑跑个人 bot；两边都经企微 | 🟡 | `docs/OPS.md:7-19`（9 个任务）`scripts/register-tasks.ps1:71-136`；`docs/VERIFY.md:305`（T4 锁屏整夜照常收发） | 员工侧个人 bot 尚未部署（本机只有一个账号）；7×24 连续运行无浸泡记录（V5 未做） |
 | E-2 | 一人一群；私聊公司 bot 仅管理员 | 🟡 | `src/service/bindings.ts:30`、`src/service/loop.ts:281-290`（只发本群 webhook，不退回默认群）；测试「隔离：未绑定群的消息不退回默认 webhook」`src/service/service.test.ts:278`；`docs/CHAT-BINDINGS.md:52-56`；`docs/FORK-DIRECTION.md:62` | 私聊限管理员属企微后台配置，VERIFY T11 未测（`docs/VERIFY.md:312`） |
 | E-3 | 两个 bot 都 @ 才回应 | ✅ | `docs/FORK-DIRECTION.md:63`（D20 不放宽）；`docs/VERIFY.md:303`（T2）、`:308`（T7） | — |
-| E-4 | 主机重启后人工登录恢复；开机提醒兜底 | 🟡 | `scripts/boot-alert.ps1:1-24`（60 秒后查 WorkBuddy，发运维群）；`scripts/register-tasks.ps1:86-89`；`docs/OPS.md:185` | 实测 `HKLM\…\Winlogon`：`AutoAdminLogon=1`、`DefaultUserName=Administrator`、无 `DefaultPassword`（疑似 Autologon 工具存 LSA）——**与 D6「不开自动登录」冲突，待裁决**（关掉开关，或补一条裁决并写进 §4）；真注销→恢复未实测 |
+| E-4 | 主机不开自动登录；重启后人工登录恢复；开机提醒兜底 | ✅ | `HKLM\…\Winlogon`：`AutoAdminLogon=0`（2026-11-02 由 1 改为 0）；`scripts/boot-alert.ps1:1-24`（开机 60 秒后查 WorkBuddy，缺失即发运维群）；`scripts/register-tasks.ps1:86-89` | 与 D6 一致；重启后需人工登录，登录前 bot 离线并由 boot-alert 告警（R2 已由维护者判定通过） |
 | E-5 | 运行身份按 D25：部署账号为管理员，doctor 校验进程 owner 与部署账号一致 | ✅ | `scripts/doctor.ps1:194-206`（`dedicated-user` / `bot-process-owner`，期望身份来自配置）；`scripts/register-tasks.ps1:62-66`；D25（`docs/PLAN.md:169`） | doctor `bot-process-owner` 与 9 个任务 principal 全 PASS；不再要求 `anc-bot` |
 | W-1 | D17 注入群身份；`APPLIED mode=hash` 且 canary 有 chatId | ✅ | `scripts/workbuddy-patch/preload.cjs:98-104`、`:188`；`scripts/workbuddy-patch/manifest.json`（版本/hash/target）；`scripts/doctor.ps1:265-269`（patch）、`:347-355`（canary）；`docs/VERIFY.md:318`（T16b 两段成立） | 日志行与 chatId 值不入仓，只在主机（`%USERPROFILE%\anc\workbuddy-patch.log`、`%ProgramData%\anc\data\patch-canary.json`） |
 | W-2 | 自动升级被拦；版本/hash 不符告警；补丁可一键关闭 | ✅ | `scripts/workbuddy-patch/preload.cjs:143-152`（拦 `/v2/update`，`ANC_WB_BLOCK_UPDATE` 开关）；`scripts/workbuddy-patch/launch-patched.ps1:80-91`（版本不符告警）；`scripts/check-workbuddy-update.ps1:48`；`scripts/workbuddy-patch/restore.ps1`；`docs/FORK-DIRECTION.md:326` | 真升级告警尚未触发过（R7 事件触发型）；运行期告警记录在主机 |
@@ -69,7 +69,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 
 ## 2. 统计与转公开检查
 
-**统计**：✅ 29 · 🟡 10 · ⬜ 1（合计 40 = PLAN §1 实际的 40 个 ID）
+**统计**：✅ 30 · 🟡 9 · ⬜ 1（合计 40 = PLAN §1 实际的 40 个 ID）
 
 **卡在真实群/环境上的条目**（只要这几条不闭合，V1 就不是 100%）：
 

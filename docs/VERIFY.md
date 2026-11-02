@@ -553,4 +553,4 @@ PLAN V5 的书面要求是「7×24 浸泡」。维护者判定通过，但**实�
 |---|---|---|
 | **自愈风暴**：守卫每分钟、看门狗、人工同时 `-Force` 时各自拉起一次重启 | 00:03 一小时内 9 次「重启成功」，日志同秒出现多条「安排自愈重启」 | `anc-selfheal.ps1` 加单飞锁（`selfheal.lock`，3 分钟过期）；并发两次实测只有一次重启、另一次记 `another selfheal in flight`。修复过程中还发现锁函数被误放进 `if ($Worker)` 分支，主路径看不到——已移到顶层并重新验证 |
 | **电源策略会静默停任务**：9 个任务默认 `DisallowStartIfOnBatteries=True` | 逐任务读出为 True（台式机不影响，但与 7×24 语义相反） | 9 个任务全部改成 `False/False`；`register-tasks.ps1` 默认值同步改，避免重建回归 |
-| E-4 与 D6 冲突：现场 `AutoAdminLogon=1` | `HKLM\…\Winlogon` 实读；无 `DefaultPassword`，疑似 Autologon 工具存 LSA | 已在 ACCEPTANCE E-4 如实记录，**待裁决**（关掉开关，或补裁决写进 §4） |
+| E-4 与 D6 冲突：现场 `AutoAdminLogon=1` | `HKLM\…\Winlogon` 实读；无 `DefaultPassword`，疑似 Autologon 工具存 LSA | **已裁决：关闭**。`AutoAdminLogon` 已改为 0，ACCEPTANCE E-4 转 ✅；重启后需人工登录，登录前由 boot-alert 告警 |
