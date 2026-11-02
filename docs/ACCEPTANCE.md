@@ -43,7 +43,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | K-6 | 内部区 markdown 是可重建投影，能无损重建 | ✅ | `src/service/project.ts:75-106`（原子写、`check`、`rebuild`）；`src/service/cli.ts:252-265`（`project` / `--check` / `--rebuild`）；测试「投影：生成 markdown、幂等、check 能识别缺失与手改」`src/service/project.test.ts:10`；`docs/PLAN.md:242`（C2 实机：8 行→check true→手改 false→rebuild true） | 命令名是 `project`/`--rebuild`，不是 PLAN 正文里的 `reproject`（同一件事，命名未统一） |
 | S-1 | 任务/提醒/完成判定/outbox 全在 SQLite；markdown 只是投影 | ✅ | `src/service/db.ts:12-96`（meta/config/a2a/tasks/task_events/reminders/outbox 各表）；`docs/FORK-DIRECTION.md:150`；`src/service/project.ts:52`（投影单向生成） | — |
 | S-2 | 「完成」只能由服务判定，且完成与出站消息同事务 | ✅ | `src/service/tasks.ts:103-137`（`tx()` 内写 done + 事件 + 取消提醒 + 入队）；测试「任务：完成与出站消息同事务，重复完成幂等」`src/service/service.test.ts:33` | — |
-| S-3 | 提醒不经 WorkBuddy，主机无人登录也照发 | 🟡 | `src/service/loop.ts:256-310`（按群绑定直连企微群 webhook，不经 WorkBuddy）；测试 `src/service/service.test.ts:252`；`scripts/anc-loop.cmd`（`loop --once`） | "无人登录照发"需注销实测（R2，依赖 R1），现只有"停 WorkBuddy"代理测试 |
+| S-3 | 提醒不经 WorkBuddy，主机无人登录也照发 | ✅ | **R2 通过（2026-11-02，维护者判定）**：本机注销后到点提醒照常送达；`anc-service` 为 `LOCAL SERVICE`+`ServiceAccount`（非 Interactive），触发器 Daily+Boot 每 1 分钟 | 依据为维护者现场观察，非本机数据库旁证（VERIFY §11） |
 | S-4 | 默认规则（首次到点/15 分钟重复/4 次升级/当天截止/次日顺延）全部可运行 | ✅ | `src/service/reminders.ts:29-30`（默认 15 分钟，非法值兜底）、`:63-65`（跨天停）；`src/service/loop.ts:169-189`（第 4 次后通知交办人并改每小时）、`:99-127`（次日顺延并告知）；测试 `src/service/service.test.ts:57`、`:352`、`:438`、`:597` | — |
 | S-5 | 时区/工作时段/节假日可配置，非法值不静默兜底 | ✅ | `src/service/config.ts:57-84`（写入即校验：HH:mm / weekdays / Windows 时区 Id / 绝对路径 / holidays 日期）、`:123-139`（isWorkTime/nextWorkStart）；测试 `src/service/service.test.ts:396`；`scripts/doctor.ps1:216-218`（`work-hours`）、`:316-320`（`timezone`） | — |
 | S-6 | 出站前凭据扫描，行为与 §8 一致（二选一写死） | ✅ | `src/service/outbound-scan.ts:24-48`（命中即 `OUTBOUND_SECRET_BLOCKED`）；`src/service/outbox.ts:31`（入队前统一过扫描）；测试 `src/service/service.test.ts:72`、`:242`；`docs/FORK-DIRECTION.md:278`（终态=阻断）；`docs/PLAN.md:216`（H7 定为阻断） | 盲区已文档化：WorkBuddy 自己在群里的回复不经过本地小服务 |
@@ -64,7 +64,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | O-2 | doctor 覆盖全部关键面，且每项都能证明会 FAIL | 🟡 | `scripts/doctor.ps1:145-190`（`-SelfTest` 夹具注入）；`scripts/verify-doctor.mjs:69+`（真注入 ACL/任务/补丁）；`docs/PLAN.md:271`（V4：3 PASS 0 FAIL） | SelfTest 只覆盖 5 类断言（secrets-acl / deploy-layout / task-coverage / bot-process-owner / secrets-in-git），不是 R0.5 要求的"每项都注入"；其余检查项的 FAIL 能力未逐项证明 |
 | O-3 | watchdog 覆盖 WorkBuddy/心跳/outbox 积压，同类告警有冷却 | ✅ | `scripts/watchdog.ps1:19`（心跳 >10 分钟）、`:27`（积压 ≥50）、`:41`（WorkBuddy 不在跑）、`:76`（30 分钟冷却）；`docs/OPS.md:15` | 告警实发记录在主机与运维群，不在仓库 |
 | O-4 | 备份离机（另一块盘或 UNC），含 vault 与 SQLite；恢复演练过 | 🟡 | `scripts/backup-anc.ps1:88-124`（保留策略、`DiskNumber` 比对、同盘告警、离机复制）；`src/service/backup.ts`；测试 `src/service/service.test.ts:620`、`:640`；`docs/OPS.md:157-162` | 当前 `E:` 与 `C:` 同在 Disk 0，"离机"只是同盘拷贝（`docs/PLAN.md:246`）；恢复演练无记录（REBUILD §2 只有步骤） |
-| O-5 | 干净机按 REBUILD 重建成功并计时 | ⬜ | `docs/REBUILD.md:1-71`（步骤齐） | 干净机重建未做（R5 挂起，依赖 R1）；无计时记录 |
+| O-5 | 干净机按 REBUILD 重建成功并计时 | 🟡 | **演练完成，真机未做**：`scripts/rebuild-drill.ps1` 在空目录建目录+部署+verify，21.4 s / 56 文件 / `deploy-layout PASS`（REBUILD §7 基线） | 没有第二台干净机；§2 数据恢复、§4 bot 扫码无法自动化 |
 | O-6 | 日志有轮转；失败路径都进告警面 | ✅ | `scripts/anc-loop.cmd`（>5 MB → `loop.log.1`，只留一份）；`scripts/anc-http.cmd`（`http.log` 同规则）；`scripts/watchdog.ps1`；`scripts/scan-catch.mjs:2-14`（catch 分类）；`docs/VERIFY.md:387+`（V2 静态扫结论） | V2 自己写明"注入只覆盖关键路径，未做到 53 个 catch 逐个注入"——"都进告警面"是静态结论 + 关键路径抽测 |
 
 ## 2. 统计与转公开检查
