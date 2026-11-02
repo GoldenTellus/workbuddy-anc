@@ -384,6 +384,19 @@ if ($untracked.Count -eq 0) {
         Add-Result 'vault-ingest-audit' 'WARN' ("$($untracked.Count) 个未跟踪文件，但 1 小时内没有成功入库记录——可能绕过了 CLI 直接写盘") '核对 inbox/done 有没有对应批次；绕过写入的文件不该进 git'
     }
 }
+# 21 备份新鲜度（备份平时看不出坏，只能靠时间戳判活）
+$bakDir = Join-Path $Root 'backup'
+$lastBak = Get-ChildItem $bakDir -Filter 'anc-*.db' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $lastBak) {
+    Add-Result 'backup-freshness' 'FAIL' '没有任何数据库备份' '跑一次 anc-backup 任务，或 scripts\backup-anc.ps1'
+} else {
+    $ageH = [int]((Get-Date) - $lastBak.LastWriteTime).TotalHours
+    if ($ageH -gt 30) {
+        Add-Result 'backup-freshness' 'FAIL' ("最近备份 $ageH 小时前（阈值 30）") '检查 anc-backup 任务与磁盘空间；backup.log 里有原因'
+    } else {
+        Add-Result 'backup-freshness' 'PASS' ("$ageH 小时前，" + [math]::Round($lastBak.Length / 1KB) + " KB") '-'
+    }
+}
 $fails = @($results | Where-Object { $_.state -eq 'FAIL' }).Count
 $warns = @($results | Where-Object { $_.state -eq 'WARN' }).Count
 if ($Json) {

@@ -126,6 +126,9 @@ powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1 -Destination "\\
 - 备份是 SQLite `VACUUM INTO` 的一致性快照，服务在跑也能做；
 - 恢复：停 `anc-service` → 用备份文件覆盖 `anc.db`（同时删掉 `-wal`/`-shm`）→ 启动任务；
 - **离机目标要填上才算真正离机**：当前任务的参数里没有 `-Destination`，需要时改任务参数或加一个带目标的副本。
+- **同一块物理盘不算离机**：脚本会比对两边的 `DiskNumber`，同盘就发运维告警（同一块盘只报一次，状态记在 `%ProgramData%\anc\data\backup.state.json`）。本机 `E:\anc-backup` 与 `C:` 都在 Disk 0，等于没有离机保护——要接独立盘或 UNC。
+- 保留策略：本地 `-Keep 14` 份（每天一份约两周）；离机 `-OffsiteKeep 60` + 每月 1 号那份留 `-OffsiteMonthlyKeep 12`（月档不会被日保留挤掉）。
+- 失败一定告警：`cli` 退出码非 0、文件为空/没生成、离机复制失败都会发 `ops-webhook.txt`；`doctor` 的 `backup-freshness` 在最近备份超过 30 小时时 FAIL。
 
 ## 开机提醒
 
