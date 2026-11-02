@@ -131,3 +131,31 @@ test('ingest 端点：没配执行器时 503（防止只加了路由却没接实
     assert.equal(j.error, 'ingest-not-configured');
   } finally { await srv.close(); }
 });
+
+test('ingest 响应把 summaries 原样透传（P-2：摘要随入库一起回去）', async () => {
+  const srv = await startServer({
+    port: 0,
+    token: 'tk',
+    health: () => ({ ok: true, detail: 'x' }),
+    ingest: async () => ({
+      added: ['collab/a.md'],
+      modified: [],
+      originals: ['_originals/a.txt'],
+      archived: 'C:\\inbox\\done\\b1',
+      summaries: [{ path: 'collab/a.md', title: '标题', lines: ['要点一', '要点二'] }],
+    }),
+  });
+  try {
+    const r = await fetch(srv.url + '/__anc_ingest', {
+      method: 'POST',
+      headers: { authorization: 'Bearer tk' },
+      body: JSON.stringify({ batch: 'C:\\ProgramData\\anc\\inbox\\pending\\b1' }),
+    });
+    assert.equal(r.status, 200);
+    const j = await r.json() as { ok: boolean; summaries: Array<{ path: string; title: string; lines: string[] }> };
+    assert.equal(j.ok, true);
+    assert.equal(j.summaries.length, 1);
+    assert.equal(j.summaries[0].path, 'collab/a.md');
+    assert.deepEqual(j.summaries[0].lines, ['要点一', '要点二']);
+  } finally { await srv.close(); }
+});

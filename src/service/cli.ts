@@ -355,7 +355,18 @@ if (group === 'summary') {
         try { archived = archiveBatch(target, inboxRoot); } catch (e) {
           console.error('WARN  批次已入库但归档失败: ' + (e as Error).message + '（手工把 ' + target + ' 挪到 inbox\\done 即可）');
         }
-        return { added: r.added, modified: r.modified, originals: r.originals, archived };
+        // P-2：入库成功就把摘要一起带回去——摘要由本地规则生成（不调模型、不出网），
+        // bot 拿到响应即可报给用户，不必再发一次请求。
+        const summaries: Array<{ path: string; title: string; lines: string[] }> = [];
+        for (const rel of r.added) {
+          try {
+            const sum = summarizeMarkdown(readFileSync(join(vaultShared, rel), 'utf8'));
+            summaries.push({ path: rel, title: sum.title, lines: sum.lines });
+          } catch (e) {
+            console.error('WARN  摘要生成失败（不影响入库）: ' + rel + ' — ' + (e as Error).message);
+          }
+        }
+        return { added: r.added, modified: r.modified, originals: r.originals, archived, summaries };
       },
       health: () => {
         let ageMin: number | null = null;

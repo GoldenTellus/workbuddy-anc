@@ -13,10 +13,19 @@ export interface HealthInfo {
   detail: string;
 }
 
+/** 入库后随响应返回的本地摘要（P-2 / A-6：摘要必须本地生成，不调模型、不出网）。 */
+export interface IngestSummary {
+  path: string;
+  title: string;
+  lines: string[];
+}
+
 export interface IngestOutcome {
   added: string[];
   modified: string[];
   originals: string[];
+  archived?: string | null;
+  summaries?: IngestSummary[];
 }
 
 export interface ServerOptions {
