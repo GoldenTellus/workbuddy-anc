@@ -15,6 +15,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Csv,
+    [string]$VaultShared = 'D:\anc\vault-shared',
     [string]$Prefix = 'anc-read-',
     [string]$OutDir = "$env:ProgramData\anc\accounts",
     [switch]$DryRun
@@ -51,6 +52,40 @@ if (-not $DryRun) {
     if (-not (Get-LocalGroup -Name $Group -ErrorAction SilentlyContinue)) {
         New-LocalGroup -Name $Group -Description 'ANC vault 只读共享账号（拒绝本地登录策略作用于此组）' | Out-Null
         Write-Host "created group $Group"
+
+    # vault 共享区：整组只读（RX）。写权限一律不给——共享账号只用来拉资料
+    if (Test-Path $VaultShared) {
+        & icacls $VaultShared /grant:r ($Group + ':(OI)(CI)RX') | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Host "WARN 给 $Group 授 $VaultShared 读权限失败（icacls=$LASTEXITCODE）" }
+        else { Write-Host "granted $Group RX on $VaultShared" }
+    } else {
+        Write-Host "WARN 共享区不存在，跳过授权: $VaultShared"
+    }
+
+    # 拒绝本地登录：安全策略里没有 cmdlet，只能 secedit 导出 → 改 → 导入。
+    # Deny 优先于 Allow，所以组员即便在 Users 组里也进不了桌面。
+    try {
+        $sid = (Get-LocalGroup -Name $Group).SID.Value
+        $inf = Join-Path $env:TEMP ('anc-secpol-' + [guid]::NewGuid().ToString('N') + '.inf')
+        & secedit /export /cfg $inf /areas USER_RIGHTS | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "secedit export exit=$LASTEXITCODE" }
+        $txt = [IO.File]::ReadAllText($inf, [Text.Encoding]::Unicode)
+        if ($txt -notmatch 'SeDenyInteractiveLogonRight') {
+            $txt = $txt -replace '(\[Privilege Rights\])', ("`$1`r`nSeDenyInteractiveLogonRight = " + $sid)
+        } elseif ($txt -match 'SeDenyInteractiveLogonRight\s*=\s*([^\r\n]*)') {
+            if ($Matches[1] -notlike ('*' + $sid + '*')) {
+                $txt = $txt.Replace($Matches[0], $Matches[0].TrimEnd() + ',' + $sid)
+            }
+        }
+        [IO.File]::WriteAllText($inf, $txt, [Text.Encoding]::Unicode)
+        & secedit /configure /db (Join-Path $env:TEMP 'anc-secpol.sdb') /cfg $inf /areas USER_RIGHTS | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "secedit configure exit=$LASTEXITCODE" }
+        Write-Host "deny interactive logon: $Group ($sid)"
+        Remove-Item $inf -Force -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host ("WARN 设置拒绝本地登录失败: " + $_.Exception.Message)
+        Write-Host 'WARN 共享账号仍可能登录桌面；手工用 secpol.msc 把 anc-vault-readers 加进「拒绝本地登录」'
+    }
     }
     # 凭据目录先收紧再写文件：新建目录会继承 ProgramData 的默认 ACL（Users 可读）
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null

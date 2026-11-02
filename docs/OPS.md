@@ -36,6 +36,23 @@ powershell -File scripts\deploy.ps1 -Apply
 - `%ProgramData%\anc\accounts` **只给 Administrators 与 SYSTEM**：里面有 `anc-bot` 密码和按名单开出的只读账号初始密码，bot 账号（标准用户）不得读取；
 - 员工账号用 `scripts\provision-vault-accounts.ps1 -Csv <名单> -DryRun` 先看计划，再正式执行；CSV 用 UTF-8 写；
 - 凭据文件发给本人后删除，不进仓库、不进聊天。
+
+### 共享账号（vault 只读）
+
+```powershell
+# 1) 准备名单 CSV（name,id）  2) 看计划
+powershell -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
+# 3) 建号：同时授 vault 只读、把组加进「拒绝本地登录」
+powershell -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv
+# 4) 验收（读通 / 写拒 / 非管理员 / 拒绝登录），出 JSON 报告
+powershell -File scripts\verify-vault-accounts.ps1 -Csv C:\ProgramData\anc\accounts\provisioned-<时间>.csv
+# 5) 凭据发给本人后，删掉那份 provisioned CSV
+```
+
+- 组 `anc-vault-readers` 对共享区只有 `RX`；写权限一律不给；
+- 「拒绝本地登录」写进 `SeDenyInteractiveLogonRight`（安全策略没有 cmdlet，走 `secedit` 导出→改→导入）。Deny 优先于 Users 的 Allow，组员登不进桌面；
+- 验收报告落在 `%ProgramData%\anc\accounts\verify-<时间>.json`，是上线证据（C8 的 DoD 要它）；
+- 读/写实测用 `Start-Process -Credential`，依赖 Secondary Logon 服务；服务没开时报告里会写「无法以该身份执行」，那时改用计划任务方式跑探针。
 - **收紧 `secrets` 必须是三步**（只做 `/inheritance:r` + `/grant` 不会移除 `BUILTIN\Users`，它会作为显式 ACE 留下）：
   ```powershell
   icacls C:\ProgramData\anc\secrets /inheritance:r
