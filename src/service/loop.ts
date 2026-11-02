@@ -120,15 +120,20 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     const key = `carry:${t.id}:${dayKey}`;
     // 不再用"有没有 pending 提醒"做闸门：正常续排的任务一整天都是 pending，"次日顺延并告知"会永远发不出去
     if (db.prepare('SELECT id FROM outbox WHERE dedupe_key = ?').get(key)) continue;
-    // 顺延到"次日同一时分"；那个时刻若不在工作时段，再推到下一个工作起点
+    // 逾期任务从"现在能开始催的时刻"接着提醒（改法 A，2026-11-02 裁决）。
+    //
+    // 原来排到"次日同一时分"，并把当天的 pending 提醒 cancelled——结果是逾期当天
+    // 只有早上一条「已顺延到 X」，整天不催。体感是"昨天没做完，今天它不理我了"，
+    // 而且升级条件（累计 4 次提醒）对逾期任务永远不可能满足。
+    // 现在：工作时段内就从此刻接着提醒，夜里才推到下一个工作起点；提醒按 15 分钟继续重复。
     const due = new Date(t.due_at);
-    const next = new Date(nowDate);
-    next.setHours(due.getHours(), due.getMinutes(), 0, 0);
-    if (next.getTime() <= nowDate.getTime()) next.setDate(next.getDate() + 1);
-    const target = isWorkTime(next, rules) ? next : nextWorkStart(next, rules);
+    const target = isWorkTime(nowDate, rules) ? nowDate : nextWorkStart(nowDate, rules);
     const at = due.toLocaleString('sv-SE').slice(0, 16);
     const nextLabel = target.toLocaleString('sv-SE').slice(0, 16);
-    const text = `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，已顺延到 ${nextLabel}`;
+    const sameDay = target.toLocaleDateString('sv-SE') === nowDate.toLocaleDateString('sv-SE');
+    const text = sameDay
+      ? `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，今天继续提醒`
+      : `任务 #${t.id} ${t.title} 上次定在 ${at} 没完成，已排到 ${nextLabel} 继续提醒`;
     // 先检查再排期：被拦的任务不再顺延，免得每天都卡在这里
     if (blockedBySecret(db, t.id, text, now)) { skipped += 1; continue; }
     scheduleReminder(db, { taskId: t.id, dueAt: target.toISOString() });

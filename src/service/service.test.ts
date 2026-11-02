@@ -435,7 +435,7 @@ test('工作时段：夜里的顺延通知不立刻推，排到下一个工作�
   }
 });
 
-test('顺延：昨天未完成、没有 pending 的任务排到下一次并告知', async () => {
+test('顺延：昨天未完成的任务当天立刻接着催，并告知', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-carry-'));
   const db = openDb(join(dir, 'anc.db'));
   try {
@@ -447,8 +447,15 @@ test('顺延：昨天未完成、没有 pending 的任务排到下一次并告�
     assert.ok(r.enqueued >= 1);
     const carry = outbox.listOutbox(db, { limit: 50 }).find((m) => (m.dedupe_key || '').startsWith('carry:'));
     assert.ok(carry, '应有一条顺延通知');
+    // 改法 A（2026-11-02）：逾期任务当天就从此刻接着催，不再排到次日同一时分。
+    // 默认工作时段是 00:00–23:59，所以 target = now(08:00) → 立刻发第一条 → 下一条 08:15。
     const next = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ? AND status = 'pending'").get(t.id) as { due_at: string; status: string };
-    assert.equal(next.due_at, '2026-10-31T01:00:00.000Z');
+    assert.equal(next.due_at, '2026-10-31T00:15:00.000Z', '逾期当天应立刻开始催（下一条 15 分钟后）');
+    // 注意：这里断的是"提醒被触发"（markReminderSent 推进到下一条），不是 outbox 的 sent——
+    // chat-A 没绑 webhook，发送会 failed，但我们验的是"当天确实开始催"这个行为。
+    const first = db.prepare("SELECT status FROM reminders WHERE task_id = ? AND due_at = '2026-10-31T00:00:00.000Z'").get(t.id) as { status: string } | undefined;
+    assert.ok(first, '逾期当天应新建一条 08:00 的提醒');
+    assert.equal(first!.status, 'sent', '逾期当天的第一条提醒应被当场触发，实际 ' + first!.status);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -594,7 +601,7 @@ test('A2A：payload 超过上限被拒，且不落库', () => {
   }
 });
 
-test('顺延：昨天有 pending 提醒也照样告知（生产态），且提醒重排到开工时间', async () => {
+test('顺延：昨天有 pending 提醒也照样告知（生产态），夜里排到当天开工时间', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-carry-pending-'));
   const db = openDb(join(dir, 'anc.db'));
   try {
@@ -606,7 +613,8 @@ test('顺延：昨天有 pending 提醒也照样告知（生产态），且提�
     assert.ok(r.enqueued >= 1);
     assert.ok(outbox.listOutbox(db, { limit: 50 }).some((m) => (m.dedupe_key || '').startsWith('carry:')), '应有顺延通知');
     const next = db.prepare("SELECT due_at, status FROM reminders WHERE task_id = ? AND status = 'pending' ORDER BY id DESC").get(t.id) as { due_at: string; status: string };
-    assert.equal(next.due_at, '2026-10-31T02:00:00.000Z');
+    // 改法 A：now=08:00 不在工作时段（09:00 起），所以排到**当天**开工时间 09:00，而不是次日 10:00
+    assert.equal(next.due_at, '2026-10-31T01:00:00.000Z');
     // 同一天再 tick 一次：不重复告知
     await loopTick(db, { now: '2026-10-31T08:05:00+08:00', send: async () => {} });
     const carries = outbox.listOutbox(db, { limit: 100 }).filter((m) => (m.dedupe_key || '').startsWith('carry:'));
@@ -804,7 +812,9 @@ test('顺延通知有上限：8 个逾期任务只发 5 条，但提醒全部重
 
     const carryRows = db.prepare("SELECT COUNT(*) AS c FROM outbox WHERE dedupe_key LIKE 'carry:%'").get() as { c: number };
     assert.equal(carryRows.c, 5, '单个 tick 的顺延通知应封顶 5 条，实际 ' + carryRows.c);
-    assert.equal(r.enqueued, 5, 'enqueued 也应只算这 5 条');
+    // 改法 A 之后，8 个逾期任务的提醒都会排到"现在"并当场入队，
+    // 所以 enqueued = 5 条顺延通知 + 8 条提醒 = 13
+    assert.equal(r.enqueued, 13, '5 条顺延通知 + 8 条当场提醒，实际 ' + r.enqueued);
 
     // 但 8 个任务的提醒都必须重排到下一次（通知被封顶不等于不处理）
     const upcoming = db.prepare("SELECT COUNT(*) AS c FROM reminders WHERE status = 'pending'").get() as { c: number };
