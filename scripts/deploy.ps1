@@ -26,6 +26,7 @@ $Map = @(
     @{ Target = 'service'; Source = 'src\service'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'ingest';  Source = 'src\ingest';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'render';  Source = 'src\render';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
+    @{ Target = 'light\templates'; Source = 'light\templates'; Filter = @('*.md'); Exclude = @() },
     @{ Target = 'shared';  Source = 'src\shared';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'bin';     Source = 'scripts';     Filter = @('*.ps1', '*.cmd', '*.vbs'); Exclude = @() },
     @{ Target = 'patch';   Source = 'scripts\workbuddy-patch'; Filter = @('*'); Exclude = @() }

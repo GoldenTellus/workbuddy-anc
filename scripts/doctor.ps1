@@ -80,6 +80,10 @@ function Test-DeployLayout([string]$Root, [string]$Src) {
             elseif ((Get-Sha $f.FullName) -ne (Get-Sha $d)) { $bad += "patch/$($f.Name): hash 与仓库不一致" }
         }
     }
+    # 渲染器要用模板：只部署了 render/ 却没带 light/templates 时，渲染会在运行时 404
+    if ((Test-Path (Join-Path $Root 'render\cli.ts')) -and -not (Test-Path (Join-Path $Root 'light\templates\company-bot.md'))) {
+        $bad += 'light/templates: 缺失（渲染器在，但模板没部署）'
+    }
     if ($bad.Count -gt 0) {
         return @{ state = 'FAIL'; detail = ('部署布局不对: ' + ($bad -join '; ')); fix = 'ingest/render 应为目录；补 deploy.ps1 后重部署；patch 与仓库逐字节一致' }
     }

@@ -5,7 +5,20 @@ import { fileURLToPath } from 'node:url';
 import { loadOrg } from './org.ts';
 import { renderTemplate, fingerprint, checkLength, writeAtomic } from './render.ts';
 
-const DEFAULT_TEMPLATES = fileURLToPath(new URL('../../light/templates/', import.meta.url));
+// 模板位置在两种布局下不同：仓库是 src/render → ../../light/templates，
+// 部署是 %ProgramData%\anc\render → ../light/templates。硬编码层级会在部署后 404。
+function findTemplates(): string {
+  const here = fileURLToPath(new URL('.', import.meta.url));
+  const candidates = [
+    join(here, '..', '..', 'light', 'templates'), // 仓库
+    join(here, '..', 'light', 'templates'),       // 部署（%ProgramData%\anc\light\templates）
+  ];
+  for (const c of candidates) {
+    if (existsSync(join(c, 'company-bot.md'))) return c;
+  }
+  return candidates[0];
+}
+const DEFAULT_TEMPLATES = findTemplates();
 
 export interface RenderResult {
   inputSha: string;
