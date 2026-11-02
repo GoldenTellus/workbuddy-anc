@@ -29,12 +29,12 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | E-1 | 一台 Windows 主机 7×24 跑公司 bot；员工电脑跑个人 bot；两边都经企微 | 🟡 | `docs/OPS.md:7-19`（9 个任务）`scripts/register-tasks.ps1:71-136`；`docs/VERIFY.md:305`（T4 锁屏整夜照常收发） | 员工侧个人 bot 尚未部署（本机只有一个账号）；7×24 连续运行无浸泡记录（V5 未做） |
 | E-2 | 一人一群；私聊公司 bot 仅管理员 | 🟡 | `src/service/bindings.ts:30`、`src/service/loop.ts:281-290`（只发本群 webhook，不退回默认群）；测试「隔离：未绑定群的消息不退回默认 webhook」`src/service/service.test.ts:278`；`docs/CHAT-BINDINGS.md:52-56`；`docs/FORK-DIRECTION.md:62` | 私聊限管理员属企微后台配置，VERIFY T11 未测（`docs/VERIFY.md:312`） |
 | E-3 | 两个 bot 都 @ 才回应 | ✅ | `docs/FORK-DIRECTION.md:63`（D20 不放宽）；`docs/VERIFY.md:303`（T2）、`:308`（T7） | — |
-| E-4 | 主机不开自动登录；重启后人工登录恢复；开机提醒兜底 | 🟡 | `scripts/boot-alert.ps1:1-24`（60 秒后查 WorkBuddy，发运维群）；`scripts/register-tasks.ps1:86-89`；`docs/OPS.md:185` | "不开自动登录"是主机侧配置，仓库无证据；真注销→恢复未测（R2 挂起） |
-| E-5 | 运行身份分开，都不在管理员组 | 🟡 | `scripts/doctor.ps1:194-206`（`dedicated-user` / `bot-process-owner`）；`scripts/register-tasks.ps1:62-66`（Service/Interactive principal）；`docs/FORK-DIRECTION.md:275` | R1 未完成：WorkBuddy 仍跑在 Administrator，两个交互任务 principal=Administrator（`docs/PLAN.md:158-159`） |
+| E-4 | 主机重启后人工登录恢复；开机提醒兜底 | 🟡 | `scripts/boot-alert.ps1:1-24`（60 秒后查 WorkBuddy，发运维群）；`scripts/register-tasks.ps1:86-89`；`docs/OPS.md:185` | 实测 `HKLM\…\Winlogon`：`AutoAdminLogon=1`、`DefaultUserName=Administrator`、无 `DefaultPassword`（疑似 Autologon 工具存 LSA）——**与 D6「不开自动登录」冲突，待裁决**（关掉开关，或补一条裁决并写进 §4）；真注销→恢复未实测 |
+| E-5 | 运行身份按 D25：部署账号为管理员，doctor 校验进程 owner 与部署账号一致 | ✅ | `scripts/doctor.ps1:194-206`（`dedicated-user` / `bot-process-owner`，期望身份来自配置）；`scripts/register-tasks.ps1:62-66`；D25（`docs/PLAN.md:169`） | doctor `bot-process-owner` 与 9 个任务 principal 全 PASS；不再要求 `anc-bot` |
 | W-1 | D17 注入群身份；`APPLIED mode=hash` 且 canary 有 chatId | ✅ | `scripts/workbuddy-patch/preload.cjs:98-104`、`:188`；`scripts/workbuddy-patch/manifest.json`（版本/hash/target）；`scripts/doctor.ps1:265-269`（patch）、`:347-355`（canary）；`docs/VERIFY.md:318`（T16b 两段成立） | 日志行与 chatId 值不入仓，只在主机（`%USERPROFILE%\anc\workbuddy-patch.log`、`%ProgramData%\anc\data\patch-canary.json`） |
 | W-2 | 自动升级被拦；版本/hash 不符告警；补丁可一键关闭 | ✅ | `scripts/workbuddy-patch/preload.cjs:143-152`（拦 `/v2/update`，`ANC_WB_BLOCK_UPDATE` 开关）；`scripts/workbuddy-patch/launch-patched.ps1:80-91`（版本不符告警）；`scripts/check-workbuddy-update.ps1:48`；`scripts/workbuddy-patch/restore.ps1`；`docs/FORK-DIRECTION.md:326` | 真升级告警尚未触发过（R7 事件触发型）；运行期告警记录在主机 |
 | W-3 | 每处改动都有台账（版本+build+目标 hash+开关+回滚） | ✅ | `docs/FORK-DIRECTION.md:320-332`（§11 台账逐项 7 列）；`scripts/workbuddy-patch/manifest.json`（版本 5.9.3 / target / sha256 / toggleEnv） | "无漏账"靠人工比对，仓库里没有自动核对台账的脚本 |
-| W-4 | 升级回归三段（原版→重放→改动后）有脚本化检查单 | 🟡 | `docs/WORKBUDDY-PATCH.md:114-120`（升级流程）；`light/skills/anc-wb-patch/SKILL.md`（侦察→三种情况→四条回归→台账→回滚）；`docs/FORK-DIRECTION.md:316` | 检查单是文档 + 技能文本，没有可执行脚本；R7 未跑过真升级 |
+| W-4 | 升级回归三段（原版→重放→改动后）有脚本化检查单 | ✅ | `scripts/verify-upgrade.ps1`（8 项机械检查：版本/版本一致/目标 hash/锚点/bootstrap/applied/update-hook/doctor-patch，实测全 PASS，并打印 4 项人工清单）；`docs/WORKBUDDY-PATCH.md:114-120`；`light/skills/anc-wb-patch/SKILL.md` | 脚本已可执行；R7 真升级仍需厂商发版 |
 | K-1 | vault 两区各自独立 git；共享区全员只读、内部区只有公司侧 | ✅ | `src/service/a2a.ts:10-23`（内部区必须是独立 git，不能是共享区或其子目录）；测试「A2A：内部区必须是独立 git 目录，且不能是共享区」`src/service/service.test.ts:561`；`scripts/doctor.ps1:273-293`（`smb` / `vault-acl`）；`docs/OPS.md:121-126` | — |
 | K-2 | `_originals/` 永不进 git，代码层面拒绝 | ✅ | `src/ingest/git.ts:17-18`（收到 `_originals/` 直接抛错）；`src/ingest/cli.ts:81-83`（只把 added/modified 交给 commit）；测试 `src/ingest/ingest.test.ts:282`、`:304` | — |
 | K-3 | 覆盖写必须带 base hash | ✅ | `src/ingest/apply.ts:82-88`（缺/不符/新文件带 hash 三种都拒）、`:187-188`（锁内再核一次）；测试 `src/ingest/ingest.test.ts:45`；语义定死见 `docs/PLAN.md:208`（H3，按工作区内容而非 HEAD） | — |
@@ -60,7 +60,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | A-4 | 小服务只监听 `127.0.0.1`，带 token，未配 token 全拒，常量时间比较 | ✅ | `src/service/http.ts:31-35`（`timingSafeEqual`）、`:50`（默认 host）、`:77`（无 token → 503）、`:81`（错 token → 403）；测试 `src/service/http.test.ts:7`、`:25`、`:42` | — |
 | A-5 | 转公开检查可执行、零输出、exit 0；`_research/` 未被跟踪 | ✅ | `scripts/check-public.mjs:16-71`；`.gitignore:9-10`；本次落盘后实跑：零输出、退出码 0（见本文 §2） | — |
 | A-6 | 资料不上云：正文不作为对话内容；只传路径/标题/结构化字段，摘要本地生成 | 🟡 | `docs/PLAN.md:251`（C13：persona/技能写死只报路径与标题 + 审计）；`src/shared/summarize.ts` + `cli summary`（本地摘要；`--path` 单篇、`--find` 按关键词定位并给路径+摘要，7 条单测，无模型无网络）；`light/personas/company-bot/CODEBUDDY.md:28`；`src/shared/audit.ts:26-30`（JSONL 只记命令与目标）；`scripts/doctor.ps1:370-392`（`vault-ingest-audit` 抓绕过 CLI 的写入） | 「摘要由本地脚本生成」明确未做；"正文不外发"只有 persona/技能文字约束，没有机制性证据（无测试、无网关拦截） |
-| O-1 | 9 个计划任务齐、principal 正确、`IgnoreNew` | 🟡 | `scripts/register-tasks.ps1:58`（`-MultipleInstances IgnoreNew`）、`:71-136`（9 个任务定义）；`scripts/doctor.ps1:133-143`（9 项期望 principal）；`docs/OPS.md:5-19` | 两个交互任务 principal 仍是 Administrator（R1 挂起，`docs/PLAN.md:159`），故"principal 正确"未闭合 |
+| O-1 | 9 个计划任务齐、principal 与部署账号一致、`IgnoreNew` | ✅ | `scripts/register-tasks.ps1:58`（`-MultipleInstances IgnoreNew`）、`:71-136`（9 个任务定义）；`scripts/doctor.ps1:133-143`（9 项期望 principal）；`docs/OPS.md:5-19` | 9/9 Ready，principal=部署账号（D25），doctor 全 PASS |
 | O-2 | doctor 覆盖全部关键面，且每项都能证明会 FAIL | 🟡 | `scripts/doctor.ps1:145-190`（`-SelfTest` 夹具注入）；`scripts/verify-doctor.mjs:69+`（真注入 ACL/任务/补丁）；`docs/PLAN.md:271`（V4：3 PASS 0 FAIL） | SelfTest 只覆盖 5 类断言（secrets-acl / deploy-layout / task-coverage / bot-process-owner / secrets-in-git），不是 R0.5 要求的"每项都注入"；其余检查项的 FAIL 能力未逐项证明 |
 | O-3 | watchdog 覆盖 WorkBuddy/心跳/outbox 积压，同类告警有冷却 | ✅ | `scripts/watchdog.ps1:19`（心跳 >10 分钟）、`:27`（积压 ≥50）、`:41`（WorkBuddy 不在跑）、`:76`（30 分钟冷却）；`docs/OPS.md:15` | 告警实发记录在主机与运维群，不在仓库 |
 | O-4 | 备份离机（另一块盘或 UNC），含 vault 与 SQLite；恢复演练过 | 🟡 | `scripts/backup-anc.ps1:88-124`（保留策略、`DiskNumber` 比对、同盘告警、离机复制）；`src/service/backup.ts`；测试 `src/service/service.test.ts:620`、`:640`；`docs/OPS.md:157-162` | 当前 `E:` 与 `C:` 同在 Disk 0，"离机"只是同盘拷贝（`docs/PLAN.md:246`）；恢复演练无记录（REBUILD §2 只有步骤） |
@@ -69,7 +69,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 
 ## 2. 统计与转公开检查
 
-**统计**：✅ 26 · 🟡 13 · ⬜ 1（合计 40 = PLAN §1 实际的 40 个 ID）
+**统计**：✅ 29 · 🟡 10 · ⬜ 1（合计 40 = PLAN §1 实际的 40 个 ID）
 
 **卡在真实群/环境上的条目**（只要这几条不闭合，V1 就不是 100%）：
 

@@ -113,6 +113,8 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 
 ## 升级流程
 
+升级前后都跑一次 `scripts\verify-upgrade.ps1`：8 项机械检查（版本/hash/锚点/bootstrap/applied/update-hook/doctor）应全 PASS；它判不了的 4 项（前缀、@、旁白过滤、更新拦截）会打印成人工清单。
+
 1. WorkBuddy 升级 → 先按 `restore.ps1` 用原版跑一遍回归（T1–T5、T16、T17）；
 2. 从新版 `app.asar` 取出 `main/wecomaibot-client.js`，算 sha256，更新 `manifest.json` 的 `workbuddyVersion` 与 `sha256`；
 3. 重新跑一遍验证（本节第 1–4 步）；
