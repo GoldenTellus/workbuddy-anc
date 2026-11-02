@@ -1,14 +1,21 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { nowIso, toIso } from './db.ts';
 import { dueReminders, markReminderSent, scheduleReminder } from './reminders.ts';
 import { getTask } from './tasks.ts';
 import { resolve, resolveByUserid, assertWebhookFileName } from './bindings.ts';
-import { enqueue, listPendingDue, claim, markSent, markFailed, requeueTransientFailures } from './outbox.ts';
+import { enqueue, listPendingDue, claim, markSent, markFailed, requeueTransientFailures, isPermanentFailure } from './outbox.ts';
 
 /** 到点提醒的有效期：超过这么久还没发出去（断网、积压）就作废，不补发。 */
 const REMINDER_TTL_MIN = 60;
+
+/**
+ * 单次 tick 最多发多少条「未完成、已顺延」通知。
+ * 时钟大跳变（机器时间错乱、VM 恢复旧快照）时，所有 open 任务会同时被判成"昨天没完成"，
+ * 一个任务一条就是几十条刷屏。提醒本身照样重排，只是通知有上限。
+ */
+const CARRY_NOTIFY_MAX = 5;
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { getConfig, loadRules, isWorkTime, nextWorkStart } from './config.ts';
 import { writeProjection } from './project.ts';
@@ -107,6 +114,8 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
   let enqueued = 0;
   // 去重键用本地日期：toISOString().slice(0,10) 是 UTC 日期，北京时间 00:00–08:00 会算成前一天
   const dayKey = `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`;
+  let carryNotified = 0;
+  let carrySilenced = 0;
   for (const t of stale) {
     const key = `carry:${t.id}:${dayKey}`;
     // 不再用"有没有 pending 提醒"做闸门：正常续排的任务一整天都是 pending，"次日顺延并告知"会永远发不出去
@@ -123,8 +132,13 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
     // 先检查再排期：被拦的任务不再顺延，免得每天都卡在这里
     if (blockedBySecret(db, t.id, text, now)) { skipped += 1; continue; }
     scheduleReminder(db, { taskId: t.id, dueAt: target.toISOString() });
+    // 排期一律照做（任务要能继续被提醒），只有"通知"受上限约束
+    if (carryNotified >= CARRY_NOTIFY_MAX) { carrySilenced += 1; continue; }
     const q = enqueue(db, { text, chatId: t.chat_id, dedupeKey: key, at: sendAt });
-    if (q.inserted) enqueued += 1;
+    if (q.inserted) { enqueued += 1; carryNotified += 1; }
+  }
+  if (carrySilenced > 0) {
+    console.error('WARN  顺延通知超过上限（' + CARRY_NOTIFY_MAX + ' 条），另有 ' + carrySilenced + ' 个任务只重排未通知；提醒本身已全部重排');
   }
   const due = dueReminders(db, now);
 
@@ -208,6 +222,37 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
 }
 
 /** 发送到点的 pending 消息：每条按自己群的绑定选 webhook，查不到就失败，不退回默认群。 */
+
+/** 配置类错误判死后喊一次运维：同一个群同类错误只在第一条上喊，别每条消息都刷屏。 */
+async function failConfigAndAlert(db: DatabaseSync, secretsDir: string, chatId: string | null, id: number, error: string, hint: string): Promise<void> {
+  markFailed(db, id, error);
+  if (!isPermanentFailure(error)) return;
+  const like = error.split(':')[0] + '%';
+  const prior = (db.prepare("SELECT COUNT(*) AS c FROM outbox WHERE chat_id = ? AND status = 'failed' AND last_error LIKE ?")
+    .get(chatId ?? '', like) as { c: number }).c;
+  if (prior <= 1) await alertOps(secretsDir, hint + '（chat ' + (chatId ?? '?') + '，修好后用 outbox requeue 重发）');
+}
+/**
+ * 运维告警：只在"配置坏了、重试没用"时用。发不出去也不能影响主流程——
+ * 告警是通知，不是关卡。
+ */
+async function alertOps(secretsDir: string, text: string): Promise<void> {
+  try {
+    const f = join(secretsDir, 'ops-webhook.txt');
+    if (!existsSync(f)) return;
+    const url = readFileSync(f, 'utf8').trim();
+    if (!url) return;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ msgtype: 'text', text: { content: '[anc] ' + text } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    console.error('WARN  运维告警发送失败: ' + (e as Error).message);
+  }
+}
+
 export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Promise<{ sent: number; failed: number }> {
   if (opts.webhookFile && !opts.chatId) throw new Error('webhookFile 只能配合 chatId 使用（联调单个群），避免把所有群的消息发到同一个 webhook');
   let sent = 0;
@@ -236,7 +281,7 @@ export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Pro
       // 一人一群：只发到这条消息所属群自己的 webhook；查不到就失败，不退回任何默认群
       const binding = m.chat_id ? resolve(db, m.chat_id) : null;
       if (!binding?.webhook_file) {
-        markFailed(db, m.id, 'NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_file');
+        await failConfigAndAlert(db, secretsDir, m.chat_id, m.id, 'NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_file', '有群没登记 webhook，消息发不出去已判失败');
         failed += 1;
         continue;
       }
@@ -244,19 +289,19 @@ export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Pro
       try {
         url = readFileSync(join(secretsDir, assertWebhookFileName(file)), 'utf8').trim();
       } catch {
-        markFailed(db, m.id, '读不到 webhook 文件: ' + file);
+        await failConfigAndAlert(db, secretsDir, m.chat_id, m.id, '读不到 webhook 文件: ' + file, '读不到 webhook 文件 ' + file + '，消息发不出去已判失败');
         failed += 1;
         continue;
       }
     }
     if (!url) {
-      markFailed(db, m.id, 'webhook 文件为空: ' + file);
+      await failConfigAndAlert(db, secretsDir, m.chat_id, m.id, 'webhook 文件为空: ' + file, 'webhook 文件 ' + file + ' 是空的，消息发不出去已判失败');
       failed += 1;
       continue;
     }
     // 不是 https URL 就别交给 fetch：它的报错会把文件原文带进 last_error
     if (!/^https:\/\/\S+$/i.test(url)) {
-      markFailed(db, m.id, 'webhook 文件内容不是 https URL: ' + file);
+      await failConfigAndAlert(db, secretsDir, m.chat_id, m.id, 'webhook 文件内容不是 https URL: ' + file, 'webhook 文件 ' + file + ' 里不是 https URL，消息发不出去已判失败');
       failed += 1;
       continue;
     }

@@ -93,6 +93,13 @@ export function redactError(error: string): string {
 
 const BACKOFF_MIN = [1, 5, 15, 30, 60];
 
+/**
+ * 配置类错误：重试永远不会成功——webhook 没配、文件内容不是 URL、文件读不到。
+ * 这类要**立即判死**，否则会按业务错误退避 5 次（累计半小时以上），
+ * 期间每次重试都必然失败，而真正该做的是让人去修配置。
+ */
+const PERMANENT = /NO_WEBHOOK_FOR_CHAT|webhook 文件内容不是 https URL|读不到 webhook 文件|webhook 文件为空|webhook 文件不是/i;
+
 /** 网络类错误（开机后还没联网、DNS 未就绪）与业务错误分开：前者多给几次机会。 */
 // 超时（AbortSignal.timeout → TimeoutError / aborted due to timeout）也算网络类
 const TRANSIENT = /fetch failed|HTTP 5\d\d|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|TimeoutError|aborted due to timeout|AbortError/i;
@@ -101,12 +108,17 @@ function isTransient(error: string): boolean {
   return TRANSIENT.test(String(error));
 }
 
+/** 这条错误是不是"必须人去修配置"的永久失败。 */
+export function isPermanentFailure(error: string): boolean {
+  return PERMANENT.test(String(error));
+}
+
 export function markFailed(db: DatabaseSync, id: number, error: string): void {
   const row = db.prepare('SELECT attempts FROM outbox WHERE id = ?').get(id) as { attempts: number } | undefined;
   const attempts = Number(row?.attempts ?? 0) + 1;
   const t = nowIso();
   const msg = redactError(error);
-  const maxAttempts = isTransient(error) ? 10 : 5;
+  const maxAttempts = PERMANENT.test(error) ? 1 : isTransient(error) ? 10 : 5;
   if (attempts >= maxAttempts) {
     db.prepare("UPDATE outbox SET status = 'failed', attempts = ?, last_error = ?, claimed_at = NULL, updated_at = ? WHERE id = ?")
       .run(attempts, msg, t, id);

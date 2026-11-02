@@ -736,3 +736,81 @@ test('转交：open 任务转到新人名下并记事件；已完成的不动', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('配置类错误立即判死（不等退避），普通业务错误仍退避', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-perm-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const mk = (text: string) => {
+      const q = outbox.enqueue(db, { text, chatId: 'chat-x', dedupeKey: 'perm:' + text });
+      return q.id;
+    };
+    const st = (id: number) => db.prepare('SELECT status, attempts FROM outbox WHERE id = ?').get(id) as { status: string; attempts: number };
+
+    // 四类配置错误：一次就该判死
+    const cases: Array<[string, string]> = [
+      ['no-bind', 'NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_file'],
+      ['no-file', '读不到 webhook 文件: hook.txt'],
+      ['empty', 'webhook 文件为空: hook.txt'],
+      ['not-url', 'webhook 文件内容不是 https URL: hook.txt'],
+    ];
+    for (const [label, err] of cases) {
+      const id = mk(label);
+      outbox.markFailed(db, id, err);
+      const s = st(id);
+      assert.equal(s.status, 'failed', label + ' 应立即 failed，实际 ' + s.status);
+      assert.equal(s.attempts, 1, label + ' 应该只记一次尝试');
+    }
+
+    // 普通业务错误：仍然是 pending + 退避
+    const bid = mk('biz');
+    outbox.markFailed(db, bid, 'webhook 返回 errcode 93000');
+    assert.equal(st(bid).status, 'pending', '业务错误不该立即判死');
+
+    // 网络错误：也是 pending（给 10 次机会）
+    const nid = mk('net');
+    outbox.markFailed(db, nid, 'fetch failed');
+    assert.equal(st(nid).status, 'pending');
+
+    // 判定函数本身
+    assert.equal(outbox.isPermanentFailure('NO_WEBHOOK_FOR_CHAT: x'), true);
+    assert.equal(outbox.isPermanentFailure('fetch failed'), false);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('顺延通知有上限：8 个逾期任务只发 5 条，但提醒全部重排', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-carry-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const yesterday = '2026-11-01T09:00:00+08:00';
+    const ids: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const t = tasks.createTask(db, {
+        title: '逾期-' + i,
+        chatId: 'chat-A',
+        assignee: '甲',
+        assigneeUserId: 'u-a',
+        requester: '乙',
+        requesterUserId: 'u-b',
+        dueAt: yesterday,
+      });
+      ids.push(t.id);
+    }
+
+    const r = await loopTick(db, { now: '2026-11-02T10:00:00+08:00', send: async () => {} });
+
+    const carryRows = db.prepare("SELECT COUNT(*) AS c FROM outbox WHERE dedupe_key LIKE 'carry:%'").get() as { c: number };
+    assert.equal(carryRows.c, 5, '单个 tick 的顺延通知应封顶 5 条，实际 ' + carryRows.c);
+    assert.equal(r.enqueued, 5, 'enqueued 也应只算这 5 条');
+
+    // 但 8 个任务的提醒都必须重排到下一次（通知被封顶不等于不处理）
+    const upcoming = db.prepare("SELECT COUNT(*) AS c FROM reminders WHERE status = 'pending'").get() as { c: number };
+    assert.equal(upcoming.c, 8, '8 个任务的提醒都该重排，实际 pending ' + upcoming.c);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
