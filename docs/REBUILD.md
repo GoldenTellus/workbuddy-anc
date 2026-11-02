@@ -30,26 +30,28 @@ Copy-Item E:\anc-backup\anc-<最新>.db C:\ProgramData\anc\data\anc.db
 
 ## 3. 装服务与任务
 
+**不要手工列复制清单**。用 `deploy.ps1`：它是部署的唯一真相源，带映射表 + 覆盖率检查
+（`src/` 下每个文件都必须落在某个映射下，否则直接 Fail），还有逐文件 hash 校验和备份。
+
 ```powershell
 $R = '<仓库>'; $A = 'C:\ProgramData\anc'
-# 目标目录先建好：Copy-Item 目标不存在时会把「目录」复制成同名「文件」
-'service','ingest','render','bin','patch' | ForEach-Object { New-Item -ItemType Directory -Force "$A\$_" | Out-Null }
-# 本地小服务、入库进程、渲染器（.ts 直接由 Node 运行）
-Copy-Item "$R\src\service\*" "$A\service\" -Force
-Copy-Item "$R\src\ingest\*"  "$A\ingest\"  -Force
-Copy-Item "$R\src\render\*"  "$A\render\"  -Force
-Copy-Item "$R\scripts\anc-loop.cmd" "$A\service\" -Force
-# 运维脚本与两个任务入口
-Copy-Item "$R\scripts\*.ps1", "$R\scripts\run-hidden.vbs", "$R\scripts\anc-guard.cmd", "$R\scripts\anc-launch.cmd" "$A\bin\" -Force
-Copy-Item "$R\scripts\verify\t3-webhook.ps1" "$A\bin\" -Force
-# 补丁（线上补丁的唯一来源）
-Copy-Item "$R\scripts\workbuddy-patch\*" "$A\patch\" -Force
-# ACL：LOCAL SERVICE 读 service/secrets、写 data/backup；bot 用户读 service/secrets/skills、写 data
+# 目标目录先建好（root 不存在时 deploy 会 Fail）
+'service','ingest','render','shared','bin','backup','patch' | ForEach-Object { New-Item -ItemType Directory -Force "$A\$_" | Out-Null }
+powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
 ```
 
-按 [OPS.md](./OPS.md) 重新注册八个计划任务：`anc-service`、`anc-backup`、`anc-boot-alert`、`anc-cleanup`、`anc-watchdog`、`anc-workbuddy-launch`、`anc-patch-guard`、`anc-update-watch`。
+> 为什么改成这样：原来这段手工列 `Copy-Item "$R\src\service\*" ...`，只覆盖 service/ingest/render。
+> 后来加了 `src\shared\audit.ts`，手工清单没跟上——按老 runbook 重建的机器上 CLI 会
+> `ERR_MODULE_NOT_FOUND`，而且删掉之后 doctor 读出来全是空。deploy 的覆盖率检查能当场拦住这类漂移。
 
-> `anc-workbuddy-launch` 与 `anc-patch-guard` 必须用**bot 用户 + Interactive** 身份注册，否则拉不起 GUI。三个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd` 进 `bin\`，`anc-loop.cmd` 进 `service\`）从仓库 `scripts/` 复制；触发器、身份、参数照 OPS.md 的计划任务表。
+补丁（线上补丁的唯一来源）也由 deploy 一并复制到 `patch\`。
+
+按 [OPS.md](./OPS.md) 重新注册九个计划任务：`anc-service`、`anc-backup`、`anc-boot-alert`、
+`anc-cleanup`、`anc-watchdog`、`anc-http`、`anc-workbuddy-launch`、`anc-patch-guard`、`anc-update-watch`。
+
+> `anc-workbuddy-launch` 与 `anc-patch-guard` 必须用**bot 用户 + Interactive** 身份注册，否则拉不起 GUI。
+> 三个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd` 进 `bin\`，`anc-loop.cmd` 进 `service\`）由 deploy 复制；
+> 触发器、身份、参数照 OPS.md 的计划任务表。
 
 ## 4. 恢复 bot
 
@@ -73,3 +75,29 @@ powershell -File C:\ProgramData\anc\bin\watchdog.ps1    # 无异常退出 0
 - 密钥没有离机副本时，只能重新生成 webhook（群机器人设置里换一个新的）；
 - 主机名/共享名变了，员工机上的 `\\主机\anc-vault-shared` 路径要跟着改（重渲染接入包）；
 - `_originals/` 没随备份走的话，入库文档会失去原件，只能重新收集。
+
+## 7. 重建演练与基线（2026-11-02）
+
+没有第二台干净机，所以用一个**空目录**演练：按 §1、§3 建目录 + 部署，再用 `doctor -Root` 验证结构。
+它不能替代真机（§2 数据恢复、§4 bot 登录没法自动化），但能回答两件事——结构 doctor 认不认、每步多久。
+
+```powershell
+powershell -File scripts\rebuild-drill.ps1            # 默认用临时空目录，跑完自清理
+powershell -File scripts\rebuild-drill.ps1 -Keep      # 保留演练根，便于手工看
+```
+
+**基线（本机 2026-11-02 实测）**：
+
+| 步骤 | 耗时 |
+|---|---|
+| 建目录结构 | 0.1 s |
+| 部署运行件（deploy -Apply，56 文件逐字节校验） | 3.8 s |
+| doctor 校验结构 | 17.5 s |
+| **合计** | **21.4 s** |
+
+`deploy-layout: PASS`。重建耗时以这个数为基线：明显变慢说明映射变多或校验变重，要回头看是否值得。
+
+每次演练追加一行到 `_research/rebuild-baseline.log`（不在 git 里），便于对比。
+
+> 演练本身也抓过一次问题：脚本里用 scriptblock 执行步骤，赋值落在局部作用域，
+> 外层读到的永远是初值——表现是"部署明明成功却报未取到"。这类问题只有真跑一遍才暴露。

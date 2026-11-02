@@ -270,7 +270,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | V3 | **五类故障自恢复** | 断电 / 杀进程 / 磁盘满 / 时钟跳变 / webhook 404 | **已落地（2026-11-02，5/5 PASS）**：`scripts/fault-inject.mjs` 自动化，自建现场、自清理、留报告。断电用「杀进程 + 留锁」代理（真断电做不到） | webhook 错误被记录且消息不丢；时钟到点入队/回退不重发/同刻幂等；锁活锁拒绝死锁接管；杀进程后 ~18s 自愈；写入失败时 tick 明确 `ok=false` 而非假成功 |
 | V4 | **证明有效** | `doctor -SelfTest` + 三项抽查（ACL/任务/manifest） | **已落地（2026-11-02）**：自检 6 条 ALL PASS；`scripts/verify-doctor.mjs` 真注入三项（放宽 secrets ACL / 禁用计划任务 / 改补丁文件），每项都验"注入前 PASS → 注入后 FAIL → 恢复后 PASS"且失败项必须对得上，3 PASS 0 FAIL；恢复后现场核对干净 | 抽查逼出一处判定问题：doctor 把「任务被禁用」判 WARN，已拆成 Disabled→FAIL、其他异常→WARN |
 | V5 | **7×24 浸泡** | 连续 7 天不干预,每天记:outbox 对账、告警条数、doctor 快照 | 0 人工干预、0 丢消息、0 误报告警 |
-| V6 | **可重建 + 可转公开** | 干净机 REBUILD 计时;`check-public.mjs` | 重建 ≤ 记录基线;检查零输出 exit 0 |
+| V6 | **可重建 + 可转公开** | 干净机 REBUILD 计时；`check-public.mjs` | **演练已完成（2026-11-02）**：`scripts/rebuild-drill.ps1` 在空目录里按 runbook 建目录 + `deploy -Root` 部署 + `doctor -Root` 验结构，**21.4 s / 56 文件 / deploy-layout PASS**，基线记在 REBUILD §7；顺带把 §3 的手工复制清单换成 `deploy.ps1`（原清单漏了 `src\shared`，按老 runbook 重建会 `ERR_MODULE_NOT_FOUND`）。`check-public` 零输出 exit 0 | **真干净机未做**（没有第二台机器）；演练只能验结构与耗时，§2 数据恢复、§4 bot 扫码登录无法自动化 |
 
 **gate V**:六条全绿 → 打 tag `v1.0`,FORK 与 PLAN 一起冻结为"已验收版本"。
 
