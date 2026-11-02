@@ -38,14 +38,14 @@
 | 13 | **技能迭代闭环**（聊天挖掘→问题池→devbot→eval） | SPEC §5 | ⬜ | **没有**。见 §3.1 |
 | 14 | Onboarding：对话式冷启动 | SPEC §6 | 🟡 | `anc-interview` 技能做员工访谈；**公司级建库**没有对话式流程 |
 | 15 | 安全模型（Identity / Scope / Model 三层） | SPEC §7 | ✅ | D19–D25 裁决 + ACL + 出站扫描 + 审计 |
-| 16 | 运维与可观测（防假绿、watchdog、日报） | SPEC §8 | 🟡 | `doctor`（28 项）+ `anc-watchdog` + 备份；**没有日报** |
+| 16 | 运维与可观测（防假绿、watchdog、日报） | SPEC §8 | ✅ | `doctor`（28 项）+ `anc-watchdog` + `anc-boot-alert` + 备份（保留 7 份）。**日报不做**（2026-11-03 裁决：单人单机没人读，探针已答"坏没坏"） |
 | 17 | 包形态与命令面（npm + `anc` CLI） | SPEC §9 | 🔄 | 不发布 npm 包；部署目录 + `cli.ts` 子命令 |
 | 18 | vault-service（Cloudflare R2 + MCP 五工具 + `_history/`） | `light/vault-service/` | 🔄 | 本地 vault + **git 充当版本历史** + CLI 代替 MCP |
 | 19 | harness-proxy：`system-prompt-proxy` | `tools/harness-proxy/` | ➖ | 前提是能改写引擎的请求；WorkBuddy 闭源，改不了 |
 | 20 | harness-proxy：`tool-turn-filter` | `tools/harness-proxy/` | 🔄 | **思路已用上**：出站旁白过滤（FORK §11），但位置不同——上游在代理层过滤，我们在补丁里包 `sendReply` |
 | 21 | 三个技能：`anc-ingest` / `anc-join` / `anc-onboard` | `light/skills/` | 🟡 | ingest → `anc-ingest-company`（改写）；join 的名片规则 → `light/skill-cards/`；onboard → 见 #14 |
 
-**统计（2026-11-03 二次重判，Harness 转 ➖ 后）**：✅ 11 · 🔄 4 · 🟡 3 · **⬜ 1** · ➖ 1（共 20 个功能模块 + 技能分项）
+**统计（2026-11-03 三次重判：Harness 与日报转出）**：✅ **12** · 🔄 4 · 🟡 **2** · **⬜ 1** · ➖ 1（共 20 个功能模块 + 技能分项）
 
 > **⬜ 只剩一项：迭代闭环（#13）** —— 这就是 1.0 唯一的实质缺口。
 > `➖` 那项（Harness 可换后端）是**已论证的不需要**，不是遗漏，见 §3.2。
@@ -179,7 +179,7 @@ R6 实测过：切到另一个工作区后，读的是该工作区的规则，**
 | 每 bot 一个 cwd | 进程级隔离 | WorkBuddy 工作区（R6 实测不串） | 隔离这个**目的**达到了 |
 | 包形态 | npm 包 + anc CLI | 部署目录 + cli.ts | "有命令面"达到了 |
 | vault-service | R2 + MCP + _history/ | 本地 + git + CLI | "版本历史 + 读写接口"达到了 |
-| tool-turn-filter | 结构判断 | 词表启发式 | **这个算差距**（判据弱），在 PLAN 阶段 O 处理 |
+| tool-turn-filter | 结构判断 | 词表启发式 | **不做升级**（2026-11-03 裁决）：词表判据弱但成本低、不误伤；为它逆工具轮次结构收益不抵。出站过滤保持词表 |
 
 ### 3.5 结论
 
