@@ -698,3 +698,50 @@ D24 的目标是：vault 对 bot 只读，入库只能由服务身份执行。�
 bot 是管理员，理论上仍可以 `takeown` + `icacls` 改回权限。护栏让它没有动机这么做，
 但这是**行为约束，不是权限约束**。要真封死，得把 bot 迁到标准用户（原 D6 方案，
 2026-11-02 按 D25 决定不做）。这条边界写清楚，免得以后误以为"已经绝对安全"。
+## 15. O-2 doctor 故障矩阵（2026-11-02，23/28 项）
+
+V4 只抽查了 3 项（ACL / 任务 / 补丁文件）。O-2 要的是**每一项都证明在该 FAIL 时会 FAIL**。
+
+工具：`scripts/doctor-fault-matrix.mjs`。按组注入——同类项一次性弄坏（比如同时禁用 8 个任务），
+一次 doctor 就能验多项，否则 28 项 × 2 轮 × 17 秒要跑很久。每组都是「注入 → 断言该红 → 恢复 → 断言回绿」。
+
+```
+汇总: 全部按预期（该红的红了、该恢复的恢复了）　最终 FAIL: 无
+```
+
+| 组 | 覆盖项 | 注入方式 |
+|---|---|---|
+| tasks | 8 个 `task-anc-*` | `Disable-ScheduledTask` |
+| config | `work-hours`、`timezone` | 配置写成 `99:99` / `Not/AZone` |
+| patchfiles | `manifest`、`patch`、`deploy-layout` | manifest 写坏 JSON；清空 `workbuddy-patch.log`；改 `preload.cjs` |
+| acl | `secrets-acl`、`vault-acl` | 给 `Users` 加读/改权限 |
+| staleness | `heartbeat`、`canary`、`backup-freshness` | 改 mtime / 改 canary 的 `at` / 所有备份改旧 |
+| identity | `dedicated-user`、`bot-process-owner` | `-BotUser` 指向不存在的账号 |
+| http | `http-health`、`task-anc-http` | Disable + Stop + 杀 serve 进程 |
+| secretingit | `secrets-in-git` | 在 `scripts/` 放假 webhook（`docs/*` 被 grep 排除） |
+
+### 这一轮踩的坑（都是"注入方式没对上检查逻辑"，不是 doctor 坏）
+
+| 现象 | 真因 |
+|---|---|
+| 8 个任务注入后仍 PASS | 用 `task-anc-backup` 去 `Disable-ScheduledTask`，但实际任务名是 `anc-backup`（少 `task-` 前缀），静默失败 |
+| `manifest` 改版本号不红 | 它的 FAIL 判据是"无法解析"，版本比对在 `workbuddy` 那一项 |
+| `patch` 改 `patch-state.json` 不红 | 它读的是 `workbuddy-patch.log` 里的 `APPLIED` / `ANCHOR-MISS` |
+| `canary` 改文件 mtime 不红 | 它看 JSON 里的 `at` 字段 |
+| `backup-freshness` 改最新一份不红 | 改旧最新一份后，"最新"落到了第二份（12 小时，没到 30 小时阈值）→ 必须**全部**改旧 |
+| `heartbeat` 改 mtime 不红 | `anc-service` 每分钟 tick 会写 `loop.log`，把 mtime 刷回现在 → 注入前必须先停服务 |
+| `task-anc-http` 只 Stop 不红 | Stop 让 State 从 Running 变 Ready，仍算正常；要 Disable + Stop |
+| `secrets-in-git` 放 `docs/` 不红 | 那条 `git grep` 明确排除了 `docs/*` |
+
+这些坑的共同教训：**写注入脚本前先读检查的实现**。凭"它应该看这个"去猜，一半会猜错，
+而猜错的表现是"该项没红"——看起来像 doctor 失灵，实际是注入没打中。
+
+### 还没覆盖的 5 项
+
+| 项 | 卡在哪 |
+|---|---|
+| `workbuddy` | 版本比对项，需要能"假装当前 WorkBuddy 是别的版本"，暂未找到不碰真实安装的注入方式 |
+| `smb` | 要停/改 SMB 共享，影响员工访问，风险高 |
+| `database` | 已实现（`--risky` 组：临时改名 `anc.db`），但会短暂影响服务，默认不跑 |
+| `bindings` | 要清空绑定表，会短暂影响发送 |
+| `vault-ingest-audit` | 基线就是 WARN（vault 有未跟踪文件），注入"未跟踪且无入库记录"能验，但和现有 WARN 难区分 |
