@@ -354,6 +354,8 @@ PLAN 阶段 R 的单一清单。带"挂起/待触发"的项写明卡点，不写
 | webhook 失效 | 绑定指向内容为 `not-a-url` 的 webhook 文件 | ✅ PASS | 错误被记进 `last_error`、消息留在 pending 不丢；**但配置类错误被当成可重试**（5 次退避才判死，见下） |
 | 时钟跳变 | `loop --once --now <时刻>` 跳到 due 之后 / 回退 / 回同刻 | ✅ PASS | 到点入队 1 条、回退 0 条、同刻 0 条；大跳变会让每个 open 任务各发一条顺延通知 |
 | 锁残留 | 造活锁（pid 存在）与死锁（pid=999999） | ✅ PASS | 活锁拒绝且报出锁路径；死锁自动接管、旧锁改名 `.stale-<ts>` 留档；**无需人工删锁** |
+| 杀进程 | 杀掉 `cli.ts serve` 进程，再靠计划任务拉起 | ✅ PASS | 杀掉后 serve 进程数 0，`Start-ScheduledTask` 后约 18 秒 `health` 恢复；WorkBuddy 与 `anc-service` 不受影响 |
+| 写入失败 | `icacls /deny` 拒绝库文件写入 | ✅ PASS | 有到点任务时 tick 明确 `ok=false`（不假装成功）；撤销 ACL 后立即恢复可写 |
 
 ### 本轮暴露的两个问题（已修）
 
@@ -367,7 +369,17 @@ PLAN 阶段 R 的单一清单。带"挂起/待触发"的项写明卡点，不写
 | 配置类错误白重试 | `NO_WEBHOOK_FOR_CHAT`、`webhook 文件内容不是 https URL` 走 5 次退避，半小时才判死，期间重试永不成功 | `markFailed` 加第三档「永久失败」：立即 failed + 运维告警 |
 | 大跳变通知风暴 | 时钟跳一年时每个 open 任务各一条 `carry:` 通知 | 单 tick 上限（如 5 条）或汇总成一条 |
 
-### 未跑的两项（需 `--all --yes`）
+### 五项全跑通（2026-11-02，`--all --yes`）
 
-- **杀进程**：会停 `anc-http` 再靠计划任务拉起，验证自愈；
-- **写入失败**：会用 `icacls /deny` 临时拒绝 `data` 目录写入，验证"失败但不崩"，事后撤销。改 ACL 有风险，留给有维护窗口时跑。
+```
+汇总：5 PASS · 0 FAIL · 0 SKIP
+```
+
+跑完现场回到基线：tasks 无残留、无残留绑定、vault 无未跟踪改动、库文件无 deny 残留、`health` 正常。
+
+### 注入方法本身的一个坑（值得记）
+
+第一版「写入失败」用 `icacls /deny <data 目录>:(W)`，结果 tick 报 `ok=true, enqueued=1`——看着像"假成功"，其实是**注入没生效**：
+Windows 的目录 `(W)` 只拦「创建新文件」，而 SQLite 是**就地更新**已有的 `anc.db`/`-wal`。
+
+改成 deny 库文件本身之后才测出真实行为（`ok=false`）。**故障注入失败时要先怀疑注入**，别急着判被测代码有 bug。

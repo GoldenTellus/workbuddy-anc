@@ -263,18 +263,49 @@ async function disk() {
   // 用"拒绝 Everyone 写入"模拟磁盘满导致的写入失败（比真把盘写满安全）
   try {
     execFileSync('icacls', [dataDir, '/deny', `${process.env.USERNAME ?? 'Administrators'}:(W)`], { stdio: 'ignore' });
-    details.push('已对 data 目录设置拒绝写入');
+    // 先造一个到点任务：不然 tick 没有写操作，测不出"写不进去时会怎样"
+    writeFileSync(join(SECRETS, 'hook-fault.txt'), 'not-a-url', 'utf8');
+    runCli(['bind', 'set', '--db', DB, '--chat-id', 'chat-fault', '--employee', '故障测试', '--userid', 'u-fault', '--webhook-file', 'hook-fault.txt']);
+    const due = new Date(Date.now() - 60_000);
+    const pad = (n) => String(n).padStart(2, '0');
+    const local = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())} ${pad(due.getHours())}:${pad(due.getMinutes())}`;
+    runCli(['task', 'add', '--db', DB, '--title', '故障注入-disk', '--chat-id', 'chat-fault',
+      '--requester', '管理员', '--requester-userid', 'u-admin', '--due-local', local, '--json']);
+
+    // deny 目录只挡「创建新文件」；SQLite 是就地更新已有的 db/wal，必须 deny 文件本身
+    const dbFiles = [DB, DB + '-wal', DB + '-shm'].filter((f) => existsSync(f));
+    for (const f of dbFiles) {
+      execFileSync('icacls', [f, '/deny', `${process.env.USERNAME ?? 'Administrators'}:(W)`], { stdio: 'ignore' });
+    }
+    details.push('已对库文件设置拒绝写入: ' + dbFiles.map((f) => f.split('\\').pop()).join(', '));
     let writeFailed = false;
     try { writeFileSync(probe, 'x', 'utf8'); } catch { writeFailed = true; }
     details.push(`写入探测: ${writeFailed ? '被拒（符合预期）' : '★ 仍能写（ACL 没生效）'}`);
-    // 此时 tick 应当"失败但把错误说清楚"，而不是静默或崩掉
-    const r = tick();
-    details.push(`拒绝写入时 tick: ok=${r.ok} enqueued=${r.enqueued ?? '?'} ${r.error ? 'error=' + String(r.error).slice(0, 60) : ''}`);
     must(writeFailed, 'ACL 没生效，无法模拟写入失败');
+
+    // 有到点任务时 tick 必须写库：这里要看到"明确失败"，而不是假装成功
+    const r = tick();
+    details.push(`拒绝写入时 tick: ok=${r.ok} enqueued=${r.enqueued ?? '?'} ${r.error ? 'error=' + String(r.error).slice(0, 70) : ''}`);
+    must(r.ok === false, '写不进去却报 ok=true —— 会把失败当成功');
     return { pass: true, details };
   } finally {
-    try { execFileSync('icacls', [dataDir, '/remove:d', `${process.env.USERNAME ?? 'Administrators'}`], { stdio: 'ignore' }); } catch { /* ignore */ }
+    for (const f of [DB, DB + '-wal', DB + '-shm', dataDir]) {
+      try { execFileSync('icacls', [f, '/remove:d', `${process.env.USERNAME ?? 'Administrators'}`], { stdio: 'ignore' }); } catch { /* ignore */ }
+    }
     try { unlinkSync(probe); } catch { /* ignore */ }
+    try {
+      const t = withDb((db) => db.prepare('SELECT id FROM tasks WHERE title = ?').get('故障注入-disk'));
+      if (t) {
+        withDb((db) => {
+          db.prepare('DELETE FROM outbox WHERE chat_id = ?').run('chat-fault');
+          db.prepare('DELETE FROM reminders WHERE task_id = ?').run(t.id);
+          db.prepare('DELETE FROM task_events WHERE task_id = ?').run(t.id);
+          db.prepare('DELETE FROM tasks WHERE id = ?').run(t.id);
+          db.prepare("DELETE FROM chat_bindings WHERE chat_id = 'chat-fault'").run();
+        });
+      }
+      try { unlinkSync(join(SECRETS, 'hook-fault.txt')); } catch { /* ignore */ }
+    } catch { /* ignore */ }
     details.push('已撤销 ACL，并确认可写: ' + (() => { try { writeFileSync(probe, 'x'); unlinkSync(probe); return '是'; } catch { return '否'; } })());
   }
 }
