@@ -273,6 +273,76 @@ const GROUPS = {
     },
   },
 
+  // 8) workbuddy：manifest 登记的版本与已安装版本不符
+  wbversion: {
+    title: 'manifest 登记的 WorkBuddy 版本与实际不符',
+    items: { workbuddy: 'FAIL' },
+    store: {},
+    inject() {
+      mkdirSync(BAK, { recursive: true });
+      const mf = join(ROOT, 'patch', 'manifest.json');
+      this.store.mf = backup(mf, 'manifest-ver');
+      const j = JSON.parse(readFileSync(mf, 'utf8'));
+      j.workbuddyVersion = '0.0.0-o2-mismatch';   // 与真实安装版本不同 → workbuddy FAIL
+      writeFileSync(mf, JSON.stringify(j, null, 2), 'utf8');
+      log('  注入: manifest.workbuddyVersion = 0.0.0-o2-mismatch');
+    },
+    recover() {
+      if (this.store.mf) restore(this.store.mf, join(ROOT, 'patch', 'manifest.json'));
+      log('  恢复: manifest 从备份还原');
+    },
+  },
+
+  // 9) smb：给广泛组加写权限（改共享权限，短暂影响员工访问，可恢复）
+  smb: {
+    title: 'SMB 共享对广泛组有写权限',
+    items: { smb: 'FAIL' },
+    inject() {
+      ps("Grant-SmbShareAccess -Name 'anc-vault-shared' -AccountName 'Everyone' -AccessRight Change -Force -ErrorAction SilentlyContinue | Out-Null");
+      log('  注入: 共享给 Everyone Change（应被判为"广泛组有写权限"）');
+    },
+    recover() {
+      ps("Revoke-SmbShareAccess -Name 'anc-vault-shared' -AccountName 'Everyone' -Force -ErrorAction SilentlyContinue | Out-Null");
+      ps("Grant-SmbShareAccess -Name 'anc-vault-shared' -AccountName 'Everyone' -AccessRight Read -Force -ErrorAction SilentlyContinue | Out-Null");
+      log('  恢复: Everyone 收回 Change，恢复 Read');
+    },
+  },
+
+  // 10) bindings：清空绑定表（短暂影响发送，可恢复）
+  bindings: {
+    title: '绑定表被清空',
+    items: { bindings: 'WARN' },
+    store: {},
+    inject() {
+      mkdirSync(BAK, { recursive: true });
+      const js = [
+        "const{DatabaseSync}=require('node:sqlite');",
+        'const d=new DatabaseSync(process.argv[2]);',
+        "const rows=d.prepare('SELECT * FROM chat_bindings').all();",
+        "require('node:fs').writeFileSync(process.argv[3], JSON.stringify(rows));",
+        "d.prepare('DELETE FROM chat_bindings').run();",
+        'console.log(rows.length);d.close();',
+      ].join('');
+      const f = join(BAK, 'bind-backup.cjs');
+      writeFileSync(f, js, 'utf8');
+      const n = execFileSync(process.execPath, ['--no-warnings', f, DB, join(BAK, 'bindings.json')], { encoding: 'utf8' }).trim();
+      log(`  注入: 清空 chat_bindings（原有 ${n} 条，已备份）`);
+    },
+    recover() {
+      const js = [
+        "const{DatabaseSync}=require('node:sqlite');",
+        "const rows=JSON.parse(require('node:fs').readFileSync(process.argv[3],'utf8'));",
+        'const d=new DatabaseSync(process.argv[2]);',
+        "for(const r of rows){const k=Object.keys(r);const v=k.map(x=>r[x]);d.prepare('INSERT INTO chat_bindings ('+k.join(',')+') VALUES ('+k.map(()=>'?').join(',')+')').run(...v);}",
+        'console.log(rows.length);d.close();',
+      ].join('');
+      const f = join(BAK, 'bind-restore.cjs');
+      writeFileSync(f, js, 'utf8');
+      const n = execFileSync(process.execPath, ['--no-warnings', f, DB, join(BAK, 'bindings.json')], { encoding: 'utf8' }).trim();
+      log(`  恢复: 回填 ${n} 条绑定`);
+    },
+  },
+
   // 8) 单项：仓库里放一个假密钥（secrets-in-git）
   secretingit: {
     title: '仓库里出现疑似密钥',
@@ -280,7 +350,10 @@ const GROUPS = {
     // doctor 的 git grep 排除了 docs/*（文档里常出现占位符），所以放 scripts/ 下
     file: 'scripts/_o2-fake-secret.md',
     inject() {
-      writeFileSync(join(REPO, this.file), 'webhook=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=00000000-0000-0000-0000-000000000000\n', 'utf8');
+      // 拼出来而不是写整串：doctor 的 secrets-in-git 会扫这个模式，
+      // 整串写在这里会让仓库自己命中（第一次跑就被自己的脚本抓到了）。
+      const fake = ['https://qyapi.weixin.qq.com', '/cgi-bin/webhook/send?key=', '00000000-0000-0000-0000-000000000000'].join('');
+      writeFileSync(join(REPO, this.file), 'webhook=' + fake + '\n', 'utf8');
       ps(`git -C "${REPO}" add -N "${this.file}" 2>$null | Out-Null`);
       log('  注入: 放一个假 webhook 到 docs/（并 git add -N 让 git grep 能扫到）');
     },
@@ -298,12 +371,26 @@ const RISKY = {
     title: '数据库文件被挪走',
     items: { database: 'FAIL' },
     inject() {
+      // anc-service 每分钟 tick 会打开 anc.db，直接 rename 会 EBUSY —— 先停服务
+      // anc-service 和 anc-http 都持有库连接，两个都要停，否则 rename 会 EBUSY
+      for (const t of ['anc-service', 'anc-http']) {
+        ps("Stop-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
+        ps("Disable-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
+      }
+      // 停任务不会杀掉已经在跑的进程，必须显式 kill，否则文件仍被占用
+      ps("Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'cli.ts.*serve' } | Stop-Process -Force -ErrorAction SilentlyContinue");
+      ps("Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'cli.ts.*loop' } | Stop-Process -Force -ErrorAction SilentlyContinue");
+      log('  注入前：停掉 anc-service + anc-http 并杀掉它们的 node 进程（两者都持有库连接）');
       renameSync(DB, DB + '.o2-moved');
       log('  注入: anc.db 改名为 anc.db.o2-moved');
     },
     recover() {
       if (existsSync(DB + '.o2-moved')) renameSync(DB + '.o2-moved', DB);
-      log('  恢复: 改回 anc.db');
+      for (const t of ['anc-service', 'anc-http']) {
+        ps("Enable-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
+        ps("Start-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
+      }
+      log('  恢复: 改回 anc.db、两个服务重新启用');
     },
   },
 };
