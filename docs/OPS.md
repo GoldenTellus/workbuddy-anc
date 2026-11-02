@@ -37,6 +37,20 @@ powershell -File scripts\deploy.ps1 -Apply
 - 员工账号用 `scripts\provision-vault-accounts.ps1 -Csv <名单> -DryRun` 先看计划，再正式执行；CSV 用 UTF-8 写；
 - 凭据文件发给本人后删除，不进仓库、不进聊天。
 
+### 初始化 org（渲染器的输入）
+
+`D:\anc\org` 还不存在时，渲染、`groups.json`、离职流程都没法跑。最小初始化：
+
+```powershell
+New-Item -ItemType Directory 'D:\anc\org\members','D:\anc\org\roles','D:\anc\build' -Force
+# company.md 的必填字段：name / company_bot_name / vault_shared / vault_internal / local_workdir
+# 成员放 org\members\<id>.md，渲染时按 id 出 members\<id>\CODEBUDDY.md
+node C:\ProgramData\anc\render\cli.ts deploy --org D:\anc\org --out D:\anc\build --json
+```
+
+- `vault_shared` 在公司 bot 上填本机路径（`D:\anc\vault-shared`），**不要填 UNC**：UNC 里带主机名，persona 会把它写进对话；
+- 渲染是整组事务：失败会整体还原（`deployOrg`），不会留半套产物；
+- `groups.json` 是 `bind import` 的输入；停用成员不会出现在里面。
 ### 共享账号（vault 只读）
 
 ```powershell

@@ -5,7 +5,7 @@
 //   verify  --home <家目录> [--json]
 
 import { fileURLToPath } from 'node:url';
-import { renderOrg } from './index.ts';
+import { deployOrg, renderOrg, rollbackOutDir } from './index.ts';
 import { installPackage, verifyInstall } from './onboard.ts';
 
 const argv = process.argv.slice(2);
