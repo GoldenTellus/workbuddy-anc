@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeMarkdown } from './summarize.ts';
+import { summarizeMarkdown, searchAndSummarize } from './summarize.ts';
 
 const doc = `---
 title: 对账流程
@@ -69,4 +69,17 @@ test('摘要：重复行只留一次，且结果稳定', () => {
   const b = summarizeMarkdown(dup);
   assert.deepEqual(a, b);
   assert.equal(a.lines.filter((l) => l === '同一行').length, 1);
+});
+
+test('检索：关键词命中正文与标题，标题优先，结果稳定', () => {
+  const docs = [
+    { path: 'b.md', text: '# 无关标题\n\n正文提到对账流程一次。' },
+    { path: 'a.md', text: '# 对账流程\n\n每周一次。' },
+    { path: 'c.md', text: '# 别的\n\n完全无关。' },
+  ];
+  const hits = searchAndSummarize(docs, '对账');
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].path, 'a.md', '标题命中的排前面');
+  assert.deepEqual(searchAndSummarize(docs, '对账'), hits, '同样输入结果稳定');
+  assert.deepEqual(searchAndSummarize(docs, '  '), []);
 });

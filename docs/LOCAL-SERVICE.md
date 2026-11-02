@@ -33,6 +33,8 @@ npm run service -- bind list
 
 # 本地摘要（D19/C13）：正文不出本机。只读文件、按规则抽要点，不调模型、不发网络请求
 npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--max-chars 160]
+# 按关键词在 vault 里定位（标题命中优先），每条给路径 + 摘要；不带 --root 时用 config 里的两个 vault
+npm run service -- --json summary --find <关键词> [--root <目录>] [--max-docs 5]
 
 # 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
 npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00"

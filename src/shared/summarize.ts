@@ -71,7 +71,8 @@ export function summarizeMarkdown(raw: string, opts: SummaryOptions = {}): Summa
   let title = '';
   const titleIdx = visible.findIndex((l) => /^#\s+\S/.test(l));
   if (titleIdx >= 0) title = clip(visible[titleIdx].replace(/^#\s+/, ''), maxChars);
-  else if (visible.length) title = clip(visible[0].replace(/^[>#*\-\s]+/, ''), maxChars);
+  else if (visible.length) title = clip(visible[0].replace(/^[>#*\-\s]+/, ''), Math.min(maxChars, 80));
+  if (!title) title = '';
 
   const scored = visible
     .map((line, i) => ({ line, i, score: scoreLine(line) }))
@@ -93,4 +94,39 @@ export function summarizeMarkdown(raw: string, opts: SummaryOptions = {}): Summa
   }
 
   return { title, lines, scanned: visible.length };
+}
+
+export interface DocEntry {
+  path: string;
+  text: string;
+}
+
+export interface DocHit {
+  path: string;
+  title: string;
+  lines: string[];
+}
+
+/**
+ * 在给定文档集合里按关键词定位，并对命中的文档各生成一份本地摘要。
+ * 关键词大小写不敏感；标题命中优先，其次正文命中。
+ * 纯函数：不读盘、不联网，便于测试与复用。
+ */
+export function searchAndSummarize(docs: DocEntry[], keyword: string, opts: SummaryOptions & { maxDocs?: number } = {}): DocHit[] {
+  const kw = String(keyword ?? '').trim().toLowerCase();
+  if (!kw) return [];
+  const maxDocs = Math.max(1, Math.min(20, Math.trunc(opts.maxDocs ?? 5)));
+  const scored: { hit: DocHit; rank: number }[] = [];
+  for (const d of docs) {
+    const text = String(d.text ?? '');
+    const s = summarizeMarkdown(text, opts);
+    const inTitle = s.title.toLowerCase().includes(kw);
+    const inBody = text.toLowerCase().includes(kw);
+    if (!inTitle && !inBody) continue;
+    scored.push({ hit: { path: d.path, title: s.title, lines: s.lines }, rank: inTitle ? 2 : 1 });
+  }
+  return scored
+    .sort((a, b) => b.rank - a.rank || a.hit.path.localeCompare(b.hit.path, 'en'))
+    .slice(0, maxDocs)
+    .map((x) => x.hit);
 }
