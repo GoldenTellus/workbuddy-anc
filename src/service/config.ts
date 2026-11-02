@@ -60,6 +60,11 @@ export function validateConfig(key: string, value: string): void {
     if (!HHMM.test(v)) throw new Error(`${key} 必须是 HH:mm（00:00–23:59），收到: ${value}`);
   } else if (key === 'weekdays') {
     if (!v.split(',').every((p) => /^\s*[1-7](\s*-\s*[1-7])?\s*$/.test(p))) throw new Error('weekdays 只能是 1–7 的列表或区间，如 1-5 或 1,2,3');
+  } else if (key === 'timezone') {
+    // 存 Windows 时区 Id：doctor 用 Get-TimeZone 可直接比，IANA 名在 PowerShell 5.1 下没有内建映射
+    if (!/^[A-Za-z][A-Za-z0-9 _+\-]{2,63}$/.test(v) || v.indexOf('/') !== -1) throw new Error('timezone 必须是 Windows 时区 Id，如 China Standard Time；IANA 名（Asia/Shanghai）doctor 比不上，先换成对应的 Windows Id');
+  } else if (key === 'vault_internal' || key === 'vault_shared') {
+    if (v && !/^[A-Za-z]:[\\/]/.test(v)) throw new Error(key + ' 必须是绝对路径，如 D:\\anc\\vault-internal');
   } else if (key === 'holidays') {
     if (v && !v.split(',').every((p) => /^\s*\d{4}-\d{2}-\d{2}\s*$/.test(p))) throw new Error('holidays 只能是 YYYY-MM-DD 的逗号列表');
   }
@@ -73,6 +78,8 @@ export function configProblems(db: DatabaseSync): string[] {
   if (s !== null && !HHMM.test(s)) out.push('work_start 格式无效，已按默认处理: ' + s);
   if (e !== null && !HHMM.test(e)) out.push('work_end 格式无效，已按默认处理: ' + e);
   if (s !== null && e !== null && HHMM.test(s) && HHMM.test(e) && s === e) out.push('work_start 与 work_end 相同，已按默认处理');
+  const tz = getConfig(db, 'timezone');
+  if (tz !== null && (!/^[A-Za-z][A-Za-z0-9 _+\-]{2,63}$/.test(tz) || tz.indexOf('/') !== -1)) out.push('timezone 格式无效（要 Windows 时区 Id）: ' + tz);
   return out;
 }
 

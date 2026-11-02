@@ -15,10 +15,11 @@ import * as a2a from './a2a.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { startServer } from './http.ts';
+import { checkProjection, rebuildProjection, writeProjection } from './project.ts';
 
 type Args = Record<string, string | true> & { _: string[] };
 
-const BOOL_FLAGS = new Set(['json', 'once']);
+const BOOL_FLAGS = new Set(['json', 'once', 'check', 'rebuild']);
 
 function parse(argv: string[]): Args {
   const out: Args = { _: [] };
@@ -64,7 +65,7 @@ function numArg(v: unknown, def: number, min = 1, max = 1000): number {
 
 const db = openDb(dbPath);
 
-if (!group) fail('缺少命令组（bind / task / reminder / outbox / a2a / config / backup / loop / serve）');
+if (!group) fail('缺少命令组（bind / task / reminder / outbox / a2a / config / backup / project / loop / serve）');
 
 try {
   if (group === 'bind') {
@@ -211,6 +212,21 @@ try {
       config.setConfig(db, key, String(args.value ?? '').trim());
       out({ ok: true, key, value: config.getConfig(db, key) });
     } else fail('未知 config 子命令');
+  } else if (group === 'project') {
+    // 任务投影：库 → 内部区 collab/tasks.md。--check 只校验，--rebuild 删了重建
+    const internal = typeof args.internal === 'string' ? args.internal : (config.getConfig(db, 'vault_internal') ?? '');
+    if (!internal) fail('缺少 --internal <内部区目录>（也可先 config set vault_internal <绝对路径>）');
+    if (args.check === true) {
+      const c = checkProjection(db, internal);
+      out({ ok: c.ok, path: c.path, reason: c.reason });
+      if (!c.ok) process.exit(1);
+    } else if (args.rebuild === true) {
+      const c = rebuildProjection(db, internal);
+      out({ ok: c.ok, path: c.path, reason: c.reason });
+      if (!c.ok) process.exit(1);
+    } else {
+      out({ ok: true, ...writeProjection(db, internal) });
+    }
   } else if (group === 'serve') {
     // 长驻 HTTP 面：只监听 127.0.0.1。token 从 secrets 读，未配置时业务路由全 503（fail-closed）
     const secretsDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');

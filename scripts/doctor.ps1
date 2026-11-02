@@ -302,8 +302,15 @@ if ($Repo -and (Test-Path (Join-Path $Repo '.git'))) {
 
 # 15 时区
 $tz = (Get-TimeZone).Id
-if ($tz -eq 'China Standard Time') { Add-Result 'timezone' 'PASS' $tz '-' }
-else { Add-Result 'timezone' 'WARN' "当前 $tz" '设计默认 Asia/Shanghai；确认是有意为之' }
+$wantTz = $null
+if ($cfg -and $cfg.config -and ($cfg.config.PSObject.Properties.Name -contains 'timezone')) { $wantTz = [string]$cfg.config.timezone }
+if ($wantTz -and $tz -ne $wantTz) {
+    Add-Result 'timezone' 'FAIL' ("系统 $tz，配置要求 $wantTz（提醒时间会整体偏移）") 'config set timezone 改成实际时区，或修正系统时区'
+} elseif ($tz -eq 'China Standard Time') {
+    Add-Result 'timezone' 'PASS' $tz '-'
+} else {
+    Add-Result 'timezone' 'WARN' ("当前 $tz（未配置 timezone，按 China Standard Time 设计）") ('config set timezone "' + $tz + '"')
+}
 
 # 16 数据库
 $db = "$env:ProgramData\anc\data\anc.db"

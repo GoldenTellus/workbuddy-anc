@@ -10,7 +10,8 @@ import { enqueue, listPendingDue, claim, markSent, markFailed, requeueTransientF
 /** 到点提醒的有效期：超过这么久还没发出去（断网、积压）就作废，不补发。 */
 const REMINDER_TTL_MIN = 60;
 import { assertSafeOutbound } from './outbound-scan.ts';
-import { loadRules, isWorkTime, nextWorkStart } from './config.ts';
+import { getConfig, loadRules, isWorkTime, nextWorkStart } from './config.ts';
+import { writeProjection } from './project.ts';
 
 export type Sender = (url: string, text: string, mentions: string[]) => Promise<void>;
 
@@ -183,6 +184,12 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
   }
 
   const r = await sendPending(db, { ...opts, now: toIso(now) });
+  // 任务投影（C2）：配置了内部区就顺手更新；失败只在日志里留痕，不能阻断提醒与发送
+  const internalDir = getConfig(db, 'vault_internal');
+  if (internalDir) {
+    try { writeProjection(db, internalDir); } catch (e) { console.error('WARN  投影失败: ' + (e as Error).message); }
+  }
+
   return { enqueued, sent: r.sent, failed: r.failed, skipped, requeued };
 }
 

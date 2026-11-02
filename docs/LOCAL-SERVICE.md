@@ -63,6 +63,19 @@ npm run service -- config set --key work_start --value 09:00
 npm run service -- config set --key work_end --value 18:00
 npm run service -- config set --key weekdays --value 1-5
 npm run service -- config set --key holidays --value 2026-10-01,2026-10-02
+# 时区必须是 Windows 时区 Id（Get-TimeZone 查当前值）；IANA 名（Asia/Shanghai）会被拒
+npm run service -- config set --key timezone --value "China Standard Time"
+# 内部区绝对路径：投影与 A2A 都往这里落
+npm run service -- config set --key vault_internal --value D:\anc\vault-internal
+
+# 任务投影：SQLite → 内部区 collab/tasks.md（配置了 vault_internal 时 loop 每次 tick 顺手更新）
+npm run service -- project
+npm run service -- project --check      # 只校验：投影缺失/被手改/库变了没重投影 → 非 0
+npm run service -- project --rebuild    # 删了重建（从库恢复视图）
+
+# HTTP 面（长驻；只监听 127.0.0.1:17891）
+npm run service -- serve
+# token 在 %ProgramData%\anc\secrets\service-token.txt；未配置时业务路由全 503，只有 /__anc_health 可用
 ```
 
 所有命令支持 `--db <path>` 与 `--json`。默认库 `%USERPROFILE%\anc\anc.db`。
@@ -97,10 +110,8 @@ npm run test:service
 
 ## 还没做
 
-- HTTP 接口与 token 校验、存活探测（§5.5）——现在是 CLI + 计划任务，没有常驻 HTTP 服务；
-- Windows 服务形态（当前是计划任务 `anc-service` 每分钟跑一次 `loop --once`）；
-- vault 内部区的 markdown 投影与 `reproject`；
-- 发送前「领取」已实现，但**没有**发送队列的多进程协调（同一时刻只靠 SQLite 的领取保证不重复发）。
+- Windows 服务形态（当前是计划任务 `anc-service` 每分钟跑一次 `loop --once`，外加常驻的 `anc-http`）；
+- 发送队列的**多进程**协调（同一时刻只靠 SQLite 的领取保证不重复发；已用两个连接验证"只有一个拿到"）。
 
 ## 安全
 

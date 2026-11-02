@@ -239,7 +239,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | # | 缺口 | 来源 | 验收 | 依赖 | 规模 |
 |---|---|---|---|---|---|
 | C1 | HTTP 接口 + token + 存活探测 | §5.5 / LOCAL-SERVICE:100 | **已落地（2026-11-02）**：`src/service/http.ts` + `cli serve`，只监听 `127.0.0.1:17891`；未配 token 业务路由 503（fail-closed）、缺 401、错 403；`/__anc_health` 免 token；第 9 个任务 `anc-http`（LOCAL SERVICE，常驻）；doctor 加 `http-health`、watchdog 加探测 | `http.test.ts` 4 项；实机 health/401/403/200 实测 | M |
-| C2 | vault 投影 + `reproject` | §5.5 / INGEST:80 | 删投影 → 重建 → hash 对拍一致 | C1(可选) | M |
+| C2 | vault 投影 + `reproject` | §5.5 / INGEST:80 | **已落地（2026-11-02）**：`src/service/project.ts`；内部区 `collab/tasks.md` 由库单向生成（**不含时间戳**，同库状态生成同字节），原子写；`project` / `--check` / `--rebuild`；配了 `vault_internal` 时 loop 每次 tick 顺手更新，失败只留 WARN；生产内部区 `.gitignore` 已排除该文件（派生数据，可从库重建） | 新用例 2 项（幂等、缺失/手改/库变三种 stale）；实机：生成 8 行 → check true → 手改后 false+exit1 → rebuild true | M |
 | C3 | 后台任务 + `needs_review` | §5.5 / D22 | 执行器被杀 → 进 `needs_review`;所有者确认才重排 | A4 | L |
 | C4 | A2A 自动通道 | §5.6 / D23 | 若 T14 通:个人 bot 发群消息 → 自动归档;不通:员工转发写死 | A5 | L |
 | C5 | 技能同步 T15 | §7 | 测通才做;不通则"技能只走名片 + vault"写死 | — | M |
@@ -247,7 +247,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | C7 | 离职自动化 | §5.8 | `disabled:true` → 不重建、任务转交、账号删除、索引清理 | C1 | M |
 | C8 | 员工共享账号 | OPS:76 | 名单 → 开号 → 读通/写拒/不能登录桌面 | 名单 | S |
 | C9 | 渲染器 `rollback` + 部署脚本 | RENDERER:95 | 部署失败一键回滚,产物 hash 对拍 | H9 | S |
-| C10 | 配置化 | §5.7 / `config.ts:116`(isWorkTime 用系统本地时间) | 时区可配(现依赖系统时区);`weekdays`/`holidays` 非法值报错不兜底 | — | S |
+| C10 | 配置化 | §5.7 / `config.ts:116`(isWorkTime 用系统本地时间) | **已落地（2026-11-02）**：新增 `timezone`（只收 Windows 时区 Id，`Asia/Shanghai` 这类 IANA 名会被拒并提示对照）与 `vault_internal`/`vault_shared`（绝对路径校验）；doctor 的时区检查改成「与配置比，不一致 = FAIL」，未配置时按设计默认给 WARN | 非法值实测被拒（IANA 名、相对路径）；doctor `timezone PASS` | S |
 | C13 | 不上云的落地 | D19 / §8 | 内部区与共享区正文都不作为对话内容;只传路径/标题/结构化字段;摘要由本地脚本(不调模型)生成;命中大段正文时拒答并提示"在本机打开文件";审计日志能证明 0 次正文进对话 | — | M |
 
 **gate C**:11 件全部落地,或带"不做 + 理由"回写 FORK;不存在第三种状态。（原 C11/C12 已按 D21/D20 移入 §8「不做的事」）
