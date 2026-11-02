@@ -668,3 +668,43 @@ test('outbox：两个连接同时领取，只有一个拿到（多进程语义�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('后台任务：超时转 needs_review 并通知，不自动重试；复核后回到 open', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-bg-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const t = tasks.createTask(db, { title: '跑批', chatId: 'chat-A', kind: 'background', timeoutMinutes: 30 });
+    tasks.startBackgroundTask(db, t.id);
+    const r = await loopTick(db, { now: '2026-11-02T10:31:00+08:00', send: async () => {} });
+    assert.ok(r.enqueued >= 1);
+    assert.equal(tasks.getTask(db, t.id)!.status, 'needs_review');
+    assert.ok(outbox.listOutbox(db, { limit: 20 }).some((m) => (m.dedupe_key || '').startsWith('timeout:')), '应通知交办人');
+    // 再 tick：状态不变、超时事件只记一次（不自动重试）
+    await loopTick(db, { now: '2026-11-02T12:00:00+08:00', send: async () => {} });
+    assert.equal(tasks.getTask(db, t.id)!.status, 'needs_review');
+    assert.equal(tasks.taskEvents(db, t.id).filter((e) => e.kind === 'timeout').length, 1);
+    // 复核 retry → open，started_at 清空
+    const back = tasks.reviewTask(db, t.id, 'retry', 'u1');
+    assert.equal(back.status, 'open');
+    assert.equal(back.started_at, null);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('后台任务：简单任务不能 start；review 只能对 needs_review', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-bg2-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const s1 = tasks.createTask(db, { title: '普通任务', chatId: 'chat-A' });
+    assert.throws(() => tasks.startBackgroundTask(db, s1.id), /只有后台任务/);
+    assert.throws(() => tasks.reviewTask(db, s1.id, 'retry'), /只有 needs_review/);
+    const b1 = tasks.createTask(db, { title: '跑批', chatId: 'chat-A', kind: 'background' });
+    tasks.startBackgroundTask(db, b1.id);
+    assert.throws(() => tasks.startBackgroundTask(db, b1.id), /已经开始过/);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

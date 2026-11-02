@@ -33,7 +33,12 @@ npm run service -- bind list
 
 # 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
 npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00"
+# 后台任务（D22）：执行器仍是 WorkBuddy，小服务只管超时；start 由 bot 动手时调一次
+npm run service -- task add --title "跑月度汇总" --chat-id <chatid> --requester <姓名> --requester-userid <userid> --kind background --timeout 30
+npm run service -- task start --id 9
+npm run service -- task review --id 9 --decision retry --actor <userid>   # 超时后：retry 重排 / close 关掉
 npm run service -- task list --status open
+npm run service -- task list --status needs_review
 npm run service -- task done --id 1 --actor <userid>
 npm run service -- task cancel --id 1 --actor <userid>
 

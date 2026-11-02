@@ -115,6 +115,10 @@ function migrate(db: DatabaseSync): void {
   addCol('chat_bindings', 'userid', 'TEXT');
   addCol('chat_bindings', 'webhook_file', 'TEXT');
   addCol('tasks', 'assignee_userid', 'TEXT');
+// 后台任务（D22）：执行器是 WorkBuddy，小服务只管状态与超时
+addCol('tasks', 'kind', "TEXT NOT NULL DEFAULT 'simple'");
+addCol('tasks', 'started_at', 'TEXT');
+addCol('tasks', 'timeout_minutes', 'INTEGER');
   addCol('tasks', 'requester_userid', 'TEXT');
   addCol('outbox', 'next_attempt_at', 'TEXT');
   addCol('outbox', 'claimed_at', 'TEXT');

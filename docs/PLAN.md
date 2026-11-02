@@ -240,7 +240,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 |---|---|---|---|---|---|
 | C1 | HTTP 接口 + token + 存活探测 | §5.5 / LOCAL-SERVICE:100 | **已落地（2026-11-02）**：`src/service/http.ts` + `cli serve`，只监听 `127.0.0.1:17891`；未配 token 业务路由 503（fail-closed）、缺 401、错 403；`/__anc_health` 免 token；第 9 个任务 `anc-http`（LOCAL SERVICE，常驻）；doctor 加 `http-health`、watchdog 加探测 | `http.test.ts` 4 项；实机 health/401/403/200 实测 | M |
 | C2 | vault 投影 + `reproject` | §5.5 / INGEST:80 | **已落地（2026-11-02）**：`src/service/project.ts`；内部区 `collab/tasks.md` 由库单向生成（**不含时间戳**，同库状态生成同字节），原子写；`project` / `--check` / `--rebuild`；配了 `vault_internal` 时 loop 每次 tick 顺手更新，失败只留 WARN；生产内部区 `.gitignore` 已排除该文件（派生数据，可从库重建） | 新用例 2 项（幂等、缺失/手改/库变三种 stale）；实机：生成 8 行 → check true → 手改后 false+exit1 → rebuild true | M |
-| C3 | 后台任务 + `needs_review` | §5.5 / D22 | 执行器被杀 → 进 `needs_review`;所有者确认才重排 | A4 | L |
+| C3 | 后台任务 + `needs_review` | §5.5 / D22 | **已落地（2026-11-02）**：`tasks.kind/started_at/timeout_minutes` 三列（迁移加列）；`task add --kind background --timeout` + `task start`（重复 start 直接拒，刷新时间会掩盖卡住）+ tick 超时转 `needs_review` 并通知交办人（事件只记一次）+ `task review --decision retry|close` 才离开该状态；**不自动重试** | 新用例 2 项（超时→needs_review→不自动重试→retry 清 started_at；简单任务不能 start、重复 start 被拒）；实机：add→start→回拨 2 小时→tick（enqueued 1, needs_review）→retry 回 open | L |
 | C4 | A2A 自动通道 | §5.6 / D23 | 若 T14 通:个人 bot 发群消息 → 自动归档;不通:员工转发写死 | A5 | L |
 | C5 | 技能同步 T15 | §7 | 测通才做;不通则"技能只走名片 + vault"写死 | — | M |
 | C6 | 真离机备份 | §5.10 / REBUILD §6 | 备份在另一物理盘/UNC;含 `_originals` 与 secrets 恢复策略 | — | M |

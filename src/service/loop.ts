@@ -12,6 +12,7 @@ const REMINDER_TTL_MIN = 60;
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { getConfig, loadRules, isWorkTime, nextWorkStart } from './config.ts';
 import { writeProjection } from './project.ts';
+import { markTimedOut } from './tasks.ts';
 
 export type Sender = (url: string, text: string, mentions: string[]) => Promise<void>;
 
@@ -184,6 +185,13 @@ export async function tick(db: DatabaseSync, opts: TickOptions = {}): Promise<Ti
   }
 
   const r = await sendPending(db, { ...opts, now: toIso(now) });
+  // 后台任务超时（C3）：转 needs_review 并告知交办人；不自动重试，等所有者复核
+  for (const t of markTimedOut(db, now)) {
+    const text = `任务 #${t.id} ${t.title} 执行超过 ${t.timeout_minutes ?? 30} 分钟没收尾，已转人工复核（回「#${t.id} 重排」或「#${t.id} 关掉」）`;
+    enqueue(db, { text, chatId: t.chat_id, dedupeKey: `timeout:${t.id}:${t.started_at}`, at: sendAt });
+    enqueued += 1;
+  }
+
   // 任务投影（C2）：配置了内部区就顺手更新；失败只在日志里留痕，不能阻断提醒与发送
   const internalDir = getConfig(db, 'vault_internal');
   if (internalDir) {

@@ -117,6 +117,9 @@ try {
         assigneeUserId: typeof args['assignee-userid'] === 'string' ? args['assignee-userid'] : undefined,
         requesterUserId: typeof args['requester-userid'] === 'string' ? args['requester-userid'] : undefined,
         dueAt,
+        // 后台任务（D22）：执行器是 WorkBuddy，小服务只管超时；简单任务不允许 start
+        kind: args.kind === 'background' ? 'background' : 'simple',
+        timeoutMinutes: typeof args.timeout === 'string' ? numArg(args.timeout, 30, 1, 1440) : undefined,
       });
       if (dueAt) reminders.scheduleReminder(db, { taskId: t.id, dueAt });
       out({ ok: true, task: t, due_local: dueAt ? new Date(dueAt).toLocaleString('sv-SE') : null });
@@ -137,8 +140,16 @@ try {
         typeof args.actor === 'string' ? args.actor : undefined
       );
       out({ ok: true, task: r.task, enqueued: r.enqueued });
+    } else if (cmd === 'start') {
+      // 后台任务开始执行（bot 动手时调一次）；超时后 loop 会转 needs_review
+      out({ ok: true, task: tasks.startBackgroundTask(db, num('id')) });
     } else if (cmd === 'cancel') {
       out({ ok: true, task: tasks.cancelTask(db, num('id'), typeof args.actor === 'string' ? args.actor : undefined) });
+    } else if (cmd === 'review') {
+      // 所有者复核：retry 回到 open（清 started_at），close 直接取消
+      const decision = String(args.decision ?? '');
+      if (decision !== 'retry' && decision !== 'close') fail('--decision 必须是 retry 或 close');
+      out({ ok: true, task: tasks.reviewTask(db, num('id'), decision as 'retry' | 'close', typeof args.actor === 'string' ? args.actor : undefined) });
     } else fail('未知 task 子命令');
   } else if (group === 'reminder') {
     if (cmd === 'add') {
