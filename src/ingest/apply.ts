@@ -148,7 +148,18 @@ function acquireLock(lockPath: string): number {
     const fd = openSync(lockPath, "wx");
     writeSync(fd, payload);
     return fd;
-  } catch {
+  } catch (e) {
+    // 关键区分：EEXIST 才是"有人占着"；EACCES/EPERM 是**没有写权限**——
+    // 2026-11-02 实测踩过：服务身份没有 .git 写权限时，openSync 失败被当成"活锁"，
+    // 报"另一个入库正在进行"，把权限问题伪装成并发问题，查了半天。
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code && code !== "EEXIST") {
+      throw new IngestError(
+        "VAULT_NOT_WRITABLE",
+        "无法在 vault 里建锁文件（" + code + "）: " + lockPath + "；" +
+          "这通常是运行身份对 vault 没有写权限，不是并发冲突。用 icacls 检查该身份是否有 (OI)(CI)F"
+      );
+    }
     const reason = staleReason(lockPath);
     if (!reason) {
       throw new IngestError("VAULT_BUSY", "另一个入库正在进行（锁文件 " + lockPath + "）；稍后重试，确认没有进程在跑时可删掉锁文件");

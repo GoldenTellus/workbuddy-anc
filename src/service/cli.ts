@@ -3,7 +3,7 @@
 // 用法见 docs/LOCAL-SERVICE.md；所有命令支持 --db 与 --json。
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { openDb, DEFAULT_DB } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
@@ -279,6 +279,28 @@ try {
     const s = await startServer({
       port: numArg(args.port, 17891, 1024, 65535),
       token,
+      // D24 方案 B：入库由服务身份执行，bot 只把批次写进 inbox。
+      // vault 对 bot 收紧成只读之后，这条路径是**唯一**能写 vault 的入口。
+      ingest: async (batchDir: string) => {
+        const inboxRoot = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'inbox');
+        const pending = resolve(inboxRoot, 'pending');
+        const target = resolve(batchDir);
+        // 只认 inbox/pending 下的目录：否则这个端点等于"以服务身份写任意路径"
+        if (!target.startsWith(pending + sep)) {
+          throw new Error('批次目录必须在 ' + pending + ' 下，收到: ' + target);
+        }
+        const vaultShared = config.getConfig(db, 'vault_shared');
+        if (!vaultShared) throw new Error('未配置 vault_shared（config set vault_shared <绝对路径>）');
+        const { applyBatch, archiveBatch } = await import('../ingest/apply.ts');
+        const r = applyBatch(target, vaultShared);
+        // 文件已经写进 vault 了，归档只是"把批次挪到 done"。
+        // 归档失败（服务身份对 inbox 没有删权限，2026-11-02 实测）不该让调用方以为整批失败。
+        let archived: string | null = null;
+        try { archived = archiveBatch(target, inboxRoot); } catch (e) {
+          console.error('WARN  批次已入库但归档失败: ' + (e as Error).message + '（手工把 ' + target + ' 挪到 inbox\\done 即可）');
+        }
+        return { added: r.added, modified: r.modified, originals: r.originals, archived };
+      },
       health: () => {
         let ageMin: number | null = null;
         try { ageMin = Math.round((Date.now() - statSync(logPath).mtimeMs) / 60000); } catch { ageMin = null; }

@@ -13,12 +13,24 @@ export interface HealthInfo {
   detail: string;
 }
 
+export interface IngestOutcome {
+  added: string[];
+  modified: string[];
+  originals: string[];
+}
+
 export interface ServerOptions {
   host?: string;
   port?: number;
   token: string | null;
   health: () => HealthInfo;
   status?: () => Record<string, unknown>;
+  /**
+   * 入库执行器（D24 方案 B）：bot 调 `POST /__anc_ingest`，由**服务身份**去写 vault。
+   * 这样 vault 可以对 bot 用户收紧成只读，bot 只能写 inbox。
+   * 路径校验放在实现里（它才知道 inbox 在哪），这里只保证方法、token 与 body 形状。
+   */
+  ingest?: (batchDir: string) => Promise<IngestOutcome>;
 }
 
 export interface StartedServer {
@@ -33,6 +45,21 @@ function sameToken(got: string, want: string): boolean {
   const b = Buffer.from(want, 'utf8');
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+/** 读请求体：上限 64 KB（一个批次描述用不了这么多），超了直接断开。 */
+function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > limit) { reject(new Error('body-too-large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
 }
 
 function presentedToken(req: IncomingMessage): string | null {
@@ -60,15 +87,14 @@ export async function startServer(opts: ServerOptions): Promise<StartedServer> {
       res.end(JSON.stringify(body));
     };
 
-    if (req.method !== 'GET') { send(405, { ok: false, error: 'method-not-allowed' }); return; }
-
     let path = '/';
     try {
       path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
     } catch { send(400, { ok: false, error: 'bad-url' }); return; }
 
-    // 存活探测：不带 token，也不暴露业务数据
+    // 存活探测：不带 token、只读，也不暴露业务数据
     if (path === '/__anc_health') {
+      if (req.method !== 'GET') { send(405, { ok: false, error: 'method-not-allowed' }); return; }
       const h = opts.health();
       send(h.ok ? 200 : 503, { ok: h.ok, detail: h.detail, ts: new Date().toISOString() });
       return;
@@ -81,9 +107,32 @@ export async function startServer(opts: ServerOptions): Promise<StartedServer> {
     if (!sameToken(got, opts.token)) { send(403, { ok: false, error: 'forbidden' }); return; }
 
     if (path === '/__anc_status') {
+      if (req.method !== 'GET') { send(405, { ok: false, error: 'method-not-allowed' }); return; }
       send(200, { ok: true, ...(opts.status ? opts.status() : {}) });
       return;
     }
+
+    if (path === '/__anc_ingest') {
+      if (req.method !== 'POST') { send(405, { ok: false, error: 'method-not-allowed' }); return; }
+      if (!opts.ingest) { send(503, { ok: false, error: 'ingest-not-configured' }); return; }
+      void (async () => {
+        try {
+          const raw = await readBody(req);
+          let body: { batch?: unknown };
+          try { body = JSON.parse(raw || '{}') as { batch?: unknown }; } catch { send(400, { ok: false, error: 'bad-json' }); return; }
+          const batch = typeof body.batch === 'string' ? body.batch.trim() : '';
+          if (!batch) { send(400, { ok: false, error: 'missing-batch' }); return; }
+          const r = await opts.ingest!(batch);
+          send(200, { ok: true, ...r });
+        } catch (e) {
+          // 入库失败要把原因原样带回去：bot 会把它转告给用户，不能只说"失败了"
+          send(400, { ok: false, error: String((e as Error).message).slice(0, 500) });
+        }
+      })();
+      return;
+    }
+
+    if (req.method !== 'GET') { send(405, { ok: false, error: 'method-not-allowed' }); return; }
     send(404, { ok: false, error: 'not-found' });
   });
 

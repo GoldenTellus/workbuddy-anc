@@ -63,3 +63,71 @@ test('HTTP：health 不 ok 时返回 503（watchdog 靠这个判死）', async (
     await s.close();
   }
 });
+
+test('ingest 端点：未配 token 503、无 token 401、GET 405', async () => {
+  const srv = await startServer({ port: 0, token: null, health: () => ({ ok: true, detail: 'x' }) });
+  try {
+    const r1 = await fetch(srv.url + '/__anc_ingest', { method: 'POST', body: '{"batch":"x"}' });
+    assert.equal(r1.status, 503, '未配 token 时业务路由一律 503');
+  } finally { await srv.close(); }
+
+  const srv2 = await startServer({ port: 0, token: 'tk', health: () => ({ ok: true, detail: 'x' }) });
+  try {
+    const r2 = await fetch(srv2.url + '/__anc_ingest', { method: 'POST', body: '{"batch":"x"}' });
+    assert.equal(r2.status, 401, '没带 token 应 401');
+    const r3 = await fetch(srv2.url + '/__anc_ingest', { method: 'GET', headers: { authorization: 'Bearer tk' } });
+    assert.equal(r3.status, 405, 'GET 应 405');
+  } finally { await srv2.close(); }
+});
+
+test('ingest 端点：body 不对给 400，成功时把结果带回来', async () => {
+  const seen: string[] = [];
+  const srv = await startServer({
+    port: 0,
+    token: 'tk',
+    health: () => ({ ok: true, detail: 'x' }),
+    ingest: async (batch) => {
+      seen.push(batch);
+      if (!batch.includes('pending')) throw new Error('批次目录必须在 inbox/pending 下');
+      return { added: ['collab/a.md'], modified: [], originals: ['_originals/a.txt'] };
+    },
+  });
+  const auth = { authorization: 'Bearer tk' };
+  try {
+    // 坏 JSON
+    const bad = await fetch(srv.url + '/__anc_ingest', { method: 'POST', headers: auth, body: '{oops' });
+    assert.equal(bad.status, 400);
+
+    // 缺 batch
+    const none = await fetch(srv.url + '/__anc_ingest', { method: 'POST', headers: auth, body: '{}' });
+    assert.equal(none.status, 400);
+
+    // 实现里拒（越界路径）
+    const refused = await fetch(srv.url + '/__anc_ingest', { method: 'POST', headers: auth, body: JSON.stringify({ batch: 'C:\\Windows' }) });
+    assert.equal(refused.status, 400);
+    const body = await refused.json() as { error: string };
+    assert.match(body.error, /pending/, '失败原因要原样带回去');
+
+    // 成功
+    const ok = await fetch(srv.url + '/__anc_ingest', {
+      method: 'POST', headers: auth,
+      body: JSON.stringify({ batch: 'C:\\ProgramData\\anc\\inbox\\pending\\batch-x' }),
+    });
+    assert.equal(ok.status, 200);
+    const j = await ok.json() as { ok: boolean; added: string[]; originals: string[] };
+    assert.equal(j.ok, true);
+    assert.deepEqual(j.added, ['collab/a.md']);
+    assert.deepEqual(j.originals, ['_originals/a.txt']);
+    assert.equal(seen.length, 2, '实现应被调用两次（一次被拒、一次成功）');
+  } finally { await srv.close(); }
+});
+
+test('ingest 端点：没配执行器时 503（防止只加了路由却没接实现）', async () => {
+  const srv = await startServer({ port: 0, token: 'tk', health: () => ({ ok: true, detail: 'x' }) });
+  try {
+    const r = await fetch(srv.url + '/__anc_ingest', { method: 'POST', headers: { authorization: 'Bearer tk' }, body: '{"batch":"x"}' });
+    assert.equal(r.status, 503);
+    const j = await r.json() as { error: string };
+    assert.equal(j.error, 'ingest-not-configured');
+  } finally { await srv.close(); }
+});
