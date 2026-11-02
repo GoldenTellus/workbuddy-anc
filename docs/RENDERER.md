@@ -61,6 +61,12 @@ bot: 已接入
 ```powershell
 node src\render\cli.ts render --org org.example --out %TEMP%\anc-render
 node src\render\cli.ts render --org D:\anc\org --out D:\anc\build --json
+
+# 事务式部署：快照 → 渲染 → 逐产物对拍 → 任一失败整体回滚（推荐用这个代替裸 render）
+node src\render\cli.ts deploy --org D:\anc\org --out D:\anc\build --json
+# 回滚到每个文件最新的一份 .bak-<时间>；先 --dry-run 看会动哪些
+node src\render\cli.ts rollback --out D:\anc\build --dry-run
+node src\render\cli.ts rollback --out D:\anc\build
 ```
 
 ## 真相归属（PLAN M3 第 2 项）
@@ -91,6 +97,6 @@ node src\render\cli.ts verify  --home %USERPROFILE%
 
 ## 已实现 / 未实现
 
-- 已实现：org 解析与校验（成员 id/文本字段/webhook 文件名）、公司/个人 persona 渲染、groups.json、指纹、长度闸门、原子写与备份（名字不撞、保留 10 份）、手改检测、个人接入包与技能名片（`--adopt` 闸门、`verify` 对拍）；
+- 已实现：org 解析与校验（成员 id/文本字段/webhook 文件名）、公司/个人 persona 渲染、groups.json、指纹、长度闸门、原子写与备份（名字不撞、保留 10 份）、手改检测、个人接入包与技能名片（`--adopt` 闸门、`verify` 对拍）、**整组事务部署与回滚**（`deploy` / `rollback`，失败整体还原）；
 - 未实现：rollback 子命令（现靠 `.bak-` 备份手动恢复）；渲染器部署到主机的脚本。
 - 现状说明：线上公司 bot 的 persona 由 `scripts/deploy-persona.ps1` 从 `light/personas/company-bot/CODEBUDDY.md` 部署，**不是**渲染器的产物；渲染器的产物用于个人 bot 的接入包。两份公司 persona 已漂移约 60 行，合并是 [PLAN.md](./PLAN.md) 的阶段 H（H9 唯一来源）里的一项。

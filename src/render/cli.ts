@@ -60,6 +60,31 @@ try {
       for (const b of r.backedUp) console.log('backup : ' + b);
       console.log('record : ' + r.record);
     }
+  } else if (cmd === 'deploy') {
+    // 事务式部署：快照 → 渲染 → 逐产物对拍 → 失败整体还原
+    const orgDir = arg('--org');
+    const outDir = arg('--out');
+    if (!orgDir || !outDir) fail('缺少 --org 与 --out', 'USAGE', 2);
+    const r = deployOrg(orgDir, outDir, arg('--templates') || undefined);
+    if (json) console.log(JSON.stringify({ ok: true, inputSha: r.inputSha, verified: r.verified, outputs: r.outputs.length, members: r.members, warn: r.warn, tampered: r.tampered, warnings: r.warnings }));
+    else {
+      console.log('deploy : ' + r.outputs.length + ' 个产物，对拍通过 ' + r.verified + ' 个');
+      console.log('input  : ' + r.inputSha);
+      for (const w of r.warnings) console.log('warn   : ' + w);
+      for (const t of r.tampered) console.log('手改   : ' + t + '（本次已按 org 重写）');
+    }
+  } else if (cmd === 'rollback') {
+    const outDir = arg('--out');
+    if (!outDir) fail('缺少 --out', 'USAGE', 2);
+    const dry = argv.includes('--dry-run');
+    const r = rollbackOutDir(outDir, { dryRun: dry });
+    if (json) console.log(JSON.stringify({ ok: r.skipped.length === 0, dryRun: dry, restored: r.restored.length, skipped: r.skipped }));
+    else {
+      console.log((dry ? 'rollback(dry-run)' : 'rollback') + ' : 还原 ' + r.restored.length + ' 个文件');
+      for (const x of r.restored) console.log('  ' + x.file + '  ←  ' + x.from);
+      for (const s of r.skipped) console.log('  SKIP ' + s);
+    }
+    if (r.skipped.length > 0) process.exit(1);
   } else if (cmd === 'verify') {
     const homeDir = arg('--home');
     if (!homeDir) fail('缺少 --home', 'USAGE', 2);
@@ -69,7 +94,7 @@ try {
     else { console.log('verify: 被改过或缺失'); for (const c of v.changed) console.log('  ' + c); }
     if (!v.ok) process.exit(1);
   } else {
-    fail('未知命令（render / onboard / verify）', 'USAGE', 2);
+    fail('未知命令（render / deploy / rollback / onboard / verify）', 'USAGE', 2);
   }
 } catch (e) {
   fail((e as Error).message, 'ERROR');

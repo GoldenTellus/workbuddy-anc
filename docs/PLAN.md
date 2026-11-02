@@ -246,7 +246,7 @@ V  收口       验收矩阵 + 故障注入 + 浸泡 + 重建    gate: 六条判
 | C6 | 真离机备份 | §5.10 / REBUILD §6 | 备份在另一物理盘/UNC;含 `_originals` 与 secrets 恢复策略 | — | M |
 | C7 | 离职自动化 | §5.8 | `disabled:true` → 不重建、任务转交、账号删除、索引清理 | C1 | M |
 | C8 | 员工共享账号 | OPS:76 | 名单 → 开号 → 读通/写拒/不能登录桌面 | 名单 | S |
-| C9 | 渲染器 `rollback` + 部署脚本 | RENDERER:95 | 部署失败一键回滚,产物 hash 对拍 | H9 | S |
+| C9 | 渲染器 `rollback` + 部署脚本 | RENDERER:95 | **已落地（2026-11-02）**：`deployOrg` 做整组事务——快照 → 渲染 → 逐产物读回对拍 → 任一失败**整体还原**（`writeAtomic` 只管单文件原子，渲染是一组文件，中途失败会留“一半新一半旧”）；`rollbackOutDir` 把每个文件最新的 `.bak-<stamp>` 还原，支持 `--dry-run`；CLI 加 `deploy` / `rollback` | 新用例 4 项（对拍通过、失败整体回滚不留半套、dry-run 不动文件、无备份不抛错）；`npm test` 全绿 | S |
 | C10 | 配置化 | §5.7 / `config.ts:116`(isWorkTime 用系统本地时间) | **已落地（2026-11-02）**：新增 `timezone`（只收 Windows 时区 Id，`Asia/Shanghai` 这类 IANA 名会被拒并提示对照）与 `vault_internal`/`vault_shared`（绝对路径校验）；doctor 的时区检查改成「与配置比，不一致 = FAIL」，未配置时按设计默认给 WARN | 非法值实测被拒（IANA 名、相对路径）；doctor `timezone PASS` | S |
 | C13 | 不上云的落地 | D19 / §8 | **部分落地（2026-11-02）**：persona 与 `anc-ingest` 技能已写死「只报路径与标题」；审计层上线——`src/shared/audit.ts` + 两个 CLI 的 exit 钩子，每次调用写 `%ProgramData%\anc\data\audit.log`（JSONL，只记命令与目标，不记参数值）；doctor 新增 `vault-ingest-audit`（vault 有未跟踪文件但 1 小时内无成功 ingest 记录 → WARN，**这就是绕过 CLI 的证据**）。待补：查库/问答路径的拒答计数（依赖 C4/C5 定形），以及"摘要由本地脚本生成"还没做 | 审计 3 项单测；实机 `EXIT_1/EXIT_2` 都留痕；doctor 当场抓到当前的 2 个未跟踪文件无入库记录 | M |
 

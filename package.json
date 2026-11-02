@@ -22,12 +22,12 @@
     "bot"
   ],
   "scripts": {
-    "test": "node --test scripts/anc-bind/bind.test.mjs src/shared/audit.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/ingest/ingest.test.ts src/render/render.test.ts src/render/onboard.test.ts",
+    "test": "node --test scripts/anc-bind/bind.test.mjs src/shared/audit.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/ingest/ingest.test.ts src/render/deploy.test.ts src/render/render.test.ts src/render/onboard.test.ts",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs",
     "test:service": "node --test src/shared/audit.test.ts src/service/service.test.ts",
     "test:ingest": "node --test src/ingest/ingest.test.ts",
     "ingest": "node src/ingest/cli.ts",
-    "test:render": "node --test src/render/render.test.ts src/render/onboard.test.ts",
+    "test:render": "node --test src/render/deploy.test.ts src/render/render.test.ts src/render/onboard.test.ts",
     "render": "node src/render/cli.ts",
     "service": "node src/service/cli.ts"
   },
