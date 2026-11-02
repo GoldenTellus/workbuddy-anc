@@ -135,3 +135,22 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 
 - 把 `chatid → 员工` 的映射接进本地小服务（SQLite 为真相），agent 只读前缀、不猜人；
 - 与 T20/T22（会话压缩/重置）一起验证前缀是否始终在当轮上下文里。
+
+## 手段清单（FORK D26：闭源不构成排除理由）
+
+WorkBuddy 闭源，但**这不是"做不到"的理由**。下面这些手段本项目都在用或可按需取用，全部由 D16 授权：
+
+| 目标 | 手段 | 位置 / 状态 |
+|---|---|---|
+| 拿群身份与发送人 | 在 `_compile` 里包 `emitMessage`，往正文注入 `[anc:chat=… from=…]` | `preload.cjs`，**在跑**（D17） |
+| 拿出站文本 | 包 `sendReply(chatId, text)` | `preload.cjs`，**在跑**（出站过滤挂这） |
+| 拦自动升级检查 | 劫持 `https.request` 匹配 `/v2/update` | `preload.cjs`，**在跑**；**注意它会让 Electron 主进程崩**，已加进程守卫（`process.type === "browser"` 时直接返回） |
+| 驱动 UI（切工作区、点按钮） | CDP / UIA | 已验证（T6 / T13 / R6） |
+| 看内部结构 | `app.asar` 解包 + 反编译 + `Module._compile` hook 观察 | D16 允许，按需 |
+| **换模型后端**（Harness 零差距） | 拦模型调用层 → 改端点 / 模型名 → 转发 | **待做**，见 PLAN §2.3 |
+| 进程 / 服务级 | 计划任务、服务配置、注入 inspector（`--inspect-brk` + `inject.cjs`） | 已在用 |
+
+**默认动作**：遇到做不到，先想"能不能**加一层**"，而不是降级需求。
+
+**代价写清**：每加一层都要按 `FORK §11` 登记目标版本 / hash，随 WorkBuddy 升级重放（R7），并可一键关闭。
+**不是不做，是做了要维护**——真正的风险是"忘了它存在"（见 `VERIFY §16`：`patch-state.json` 的 `applied:true` 长期是上一次成功启动的残留）。

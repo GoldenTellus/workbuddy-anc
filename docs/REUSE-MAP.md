@@ -1,6 +1,6 @@
 # 上游复用清单
 
-版本:0.3(2026-11-02)。0.3 补录 6 条原表漏判(`tools/harness-proxy/tool-turn-filter.mjs`、`light/vault-service/README.md`、`tsconfig.json` 的误判、`docs/RESEARCH.md` 等),并新增 §6「按阶段取用」把本表与 PLAN 2.0 的 A/R/H/C/V 对齐。0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
+版本:0.4(2026-11-03，§3 按零差距口径重判)。0.3 补录 6 条原表漏判(`tools/harness-proxy/tool-turn-filter.mjs`、`light/vault-service/README.md`、`tsconfig.json` 的误判、`docs/RESEARCH.md` 等),并新增 §6「按阶段取用」把本表与 PLAN 2.0 的 A/R/H/C/V 对齐。0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
 
 > **0.2:上游文件已按本表整理**(2026-11-01)。下文的「来源」列仍写上游原路径(便于对照上游),现在的位置是:
 >
@@ -12,6 +12,11 @@
 文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 1.1 的 M1 无关（1.1 已归档：`git show 52e816a:docs/PLAN.md`）;写明「该分支」的指 `reference/upstream/unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
 
 判定分五档:**直接用**(基本原样)/ **改写**(结构保留、内容要改)/ **借鉴**(只取思路)/ **仅参考** / **不适用**。
+
+**两条前置原则（2026-11-03，依据 FORK D26）**：
+
+1. **默认复用，不重复造**。顺序写死：先查本表 → 再查 `reference/upstream/` → 最后才自己写；自己写时结构照上游的概念。
+2. **"不适用"只有在功能本身不该存在时才成立**。"实现方式不同"叫**换机制达成**，不算缺口。1.0 口径是零差距，§3 已按此重判。
 
 ## 1. 总体结论
 
@@ -147,20 +152,42 @@
 | `docs/RESEARCH.md` | 仅参考(原表未判) | 对外材料、选型答辩 | §5 IM 平台矩阵可作"为什么是企微"的旁证;§6「文件系统当数据库」的行业背书可引用;§2/§3/§4(cc-connect 选型、OpenClaw、Harness 双后端)与本库无关 |
 | 根 `.gitignore`、上游 `AGENTS.md` / `CLAUDE.md` | 仅参考 | 措辞对照 | `.gitignore` 的 `_research/` 本库已同源采用;`.dev.vars` / `.wrangler/` 不需要。上游指引只作"铁律怎么写、诚实条款怎么落到 persona"的措辞对照,避免两套指引漂移 |
 
-## 3. 不适用
+## 3. 之前标"不适用"的，按功能等价重判
 
-| 上游 | 原因 |
+> **口径变更（2026-11-03，依据 FORK D26）**：1.0 要求覆盖上游全部功能、零差距。
+> "不适用"只有在**功能本身不该存在**时才成立；如果只是"实现方式不同"，
+> 那叫**换机制达成同一目的**，不算缺口。
+>
+> 按这个口径重判，原来 9 条"不适用"里，**只有 3 条是真的不适用**。
+
+### 3.1 换机制达成（不是缺口）
+
+| 上游 | 原判 | 重判 | 本项目怎么达成的 |
+|---|---|---|---|
+| SPEC §2.2 每 bot 一个 cwd 四合一 | 不适用（各群共用 `Claw`） | **✅ 达成** | 用 **WorkBuddy 工作区**按目录隔离。R6 实测：另一工作区放探针后，回答体现探针、无 Claw 的 persona 痕迹 |
+| SPEC §3.1 cc-connect、平台优先级、卡片回调 | 不适用（企微由 WorkBuddy 自带） | **✅ 达成** | "让 bot 接进 IM"这个功能已实现（WorkBuddy 内置企微通道）。cc-connect 只是**它的一种实现** |
+| SPEC §3.3 launchd / systemd / bubblewrap | 不适用（Windows） | **✅ 达成** | 计划任务（9 个）+ NTFS ACL 达成"常驻 + 隔离"；沙箱用账号隔离 + ACL（D25） |
+| `light/vault-service` 的 Worker / R2 部署 | 不适用（vault 在本地） | **✅ 达成** | **git 顶替 R2**（版本历史）、**CLI 顶替 MCP**（读写接口）、本地目录顶替云端 |
+| LESSONS §1 批量 provisioning（中转站签发 key） | 不适用（Enterprise 席位替代） | **🟡 部分** | "停用的不自动重建"已借用（离职 P-7）；"签发 key"由企微席位取代，目的（给每个人配 bot）达到 |
+
+### 3.2 真不适用（功能本身在本项目不该存在）
+
+| 上游 | 为什么真的不适用 |
 |---|---|
-| SPEC §2.2 每 bot 一个 cwd 四合一 | 各群大概率共用 `Claw` 一个目录(T10) |
-| SPEC §3.1 cc-connect、平台优先级、卡片回调;LESSONS §2.5 | 企微连接由 WorkBuddy 自带;群机器人 webhook 只能发、不能收 |
-| SPEC §3.2 Harness 接口;`tools/harness-proxy/` 功能;LESSONS §2.4 | WorkBuddy 闭源,改写它的请求就是封装它 |
-| `feat-m1-w1/src/render/toml.ts` 的 TOML 渲染与转义、`parseAncToml` | 没有 cc-connect |
-| SPEC §3.3 launchd / systemd、bubblewrap;M1-DESIGN §5.1 plist | Windows 主机;沙箱改用标准用户 + NTFS 权限 |
-| `light/vault-service` 的 Worker / R2 部署、wrangler 配置 | vault 在主机本地 |
-| LESSONS §1 批量 provisioning(中转站签发 key) | Enterprise 席位替代;只借「停用的不自动重建」用于离职 |
-| docs-debt 的一机多公司 | 一机一公司 |
-| PLAN 的 M1–M5 里程碑 | 要按新方向重排 |
+| `feat-m1-w1/src/render/toml.ts` 的 TOML 渲染、`parseAncToml` | 那是 cc-connect 的配置格式。本项目 org 数据用 **markdown + frontmatter**，"机器可读的 org 清单"这个目的已达到，不需要 TOML |
+| docs-debt 的**一机多公司** | 上游 v1 自己也明确不支持（SPEC §12 开放问题 2）。本项目形态是**一机一公司** |
+| PLAN 的 **M1–M5 里程碑** | 里程碑是**项目计划**不是功能。本项目用自己的阶段划分（PLAN 1.0 的 S/O/L/D） |
 
+### 3.3 待补（真缺口，不是"不适用"）
+
+| 上游 | 缺什么 | 补法 |
+|---|---|---|
+| **SPEC §3.2 Harness 接口；`tools/harness-proxy/` 的 `system-prompt-proxy`** | 上游的 Harness 能**换 provider、挂兜底模型**；本项目锁死在 WorkBuddy 自带模型 | 按 D26：**拦模型调用层 → 改端点/模型名 → 转发**。手段与"拦 `https.request` 拦升级检查"同类，只是目标换成模型 API。难点是先定位模型调用在哪个模块（解包 `app.asar` 或 hook `Module._compile` 观察） |
+
+> `tool-turn-filter.mjs` 已在 §2.9 判为"借鉴"，本项目也落地了同类机制（包 `sendReply` 做出站过滤）。
+> 但**判据强度有差距**（词表 vs 结构判断），这条在 `UPSTREAM-COVERAGE.md` §3.3 标为"算差距"，归 PLAN 阶段 O。
+
+---
 ## 4. 要警惕的坑
 
 1. **单写者不等于不丢更新**:入库进程把提交排成队,但挡不住「基于旧版本生成的整文件替换」。多个群同时找公司 bot 时更明显,必须沿用 base hash。
