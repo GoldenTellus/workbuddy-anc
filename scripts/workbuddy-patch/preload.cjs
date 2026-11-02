@@ -32,7 +32,21 @@ function expand(p) {
 }
 
 const LOG = expand(mf.log || '%USERPROFILE%\\anc\\workbuddy-patch.log');
-const STATE = expand(mf.state || '%ProgramData%\\anc\\data\\patch-state.json');
+const STATE = expand(mf.state || '%ProgramData%\anc\data\patch-state.json');
+// 出站文本记录（默认关）：存在 log-out.flag 时，把真正要发出去的最终文本追加到 patch-out.log。
+// 用途：验收"另一个工作区读不到 Claw 的 CODEBUDDY.md"这类只能在 UI 里跑的事，事后可机读。
+const __ancPath = require('path');
+const OUT_FLAG = __ancPath.join(__ancPath.dirname(STATE), 'log-out.flag');
+const OUT_LOG = __ancPath.join(__ancPath.dirname(STATE), 'patch-out.log');
+global.__ancLogOut = function (chatId, text) {
+  try {
+    if (!fs.existsSync(OUT_FLAG)) return;
+    const s = String(text == null ? '' : text);
+    const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 12) +
+      ' len=' + s.length + ' text=' + s.slice(0, 400).replace(/\r?\n/g, '\\n') + '\n';
+    fs.appendFileSync(OUT_LOG, line, 'utf8');
+  } catch (e) {}
+};
 function writeState(extra) {
   try {
     fs.mkdirSync(path.dirname(STATE), { recursive: true });
@@ -151,6 +165,7 @@ const PATCH_BODY = [
   '        var filtered = text;',
   '        try { filtered = __ancFilterNarration(text); } catch (e) { filtered = text; }',
   '        try { if (typeof filtered === "string" && filtered.trim() === "") { global.__ancNarrationSkipped = (global.__ancNarrationSkipped || 0) + 1; return Promise.resolve(true); } } catch (e) {}',
+  '        try { if (global.__ancLogOut) global.__ancLogOut(chatId, filtered); } catch (e) {}',
   '        return __ancOrigReply.call(this, chatId, filtered);',
   '      };',
   '      __ancCls.prototype.__ancReplyPatched = true;',
