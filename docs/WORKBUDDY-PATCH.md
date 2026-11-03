@@ -120,6 +120,73 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 3. 重新跑一遍验证（本节第 1–4 步）；
 4. 升级后若模块结构变了（导出名不再是 `t` / `WecomAiBotClient`），补丁会静默跳过——日志里只有 `SKIP`，此时按需改 `preload.cjs` 的取类逻辑，并把改动记进 §11。
 
+### 5.1 自愈链路（2026-11-03 实测摸清）
+
+补丁不是"启动了就有"，是**三层接力**兜住的：
+
+```
+anc-patch-guard（每分钟）
+  ├─ 维护开关 maintenance.flag 存在 → 退出（升级/排障期间不抢）
+  ├─ 找主进程（WorkBuddy.exe 且命令行不含 --type= / --daemon-app-serv）
+  ├─ 没在跑 → anc-selfheal.ps1 -Apply（10 分钟冷却）
+  └─ 在跑 → 判断补丁是否"对得上"
+        applied=true 且 patch-state.at >= 主进程创建时间 - 15 秒
+        ├─ 对上 → 退出
+        └─ 对不上 → anc-selfheal.ps1 -Apply
+
+anc-selfheal.ps1
+  ├─ 经 explorer.exe 启动 launch-patched.ps1        ← 关键，见下
+  ├─ 等补丁日志出现 INJECTED / APPLIED
+  └─ 两次都没见到 → 写 restart-failed + 发群告警
+
+launch-patched.ps1
+  └─ WorkBuddy.exe --inspect-brk=PORT → inject.cjs 注入 NODE_OPTIONS → 放行
+```
+
+四条冷却 / 避让规则（防止"每分钟拉一次进程"把机器拖死）：
+
+| 规则 | 值 | 目的 |
+|---|---|---|
+| guard 自己记的拉起时间 | 3 分钟 | 别在自愈还没跑完时重复触发 |
+| selfheal 冷却 | 10 分钟 | 两个任务各自独立，冷却要写两边 |
+| blocked 状态 | 60 分钟 | 已判定「修不了」（`anchors-missing` / `inspect-failed`）时不再拉进程 |
+| canary 避让 | 2 分钟 | 最近有人在对话就不重启，等下一分钟的空档 |
+
+**★ 必须经 Explorer 启动，不要直接 Start-Process**
+
+`anc-selfheal.ps1` 第 94 行的注释：
+
+> 经 Explorer 启动：与人工双击/relaunch.cmd 的路径一致，**避免直接 Start-Process 导致的提前退出**
+
+**这是 2026-11-02 排障踩坑的根因**：用 `Start-Process WorkBuddy.exe` 反复试，主进程被放行后立即 `exit 0`、不 fork 子进程，看起来像"补丁把 WorkBuddy 弄崩了"。实际是**启动方式**的问题。
+
+**结论：手工排障要用 `launch-patched.ps1`，或者等 `patch-guard` 自己补（最多 1 分钟）。**
+
+### 5.2 注入是三态，不是"成功/失败"（2026-11-03 实测）
+
+| 状态 | 触发条件 | 行为 | 告警 |
+|---|---|---|---|
+| `mode=hash` | 目标文件 sha256 与 manifest 一致 | 精确匹配后打补丁 | 无 |
+| **`mode=anchor`** | hash 不匹配但**结构锚点在**（`prefix = "[anc:chat="` 等） | **降级**：按锚点照样打，标 `version-unverified` | **发**（"版本变化，请回归后更新 manifest"） |
+| 失败 | hash 不匹配**且**锚点不在 | 两次自愈都失败 → `restart-failed`，60 分钟内不再试 | 发（"自愈重启失败"） |
+
+**为什么这层重要**：升级后目标文件 hash 必变。没有 `mode=anchor`，每次升级都会掉线直到人工更新 manifest；有了它，升级后的表现是"降级可用 + 一条告警"。
+
+**R7 验证时要看的是告警到没到、回归过没过，不是"补丁掉没掉"。**
+
+实测方法：把 `manifest.json` 的 `sha256` 改成全零 → 走 `mode=anchor` + 发 ALERT + `APPLIED mode=anchor`。
+（第三态"锚点也不在"未单独制造故障，它发的告警走同一套 webhook，第二态已证明通路可达。）
+
+### 5.3 doctor 查不到的一件事
+
+`deploy-layout` 只比**部署目录 vs 仓库**，不比**运行时 vs 部署目录**。
+
+所以会出现：部署是新的、仓库是新的、**但正在跑的进程加载的是更早的版本**。
+
+判断运行时版本的唯一可靠办法：看 `patch-state.json` 的 `at` 与主进程创建时间——`at` 早于进程创建，说明跑的是更早的内容，需要重启才加载新部署的那版。
+
+另外 `deploy.ps1` **不清理仓库里没有的多余文件**：换分支或回退后，旧模块会残留在 `%ProgramData%\anc\service\`。`doctor` 查不出（它只查"仓库的文件部署了吗"）。清理时先确认仓库代码没有引用它们。
+
 ## 已知限制
 
 - **改动后行为**：这条能力不属于 WorkBuddy 的产品事实，只能写进 §11 台账，不能写进 §6。
