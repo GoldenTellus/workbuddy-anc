@@ -885,3 +885,77 @@ if (__ancIsMainProc) { module.exports = {}; return; }
 
 > 前一次记录里"杀 WorkBuddy 会让 CoworkVMService 跟着停"是**误判**——那是 Claude Desktop 的服务
 > （`WindowsApps\Claude_*\app\resources\cowork-svc.exe`），与 WorkBuddy 无关，是我自己执行过 `Stop-Service`。
+
+## 17. O1：出站旁白过滤挂在错的类上，而且流式架构下代码层做不到（2026-11-03）
+
+### 问题
+
+11-02 19:13 那次回复带了明显旁白（"让我先查一下"），但过滤代码在、部署了、`patch` 项 PASS。
+所以要么没跑到、要么跑了没匹配上。
+
+### 怎么查的
+
+给 `sendReply` 的包装加了观测（只记行数不记内容）：`__ancStat("reply", 原文行数, 过滤后行数, 丢几行)`。
+部署、重启（`mode=hash` / `APPLIED` / 无 `patch error`），然后请维护者在群里问一句。
+
+**bot 回了两行**：
+
+```
+Let me resolve the group binding and list today's open tasks.   ← 该被过滤的
+今天没有未完成任务。                                              ← 正常回答
+```
+
+**观测日志根本没生成。**
+
+### 答案分两层
+
+**第一层：挂错了类。**
+
+从厂商代码（`app.asar` 里 `wecomaibot-client.js`）看：
+
+| 方法 | 属于哪个类 | 上下文 |
+|---|---|---|
+| `sendReply` | **`QQBotClient`** | `[QQBotClient] sendReply: no userId or groupId provided` |
+| `sendStreamChunk` | **`WecomAiBotClient`** | `[WecomAiBotClient] Failed to send stream chunk` |
+
+`preload.cjs` 的注释写着"最终回复走 `sendReply`（内部按字节分块逐条 `sendMessage`）"——**这个假设是错的**。
+企微的 `sendReply` 确实存在，但**实际调用的是 `sendStreamChunk`**：
+
+```js
+async sendStreamChunk(e, t, n) {
+  let r = this.frameCache.get(e);
+  if (r) return await this.wsClient.replyStream(r, { content: t }, 'text', n), true
+}
+```
+
+它直接调 `wsClient.replyStream`，**不经过 `sendReply`**。所以包装 `sendReply` 等于装在一条没人走的路口。
+
+**第二层：就算装对地方，流式也做不了。**
+
+`sendStreamChunk` 的 `t` 是**一个 chunk**，可能只有几个字。判断"这句是不是旁白"需要整句，而整句从来没有在一个地方出现过——它在发出之前就被切碎了。
+
+`preload.cjs` 的注释其实已经想到这一点（"`sendStreamChunk` 不动——流式块可能只有几个字，判断不了整句，硬过滤会误杀"），但它把结论下成了"所以过滤放 `sendReply`"，而真相是**企微只有流式**。
+
+### 结论：代码层过滤在这条架构下不可行
+
+三个方案，只有一个成立：
+
+| 方案 | 可行性 | 原因 |
+|---|---|---|
+| 挂 `sendReply` | ✗ | 企微不用它（已实测） |
+| 挂 `sendStreamChunk` | ✗ | 每块只有几个字，判断不了整句；而且发出去了无法撤回 |
+| **在生成前约束（persona）** | **✓** | 让模型一开始就不说旁白。**维护者 11-03 加进 persona 的那条"回复必须落在结果上"正是干这个** |
+
+所以出站过滤的正确位置不是代码，是 persona。代码层的 `__ancFilterNarration` 保留着无害（它挂在一条不走的路上，等于空转），但**不能指望它**。
+
+### 词表还有第二个问题（次要）
+
+即使挂对地方，`NARRATION_RE` 是**236 字符全中文**。而这次模型的旁白是**英文**（"Let me resolve the group binding…"）。
+
+所以就算过滤跑到了，也匹配不上。补词表要同时覆盖中英两种——但既然代码层不可行，这条优先级降到最低。
+
+### 留下的观测
+
+`__ancStat` 保留在 `preload.cjs` 里（只记数字不记内容）。它的价值变成了**证据**：以后要确认"某条出站路径有没有被调用"，看 `%USERPROFILE%\anc\narration-filter.log` 有没有对应的行即可。
+
+`sendReply` 那条路现在是空的——这本身就是"企微不走它"的证据。
