@@ -113,6 +113,27 @@ CREATE TABLE IF NOT EXISTS submissions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status, id);
+
+-- 迭代闭环的第二步（PLAN 阶段 L2）：submission → 结构化 issue。
+-- 一条员工原话变成一个开发侧能直接动手的东西 {skill, section, symptom, expected, verify}。
+-- 分诊靠规则表（issues.ts 的 RULES），不用模型——PLAN §5.1「确定性的事不交给模型」。
+-- skill/section 可以为 null：规则表没命中时标成「待人工分诊」，不硬猜。
+CREATE TABLE IF NOT EXISTS issues (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  skill         TEXT,
+  section       TEXT,
+  symptom       TEXT,
+  expected      TEXT,
+  verify        TEXT,
+  status        TEXT NOT NULL DEFAULT 'open',   -- open | drafted | closed
+  note          TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status, id);
+CREATE INDEX IF NOT EXISTS idx_issues_submission ON issues(submission_id);
 `;
 
 export function openDb(path: string = DEFAULT_DB): DatabaseSync {

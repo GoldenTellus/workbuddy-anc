@@ -387,7 +387,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ```
 ☑ 群里报问题能落 submission  ← 2026-11-04：test-emit 注入「刚才查任务那条回复不对…」→ `submissions` 2→3，原话一字不改、employee 从绑定表推出、bot 回执「已记录 #3」，见 `VERIFY §21`
 □ 群里"@个人bot 说下班"能落 dayend 记录（L5）
-□ submission 能转成结构化 issue
+☑ submission 能转成结构化 issue  ← 2026-11-04：规则表 11 条（关键词→技能→真实章节），symptom/expected 用字符串规则抽、不用模型；命中不了留 null 标「待人工分诊」；幂等；生产库 `submission #3 → issue #2`，见 `VERIFY §22`
 □ patch draft 的 diff 你愿意合入（至少一条）
 □ devbot **全自动**跑出一个可用分支（从读 issue 到出分支，无人介入）
 □ eval 能判定 pass/fail

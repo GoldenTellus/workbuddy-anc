@@ -13,6 +13,7 @@ import * as config from './config.ts';
 import * as backup from './backup.ts';
 import * as a2a from './a2a.ts';
 import * as submissions from './submissions.ts';
+import * as issues from './issues.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { appendAudit, commandName } from '../shared/audit.ts';
@@ -313,6 +314,29 @@ if (group === 'summary') {
       out({ ok, id, status: st });
       if (!ok) process.exit(1);
     } else fail('未知 submission 子命令（add/list/set-status）');
+  } else if (group === 'issue') {
+    // 迭代闭环第二步（L2）：submission → 结构化 issue。分诊靠规则表，不用模型。
+    if (cmd === 'draft') {
+      const id = typeof args.submission === 'string' ? Number(args.submission) : NaN;
+      if (!Number.isInteger(id) || id <= 0) fail('缺少 --submission <id>');
+      try {
+        const r = issues.draftFromSubmission(db, id);
+        out({ ok: true, ...r });
+      } catch (e) { fail((e as Error).message); }
+    } else if (cmd === 'list') {
+      out({ ok: true, issues: issues.list(db, {
+        limit: typeof args.limit === 'string' ? Number(args.limit) : undefined,
+        status: typeof args.status === 'string' ? args.status : undefined,
+      }) });
+    } else if (cmd === 'triage') {
+      const id = typeof args.id === 'string' ? Number(args.id) : NaN;
+      if (!Number.isInteger(id) || id <= 0) fail('缺少 --id');
+      const skill = typeof args.skill === 'string' ? args.skill : null;
+      const section = typeof args.section === 'string' ? args.section : null;
+      const ok = issues.setTriage(db, id, skill, section);
+      out({ ok, id, skill, section });
+      if (!ok) process.exit(1);
+    } else fail('未知 issue 子命令（draft/list/triage）');
   } else if (group === 'backup') {
     const to = typeof args.to === 'string' ? args.to : '';
     if (!to) fail('缺少 --to');

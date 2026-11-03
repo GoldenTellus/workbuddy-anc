@@ -1390,3 +1390,88 @@ created_at        TEXT
 
 `cli issue draft`：submission → 结构化 issue `{skill, section, symptom, expected, verify}`。
 需要一张「关键词 → 技能 → 段落」的规则表。
+
+## 22. L2：submission → 结构化 issue（2026-11-04）
+
+### 做了什么
+
+`src/service/issues.ts` + `cli issue draft|list|triage`。
+
+一条员工原话变成开发侧能直接动手的 `{skill, section, symptom, expected, verify}`。
+
+**不用模型**：分诊靠规则表（`RULES`，11 条），抽取靠字符串规则。这是 PLAN §5.1「确定性的事不交给模型」的直接落地。
+
+### 分诊规则表
+
+按各 `SKILL.md` 里**真实存在的 `## 标题`** 建（2026-11-04 核对过），命中不了就留 null：
+
+| 技能 | 章节 | 关键词 |
+|---|---|---|
+| anc-task | 查任务 | 查任务 / 任务列表 / 列出任务 / 看任务 / 有哪些任务 / 今天有什么任务 |
+| anc-task | 登记任务 | 登记任务 / 记个任务 / 帮我记 / 记一下这个事 |
+| anc-task | 完成 / 取消 | 完成任务 / 取消任务 / 标完成 / 标记完成 |
+| anc-ingest | 执行方式（硬约束，违反即事故） | 入库 / 批次 / meta.json / 投批次 |
+| anc-ingest | 2. 建批次并整理文档 | 建档 / 整理文档 |
+| anc-vault-read | 怎么查 | 查库 / 搜索 / 找资料 / 库里有没有 / 查一下库 |
+| anc-vault-read | 查不到时 | 查不到 / 没找到 |
+| anc-interview | 2. 逐题问，逐题提交 | 访谈 / 问卷 / 逐题 |
+| anc-wb-patch | 2. 分三种情况 | 补丁 / patch / 注入 / manifest |
+| anc-wb-patch | 3. 回归（测试群里做，四条） | 回归 / 升级后 |
+| anc-feedback | 记录 | 记错了 / 不该记 / 多记了 / 没记下来 |
+
+匹配时**取命中最长的关键词**（防止将来加短词时被抢走）。
+
+### 抽取规则
+
+| 字段 | 怎么抽 | 为什么这样 |
+|---|---|---|
+| `symptom` | 找「不对/没按预期/漏了/为什么没/有问题/错了/不应该/坏了」，取它所在的整句；找不到就退回**整段原话** | 原话永远最安全，不会有提炼失真 |
+| `expected` | 找「应该/希望/最好/能不能/可不可以/要能/需要能/改为/改成」，从引导词取到句末 | **只认这几个词，不猜语气**——猜错的期望比没有期望更糟，devbot 会照着改错的 |
+| `verify` | 由 skill+section 生成：「跑 X 的「Y」相关用例，确认这条症状不再出现」 | 到 L6 会换成真的跑 eval |
+
+**分诊没命中时**：`skill=null`、`note='规则表没命中，需要人工分诊'`，等 `cli issue triage --id N --skill X --section Y` 补。
+
+### 幂等
+
+同一条 submission 重复 draft 返回已有的 issue（`created=false`），不重复建。
+
+`submissions.issue_id` 回填 + `status` 从 `new` 改 `triaged`。
+
+### 测了什么
+
+写四条用例，用临时库跑：
+
+```
+sub#1 「刚才查任务那条回复不对——我说的是只看今天到期的，它把上周逾期的也列出来了。应该按 due_at 过滤。」
+  → anc-task / 查任务        needTriage=false
+  symptom : 刚才查任务那条回复不对——我说的是只看今天到期的，它把上周逾期的也列出来了
+  expected: 应该按 due_at 过滤
+  verify  : 跑 anc-task 的「查任务」相关用例，确认这条症状不再出现
+
+sub#2 「入库的时候 meta.json 字段又写错了，应该用 src/target/kind 不是 name/title。」
+  → anc-ingest / 执行方式（硬约束，违反即事故）
+
+sub#3 「今天天气真好我想吃火锅」
+  → skill=null  needTriage=true  note=规则表没命中，需要人工分诊
+
+幂等：再 draft 一次 → created=false，issue#1 不变
+人工分诊：issue triage --id 3 --skill anc-task --section 查任务 → ok
+```
+
+生产库也验了一次：L1 造的那条 `submission #3` → `issue #2`，
+`submissions` 里 `#3` 的 `status` 变 `triaged`、`issue_id=2`。
+
+### 踩的坑：表结构反向漂移
+
+临时库报 `no such table: issues`。
+
+原因：**生产库里有 `issues` 表**（stash 那版建的，10 列 + 1 行数据），但 `db.ts` 的 `SCHEMA` 里**没有**这张表——因为 `b5937b4` 那个状态根本没有 L 阶段的代码。
+
+上一轮 L1 踩的是**正向**漂移（代码有表、库里是旧结构），这一轮是**反向**（库里有表、代码没有）。
+
+**同一个教训的两面**：**表定义必须和代码一起进 git**。库里存在的东西要么在 `SCHEMA` 里，要么在 `migrate()` 里，否则：
+
+- 新建库缺表 → `no such table`
+- 老库结构不同 → `no such column`
+
+已把 `issues` 表补进 `SCHEMA`（含两个索引）。
