@@ -392,7 +392,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ☑ submission 能转成结构化 issue  ← 2026-11-04：规则表 11 条（关键词→技能→真实章节），symptom/expected 用字符串规则抽、不用模型；命中不了留 null 标「待人工分诊」；幂等；生产库 `submission #3 → issue #2`，见 `VERIFY §22`
 ☑ patch draft 的 diff 可应用且已应用一条  ← 2026-11-04：`cli patch draft` 从真实 issue 产出 unified diff，`git apply` 成功、`npm test` 107/107 没坏；**已应用到 `light/skills/anc-task/SKILL.md`**。评估：模板版覆盖「行为约束」类问题，覆盖不了「代码缺陷」和「功能缺失」，见 `VERIFY §23`
 □ devbot **全自动**跑出一个可用分支（从读 issue 到出分支，无人介入）
-□ eval 能判定 pass/fail
+☑ eval 能判定 pass/fail  ← 2026-11-04：`cli eval run` 经 test-emit 注入 + 读 patch-out.log 取回答 + 8 类断言；**pass 和 fail 都真跑出来过**（`task-list-quiet` pass/exit 0，`task-list-one-line` fail/exit 1），判官单测 8/8。局限：只记前 400 字、只有最终回复、看不到工具调用，见 `VERIFY §25`
 □ 端到端走通一次，全程有记录
 ```
 

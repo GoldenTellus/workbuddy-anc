@@ -1664,3 +1664,108 @@ PLAN §5.1 写的是「**@个人bot** 说「下班」→ cli dayend」。**这�
 2. `SkillsVersionEmitter` 有没有 bump（目录变更被感知）
 3. **persona / 对话里有没有让它知道该用这个技能**
 4. 最后才看 `SubscriptionGate` 有没有 check
+
+## 25. L6：eval runner（2026-11-04，pass 和 fail 都真跑出来过）
+
+### 它怎么工作
+
+```
+读 light/evals/*.json 的用例
+  → 记录 patch-out.log 当前行数
+  → 通过 test-emit 注入用例的 input
+  → 轮询 patch-out.log，等到有新行且安静 15 秒
+  → 取新行的 text= 部分当回答
+  → 按 expect 里的断言判 pass/fail
+  → 写 eval_runs（checks 存 JSON，answer_hash 存 sha256）
+```
+
+**为什么用 `patch-out.log`**：它是出站记录，`text=` 后面就是 bot 真正发出去的内容；格式稳定；只记数字和正文，不含内部推理。
+
+`cli eval run --case <id> --chat-id <完整 chatId> --repo <仓库> [--wait-ready]`
+
+### 四个必须知道的局限
+
+这几条是**这一层的边界**，写进代码注释了：
+
+**1. 只记前 400 字符**
+
+`preload.cjs` 里 `s.slice(0, 400)`。长回答的后半截 eval 看不到，所以断言别依赖"结尾"。
+
+**2. 只有最终回复，看不到中间调了什么**
+
+想知道"它有没有调 `anc-dayend` 技能"，这个 runner 答不了。`SubscriptionGate` 的日志能看，但那不是回复内容。
+
+**3. 出站过滤在企微不生效**（`VERIFY §17`）
+
+所以断言里别指望"旁白被过滤掉了"——它压根没被过滤，只是模型自己没说。
+
+**4. 流式回复会一行一条**
+
+`patch-out.log` 按"一次 sendReply"记一行。多行回复会变成多条记录，runner 把它们拼起来算一份回答。判断"回答结束"靠**静默 15 秒**，不是靠协议结束标记。
+
+### 跑了什么
+
+**pass**：
+
+```
+caseId  task-list-quiet       verdict pass    exit 0
+answer  在。\n今天没有到期的任务。
+checks  有回答 13 字 / 不能出现 让我先·我先看一下·让我查·I'll·Let me·稍等（6 项全过）/ 最多 4 行 → 实际 2 行
+```
+
+**fail**（故意保留的用例）：
+
+```
+caseId  task-list-one-line    verdict fail    exit 1
+checks  有回答 13 字 ok / 最多 1 行 → 实际 2 行 NOT ok
+```
+
+`task-list-one-line` 是**故意留的**：要求只用一行答完，当前 bot 会先回「在。」再回结果（2 行）。**它的存在就是为了证明 eval 真的能判 fail，不是只会判 pass。** 等哪天真的一行了，它会自己变绿。
+
+**判官单测 8/8**（不跑 bot，秒出）：
+
+```
+双行回答算 2 行           pass ✓
+超过 maxLines 应 fail     fail ✓
+出现旁白应 fail           fail ✓
+没出现旁白应 pass         pass ✓
+mustMatch 命中            pass ✓
+mustMatch 不命中应 fail   fail ✓
+空回答应 fail             fail ✓
+English 旁白应被拦        fail ✓
+```
+
+### 踩的两个坑
+
+**坑一：换行被转义成字面 `\n`**
+
+`preload.cjs` 写日志时做 `.replace(/\r?\n/g, '\\n')`——为了保持"一行一条记录"。
+
+第一版 runner 直接拿这个字符串判行数，结果 `"在。\n今天没有到期的任务。"` 被算成**1 行**，`maxLines` 类断言全部失效。第一次跑 `task-list-has-answer` 时 checks 里写着"实际 1 行"，看着正常，其实是错的。
+
+修法：`readOutLog()` 里把它还原成真换行。
+
+**教训**：**日志的格式是给人看的，不一定是给机器算的。** 拿它做断言前先确认转义规则。
+
+**坑二：`require is not defined`**
+
+`eval.ts` 里 `loadCases()` 用了 `const { readdirSync } = require('node:fs')`——但 `.ts` 被 Node 当 **ESM** 跑，没有 `require`。
+
+改成顶部 `import { readdirSync }`。
+
+这个坑之前在 `db.ts` 的 `\0` 那次也踩过类似的：**这个项目里所有 `.ts` 都是 ESM，别用 CJS 的东西**。
+
+### 现在的状态
+
+- `eval_runs` 表：99 条历史（stash 那版跑的，全 fail）+ 今天 3 条（100/101/102）
+- 用例：`light/evals/anc-task.json`，3 条
+- 能力：**能判定 pass/fail，pass 和 fail 都真跑出来过**
+
+### 它和 L4 的关系
+
+L4（devbot）改完技能后要判断"有没有改坏"，靠的就是这个。所以这一层的可靠性直接决定 L4 能不能用：
+
+- **能判 fail** → L4 的产出有护栏
+- **只看最终回复** → 只能判断"行为对不对"，判断不了"实现有没有引入别的问题"
+
+这意味着 L4 后面还得有**人工 review**兜底。eval 是筛子，不是证明。

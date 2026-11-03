@@ -170,6 +170,22 @@ CREATE TABLE IF NOT EXISTS dayend (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dayend_uniq ON dayend(employee, day);
 CREATE INDEX IF NOT EXISTS idx_dayend_day ON dayend(day, at);
+
+-- 迭代闭环的第六步（PLAN 阶段 L6）：一条用例一次跑的结果。
+-- checks 是 JSON 数组（每项 {name, ok, detail}），answer_hash 用来判断"两次回答是否同一份"。
+CREATE TABLE IF NOT EXISTS eval_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id     TEXT NOT NULL,
+  skill       TEXT,
+  verdict     TEXT NOT NULL,
+  checks      TEXT,
+  answer_hash TEXT,
+  answer_len  INTEGER,
+  note        TEXT,
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_eval_runs_case ON eval_runs(case_id, id);
 `;
 
 export function openDb(path: string = DEFAULT_DB): DatabaseSync {

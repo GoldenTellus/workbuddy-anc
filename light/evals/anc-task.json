@@ -1,0 +1,40 @@
+{
+  "note": "anc-task 的用例。断言只针对「最终回复」，看不到中间调了什么工具（VERIFY §26 的局限一节）。",
+  "cases": [
+    {
+      "id": "task-list-quiet",
+      "skill": "anc-task",
+      "input": "今天有什么任务",
+      "expect": {
+        "notMatch": [
+          "让我先",
+          "我先看一下",
+          "让我查",
+          "I'll ",
+          "Let me ",
+          "稍等"
+        ],
+        "maxLines": 4
+      },
+      "note": "查任务时不该先说过程话——这正是 issue #1 报的问题。中英文都拦，因为模型会中英混杂（VERIFY §17）"
+    },
+    {
+      "id": "task-list-has-answer",
+      "skill": "anc-task",
+      "input": "今天有什么任务",
+      "expect": {
+        "minLines": 1
+      },
+      "note": "至少要说一句话。空回答比说错话更糟——用户会以为 bot 没反应"
+    },
+    {
+      "id": "task-list-one-line",
+      "skill": "anc-task",
+      "input": "今天有什么任务",
+      "expect": {
+        "maxLines": 1
+      },
+      "note": "要求只用一行答完。当前 bot 会先回「在。」再回结果（2 行）——这条**故意保留**，用来证明 eval 真的能判 fail，不是只会判 pass。等哪天真的一行了，它会自己变绿。"
+    }
+  ]
+}
