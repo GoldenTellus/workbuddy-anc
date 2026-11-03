@@ -385,7 +385,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ### gate L
 
 ```
-□ 群里"引用文件 @公司bot"能落 submission
+☑ 群里报问题能落 submission  ← 2026-11-04：test-emit 注入「刚才查任务那条回复不对…」→ `submissions` 2→3，原话一字不改、employee 从绑定表推出、bot 回执「已记录 #3」，见 `VERIFY §21`
 □ 群里"@个人bot 说下班"能落 dayend 记录（L5）
 □ submission 能转成结构化 issue
 □ patch draft 的 diff 你愿意合入（至少一条）

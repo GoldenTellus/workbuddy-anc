@@ -94,6 +94,25 @@ CREATE TABLE IF NOT EXISTS outbox (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, id);
+
+-- 迭代闭环的收集端（PLAN 阶段 L1）。
+-- 只做一件事：把员工在群里报的问题**原话照存**，等有人早上看。
+-- 不判断该不该修、不评估工作量、不建议方案——那些是 review 的人干的。
+CREATE TABLE IF NOT EXISTS submissions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  dedupe_key TEXT UNIQUE,                       -- 同一群里同一句话只记一次
+  chat_id    TEXT,
+  employee   TEXT,                              -- 从 chat_bindings 推，省得再问"你是谁"
+  userid     TEXT,
+  text       TEXT NOT NULL,                     -- 员工原话，不总结不改写
+  file_path  TEXT,
+  file_hash  TEXT,
+  status     TEXT NOT NULL DEFAULT 'new',       -- new | triaged | dropped
+  issue_id   INTEGER,                           -- L2 转成 issue 后回填
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status, id);
 `;
 
 export function openDb(path: string = DEFAULT_DB): DatabaseSync {
@@ -125,6 +144,13 @@ addCol('tasks', 'timeout_minutes', 'INTEGER');
   addCol('outbox', 'requeued_at', 'TEXT');
   addCol('outbox', 'expires_at', 'TEXT');
   addCol('a2a_surveys', 'question_count', 'INTEGER NOT NULL DEFAULT 0');
+
+  // submissions 早期版本用的是 submitter_userid（stash 里那版）。
+  // CREATE TABLE IF NOT EXISTS 对已存在的表是空操作，所以新列必须走迁移，
+  // 否则 CLI 一插入就是 "no such column: userid"（2026-11-04 踩到）。
+  addCol('submissions', 'userid', 'TEXT');
+  addCol('submissions', 'file_hash', 'TEXT');
+  addCol('submissions', 'issue_id', 'INTEGER');
 
   // a2a_messages 早期以 message_id 单列为主键：每场访谈都用 q1..qN，第二场会被当成重复丢掉。
   // 改为 (survey_id, message_id) 复合主键；旧数据原样搬过去。

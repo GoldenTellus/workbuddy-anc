@@ -1272,3 +1272,121 @@ outbox #67 [sent] attempts=1 err=-
 **2. `NO_WEBHOOK_FOR_CHAT` 是永久错误，不该重试**
 
 现在它被记进 `last_error` 后仍留在 outbox 里，靠 `next_attempt_at` 控制重试。清理时我把 `next_attempt_at` 置空才停下。永久性错误（找不到群/webhook）和临时性错误（网络抖动）应该有不同处理，但那是优化项，不在 gate S 范围。
+
+## 21. L1：submission 收集端（2026-11-04 端到端通过）
+
+### 做了什么
+
+三件东西，对应 PLAN §5.2 的 L1：
+
+| 组件 | 位置 |
+|---|---|
+| 表 | `db.ts` 的 `SCHEMA` 里加 `submissions`（11 个业务列 + `issue_id` 给 L2 预留） |
+| 逻辑 | `src/service/submissions.ts` —— `add` / `list` / `setStatus` / `linkIssue` |
+| 命令 | `cli submission add|list|set-status` |
+| 技能 | `light/skills/anc-feedback/SKILL.md`（收集端，bot 侧） |
+| 部署 | **新建 `scripts/deploy-skills.ps1`** —— 之前技能是手工复制的，违反「只走 git → 部署」 |
+
+### 端到端怎么验的
+
+用 `OPS.md` 的 test-emit 入口模拟员工在群里报问题：
+
+```
+POST 127.0.0.1:17999/emit
+{ chatId: <完整 chatId>, user: <员工 userid>, msgId: <32位hex>,
+  content: "刚才查任务那条回复不对——我说的是只看今天到期的，它把上周逾期的也列出来了。应该按 due_at 过滤。" }
+```
+
+结果：
+
+```
+submissions 2 → 3
+
+id          3
+chat_id     wrkcDlGwAAcaQxHsYyEztVz2Jby1YbTw
+employee    本人                                     ← 从 chat_bindings 推出
+userid      wokcDlGwAAXCl5GBcPfwP7EGd2-YsUTw
+text        刚才查任务那条回复不对——…应该按 due_at 过滤。   ← 一字不改
+status      new
+issue_id    (null)                                   ← 等 L2
+
+bot 回执    在。\n已记录 #3，明早 review 会看到。        ← SKILL.md 里定死的形状
+```
+
+**这就是 gate L 第一条要的东西**：群里引用后说问题 → 表里有记录，且是原话。
+
+### 踩的四个坑
+
+**坑一：表结构漂移，`CREATE TABLE IF NOT EXISTS` 是空操作**
+
+库里已经有一张 `submissions`（2026-11-02 留下的 2 行测试数据），列名是 `submitter_userid`。我新写的 `CREATE TABLE IF NOT EXISTS submissions (... userid ...)` 对已存在的表**什么都不做**，于是：
+
+```
+ERROR  no such column: userid
+```
+
+**修法**：走 `migrate()` 加列（`addCol('submissions','userid','TEXT')` 等三列）。
+
+**教训**：加表不能只改 `SCHEMA`——**表已存在时 `IF NOT EXISTS` 会静默跳过**，新列必须同时进 `migrate()`。
+
+**坑二：技能落盘目录该用 `name:` 不是目录名**
+
+仓库目录叫 `anc-ingest-company`，但 SKILL.md 里写 `name: anc-ingest`，persona 引用的也是 `anc-ingest`。第一版 `deploy-skills.ps1` 用目录名落盘，造出了 `anc-ingest-company` 目录 → **bot 侧会出现两个同名技能**。
+
+**修法**：解析 SKILL.md 的 `name:` 字段作为落盘目录名，并且检测「两个目录声称同一个名字」时直接报错退出。
+
+**坑三：PowerShell 的 keep-alive 复用被服务端关掉的连接**
+
+`Invoke-RestMethod` 连续调用 test-emit 时，第二次报「基础连接已经关闭: 服务器关闭了本应保持活动状态的连接」。Node 的 `http.createServer` 有 `keepAliveTimeout`，服务端先关，客户端还拿着旧连接。
+
+**修法**：用 node 发请求，`agent: false` 不复用。**这不是服务的问题。**
+
+**坑四：bot 处理要两分钟，不是两秒**
+
+注入后 `canary` 立刻更新（消息到了），但 `submissions` 要 **2 分钟**才出现记录。中间过程在 `daemon.log` 里能看到：
+
+```
+19:39:37  [SubscriptionGate] check conversation=... type=skill name=anc-feedback
+19:39:37  [SubscriptionGate] allow reason=skill-not-in-market-pool
+19:39:56  submissions 多了一条
+19:40:05  [patch-out] 在。\n已记录 #3，明早 review 会看到。
+```
+
+**排查时别只看 10–20 秒就下结论**。之前我等 120 秒以为失败了，其实是差几十秒。
+
+### 顺带查清的两件事
+
+**1. WorkBuddy 的日志文件已经换名字了**
+
+以前是 `workbuddyMainThread__*.log`，现在是 `main.log` / `daemon.log` / `renderer.log`。`CHANNEL_TRACE` 这类对话追踪现在在 **`daemon.log`** 里。
+
+**2. `SubscriptionGate` 会检查技能**
+
+```
+[SubscriptionGate] check ... type=skill name=anc-feedback
+[SubscriptionGate] allow reason=skill-not-in-market-pool
+```
+
+自建技能不在市场池里，但**被 allow 了**——说明「自己装的技能」是允许的。这条值得记住：将来如果技能不生效，先看这里有没有 `allow`。
+
+### 表结构（最终）
+
+```
+id                INTEGER  PK
+dedupe_key        TEXT     UNIQUE     sha256(chat_id + NUL + text) 前 32 位
+chat_id           TEXT
+employee          TEXT                从 chat_bindings 推
+userid            TEXT                迁移加了（旧表叫 submitter_userid）
+submitter_userid  TEXT                旧列，保留兼容
+text              TEXT NOT NULL       原话，不总结不改写
+file_path         TEXT
+file_hash         TEXT
+status            TEXT DEFAULT 'new'  new | triaged | dropped
+issue_id          INTEGER             L2 回填
+created_at        TEXT
+```
+
+### 下一步（L2）
+
+`cli issue draft`：submission → 结构化 issue `{skill, section, symptom, expected, verify}`。
+需要一张「关键词 → 技能 → 段落」的规则表。
