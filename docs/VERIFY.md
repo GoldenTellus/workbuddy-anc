@@ -1165,3 +1165,110 @@ bot 答：**"没有「校验码」这回事。你要的是实验编号的话，�
 排查顺序应当是：
 1. `Get-Date` + `w32tm /query /status` 确认时钟和同步状态
 2. 再做任何时间戳比对
+
+## 20. gate S 第 3 项：逾期任务提醒（2026-11-04，**造的数据**）
+
+### 先说清楚：这一项不是"自然发生"的
+
+`PLAN` 原本写的是"等一个真实逾期任务被正常提醒，不专门造"。
+
+但库里 34 个任务全是 `cancelled` 或 `done`，56 条提醒全是 `cancelled` 或 `sent`——**没有可等的**。所以改用 `test-emit` 之外的另一条路：**走 CLI 造一条 `due_at` 已过的任务**，让它在真实链路上跑完整流程。
+
+**这是造的，不是自然发生的。** 记在这里，不装。
+
+### 链路
+
+```
+cli task add --due-local <过去时间> --chat-id <完整 chatId> --requester-userid <员工>
+  → tasks 表新增一行 (status=open)
+  → scheduleReminder() 建 pending 提醒
+  → anc-service 每分钟 tick
+      → dueReminders() 选出到点的
+      → isWorkTime() 判断在不在工作时段
+      → enqueue() 写 outbox
+      → defaultSender() 调 webhook 发出
+  → task_events 记 reminder_sent，并排下一次 (+repeat_minutes)
+```
+
+### 第一次尝试踩了两个坑
+
+**坑一：凌晨造的任务被顺延（这不是 bug）**
+
+02:22 造了一条 1 小时前到期的任务，tick 2 秒后就把它挪走了：
+
+```
+19:22:59  created              {"title":"验收测试：逾期提醒是否真的发出来"}
+19:22:59  reminder_scheduled   {"due_at":"2026-11-03T18:22:00.000Z","repeat":15}
+19:23:01  reminder_deferred    {"to":"2026-11-04T00:30:00.000Z"}   ← 顺延到明天 08:30
+```
+
+`loop.ts` 里的逻辑：
+
+```js
+if (!isWorkTime(nowDate, rules)) {
+  const next = nextWorkStart(nowDate, rules);
+  // 顺延到下一个工作时段起点，不发
+}
+```
+
+现在 03:25，工作时段是 08:30–18:00，所以**正确顺延**。这是 `FORK §5.7`「夜里不推送」的设计，不是故障。全库历史上 `reminder_deferred` 出现过 5 次，说明这机制一直在工作。
+
+**坑二：我从截断的日志里抄了 chatId，导致发送失败**
+
+```
+outbox #66 [failed]  NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_file
+                     payload: {"text":"到点提醒：#60 …","mentions":[]}
+```
+
+对照绑定表：
+
+```
+我用的      wrkcDlGwAAcaQxHs                      ← 20 字符，从日志的 chat=wrkcDlGwAAca 抄的
+真实的      wrkcDlGwAAcaQxHsYyEztVz2Jby1YbTw      ← 32 字符
+```
+
+`resolve()` 拿这个短 id 查不到绑定 → `mentions: []` → 发送时找不到 webhook → FAIL。
+
+**这不是系统 bug，是我抄错了。** 日志里 `chat=` 后面那截是被截断显示用的。
+
+**教训**：`chatId` 从 `chat_bindings` 表取完整值，绝不从日志或报错的截断副本里抄。
+
+### 第二次：通过
+
+用完整 chatId 重造（task 61），并把工作时段临时改成 `00:00–23:59`（否则还是会顺延到 08:30，今晚验不了）：
+
+```
+19:29:04  created             {"title":"验收测试：逾期提醒（用完整 chatId 重造）"}
+19:29:04  reminder_scheduled  {"due_at":"2026-11-03T19:24:00.000Z","repeat":15}
+19:29:05  reminder_sent       {"due_at":"2026-11-03T19:24:00.000Z"}
+19:29:05  reminder_scheduled  {"due_at":"2026-11-03T19:39:00.000Z","repeat":15}   ← 下一次 +15 分钟
+```
+
+```
+tick: {"ok":true,"enqueued":1,"sent":1,"failed":0,"skipped":0,"requeued":0}
+
+outbox #67 [sent] attempts=1 err=-
+  {"text":"到点提醒：#61 验收测试：逾期提醒（用完整 chatId 重造）\n回复「@公司bot #61 完成」停止提醒","mentions":[…]}
+```
+
+**整条链路通了**：到点 → 选出 → 判断工作时段 → 入 outbox → webhook 发出 → 记 `reminder_sent` → 排下一次。
+
+### 收尾
+
+| 动作 | 结果 |
+|---|---|
+| 工作时段改回 | `work_start=08:30` `work_end=18:00` ✓ |
+| task 60 / 61 | `cancelled` |
+| 它们的 pending 提醒 | `cancelled` |
+| outbox #66（chatId 抄错那条） | 保留 `failed` 但清掉 `next_attempt_at`，不再重试 |
+| 剩余 | **0 open 任务、0 pending 提醒** |
+
+### 顺带确认的两件事
+
+**1. `task cancel` 要求"执行人或交办人"**
+
+用 `--requester-userid` 建的任务，`cancel` 时仍报「只有执行人或交办人能操作」——因为 `requester`（人名）和 `assignee` 都是 null，只有 `requester_userid`。这条限制本身是合理的（防止乱取消别人的任务），但**清理自己造的测试数据时会挡路**。这次是直接改库清的，注明在此。
+
+**2. `NO_WEBHOOK_FOR_CHAT` 是永久错误，不该重试**
+
+现在它被记进 `last_error` 后仍留在 outbox 里，靠 `next_attempt_at` 控制重试。清理时我把 `next_attempt_at` 置空才停下。永久性错误（找不到群/webhook）和临时性错误（网络抖动）应该有不同处理，但那是优化项，不在 gate S 范围。
