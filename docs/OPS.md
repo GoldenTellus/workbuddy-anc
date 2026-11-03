@@ -245,3 +245,97 @@ w32tm /query /status      # 看"上次成功同步时间"和"来源"
 影响面盘点见 `VERIFY §19`。结论是：靠相对时间算的（冷启动耗时、各冷却间隔）不受影响；补丁机制的窗口比对因为同一台机器同时偏而互相抵消；**真正受影响的只有提醒与逾期判断**，而那条链还没做端到端验证，库里相关行都是联调数据。
 
 **不回头修历史数据**——不知道原来偏了多少，没有基准；改了反而破坏审计链。将来验证提醒时用**新造的数据**，不要拿旧行做依据。
+
+## 程序化测试入口：模拟"有人 @ 了 bot"（2026-11-04）
+
+### 它解决什么
+
+验证 persona、技能、出站行为，本质都要**让 bot 收到一条消息**。原来只能请人在企微群里手动 @ 一次——每轮实验都要人等，而且重启后要再等一次。
+
+这个入口让你用一条 HTTP 请求代替那次人工操作。
+
+### 怎么开
+
+```powershell
+# 开（之后重启 WorkBuddy 才生效）
+Set-Content 'C:\ProgramData\anc\data\test-emit.flag' -Value 'enabled' -Encoding UTF8
+# 关（删掉 flag 并重启，或等下次重启自然失效）
+Remove-Item 'C:\ProgramData\anc\data\test-emit.flag'
+```
+
+**默认是关的**（flag 不存在就不监听）。代码在 `scripts/workbuddy-patch/preload.cjs`。
+
+### 怎么用
+
+```powershell
+$chatId = '<群的 chatId，见 chat_bindings 表>'
+$msgId  = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Max 16) })  # 32 位 hex，缺了会出 undefined
+$body = @{
+  chatId  = $chatId
+  user    = 'test-emit'
+  msgId   = $msgId
+  content = '第二阶段的码是多少'
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri 'http://127.0.0.1:17999/emit' -Method POST `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+```
+
+返回 `{"ok":true,"chatId":"...","len":N}`。`len` 是**加上身份前缀之后**的长度（`[anc:chat=… from=…]`），比原始内容长十几到几十字符是正常的。
+
+### 怎么知道 bot 真处理了
+
+**三个地方看，按可靠程度排序**：
+
+| 看什么 | 在哪 | 说明 |
+|---|---|---|
+| **bot 的回复** | `%ProgramData%\anc\data\patch-out.log` | 最硬的证据。行数增加 = bot 真的回了，后面跟 `len=` 和正文 |
+| **消息被接收** | `%ProgramData%\anc\data\patch-canary.json` | `at` 更新 = `emitMessage` 被调用。**但没有正文**，只能证明"收到了" |
+| 出站过滤观测 | `%USERPROFILE%\anc\narration-filter.log` | 只在 `sendReply` 被调用时写（企微不走那条路，见 `VERIFY §17`） |
+
+WorkBuddy 自己的日志 `%USERPROFILE%\.workbuddy\logs\workbuddyMainThread*.log` 里搜 `test-emit`，能看到完整的 `Conversation lookup`（含 `cwd` 和 `existingAgentSessionId`）——**查 persona 相关问题时这个最有用**。
+
+### 三个前提
+
+**1. 重启后要等一会儿**
+
+实例引用是"bot 调用某个原型方法时"才抓到的。实测重启后 **8–30 秒**就有。拿不到会返回：
+
+```json
+{"ok":false,"error":"还没有实例引用：先让 bot 收到一条真实消息"}
+```
+
+轮询几次（每次隔 8 秒）通常第 2–3 次就成功。
+
+**2. 不能伪造"真 @ 到机器人"**
+
+`emitMessage` 收到的是消息对象，`content` 里写 `@某bot` 只是文本。bot 是否会回，取决于它自己怎么判断（persona 里写的是"@ 才回应"）。
+
+实测用 `ping` 这种内容 bot 也会处理并回复——说明**在这个入口下它不检查 @ 标记**。这既是方便（不用伪造 @），也是**失真**（行为和真实群消息不完全一样）。**做"bot 会不会回应"这类判断时不能只靠这个入口。**
+
+**3. 只开在 127.0.0.1**
+
+代码里 `__srv.listen(17999, '127.0.0.1', ...)`，body 上限 1 MB。不做认证——**能连本机就能发**。所以 flag 用完就删，别长期开着。
+
+### 走过的弯路（免得重走）
+
+| 尝试 | 为什么不行 |
+|---|---|
+| 企微群机器人 webhook 发消息 | bot 作为**应用**根本收不到群机器人发的消息（试过带 @、不带 @，`canary` 都不动） |
+| webhook 的 `mentioned_list` | 不知道 bot 的 userid；`settings.json` 里 86 个 `wr…` 全是 chatId，只有一个 `wokc…` 是员工 userid |
+| Windows UIA 操作企微界面 | 企微是 **Flutter**，UIA 只能到 `FLUTTERVIEW` 这一层，读不到输入框 |
+| UIA + 截图定位 | `SetFocus()` 报"目标元素无法接收焦点"；截图截到的是别的窗口 |
+| 连 inspector（`--inspect-brk=9229`） | `inject.cjs` 注入完就关掉了，端口不在 |
+| 只包装 `emitMessage` | 只有"收到消息"时才抓得到实例 → 重启后仍要等人 |
+| 只包装 `connect` / `onMessage` / `sendStreamChunk` | **没用**，重启后仍拿不到 |
+| **包装原型上所有方法** | ✓ 有效。bot 启动后调用任何一个方法就把 `this` 存下来 |
+
+### 相关的两个约束（不是这个入口的问题，但做实验会撞到）
+
+**persona 是每会话首次注入时读一次**（`VERIFY §18`）。所以：
+- 同一个会话里改了 `CODEBUDDY.md`，bot 看不到
+- 用测试入口发消息**会新建会话**，能读到最新版本；而群里已有的老会话不会
+- 做完 persona 实验要恢复文件，否则下次会话会读到实验内容
+
+**出站过滤在企微这条路上不工作**（`VERIFY §17`）。企微走 `sendStreamChunk` 流式，`preload` 包装的是 `sendReply`（那是 QQ bot 的）。要约束输出只能改 persona。
