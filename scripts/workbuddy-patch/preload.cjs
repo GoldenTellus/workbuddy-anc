@@ -85,8 +85,7 @@ function log(line) {
 // 出站观测（O1）：只记数字，不记内容。
 // 原文可能带业务正文，落盘等于把它搬到另一个地方——这违反 D19 的意图。
 // 存在的意义：回答"出站过滤到底有没有被调用过、有没有东西被丢"。
-const STAT_LOG = __ancPath.join(__ancPath.dirname(STATE), 'narration-filter.log');
-global.__ancStat = function (kind, inLines, outLines, dropped) {
+const STAT_LOG = __ancPath.join(__ancPath.dirname(STATE), 'narration-filter.log');global.__ancStat = function (kind, inLines, outLines, dropped) {
   try {
     fs.appendFileSync(STAT_LOG, JSON.stringify({
       at: new Date().toISOString(),
@@ -98,6 +97,48 @@ global.__ancStat = function (kind, inLines, outLines, dropped) {
     }) + '\r\n');
   } catch (_) { /* ignore */ }
 };
+
+// ── 测试入口（默认关闭）────────────────────────────────────────────
+// 为什么需要它：验证 persona / 技能 / 出站行为，都得"让 bot 收到一条消息"。
+// 真人手动 @ 一次要人等，而且每轮实验都要重来。
+// 这里开一个只认 127.0.0.1 的本地口，POST 一条消息就直接送进 emitMessage——
+// 不碰 UI、不抢焦点、不用 inspector，等于"模拟有人 @ 了 bot"。
+//
+// 开关：%ProgramData%\anc\data\test-emit.flag 存在才开。默认不存在 = 不开口。
+// 前提：__ancLastClient 要有值，也就是 bot 至少收到过一条真实消息（拿实例引用）。
+const TEST_FLAG = __ancPath.join(__ancPath.dirname(STATE), 'test-emit.flag');
+if (fs.existsSync(TEST_FLAG)) {
+  try {
+    const __http = require('http');
+    const __srv = __http.createServer((req, res) => {
+      const reply = (code, obj) => {
+        try { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); } catch (_) {}
+      };
+      if (req.method !== 'POST') return reply(405, { ok: false, error: 'POST only' });
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 1048576) req.destroy(); });
+      req.on('end', () => {
+        try {
+          const p = JSON.parse(body || '{}');
+          if (!p.chatId) return reply(400, { ok: false, error: '缺少 chatId' });
+          if (!p.content) return reply(400, { ok: false, error: '缺少 content' });
+          if (!global.__ancLastClient) return reply(409, { ok: false, error: '还没有实例引用：先让 bot 收到一条真实消息' });
+          // 模仿真实入站消息的形状：emitMessage 只需要 chatId / user / content
+          const msg = { chatId: String(p.chatId), user: String(p.user || ''), content: String(p.content) };
+          global.__ancLastClient.emitMessage(msg);
+          log('test-emit chat=' + msg.chatId.slice(0, 12) + ' user=' + msg.user.slice(0, 8) + ' len=' + msg.content.length);
+          reply(200, { ok: true, chatId: msg.chatId, len: msg.content.length });
+        } catch (e) {
+          reply(500, { ok: false, error: e && e.message ? e.message : String(e) });
+        }
+      });
+    });
+    __srv.on('error', (e) => log('test-emit listen failed: ' + (e && e.message)));
+    __srv.listen(17999, '127.0.0.1', () => log('test-emit listening on 127.0.0.1:17999'));
+  } catch (e) {
+    log('test-emit disabled: ' + (e && e.message));
+  }
+}
 
 const toggle = String(process.env[mf.toggleEnv || 'ANC_WB_PATCH'] || '1').toLowerCase();
 if (toggle === '0' || toggle === 'off' || toggle === 'false') {
@@ -186,6 +227,7 @@ const PATCH_BODY = [
   '  if (__ancCls && __ancCls.prototype && typeof __ancCls.prototype.emitMessage === "function" && !__ancCls.prototype.__ancPatched) {',
   '    var __ancOrig = __ancCls.prototype.emitMessage;',
   '    __ancCls.prototype.emitMessage = function (m) {',
+  '      try { global.__ancLastClient = this; } catch (e) {}',
   '      try {',
   '        if (m && typeof m.content === "string" && !m.__ancTagged) {',
   '          m.content = m.content.replace(/\\[\\s*anc\\s*[:\\uFF1A]/gi, "[anc-quoted:");',
