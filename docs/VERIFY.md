@@ -2138,3 +2138,95 @@ offsite copied -> E:\anc-offsite-test
 ```
 
 第三项（无隐性知识走查）是本机唯一还能推进的。
+
+## 29. D2.1 走查：照 REBUILD 装，新人会卡在四处（2026-11-04）
+
+### 走查方法
+
+不是"读一遍觉得没问题"，是**假装自己是新人**：只拿这个仓库 + 一台空机器，逐条照做，卡在哪记下来。
+
+### 卡住的四处
+
+**① §0 说的"第二块盘 `E:\anc-backup`"不存在**
+
+原文：
+
+```
+| SQLite 数据库 | … | anc-backup 每天 02:00（本地 14 份 + 第二块盘 E:\anc-backup） |
+```
+
+但 `VERIFY §28` 刚查过：**这台机器只有一块物理盘**（Disk 0，465.8GB），C/D/E/F 全是它的分区。`offsite copied` 只往同盘写，`backup-anc.ps1` 会 WARN 但照常复制。
+
+新人照这句去找 `E:\anc-backup`，会以为"应该有备份但找不到"，实际是**从来没有过第二块盘**。
+
+**改**：写成"本地保留 14 份；离机目标要**自己配**"，并把同盘 WARN 的含义指向 `VERIFY §28`。
+
+**② 目录清单两处不一致，而且都不全**
+
+- §1 让建：`data, secrets, service, skills, bin, backup, accounts`（7 个）
+- §3 让建：`service, ingest, render, shared, bin, backup, patch`（7 个）
+- **实际**：`accounts, backup, bin, data, evals, inbox, ingest, light, patch, render, secrets, service, shared, skills, stage`（**15 个**）
+
+去重后两处共 11 个，**缺 `evals`、`inbox`、`light`、`stage`**。
+
+这四个都是"运行时才会被写到"的目录，`deploy.ps1` 不管它们。新人按文档建完，`deploy` 会成功，`doctor` 也可能过——**直到第一次用到 `evals`（跑 eval）或 `stage`（入库暂存）时才炸**，而且报的是"路径不存在"，和"我漏建了目录"关联不起来。
+
+**改**：§1 给出**完整 15 个**的清单（按实际部署核对），并明说"别按 §3 那句命令行抄，那段只建 deploy 要写的 7 个"；§3 那句也加了注释说明它只建 7 个。
+
+**③ §4 说"安装技能到 `%USERPROFILE%\.workbuddy\skills\`（或 `render onboard`）"**
+
+这是**手工操作**。而今天刚写了 `scripts/deploy-skills.ps1`（带预检/`-Apply`/`-Rollback`/`-RemoveExtra`、逐文件 sha256、改动前备份），文档里一个字没提。
+
+新人照文档手工复制，会遇到两个坑：
+
+1. 抄一次就可能和仓库不一致，**而且没人知道差在哪**
+2. **落盘目录要用 `SKILL.md` 的 `name:` 字段，不是仓库目录名**——仓库里 `anc-ingest-company/` 的技能名是 `anc-ingest`，按目录名落盘会造出两个同名技能（`VERIFY §21` 踩过）
+
+**改**：§4 第 4 步改成调 `deploy-skills.ps1`，并把上面两个坑写进去。
+
+**④ §5 说"全 PASS 才算完"**
+
+原文：
+
+```powershell
+powershell -File C:\ProgramData\anc\bin\doctor.ps1      # 全 PASS 才算完
+```
+
+**实际基线是 `FAIL=0 WARN=1`**（WARN 是 `vault-ingest-audit`，基线即 WARN，`VERIFY §15`）。
+
+新人照着"全 PASS"验收，会在一个**完全正常**的系统上反复折腾那条 WARN。
+
+**改**：判据改成 `FAIL=0`，写明基线 WARN 是哪一条、它代表什么、什么情况下才该变红。另外补了 `time-sync` 必须 PASS 的说明——那是今天新加的检查（`VERIFY §15`），不校准时钟会让 `patch-guard` 的 ±15 秒窗口和提醒的 `due_at` 一起出错。
+
+### 修完跑了一遍演练
+
+```
+重建演练 @ 20261104-044250
+  建目录结构                           0.1s
+  OK：66 个文件已部署并逐一校验通过
+  部署运行件（deploy -Apply）            3.9s
+  doctor 校验结构                    17.3s
+  合计 21.3 s
+  deploy-layout: PASS
+PASS  结构可用（真机还要过 §2 恢复数据、§3 注册任务、§4 恢复 bot）
+```
+
+对比 2026-11-02 的基线（21.4s / 56 文件）：耗时一样，**文件从 56 涨到 66**——多出来的 10 个是今天加的（`submissions.ts` / `issues.ts` / `patch-drafts.ts` / `dayend.ts` / `eval.ts` / `deploy-skills.ps1` / `devbot.ps1` / `e2e-loop.ps1` / devbot persona / 用例文件）。
+
+### 还剩下的隐性知识（这次没修，写在这里）
+
+**不是文档能解决的**：
+
+| 东西 | 为什么修不了 |
+|---|---|
+| 企微 webhook 地址 | 值不该进 git（这是设计）。新人得自己在群机器人设置里重新生成 |
+| WorkBuddy 的登录态 | 要扫码。`REBUILD §4` 已经写了"扫码登录" |
+| corpid / corpsecret | 同上，不进 git |
+| `D:\anc` 假定有 D 盘 | 已在 §1 补了"没有的话要先改 `company.md` 和计划任务里的路径" |
+
+**能修但这次没修的**：
+
+- `REBUILD` 没提 `test-emit`（`OPS.md` 有，但新人从 REBUILD 走下来不会知道有这个测试入口）
+- `REBUILD` 没提 `devbot.ps1` / `e2e-loop.ps1`（今天新增的编排脚本）
+
+这两条不影响"装完能用"，只影响"装完之后怎么验"。下次动 `REBUILD` 时一起补。

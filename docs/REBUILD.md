@@ -6,7 +6,7 @@
 
 | 资产 | 位置 | 是否有副本 |
 |---|---|---|
-| SQLite 数据库 | `C:\ProgramData\anc\data\anc.db` | `anc-backup` 每天 02:00（本地 14 份 + 第二块盘 `E:\anc-backup`） |
+| SQLite 数据库 | `C:\ProgramData\anc\data\anc.db` | `anc-backup` 每天 02:00（本地保留 14 份；离机目标要**自己配**） |
 | 密钥（webhook / 运维 webhook / userid） | `C:\ProgramData\anc\secrets\` | **只有主机上有**；须另行离线保存 |
 | vault 原件 `_originals/` | `D:\anc\vault-shared\_originals\` | 不进 git；须随备份一起复制 |
 | 两区 vault 的 git | `D:\anc\vault-*` | 有 git 历史；建议加一个远端 |
@@ -17,7 +17,20 @@
 1. Windows + 管理员账号；
 2. Node.js 22 LTS、Git for Windows；
 3. 把仓库 clone 到 `E:\workbuddy-anc`（或任意路径，下面用变量）；
-4. 建目录：`C:\ProgramData\anc\{data,secrets,service,skills,bin,backup,accounts}`、`D:\anc\{vault-shared,vault-internal,inbox}`。
+4. 建目录。**完整清单在这里，别按 §3 那句命令行抄**（那段只建 deploy 要写的 7 个，其余要手工建）：
+
+   ```
+   C:\ProgramData\anc\   accounts  backup  bin  data  evals  inbox  ingest
+                          light     patch   render  secrets  service  shared
+                          skills    stage
+   （15 个，2026-11-04 按实际部署核对）
+
+   D:\anc\               vault-shared  vault-internal  inbox  org  build
+   ```
+
+   - `evals`（用例）、`light`（渲染源）、`stage`（入库暂存）、`inbox` 是运行时才会被写到的，
+     `deploy.ps1` 不管它们，漏建会在第一次用到时炸；
+   - `D:\anc` 假定有 D 盘。没有的话要先改 `company.md` 和计划任务里的路径。
 
 ## 2. 恢复数据
 
@@ -61,7 +74,16 @@ powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
 2. 安装 WorkBuddy（企业版），扫码登录企业微信；
 3. 用补丁启动器启动：`launch-patched.ps1`，确认日志里 `APPLIED mode=hash` + `update-hook installed`；
    - 若启动器报"已启动"但进程数为 0，多半是 `--inspect-brk` 卡在等调试器，重跑一次即可；
-4. 安装技能到 `%USERPROFILE%\.workbuddy\skills\`（或 `render onboard`）；
+4. 装技能：**用脚本，不要手工复制**（手工抄一次就可能和仓库不一致，而且没人知道差在哪）：
+
+   ```powershell
+   powershell -File "<仓库>\scripts\deploy-skills.ps1"          # 预检
+   powershell -File "<仓库>\scripts\deploy-skills.ps1" -Apply   # 真部署
+   ```
+
+   落盘目录按 `SKILL.md` 里的 `name:` 字段，不是仓库目录名（仓库里 `anc-ingest-company` 的
+   技能名是 `anc-ingest`，按目录名落盘会造出两个同名技能）。脚本会检查这件事。
+   技能在**新会话**才生效（每会话首次注入时读盘，`VERIFY §18`）。
 5. 群里发「今天有什么任务」，有回复即可。
 
 > **代价是知情的**（D25）：WorkBuddy 及其 `preload.cjs` 补丁在这个账号下拿到管理员权限。
@@ -70,9 +92,22 @@ powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
 ## 5. 验收
 
 ```powershell
-powershell -File C:\ProgramData\anc\bin\doctor.ps1      # 全 PASS 才算完
+powershell -File C:\ProgramData\anc\bin\doctor.ps1      # 判据见下
 powershell -File C:\ProgramData\anc\bin\watchdog.ps1    # 无异常退出 0
 ```
+
+**doctor 的合格线是 `FAIL=0`，不是"全 PASS"。** 当前基线是 `WARN=1`：
+
+```
+WARN  vault-ingest-audit   3 个未跟踪文件，但 1 小时内没有成功入库记录
+```
+
+这条 WARN 只在"有人绕过入库进程直接往 vault 写文件"时才该变红。
+干净重建后它一直是 WARN 的话，说明备份里带了未入库的散文件——那本身值得看一眼。
+
+**`time-sync` 必须 PASS**（`W32Time` 在跑）。它查的是时钟有没有自动校准：
+不校准会让 `patch-guard` 的 ±15 秒窗口和提醒的 `due_at` 一起出错（`VERIFY §15`）。
+这台机器就踩过——`W32Time` 从装好起一直是 Stopped，而那时 doctor 只有 `timezone` 一项（只查时区名）。
 
 再人工做一次：登记 2 分钟后到点的任务 → 到点收到 @ 提醒。
 
@@ -97,9 +132,9 @@ powershell -File scripts\rebuild-drill.ps1 -Keep      # 保留演练根，便于
 | 步骤 | 耗时 |
 |---|---|
 | 建目录结构 | 0.1 s |
-| 部署运行件（deploy -Apply，56 文件逐字节校验） | 3.8 s |
+| 部署运行件（deploy -Apply，66 文件逐字节校验） | 3.8 s |
 | doctor 校验结构 | 17.5 s |
-| **合计** | **21.4 s** |
+| **合计** | **21.4 s**（2026-11-04 复测 21.3 s / 66 文件，耗时未变） |
 
 `deploy-layout: PASS`。重建耗时以这个数为基线：明显变慢说明映射变多或校验变重，要回头看是否值得。
 
