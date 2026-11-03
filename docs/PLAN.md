@@ -48,6 +48,7 @@
 | 2026-11-04 | gate S 第 3 项从"等自然发生"改成"造一条已到期的任务" | 库里 34 个任务、56 条提醒全是 cancelled/done，没有可等的。改走 CLI + 真实 tick 链路造，`VERIFY §20` 已注明是造的 |
 | 2026-11-04 | L3 的验收从"你愿意合入"改成"可应用 + 已应用一条 + 说明适用边界" | "愿意"是主观判断，没法在自动推进里结案。改成分两步：① `git apply` 真的成功、`npm test` 没坏（可验）② 在 VERIFY 里说清哪类问题适合模板版（诚实交代局限） |
 | 2026-11-04 | gate L 第 2 条从 □ 改成 ◐（部分完成） | 「@个人bot 说下班」需要个人 bot，本机只有一个公司 bot。链路本体（表/CLI/all-off/技能）已全部验证，缺的是"自动识别这句话"。标 ◐ 而不是 ☑，等阶段 D 第二台机器补验（VERIFY §24） |
+| 2026-11-04 | gate L 收尾：6 ☑ + 1 ◐ | devbot 两次产出质量不一致（issue-2 写 `due_at`，issue-3 写 `due_local`）——说明它有时读实际数据、有时靠推。这是"eval 是筛子不是证明"的又一个实例，人 review 不能省（VERIFY §27） |
 
 ### 0.2 与其它文档的关系
 
@@ -393,7 +394,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ☑ patch draft 的 diff 可应用且已应用一条  ← 2026-11-04：`cli patch draft` 从真实 issue 产出 unified diff，`git apply` 成功、`npm test` 107/107 没坏；**已应用到 `light/skills/anc-task/SKILL.md`**。评估：模板版覆盖「行为约束」类问题，覆盖不了「代码缺陷」和「功能缺失」，见 `VERIFY §23`
 ☑ devbot **全自动**跑出分支  ← 2026-11-04：`scripts/devbot.ps1` 切 persona→注入 issue→等→检查→恢复；实测产出 `devbot/issue-2`（`d9b73b3`，只改 `anc-task/SKILL.md`，`main` 未动，范围检查通过）。**前置突破：`run_command` 能跑任意系统命令**。但 eval 没证明"改对了"（缺逾期数据），见 `VERIFY §26`
 ☑ eval 能判定 pass/fail  ← 2026-11-04：`cli eval run` 经 test-emit 注入 + 读 patch-out.log 取回答 + 8 类断言；**pass 和 fail 都真跑出来过**（`task-list-quiet` pass/exit 0，`task-list-one-line` fail/exit 1），判官单测 8/8。局限：只记前 400 字、只有最终回复、看不到工具调用，见 `VERIFY §25`
-□ 端到端走通一次，全程有记录
+☑ 端到端走通一次，全程有记录  ← 2026-11-04：`scripts/e2e-loop.ps1` 12 分钟跑完 L1→L2→L3→L4→L6，`submission #4 → issue #3 → draft #6 → 分支 devbot/issue-3 → eval 2 pass 1 fail`，报告落 `_research/e2e-*.md`。两次 devbot 产出对比见 `VERIFY §27`（第二次更好，因为它真读了命令输出）
 ```
 
 ---

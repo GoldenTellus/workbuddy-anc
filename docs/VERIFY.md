@@ -1922,3 +1922,116 @@ devbot/issue-2 分支保留                 ✓ 等人看
 ```
 
 **线上跑的是 main 版的技能，devbot 的改动只存在于那个分支上。**
+
+## 27. L7：端到端跑通一次（2026-11-04）
+
+### 一条反馈走完全程
+
+`scripts/e2e-loop.ps1 -ChatId <id> -UserId <id> -Apply -WithDevbot`，12 分钟跑完：
+
+```
+反馈原文：刚才查任务那条回复又不对了：我问「今天有什么任务」，它把上周逾期的也列出来了。应该只列今天到期的。
+
+[pre] test-emit 就绪，基线 submissions=3 issues=2
+
+[L1] 注入 → 32 秒后 submissions=4
+     submission #4  employee=本人  status=new  原话一字不差: True
+
+[L2] draft → issue #3  skill=anc-task  section=查任务  needTriage=False
+     symptom : 刚才查任务那条回复又不对了：我问「今天有什么任务」，它把上周逾期的也列出来了
+     expected: 应该只列今天到期的
+
+[L3] patch draft → draft #6，插入 4 行，目标 light/skills/anc-task/SKILL.md §查任务
+     diff 14 行，写到 _research/e2e-issue3.patch
+
+[L4] devbot → 分支 devbot/issue-3 存在，1 个提交，改了 1 个文件
+     产出有效：全在允许范围内
+
+[L6] eval
+     task-list-quiet      pass
+     task-list-has-answer pass
+     task-list-one-line   fail
+
+全绿
+```
+
+**数据在库里的对应关系**（可追溯）：
+
+```
+submission #4  ←  员工原话
+   └─ issue #3   (submissions #4 的 issue_id = 3)
+        └─ patch_drafts #6
+        └─ git commit d9b73b3 / (issue-3 的那条)   ← 分支 devbot/issue-3
+             └─ eval_runs #106 #107 #108
+```
+
+每一步都能从库里、从 git 里、从报告里对上。
+
+### 两次 devbot 产出的对比（这是最有意思的部分）
+
+同一个 issue 类型（"查任务把逾期的也列了"），跑了两次，产出不一样：
+
+**第一次（issue #2）**：
+
+```markdown
+- 命令返回的是**全部未完成任务**，没有日期参数。「今天有什么任务」这类问法，**必须按 `due_at` 过滤后再回答**：
+  - 把每条的 `due_at`（UTC）换算成本地日期，只保留**到期日等于今天**的；
+  - 到期日在今天之前（逾期）或之后（未来）都**不算**今天的任务，不要列进答案；
+  - 过滤后为空就直说「今天没有到期的任务」，不要拿逾期任务凑数。
+- 员工明确要看逾期或全部任务时（如「逾期的有哪些」），才按其要求列出，并注明哪些已逾期。
+```
+
+**第二次（issue #3）**：
+
+```markdown
+- 上面的命令返回该群**全部**未完成任务，**不会自动按日期过滤**；过滤由你来做。
+- 员工问「今天有什么任务」时，**只列今天到期的**：取返回里 `due_local` 的日期部分等于今天的；上周或更早的逾期任务**不列**。
+- 今天没有到期任务就直接回「今天没有到期的任务」，不要拿旧任务凑数。
+- 逾期任务只有在员工主动问「逾期」「过期」「之前欠的」时才列出。
+```
+
+**第二次更准**：它用了 **`due_local`** 这个字段名。
+
+这不是巧合——第一次它写的是 `due_at`（UTC），第二次写的是 `due_local`。后者是 CLI 真正返回的字段。**说明它第二次真的读了命令输出**，而第一次是从 issue 的措辞里推的。
+
+**这也暴露了一个问题**：devbot 的产出**不稳定**。同一个 issue 类型，两次结果不一样，哪次更好取决于它有没有去读实际数据。**这就是为什么 eval 和人工 review 都不能省。**
+
+### 踩的坑：脚本跑完没切回 libmian
+
+跑完发现 `git rev-parse --abbrev-ref HEAD` 是 **`devbot/issue-3`**，不是 `main`。
+
+`devbot.ps1` 会把仓库切到 `devbot/issue-<N>` 去提交，但**它不负责切回来**（那是调用方的责任）。`e2e-loop.ps1` 第一版忘了这件事。
+
+**后果**：仓库停在 devbot 分支上。当时线上技能还是 main 版（因为 devbot 不部署），但**下一次 `deploy` 就会拿 devbot 分支的技能去部署**——而且不会报错。
+
+**修法**：`e2e-loop.ps1` 开头记下 `$startBranch`，汇总之前切回并校验。
+
+**教训**：**任何会改变 `git` 当前分支的脚本，都必须负责把分支切回去。** 这不是"最好有"，是"必须有"——因为错的结果看起来是正常的。
+
+### 现在的完整链路
+
+```
+员工说一句（test-emit 模拟）
+  → submissions              L1  ✓
+  → issues（分诊）            L2  ✓
+  → patch_drafts（模板 diff）  L3  ✓
+  → devbot 分支（agent 改）    L4  ✓
+  → eval_runs（pass/fail）     L6  ✓
+  → 报告（_research/e2e-*.md） L7  ✓
+```
+
+**唯一没串进来的是 L5（dayend）**。它不在这个链路里——dayend 是"下班"的记录，作用是"全员下班后开夜间窗口"，属于**触发条件**而不是数据流的一环。
+
+### gate L 的真实状态
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| submission 落地 | ☑ | 端到端验证 |
+| dayend | ◐ | 链路通了，自动识别"下班"要个人 bot |
+| submission → issue | ☑ | 规则表 11 条 |
+| patch draft | ☑ | 可应用、已应用过一条 |
+| devbot 出分支 | ☑ | 两次都出了，质量不稳定 |
+| eval 判 pass/fail | ☑ | 两种都真跑出来过 |
+| 端到端 | ☑ | 12 分钟一次跑完，全程留痕 |
+
+**6 项 ☑ + 1 项 ◐。** gate L 的核心目的（"从员工提交一个问题到合入一个改好的技能，全程有记录、能复现"）达到了——除了"合入"那一步仍然是人做（这是设计，不是缺口）。

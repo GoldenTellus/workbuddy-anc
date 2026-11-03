@@ -55,6 +55,10 @@ Write-Host "反馈原文: $Text"
 Write-Host "群: $chatShort…  仓库: $Repo"
 Write-Host "devbot: $(if ($WithDevbot) { '含（多 7 分钟）' } else { '跳过（加 -WithDevbot 才做）' })"
 
+# 记下起始分支：devbot 会把仓库切到 devbot/issue-<N>，跑完必须切回来，
+# 否则下一次 deploy 会拿错分支的技能去部署（2026-11-04 踩到）。
+$startBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+
 if (-not $Apply) {
     Write-Host ""
     Write-Host "[e2e] 预检模式。加 -Apply 才真跑。"
@@ -194,6 +198,14 @@ foreach ($kv in $Results.GetEnumerator()) {
 }
 Write-Host ""
 if ($Failures -eq 0) { Write-Host "  全绿" } else { Write-Host "  $Failures 个环节失败" }
+
+# ── 复位：切回起始分支（devbot 会把 HEAD 挪走）────────
+if ($startBranch -and $startBranch -ne (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()) {
+    & git -C $Repo checkout $startBranch 2>&1 | Out-Null
+    $nowBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+    Write-Host ""
+    if ($nowBranch -eq $startBranch) { Write-Host "  已切回 $startBranch" } else { Bad "切回 $startBranch 失败，现在在 $nowBranch" }
+}
 
 # 报告落盘（_research 不进 git）
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
