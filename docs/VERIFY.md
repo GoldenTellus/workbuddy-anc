@@ -1769,3 +1769,156 @@ L4（devbot）改完技能后要判断"有没有改坏"，靠的就是这个。�
 - **只看最终回复** → 只能判断"行为对不对"，判断不了"实现有没有引入别的问题"
 
 这意味着 L4 后面还得有**人工 review**兜底。eval 是筛子，不是证明。
+
+## 26. L4：devbot 全自动产出分支（2026-11-04）
+
+### 前置突破：`run_command` 能跑系统命令
+
+以前从没验过 WorkBuddy 能不能执行命令。今天查了它的 MCP 工具清单（`~/.workbuddy/mcp-tool-list.json`，46 个工具）：
+
+```
+tdrive.*                       云盘（上传/下载/移动/搜索）
+workbuddy_cloudservice_db_*    云数据库
+library_search / library_export
+GetMe / SendMessage / ReplyMessage …   企微消息
+resolve_local_excel / get_cell_ranges / set_cell_range / run_command …   Excel 那组
+weixinpay_*
+```
+
+**没有通用的本地文件读写工具。** 唯一的希望是 `run_command`，而它在 Excel 那组里，看起来像是给表格用的。
+
+实测：
+
+```
+注入：用 run_command 工具跑这条命令并把输出原文贴给我：node -e "console.log(6*7)"
+回复：42
+```
+
+**它能跑任意系统命令并返回输出。** 这条以前是空白，现在成了 L4 的地基——devbot 能跑 `git`、`node`、`powershell` 全靠它。
+
+### 架构：编排在外，思考在内
+
+`scripts/devbot.ps1` 只做四件事，**"怎么改"完全交给 WorkBuddy**：
+
+```
+切 persona  →  注入 issue  →  等它干完  →  检查产出  →  恢复 persona
+```
+
+这是 PLAN §5.1 的落地：「用一个现成 agent 去改技能，项目里不写 agent 框架」。脚本是壳，模型是脑。
+
+`light/personas/devbot/CODEBUDDY.md` 定义开发模式：
+
+| 硬约束 | 内容 |
+|---|---|
+| 不许跑 `deploy.ps1` | 产出要人早上看过才上主机 |
+| 不许碰 `%ProgramData%\anc` | 生产状态 |
+| 不许提交到 `main`、不许 `git push` | 只在 `devbot/issue-<N>` 上 |
+| 只允许改 | `light/skills/**/SKILL.md`、`light/evals/*.json` |
+
+### 三层安全边界（都不靠自觉）
+
+| 层 | 手段 | 事后可查 |
+|---|---|---|
+| 分支 | 只让它在 `devbot/issue-<N>` 上提交 | 脚本比对 `main` 的 HEAD 有没有变 |
+| 部署 | persona 明令禁止；就算跑 `deploy` 也是幂等的 | — |
+| 改动范围 | — | 脚本检查每个改动文件必须匹配 `^light/(skills\|evals)/`，越界判失败 |
+
+另外 `finally` 块里**无条件**恢复 persona，无论成败。
+
+### 真跑结果
+
+```
+[devbot] 预检 Issue #2
+[devbot] 基线分支: main（干净）
+[devbot] 目标分支: devbot/issue-2
+[devbot] issue: skill=anc-task  section=查任务
+[devbot] persona 已切到 devbot 版（备份: persona-backup-20261104-040714.md）
+[devbot] 注入指令（等最多 420 秒）
+[devbot] 等待结束
+
+  分支存在: True
+  提交数:   1
+    d9b73b3 devbot: 查任务按 due_at 过滤，只回今天到期的 (issue #2)
+  改了文件: 1
+    light/skills/anc-task/SKILL.md
+  main 的 HEAD: 7da4215…（没动）
+
+[devbot] 产出有效：全在允许范围内
+[devbot] persona 已恢复
+```
+
+**从"读 issue"到"出分支"，全程无人介入。**
+
+### 它改了什么（这是最值得看的部分）
+
+issue #2 的 symptom 是「它把上周逾期的也列出来了」，expected 是「应该按 due_at 过滤」。
+
+L3 的模板版产出的是一段**提醒**：
+
+```markdown
+> **已知问题 #1**（2026-11-03 登记，修好后删掉这一段）：
+> - 现象：刚才查任务那条回复不对——我说的是只看今天到期的，它把上周逾期的也列出来了
+> - 期望：应该按 due_at 过滤
+```
+
+devbot 把这段**删掉**，换成了**可执行的指令**：
+
+```markdown
+- 命令返回的是**全部未完成任务**，没有日期参数。「今天有什么任务」这类问法，**必须按 `due_at` 过滤后再回答**：
+  - 把每条的 `due_at`（UTC）换算成本地日期，只保留**到期日等于今天**的；
+  - 到期日在今天之前（逾期）或之后（未来）都**不算**今天的任务，不要列进答案；
+  - 过滤后为空就直说「今天没有到期的任务」，不要拿逾期任务凑数。
+- 员工明确要看逾期或全部任务时（如「逾期的有哪些」），才按其要求列出，并注明哪些已逾期。
+```
+
+**三个它自己想到而我没要求的事**：
+
+1. **"换算成本地日期"** —— `due_at` 存的是 UTC，直接比日期会错一天
+2. **"逾期或未来都不算"** —— 把边界两头都堵上，不只是逾期那头
+3. **"员工明确要看逾期时才列"** —— 没把原行为一刀切掉，留了正当出口
+
+这正是 L3 判断的"模板版覆盖不了的那类"——模板只能摆现象，agent 能写出条件分支。
+
+### 诚实的部分：eval 没证明它改对了
+
+改完部署、重启，跑了三条用例：
+
+```
+task-list-quiet      pass  "今天没有到期的任务。"       10 字 1 行
+task-list-has-answer pass  "在。\n今天没有到期的任务。"  13 字 2 行
+task-list-one-line   fail  "在。\n今天没有到期的任务。"  13 字 2 行（maxLines:1）
+```
+
+**三条都没测到"按 due_at 过滤"这件事本身**——因为库里没有逾期任务，造一条又会污染数据。所以：
+
+| 问题 | 答案 |
+|---|---|
+| devbot 能不能全自动出分支 | **能**，实测出来了 |
+| 分支在允许范围内吗 | **在**，脚本检查过 |
+| 改动方向对吗 | **对**，对着 symptom 改的 |
+| **改完真的解决了问题吗** | **没验证**——缺测试数据 |
+
+另外注意到 `task-list-quiet` 那次跑出 10 字 1 行（没有"在。"），但 `task-list-one-line` 跑出 13 字 2 行（有"在。"）。**同一份技能跑出两种结果**，说明模型的旁白行为本身不稳定，不是 devbot 改出来的差异。
+
+**这就是我在 `VERIFY §25` 写的「eval 是筛子，不是证明」的具体样子**：能证明"没变坏"，证明不了"变好了"。
+
+### 顺带踩的坑
+
+**PowerShell 5.1 没有 `??`**
+
+```powershell
+$((($target.symptom ?? '') -split "`n")[0])   # 报：表达式或语句中包含意外的标记"??
+```
+
+改成 `if` 表达式。这是今天第三次踩 PS 5.1 的语法差异（前两次是 `??` 和嵌套 `Where-Object` 的 `$PSItem`）。
+
+### 恢复现场
+
+```
+git checkout main                     ✓
+deploy-skills 从 main 重新部署         ✓ 线上 hash 与 main 一致（E81352DC12EB）
+重启                                    ✓
+devbot/issue-2 分支保留                 ✓ 等人看
+```
+
+**线上跑的是 main 版的技能，devbot 的改动只存在于那个分支上。**

@@ -391,7 +391,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ◐ dayend 记录通了，但**自动识别「下班」未验证**  ← 2026-11-04：表/CLI/`all-off`/技能全部验证（显式指定技能后 bot 调用成功、`dayend=1`、`allOff=true`、幂等、107 测试没坏）。**但「下班了」这句话本身没触发技能**——那需要个人 bot，我们只有一个公司 bot，见 `VERIFY §24`
 ☑ submission 能转成结构化 issue  ← 2026-11-04：规则表 11 条（关键词→技能→真实章节），symptom/expected 用字符串规则抽、不用模型；命中不了留 null 标「待人工分诊」；幂等；生产库 `submission #3 → issue #2`，见 `VERIFY §22`
 ☑ patch draft 的 diff 可应用且已应用一条  ← 2026-11-04：`cli patch draft` 从真实 issue 产出 unified diff，`git apply` 成功、`npm test` 107/107 没坏；**已应用到 `light/skills/anc-task/SKILL.md`**。评估：模板版覆盖「行为约束」类问题，覆盖不了「代码缺陷」和「功能缺失」，见 `VERIFY §23`
-□ devbot **全自动**跑出一个可用分支（从读 issue 到出分支，无人介入）
+☑ devbot **全自动**跑出分支  ← 2026-11-04：`scripts/devbot.ps1` 切 persona→注入 issue→等→检查→恢复；实测产出 `devbot/issue-2`（`d9b73b3`，只改 `anc-task/SKILL.md`，`main` 未动，范围检查通过）。**前置突破：`run_command` 能跑任意系统命令**。但 eval 没证明"改对了"（缺逾期数据），见 `VERIFY §26`
 ☑ eval 能判定 pass/fail  ← 2026-11-04：`cli eval run` 经 test-emit 注入 + 读 patch-out.log 取回答 + 8 类断言；**pass 和 fail 都真跑出来过**（`task-list-quiet` pass/exit 0，`task-list-one-line` fail/exit 1），判官单测 8/8。局限：只记前 400 字、只有最终回复、看不到工具调用，见 `VERIFY §25`
 □ 端到端走通一次，全程有记录
 ```
