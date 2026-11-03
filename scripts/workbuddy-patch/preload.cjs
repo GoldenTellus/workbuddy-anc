@@ -82,6 +82,23 @@ function log(line) {
   } catch (_) { /* ignore */ }
 }
 
+// 出站观测（O1）：只记数字，不记内容。
+// 原文可能带业务正文，落盘等于把它搬到另一个地方——这违反 D19 的意图。
+// 存在的意义：回答"出站过滤到底有没有被调用过、有没有东西被丢"。
+const STAT_LOG = __ancPath.join(__ancPath.dirname(STATE), 'narration-filter.log');
+global.__ancStat = function (kind, inLines, outLines, dropped) {
+  try {
+    fs.appendFileSync(STAT_LOG, JSON.stringify({
+      at: new Date().toISOString(),
+      pid: process.pid,
+      kind: String(kind || ''),
+      in: Number(inLines) || 0,
+      out: Number(outLines) || 0,
+      dropped: Number(dropped) || 0,
+    }) + '\r\n');
+  } catch (_) { /* ignore */ }
+};
+
 const toggle = String(process.env[mf.toggleEnv || 'ANC_WB_PATCH'] || '1').toLowerCase();
 if (toggle === '0' || toggle === 'off' || toggle === 'false') {
   log('disabled by ' + (mf.toggleEnv || 'ANC_WB_PATCH'));
@@ -187,6 +204,7 @@ const PATCH_BODY = [
   '      __ancCls.prototype.sendReply = function (chatId, text) {',
   '        var filtered = text;',
   '        try { filtered = __ancFilterNarration(text); } catch (e) { filtered = text; }',
+  '        try { if (global.__ancStat) { var __li = String(text == null ? "" : text).split(/\\r?\\n/).length; var __lo = String(filtered == null ? "" : filtered).split(/\\r?\\n/).length; global.__ancStat("reply", __li, __lo, __li - __lo); } } catch (e) {}',
   '        try { if (typeof filtered === "string" && filtered.trim() === "") { global.__ancNarrationSkipped = (global.__ancNarrationSkipped || 0) + 1; return Promise.resolve(true); } } catch (e) {}',
   '        try { if (global.__ancLogOut) global.__ancLogOut(chatId, filtered); } catch (e) {}',
   '        return __ancOrigReply.call(this, chatId, filtered);',
