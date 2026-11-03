@@ -89,6 +89,69 @@ powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
 > **代价是知情的**（D25）：WorkBuddy 及其 `preload.cjs` 补丁在这个账号下拿到管理员权限。
 > 它或它加载的任何东西出问题，损失是整台主机。要收紧时的做法：建一个标准用户，
 > 把两个 Interactive 计划任务与 WorkBuddy 迁过去，再用 `doctor -BotUser <该用户>` 复核。
+## 4b. 装完之后怎么验（不用等人）
+
+装完 bot 之后，**先别去群里发消息**——下面这些都能自己验。
+
+### 测试入口：模拟「有人 @ 了 bot」
+
+补丁在 `preload.cjs` 里开了一个本地 HTTP 口（默认 `127.0.0.1:17999`），可以伪造一条入站消息。
+**默认关着**，要有 `%ProgramData%\anc\data\test-emit.flag` 才生效。
+
+```powershell
+# 开（重启 WorkBuddy 后 8–30 秒可用）
+New-Item -ItemType File -Force "$env:ProgramData\anc\data\test-emit.flag" | Out-Null
+
+# 用：注入一条消息
+$body = @{
+  chatId  = "<完整 chatId，从 chat_bindings 取，别从日志抄截断的>"
+  user    = "<员工 userid>"
+  msgId   = ([guid]::NewGuid().ToString("N"))
+  content = "今天有什么任务"
+} | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri "http://127.0.0.1:17999/emit" -Method Post `
+  -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body))
+
+# 关（用完删掉 flag）
+Remove-Item "$env:ProgramData\anc\data\test-emit.flag"
+```
+
+**怎么判断 bot 真处理了**（按可靠程度排序）：
+
+1. `%ProgramData%\anc\data\patch-out.log` 里出现**回复正文**（最硬）。
+   注意它是**单行**格式，换行被转义成字面 `\n`，且只记前 400 字符。
+2. `patch-canary.json` 的 `at` 更新了（证明收到了，但不知道回了什么）。
+3. `daemon.log` 里 `[SubscriptionGate] ... type=skill name=<技能>`（证明它在看某个技能）。
+
+**三个前提**：重启后要等 8–30 秒；它只走 `emitMessage`，不检查 @ 标记（所以"会不会回应"不能只靠它判断）；
+它不做认证，只监听回环地址。
+
+### 迭代闭环的几个命令
+
+`C:\ProgramData\anc\service\cli.ts` 有这些子命令组，装完之后可以逐组试一下：
+
+| 命令 | 干什么 | 试法 |
+|---|---|---|
+| `submission add/list` | 员工报的问题原话 | `--text "…" --chat-id "<id>"` |
+| `issue draft/list/triage` | submission → 结构化 issue | `--submission <id>` |
+| `patch draft/list/show` | issue → 可评审的 diff | `--issue <id> --repo <仓库>` |
+| `dayend add/list/all-off` | 下班记录 + 全员下班判定 | `--employee "…"`；`all-off` 看夜间窗口该不该开 |
+| `eval run/list/history` | 驱动 bot 回放用例判 pass/fail | `--case <id> --chat-id <id> --repo <仓库> --wait-ready` |
+
+### 两个编排脚本
+
+```powershell
+# 端到端：一条反馈走完 L1→L2→L3→L4→L6（约 12 分钟）
+powershell -File "<仓库>\scripts\e2e-loop.ps1" -ChatId <id> -UserId <id> -Apply -WithDevbot
+
+# 只跑 devbot：切 persona → 注入 issue → 等 → 检查 → 恢复（约 7 分钟）
+powershell -File "<仓库>\scripts\devbot.ps1" -Issue <api号> -ChatId <id> -UserId <id> -Apply
+```
+
+`devbot.ps1` 会把 live persona 切到 `light/personas/devbot/CODEBUDDY.md`，跑完在 `finally` 里恢复。
+**它不负责切 git 分支**——那是调用方的责任。`e2e-loop.ps1` 里有这句（开头记 `$startBranch`，汇总前切回）。
+自己写编排脚本时别忘了这件事：**任何会改 `git` 当前分支的脚本，都必须负责把分支切回去**。
+
 ## 5. 验收
 
 ```powershell
