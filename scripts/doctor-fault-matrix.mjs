@@ -145,6 +145,20 @@ const GROUPS = {
     },
   },
 
+  // 2b) 时间同步：W32Time 停掉（2026-11-04 加；这台机器从装好起它就是 Stopped，doctor 当时查不出来）
+  timesync: {
+    title: 'W32Time 服务被停（时钟不再自动校准）',
+    items: { 'time-sync': 'FAIL' },
+    inject() {
+      execFileSync('powershell', ['-NoProfile', '-Command', 'Stop-Service W32Time -Force -ErrorAction SilentlyContinue'], { stdio: 'ignore' });
+      log('  注入: Stop-Service W32Time');
+    },
+    recover() {
+      execFileSync('powershell', ['-NoProfile', '-Command', 'Start-Service W32Time -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; w32tm /resync /force | Out-Null'], { stdio: 'ignore' });
+      log('  恢复: Start-Service W32Time + resync');
+    },
+  },
+
   // 3) 补丁文件类：manifest + patch-state + deploy-layout
   patchfiles: {
     title: '补丁清单与部署文件被改',

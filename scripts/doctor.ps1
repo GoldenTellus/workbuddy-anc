@@ -324,6 +324,29 @@ if ($wantTz -and $tz -ne $wantTz) {
     Add-Result 'timezone' 'WARN' ("当前 $tz（未配置 timezone，按 China Standard Time 设计）") ('config set timezone "' + $tz + '"')
 }
 
+
+# 15b 时间同步：时区对了不等于时间对。W32Time 停着时时钟会慢慢漂，
+#     patch-guard 用 patch-state.at 与进程创建时间的 ±15 秒窗口判断补丁新旧，
+#     提醒的 due_at 也依赖绝对时间。2026-11-04 发现这台机器从装好起 W32Time 就是 Stopped。
+$w32 = Get-Service W32Time -ErrorAction SilentlyContinue
+$w32Running = $w32 -and ($w32.Status -eq 'Running')
+$syncLine = ''
+try { $syncLine = (w32tm /query /status 2>&1 | Out-String) } catch { $syncLine = '' }
+# w32tm 的输出是本地化 + GBK，中文 key 在这里是乱码，匹配不到。
+# 改成认「日期 + 时间」这个形态：只要输出里有 yyyy/M/d H:mm:ss 就说明报告了上次同步时间。
+$hasSync = $syncLine -match '\d{4}[/-]\d{1,2}[/-]\d{1,2}.{0,12}\d{1,2}:\d{2}:\d{2}'
+if (-not $w32) {
+    Add-Result 'time-sync' 'FAIL' '找不到 W32Time 服务（时钟不会自动校准）' '确认系统组件完整：Set-Service W32Time -StartupType Automatic'
+} elseif (-not $w32Running) {
+    Add-Result 'time-sync' 'FAIL' ("W32Time 状态 " + $w32.Status + "（时钟不会自动校准；patch-guard 的 ±15 秒窗口和提醒的 due_at 都会受影响）") 'Set-Service W32Time -StartupType Automatic; Start-Service W32Time; w32tm /resync /force'
+} elseif (-not $hasSync) {
+    Add-Result 'time-sync' 'WARN' 'W32Time 在跑，但查不到最近一次成功同步记录' 'w32tm /resync /force，再看 w32tm /query /status'
+} else {
+    $syncAt = ''
+    if ($syncLine -match '(?:Last Successful Sync Time|上次成功同步时间)s*[:：]s*(.+)') { $syncAt = $matches[1].Trim() }
+    Add-Result 'time-sync' 'PASS' ("W32Time Running" + $(if ($syncAt) { " / 上次同步 " + $syncAt } else { "" })) '-'
+}
+
 # 16 数据库
 $db = "$env:ProgramData\anc\data\anc.db"
 if (Test-Path $db) { Add-Result 'database' 'PASS' ((Get-Item $db).Length.ToString() + ' B') '-' }

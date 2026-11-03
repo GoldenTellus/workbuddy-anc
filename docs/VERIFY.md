@@ -698,11 +698,11 @@ D24 的目标是：vault 对 bot 只读，入库只能由服务身份执行。�
 bot 是管理员，理论上仍可以 `takeown` + `icacls` 改回权限。护栏让它没有动机这么做，
 但这是**行为约束，不是权限约束**。要真封死，得把 bot 迁到标准用户（原 D6 方案，
 2026-11-02 按 D25 决定不做）。这条边界写清楚，免得以后误以为"已经绝对安全"。
-## 15. O-2 doctor 故障矩阵（2026-11-02，26/28 注入验证）
+## 15. O-2 doctor 故障矩阵（2026-11-02 首轮 26/28；2026-11-04 补 time-sync 后 27/29）
 
 V4 只抽查了 3 项。O-2 要的是**每一项都证明在该 FAIL 时会 FAIL**。
 
-工具：`scripts/doctor-fault-matrix.mjs`，**11 组**，按组注入——同类项一次弄坏（如同时禁用 8 个任务），
+工具：`scripts/doctor-fault-matrix.mjs`，**13 组**，按组注入——同类项一次弄坏（如同时禁用 8 个任务），
 一次 doctor 验多项。每组都是「注入 → 断言该项变红 → 恢复 → 断言回绿」，跑完统一再验一次现场。
 
 ```
@@ -713,6 +713,7 @@ V4 只抽查了 3 项。O-2 要的是**每一项都证明在该 FAIL 时会 FAIL
 |---|---|---|
 | tasks | 8 个 `task-anc-*` | `Disable-ScheduledTask` |
 | config | `work-hours`、`timezone` | 配置写成 `99:99` / `Not/AZone` |
+| **timesync** | **`time-sync`** | **`Stop-Service W32Time`（2026-11-04 补）** |
 | patchfiles | `manifest`、`patch`、`deploy-layout` | manifest 写坏 JSON；清空 `workbuddy-patch.log`；改 `preload.cjs` |
 | acl | `secrets-acl`、`vault-acl` | 给 `Users` 加读/改权限 |
 | staleness | `heartbeat`、`canary`、`backup-freshness` | 改 mtime / 改 canary 的 `at` / **所有**备份改旧 |
@@ -723,12 +724,43 @@ V4 只抽查了 3 项。O-2 要的是**每一项都证明在该 FAIL 时会 FAIL
 | bindings | `bindings` | 清空 `chat_bindings`（先备份） |
 | secretingit | `secrets-in-git` | 在 `scripts/` 放假 webhook（`docs/*` 被 grep 排除） |
 
-**26 项已注入验证**。剩 3 项：
+**27 项已注入验证**（原 26 + 2026-11-04 补的 `time-sync`）。剩 2 项：
 
 | 项 | 状态 |
 |---|---|
 | `vault-ingest-audit` | **已有真实触发证据**：基线就是 WARN「3 个未跟踪文件，但 1 小时内没有成功入库记录」——这不是推测，是它真报了。它的因果也在 D24 那次（bot 直写 vault）被观察过 |
 | `database` | 注入需停 2 个服务 + 杀 node 进程再改名，doctor 期间服务全停 —— **留维护窗口**。它本身是信息项（只报文件大小），风险收益不划算 |
+
+### 2026-11-04 补的一项：`time-sync`
+
+**为什么补**：这台机器的 `W32Time` 服务从装好起就是 **Stopped**（启动类型 Manual），`w32tm /query /status` 报 `0x80070426`。但 `doctor` 一直 PASS——因为 `timezone` 项只查**时区名**（`China Standard Time`），不查**时间服务在不在跑**。
+
+**后果**：时钟会慢慢漂。`patch-guard` 用 `patch-state.at >= 主进程创建时间 - 15 秒` 判断补丁新旧，提醒的 `due_at` 也依赖绝对时间。漂到分钟级就会误判。
+
+**怎么修的**：在 `doctor.ps1` 里新增独立项 `time-sync`（没有并进 `timezone`——"时区错"和"时间没同步"是两个独立故障，合并会让诊断信息混在一起）。判据：
+
+```
+找不到 W32Time 服务          → FAIL
+服务存在但不在 Running       → FAIL（并提示 patch-guard / due_at 会受影响）
+在跑但查不到上次同步时间     → WARN
+在跑且有同步记录             → PASS
+```
+
+**一个坑**：`w32tm /query /status` 输出是**本地化 + GBK**，在 PowerShell 里读成乱码，用中文 key（`上次成功同步时间`）匹配不到。改成认「日期 + 时间」形态：
+
+```
+\d{4}[/-]\d{1,2}[/-]\d{1,2}.{0,12}\d{1,2}:\d{2}:\d{2}
+```
+
+**故障注入**（已并进矩阵，`--only timesync` 可单独跑）：
+
+```
+[timesync] W32Time 服务被停（时钟不再自动校准）
+  注入: Stop-Service W32Time
+  ✓ 注入后应报出问题        → FAIL=1
+  恢复: Start-Service W32Time + resync
+  ✓ 恢复后应转回 PASS       → FAIL=0
+```
 
 ### 这一轮踩的 10 个坑（都是"注入方式没对上检查逻辑"）
 
