@@ -15,6 +15,7 @@ import * as a2a from './a2a.ts';
 import * as submissions from './submissions.ts';
 import * as issues from './issues.ts';
 import * as patchDrafts from './patch-drafts.ts';
+import * as dayend from './dayend.ts';
 import * as loop from './loop.ts';
 import { assertSafeOutbound } from './outbound-scan.ts';
 import { appendAudit, commandName } from '../shared/audit.ts';
@@ -362,6 +363,32 @@ if (group === 'summary') {
       if (!d) fail("没有这份 draft: #" + id);
       out({ ok: true, draft: d });
     } else fail('未知 patch 子命令（draft/list/show）');
+  } else if (group === 'dayend') {
+    // 迭代闭环第五步（L5）：员工说「下班」的记录。纯记录，不调模型。
+    if (cmd === 'add') {
+      const employee = typeof args.employee === 'string' ? args.employee : '';
+      if (!employee.trim()) fail('缺少 --employee');
+      try {
+        const r = dayend.add(db, {
+          employee,
+          userid: typeof args['user-id'] === 'string' ? args['user-id'] : undefined,
+          chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined,
+          note: typeof args.note === 'string' ? args.note : undefined,
+          day: typeof args.day === 'string' ? args.day : undefined,
+        });
+        out({ ok: true, ...r });
+      } catch (e) { fail((e as Error).message); }
+    } else if (cmd === 'list') {
+      out({ ok: true, dayend: dayend.list(db, {
+        day: typeof args.day === 'string' ? args.day : undefined,
+        limit: typeof args.limit === 'string' ? Number(args.limit) : undefined,
+      }) });
+    } else if (cmd === 'all-off') {
+      // 全员下班判定：夜间窗口的开关条件
+      out({ ok: true, ...dayend.checkAllOff(db, {
+        day: typeof args.day === 'string' ? args.day : undefined,
+      }) });
+    } else fail('未知 dayend 子命令（add/list/all-off）');
   } else if (group === 'backup') {
     const to = typeof args.to === 'string' ? args.to : '';
     if (!to) fail('缺少 --to');

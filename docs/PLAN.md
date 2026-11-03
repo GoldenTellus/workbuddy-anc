@@ -47,6 +47,7 @@
 | 2026-11-04 | doctor 从 28 项变 29 项（新增 `time-sync`） | 发现 `W32Time` 从装好起就是 Stopped，而 `timezone` 项只查时区名不查服务状态，doctor 一直 PASS。按 D26 补一层而不是降低要求（VERIFY §15） |
 | 2026-11-04 | gate S 第 3 项从"等自然发生"改成"造一条已到期的任务" | 库里 34 个任务、56 条提醒全是 cancelled/done，没有可等的。改走 CLI + 真实 tick 链路造，`VERIFY §20` 已注明是造的 |
 | 2026-11-04 | L3 的验收从"你愿意合入"改成"可应用 + 已应用一条 + 说明适用边界" | "愿意"是主观判断，没法在自动推进里结案。改成分两步：① `git apply` 真的成功、`npm test` 没坏（可验）② 在 VERIFY 里说清哪类问题适合模板版（诚实交代局限） |
+| 2026-11-04 | gate L 第 2 条从 □ 改成 ◐（部分完成） | 「@个人bot 说下班」需要个人 bot，本机只有一个公司 bot。链路本体（表/CLI/all-off/技能）已全部验证，缺的是"自动识别这句话"。标 ◐ 而不是 ☑，等阶段 D 第二台机器补验（VERIFY §24） |
 
 ### 0.2 与其它文档的关系
 
@@ -387,7 +388,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 
 ```
 ☑ 群里报问题能落 submission  ← 2026-11-04：test-emit 注入「刚才查任务那条回复不对…」→ `submissions` 2→3，原话一字不改、employee 从绑定表推出、bot 回执「已记录 #3」，见 `VERIFY §21`
-□ 群里"@个人bot 说下班"能落 dayend 记录（L5）
+◐ dayend 记录通了，但**自动识别「下班」未验证**  ← 2026-11-04：表/CLI/`all-off`/技能全部验证（显式指定技能后 bot 调用成功、`dayend=1`、`allOff=true`、幂等、107 测试没坏）。**但「下班了」这句话本身没触发技能**——那需要个人 bot，我们只有一个公司 bot，见 `VERIFY §24`
 ☑ submission 能转成结构化 issue  ← 2026-11-04：规则表 11 条（关键词→技能→真实章节），symptom/expected 用字符串规则抽、不用模型；命中不了留 null 标「待人工分诊」；幂等；生产库 `submission #3 → issue #2`，见 `VERIFY §22`
 ☑ patch draft 的 diff 可应用且已应用一条  ← 2026-11-04：`cli patch draft` 从真实 issue 产出 unified diff，`git apply` 成功、`npm test` 107/107 没坏；**已应用到 `light/skills/anc-task/SKILL.md`**。评估：模板版覆盖「行为约束」类问题，覆盖不了「代码缺陷」和「功能缺失」，见 `VERIFY §23`
 □ devbot **全自动**跑出一个可用分支（从读 issue 到出分支，无人介入）

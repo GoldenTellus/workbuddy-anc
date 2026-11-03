@@ -152,6 +152,24 @@ CREATE TABLE IF NOT EXISTS patch_drafts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_patch_drafts_issue ON patch_drafts(issue_id);
+
+-- 迭代闭环的第五步（PLAN 阶段 L5）：员工说「下班」的记录。
+-- 纯记录，不调模型。用途有两个：
+--   1. 人看：谁几点收的工
+--   2. 机器看：全员都下班了 → 开夜间窗口（devbot 跑的时间）
+-- day 按**本地日期**存（YYYY-MM-DD），因为"今天有没有说过下班"是按自然日算的。
+CREATE TABLE IF NOT EXISTS dayend (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee   TEXT NOT NULL,
+  userid     TEXT,
+  chat_id    TEXT,
+  note       TEXT,
+  day        TEXT NOT NULL,
+  at         TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dayend_uniq ON dayend(employee, day);
+CREATE INDEX IF NOT EXISTS idx_dayend_day ON dayend(day, at);
 `;
 
 export function openDb(path: string = DEFAULT_DB): DatabaseSync {

@@ -1557,3 +1557,110 @@ sub#3 「今天天气真好我想吃火锅」
 **下一步 L4**：devbot 读 issue 队列 → 改 → 出分支。
 L3 证明了"模板版能产出可应用的 diff"，但**它只覆盖行为约束类问题**。
 L4 的价值在于能处理"要改示例/改结构"的那类——不过那也意味着 L4 的产出更容易出错，需要 eval（L6）兜。
+
+## 24. L5：dayend 记录与全员下班判定（2026-11-04，**自动识别没验成**）
+
+### 做了什么
+
+| 组件 | 内容 |
+|---|---|
+| 表 | `db.ts` 补 `dayend`（7 列 + `(employee, day)` 唯一索引） |
+| 逻辑 | `src/service/dayend.ts` — `add` / `list` / `checkAllOff` / `localDay` |
+| 命令 | `cli dayend add\|list\|all-off` |
+| 技能 | `light/skills/anc-dayend/SKILL.md` |
+
+### 三个设计决定
+
+**1. `day` 按本地日期存**
+
+"今天说过下班没有"是按自然日算的。存 UTC 会让 23:30 说的下班记到"明天"。
+
+**2. 同一天幂等，且保留第一次的时间**
+
+`idx_dayend_uniq(employee, day)` 保证一人一天一条。第二次说下班**不覆盖** `at`——第一次说的时间才是真的。
+
+**3. 空名册时 `allOff = false`**
+
+```ts
+allOff: roster.length > 0 && pending.length === 0
+```
+
+一个员工都没登记时说"全员下班"没有意义，而且会让 devbot 在一个没人用过的系统上半夜乱改。这条是保守设计，不是 bug。
+
+名册来源是 `chat_bindings` 里 `employee` 去重——这是目前唯一的员工清单（渲染器生成群映射时就用它）。将来有独立 org 名册时这个函数要跟着改。
+
+### CLI 全通
+
+```
+空名册          allOff=false  roster=[]        pending=[]
+绑定一个员工    allOff=false  roster=[本人]    pending=[本人]
+记一次下班      record#1 employee=本人 day=2026-11-04
+再记一次        created=false，返回同一条（id 仍是 1，at 没被覆盖）
+下班后 all-off  allOff=true   off=[本人]       pending=[]
+```
+
+`npm test` 107/107 没坏。
+
+### 端到端：**自动识别没验成，这是要如实说的**
+
+第一次注入「下班了，今天先到这」——**180 秒没动静**，`dayend` 一直是 0。
+
+查下来：
+
+```
+线上有 anc-dayend（2457B）                    ✓
+但 daemon.log 里 SubscriptionGate 只 check 过 anc-feedback，没有 anc-dayend
+persona 里也没有 "dayend" / "下班" 相关的职责说明  ← 根因
+```
+
+**模型不知道该用这个技能。** 技能装上了、CLI 通了、表建了，但没人告诉 bot"员工说下班时该怎么办"。
+
+第二次改成显式指定：「**用 anc-dayend 技能记一条下班：员工是「本人」，这是验收测试。**」
+
+```
+80s 后 dayend=1
+
+id          1
+employee    本人
+userid      wokc…
+chat_id     wrkcDlGwAAcaQxHsYyEztVz2Jby1YbTw
+note        这是验收测试
+day         2026-11-04
+at          19:54:26Z
+```
+
+**技能本身是好的**：bot 能调、CLI 能记、表能存、`all-off` 能判。
+
+### 为什么没让它自动识别
+
+PLAN §5.1 写的是「**@个人bot** 说「下班」→ cli dayend」。**这本来就是个人 bot 的技能**——员工在自己电脑上跟自己的 bot 说下班。
+
+我们只有**一个 WorkBuddy 实例**（公司 bot）。让公司 bot 也认「下班」有两个问题：
+
+1. **语义不对**：公司 bot 是全公司共用的，它对某个人说"下班记下了"很奇怪
+2. **改 persona 有代价**：persona 是全局的，加一句"员工说下班就记"会让它在任何群里都对这句话反应
+
+所以这一项按 D26 的思路**加了一层**（显式指定技能验证链路），而不是改 persona 硬凑。
+
+**gate L 第 2 条的诚实状态**：
+
+| 部分 | 状态 |
+|---|---|
+| `dayend` 表 + CLI + 全员下班判定 | ✅ 验证 |
+| `anc-dayend` 技能能被 bot 调用并落库 | ✅ 验证（显式指定） |
+| **自动识别「下班」这句话** | ❌ **未验证——需要个人 bot** |
+
+**这属于「环境不足」不是「没做」**：代码和技能都在，缺的是一台装了个人 bot 的机器。等阶段 D 第二台机器到位时能补上。
+
+### 顺带查清：技能加载的实际情况
+
+`daemon.log` 里 `SubscriptionGate` 是**按需**检查的——模型决定要用某个技能时才去 check。所以：
+
+- 「技能没出现在日志里」≠「技能没装好」
+- 「模型没选这个技能」才是日志里看不到它的原因
+
+排查技能问题的顺序应该是：
+1. 线上目录有没有这个技能（`%USERPROFILE%\.workbuddy\skills\<名>\SKILL.md`）
+2. `SkillsVersionEmitter` 有没有 bump（目录变更被感知）
+3. **persona / 对话里有没有让它知道该用这个技能**
+4. 最后才看 `SubscriptionGate` 有没有 check
