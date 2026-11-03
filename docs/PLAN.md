@@ -43,6 +43,7 @@
 | 2026-11-03 | gate S 删掉"R7 待触发"、gate L 补 L5 与"全自动" | 前者不是门禁项，后者与 L1–L7 不对齐 |
 | 2026-11-03 | S1.2 标准 60s → 90s；S1.3 标准"60 秒没 APPLIED" → "两次自愈都失败" | 实测冷启动 46/60/29 秒，60 秒零余量；启动本身要 20–30 秒，60 秒告警会误报 |
 | 2026-11-03 | O1 从"先能看见再决定改不改"直接结案 | 观测显示 `sendReply` 从未被调用；查厂商代码确认企微走 `sendStreamChunk` 流式，整句在发出前就被切碎。代码层过滤这条路根本不通，正解在 persona（VERIFY §17） |
+| 2026-11-04 | L4 的夜间 persona 轮换要加"重建会话"这一条件 | O2 实测：persona 每会话首次注入时读一次，`existingAgentSessionId` 复用会话时不会重读。只复制文件不生效（VERIFY §18） |
 
 ### 0.2 与其它文档的关系
 
@@ -312,7 +313,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 
 ```
 ☑ O1 已结案：出站过滤挂在 QQ 的 `sendReply` 上（企微走 `sendStreamChunk` 流式），代码层不可行；正解是 persona 里的"回复必须落在结果上"，见 `VERIFY §17`
-□ CODEBUDDY.md 的读盘时机有明确结论
+☑ CODEBUDDY.md 的读盘时机有明确结论：**cwd = `WorkBuddy\Claw`，每会话首次注入时读一次**；夜间轮换必须重建会话，见 `VERIFY §18`
 □ doctor 的 28 项都有结论：26 项已注入验证 · 1 项（`vault-ingest-audit`）有真实触发观察 · 1 项（`database`）已裁决不做
 ```
 

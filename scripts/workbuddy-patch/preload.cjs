@@ -123,8 +123,13 @@ if (fs.existsSync(TEST_FLAG)) {
           if (!p.chatId) return reply(400, { ok: false, error: '缺少 chatId' });
           if (!p.content) return reply(400, { ok: false, error: '缺少 content' });
           if (!global.__ancLastClient) return reply(409, { ok: false, error: '还没有实例引用：先让 bot 收到一条真实消息' });
-          // 模仿真实入站消息的形状：emitMessage 只需要 chatId / user / content
-          const msg = { chatId: String(p.chatId), user: String(p.user || ''), content: String(p.content) };
+          // 模仿真实入站消息的形状：chatId / user / content 是必需的，
+          // 但 dispatchId 还要 msgId 才不是 undefined——所以把调用方给的字段全部透传。
+          const msg = Object.assign({}, p, {
+            chatId: String(p.chatId),
+            user: String(p.user || ''),
+            content: String(p.content),
+          });
           global.__ancLastClient.emitMessage(msg);
           log('test-emit chat=' + msg.chatId.slice(0, 12) + ' user=' + msg.user.slice(0, 8) + ' len=' + msg.content.length);
           reply(200, { ok: true, chatId: msg.chatId, len: msg.content.length });

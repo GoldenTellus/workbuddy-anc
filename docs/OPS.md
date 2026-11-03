@@ -221,3 +221,20 @@ Get-Content C:\ProgramData\anc\data\loop.log -Tail 20
 # 看备份日志
 Get-Content C:\ProgramData\anc\data\backup.log -Tail 20
 ```
+## 主机时间必须自动同步（2026-11-04 发现并修复）
+
+这台机器上 `W32Time` 服务原本是 **Stopped**、启动类型 Manual，`w32tm /query /status` 直接报 `0x80070426`（服务未启动）。也就是说时间从装好起就没同步过。
+
+为什么这是必修项：`patch-guard` 用 `patch-state.at >= 主进程创建时间 - 15 秒` 判断"补丁是这次的还是上次的残留"（`VERIFY §16` 那个坑）。这个判断依赖时钟，漂到分钟级就会把残留判成有效，或者把有效判成残留。
+
+```powershell
+Set-Service W32Time -StartupType Automatic
+Start-Service W32Time
+w32tm /config /manualpeerlist:"ntp.aliyun.com,time.windows.com" /syncfromflags:manual /reliable:yes /update
+w32tm /resync /force
+w32tm /query /status      # 看"上次成功同步时间"和"来源"
+```
+
+`doctor` 目前不查这一项。判断办法：`Get-Service W32Time` 应该是 Running + Automatic，`w32tm /query /status` 的"来源"不应为空。
+
+顺带一个教训：`new Date().toISOString()` 写进 `patch-canary.json` / `patch-state.json` 的时间戳是**系统时间**。系统时间错了，日志时间就全错，排障时会拿着错的时间轴去对事件。核对时间戳前先确认机器时间准不准。

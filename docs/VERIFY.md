@@ -959,3 +959,66 @@ async sendStreamChunk(e, t, n) {
 `__ancStat` 保留在 `preload.cjs` 里（只记数字不记内容）。它的价值变成了**证据**：以后要确认"某条出站路径有没有被调用"，看 `%USERPROFILE%\anc\narration-filter.log` 有没有对应的行即可。
 
 `sendReply` 那条路现在是空的——这本身就是"企微不走它"的证据。
+
+## 18. O2：persona 从哪读、什么时候读（2026-11-04 结案）
+
+### 结论
+
+| 问题 | 答案 | 证据 |
+|---|---|---|
+| bot 从哪个文件读 persona | `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md` | WorkBuddy 主线程日志 `Conversation lookup` 里的 `cwd` |
+| 什么时候读 | **每个会话首次注入时读一次**，不是每轮 | 改文件后同一会话里问，bot 看不到新内容 |
+| 改完怎么生效 | **新会话**即可，不用重启 WorkBuddy | `existingAgentSessionId` 有值 = 复用会话 |
+
+### 怎么测的
+
+**第一轮（探针）**
+
+在 `Claw\CODEBUDDY.md` 末尾加一段，只答一个从没出现过的串：
+
+```
+如果用户问「实验编号」，只回答：O2-PROBE-1103-A
+```
+
+维护者在群里问 → bot 答对。**说明文件确实被读了。**
+
+**第二轮（同会话改值）**
+
+把那段改成 `ZX-10` + 新增 `校验码 = 4K7`，再问「校验码」。
+
+bot 答：**"没有「校验码」这回事。你要的是实验编号的话，它是 `O2-PROBE-1103-A`"**
+
+——它看不到新加的内容，**但记得上一轮的答案**（对话历史）。所以不是"读了一次就缓存"，
+而是**这个会话的 persona 快照停留在会话开始那一刻**。
+
+**第三轮（查 WorkBuddy 自己的日志，拿到硬证据）**
+
+用测试入口模拟一条入站消息，WorkBuddy 日志出现：
+
+```
+[CHANNEL_TRACE] [ClawService] Conversation lookup {
+  "channelId":"wecomaibot",
+  "senderId":"test-emit",
+  "conversationKey":"claw:user:2001fe8a-...",
+  "found":true,
+  "cwd":"C:\\Users\\Administrator\\WorkBuddy\\Claw",
+  "existingAgentSessionId":"9..."
+}
+```
+
+`cwd` 就在这里，不用再猜。`existingAgentSessionId` 有值 → 复用了已有会话 → 不会重读 persona。
+
+### 对后续的意义
+
+**夜间 persona 轮换（PLAN 阶段 L4）不能只改文件**。
+
+如果想在夜里把公司 bot 切成 devbot，只复制 `CODEBUDDY.md` 是不够的——**必须让会话重建**（新会话或重启）。这条约束写进 L4 的实现里。
+
+### 一个附带发现：这台机器的时间从没同步过
+
+`W32Time` 服务是 **Stopped**，`w32tm /query /status` 报 `0x80070426`。
+
+这会影响 `patch-guard` 的判断——它用 `patch-state.at >= 主进程创建时间 - 15 秒` 来区分"补丁是这次的还是上次残留的"。时钟漂到分钟级就会误判。
+
+已修：服务设 Automatic 并启动，NTP 源 `ntp.aliyun.com,time.windows.com`，
+实测与外部时间源偏差 **1.2 秒**。写进 `OPS.md`。
