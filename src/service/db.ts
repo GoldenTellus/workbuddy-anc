@@ -134,6 +134,24 @@ CREATE TABLE IF NOT EXISTS issues (
 
 CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status, id);
 CREATE INDEX IF NOT EXISTS idx_issues_submission ON issues(submission_id);
+
+-- 迭代闭环的第三步（PLAN 阶段 L3）：issue → 一个可评审的 diff。
+-- 只存 diff 与 base_hash，不直接改仓库文件——合不合由人决定。
+-- base_hash 是生成那一刻源文件的 sha256：将来应用时用它判断"这期间文件被动过没有"。
+CREATE TABLE IF NOT EXISTS patch_drafts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id   INTEGER NOT NULL,
+  skill      TEXT,
+  skill_path TEXT NOT NULL,
+  section    TEXT,
+  base_hash  TEXT NOT NULL,
+  patch_hint TEXT NOT NULL,
+  diff       TEXT NOT NULL,
+  warnings   TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_patch_drafts_issue ON patch_drafts(issue_id);
 `;
 
 export function openDb(path: string = DEFAULT_DB): DatabaseSync {
