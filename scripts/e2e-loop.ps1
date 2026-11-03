@@ -39,8 +39,10 @@ function Ok($msg) { Write-Host "  OK   $msg" }
 function Bad($msg) { Write-Host "  FAIL $msg"; $script:Failures++ }
 function Info($msg) { Write-Host "  ..   $msg" }
 
-function J($args_) {
-    $out = & node --no-warnings $Cli --db $Db --json @args_ 2>&1 | Out-String
+# 用 $args（PowerShell 内置：所有未命名参数）。
+# 别写成 function J($x) —— 那只会收第一个参数，症状是 "未知命令组: s"（只传了首字母）。
+function J {
+    $out = & node --no-warnings $Cli --db $Db --json @args 2>&1 | Out-String
     try { return $out | ConvertFrom-Json } catch { return $null }
 }
 
