@@ -24,7 +24,7 @@
 | # | 上游模块 | 上游位置 | 状态 | 本项目在哪 |
 |---|---|---|---|---|
 | 1 | 概念模型（Company–Vault–Member–Bot） | SPEC §2 | ✅ | `light/templates/org/`、`src/render/org.ts` |
-| 2 | 每 bot 一个 cwd（隔离枢轴） | SPEC §2.2 | 🔄 | WorkBuddy 工作区目录（R6 实测隔离成立） |
+| 2 | 每 bot 一个 cwd（隔离枢轴） | SPEC §2.2 | 🔄 | WorkBuddy 工作区目录。**2026-11-04 实测 cwd = `WorkBuddy\Claw`**（`VERIFY §18`），隔离枢轴的目的（每个 bot 有独立工作目录）成立 |
 | 3 | Vault（共享知识库，git repo） | SPEC §2.3 | ✅ | `D:\anc\vault-shared` / `vault-internal`（D14 两区） |
 | 4 | 写路径：inbox 自动结构化入库 | SPEC §2.4 | ✅ | `src/ingest/`（apply / validate / git）+ 技能 `anc-ingest-company` |
 | 5 | 问题模型（vault 诊断层） | SPEC §2.5 | ✅ | `light/templates/vault/company/problem-model.md` |
@@ -35,17 +35,17 @@
 | 10 | persona-as-code 管线 | SPEC §4.2 | ✅ | `src/render/`（git 变更 → 渲染 → 部署，D15） |
 | 11 | 对话层与任务层 | SPEC §4.3 | ✅ | 任务登记/完成/提醒（`src/service/`） |
 | 12 | Skill 系统（格式 + 部署） | SPEC §5 | ✅ | `light/skills/`（5 个技能）+ 渲染器同步 |
-| 13 | **技能迭代闭环**（聊天挖掘→问题池→devbot→eval） | SPEC §5 | ⬜ | **没有**。见 §3.1 |
-| 14 | Onboarding：对话式冷启动 | SPEC §6 | 🟡 | `anc-interview` 技能做员工访谈；**公司级建库**没有对话式流程 |
+| 13 | **技能迭代闭环**（聊天挖掘→问题池→devbot→eval） | SPEC §5 | ✅ | **2026-11-04 做完并端到端跑通**：`submissions`（L1）→ `issues` 规则表分诊（L2）→ `patch_drafts`（L3）→ `devbot.ps1` 自动出分支（L4）→ `eval` 判 pass/fail（L6）→ `e2e-loop.ps1` 串起来（L7）。见 `VERIFY §21`–`§27` |
+| 14 | Onboarding：对话式冷启动 | SPEC §6 | 🔄 | **目的**是"新公司/新员工不用看文档就能把知识装进系统"，**入口不同**：员工侧有 `anc-interview`（对话式逐题访谈）；**公司级建库是管理员一次性操作**（建 `D:\anc\org` + 投文档给 `anc-ingest`），不做对话式。**差异与理由**：公司级建库只在开张时做一次，对话式带来的上手成本优势抵不上多写一个技能的成本；如果将来要开第二家公司，这一项要补 |
 | 15 | 安全模型（Identity / Scope / Model 三层） | SPEC §7 | ✅ | D19–D25 裁决 + ACL + 出站扫描 + 审计 |
 | 16 | 运维与可观测（防假绿、watchdog、日报） | SPEC §8 | ✅ | `doctor`（28 项）+ `anc-watchdog` + `anc-boot-alert` + 备份（保留 7 份）。**日报不做**（2026-11-03 裁决：单人单机没人读，探针已答"坏没坏"） |
-| 17 | 包形态与命令面（npm + `anc` CLI） | SPEC §9 | 🔄 | 不发布 npm 包；部署目录 + `cli.ts` 子命令 |
-| 18 | vault-service（Cloudflare R2 + MCP 五工具 + `_history/`） | `light/vault-service/` | 🔄 | 本地 vault + **git 充当版本历史** + CLI 代替 MCP |
+| 17 | 包形态与命令面（npm + `anc` CLI） | SPEC §9 | 🔄 | **目的**是给操作者一个命令面，**做到了**：`C:\ProgramData\anc\service\cli.ts` 有 task / submission / issue / patch / dayend / eval / config / bind / backup 九个子命令组。**差异**：不发布 npm 包（单机部署，没有多消费者），用部署目录代替包分发 |
+| 18 | vault-service（Cloudflare R2 + MCP 五工具 + `_history/`） | `light/vault-service/` | 🔄 | **目的**是"知识库 + 版本历史 + 可查询"，三样都做到了，换的是机制：R2 → 本地目录（`D:\anc\vault-*`）、`_history/` → **git 历史**、MCP 五工具 → `anc-vault-read` 技能 + `cli`。**代价**：没有 MCP 那种"任何 agent 都能调"的通用接口，只能本项目的技能用 |
 | 19 | harness-proxy：`system-prompt-proxy` | `tools/harness-proxy/` | ➖ | 前提是能改写引擎的请求；WorkBuddy 闭源，改不了 |
-| 20 | harness-proxy：`tool-turn-filter` | `tools/harness-proxy/` | 🔄 | **思路已用上**：出站旁白过滤（FORK §11），但位置不同——上游在代理层过滤，我们在补丁里包 `sendReply` |
-| 21 | 三个技能：`anc-ingest` / `anc-join` / `anc-onboard` | `light/skills/` | 🟡 | ingest → `anc-ingest-company`（改写）；join 的名片规则 → `light/skill-cards/`；onboard → 见 #14 |
+| 20 | harness-proxy：`tool-turn-filter` | `tools/harness-proxy/` | 🔄 | **目的**是"别把工具调用的旁白发给用户"。**机制换了两次**：先在补丁里包 `sendReply`，但 `VERIFY §17` 实测发现**企微不走那条路**（走 `sendStreamChunk` 流式，每块几个字，整句从未在一处存在，代码层拦截不可行）；**现在是 persona 约束**（"不旁白工具调用"写进 `CODEBUDDY.md`），`eval` 的 `task-list-quiet` 用例在测这件事（`VERIFY §25`）。**差异**：从"确定性拦截"降级成"行为约束"，前者能保证、后者只是大概率 |
+| 21 | 三个技能：`anc-ingest` / `anc-join` / `anc-onboard` | `light/skills/` | 🔄 | **目的**是"入库 / 进群 / 上手各有一个技能"。现状：ingest → `anc-ingest-company`（按企微改写）；join 的名片规则 → `light/skill-cards/`（**没做成技能，做成了模板**）；onboard → 见 #14（没有独立技能，`anc-interview` 承担员工侧）。**差异**：三个里只有一个保持"技能"形态，另两个变成模板/既有技能的一部分 |
 
-**统计（2026-11-03 三次重判：Harness 与日报转出）**：✅ **12** · 🔄 4 · 🟡 **2** · **⬜ 1** · ➖ 1（共 20 个功能模块 + 技能分项）
+**统计（2026-11-04 逐项论证后）**：✅ **13** · 🔄 **6** · 🟡 **0** · ⬜ **0** · ➖ 1（共 20 个功能模块 + 技能分项）。#13 从 ⬜ 转 ✅（L1–L7 端到端跑通，`VERIFY §27`）；#14/#21 从 🟡 转 🔄（目的达成、入口不同，差异已写明）；#20 的依据改为"靠 persona 约束而不是补丁过滤"（`VERIFY §17` 实测企微不走 `sendReply`）。**零差距判据：不留 ⬜ / 🟡——现已无。**
 
 > **⬜ 只剩一项：迭代闭环（#13）** —— 这就是 1.0 唯一的实质缺口。
 > `➖` 那项（Harness 可换后端）是**已论证的不需要**，不是遗漏，见 §3.2。
