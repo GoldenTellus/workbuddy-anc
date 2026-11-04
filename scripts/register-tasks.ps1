@@ -1,4 +1,4 @@
-﻿# 注册/修复 9 个计划任务（OPS.md「计划任务」表的可执行版本）
+﻿# 注册/修复 10 个计划任务（OPS.md「计划任务」表的可执行版本）
 # 默认 dry-run；-Apply 才落盘。已存在同名任务会被覆盖（Register-ScheduledTask -Force）。
 #
 # 注意：两个交互类任务（anc-workbuddy-launch / anc-patch-guard）的 principal 是 -BotUser，
@@ -14,6 +14,8 @@ param(
     [string]$ServiceAccount = 'LOCAL SERVICE',
     [string]$CleanupMediaDir = '',
     [string]$BackupDestination = 'E:\anc-backup',
+    # 仓库路径。anc-devbot 要在这里跑（它要 git 和 light/personas/，不能在 bin/ 里跑）
+    [string]$Repo = '',
     [string[]]$Only = @(),
     [switch]$Apply,
     [switch]$ForceInteractive
@@ -23,6 +25,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $Root) { $Root = Join-Path $env:ProgramData 'anc' }
 if (-not $CleanupMediaDir) { $CleanupMediaDir = "C:\Users\$BotUser\AppData\Local\Temp\workbuddy-wecom-media" }
 $bin = Join-Path $Root 'bin'
+# 仓库路径：注册时按脚本位置两级上溯（scripts\register-tasks.ps1 → 仓库根）
+if (-not $Repo) { $Repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
 function Fail([string]$msg, [string]$fix, [int]$code) {
     Write-Host "ERROR $msg"
@@ -55,7 +59,8 @@ function New-BootEveryTrigger([int]$minutes, [int]$hours) {
 }
 function New-Settings([string]$limit) {
     # 7×24 主机：电池供电也要跑、断电也不能停（默认 True，会静默停任务）
-    return New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -DisallowStartIfOnBatteries:$false -StopIfGoingOnBatteries:$false `
+    # 参数名是 -AllowStartIfOnBatteries / -DontStopIfGoingOnBatteries（原来写成 -Disallow... / -Stop... 是错的）
+    return New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -ExecutionTimeLimit (New-TimeSpan -Minutes ([int]($limit -replace 'PT|M', '')))
 }
 
@@ -67,6 +72,13 @@ function New-InteractivePrincipal([string]$user) {
 }
 
 # 任务定义（与 OPS.md 的表一一对应）
+# anc-devbot 的参数串。**两个坑叠在一起**：
+#  ① 必须先算进变量再传给 -Argument：直接写 -Argument ('-NoProfile ...')
+#     括号表达式以 - 开头会被当成参数名，Argument 变空、后面所有参数错位。
+#  ② 必须定义在 $defs 之前：@{} 里的表达式在给 $defs 赋值时就求值了，
+#     定义在后面拿到的是 $null（报 "Argument is null or empty"）。
+$devbotArg = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Repo 'scripts\devbot-scheduler.ps1') + '" -Apply -Repo "' + $Repo + '"'
+
 $defs = @(
     @{
         Name = 'anc-service'; Desc = '本地小服务：每分钟一次 tick'
@@ -134,8 +146,20 @@ $defs = @(
         Action = (New-PsAction 'check-workbuddy-update.ps1')
         Principal = (New-ServicePrincipal $ServiceAccount)
         Settings = (New-Settings 'PT5M')
+    },
+    @{
+        # devbot 自动启动：工作日 22:00~06:00 每 30 分钟查一次「全员下班」，满足条件就跑一条 open issue。
+        # **这个任务的动作指向仓库里的脚本，不是 bin/ 里的**：
+        #   devbot-scheduler 要 git 和 light/personas/，部署到 bin/ 之后两级上溯会落到 %ProgramData%\anc，
+        #   那里没有仓库。所以这里显式用 -File <仓库>\scripts\devbot-scheduler.ps1 -Repo <仓库>。
+        Name = 'anc-devbot'; Desc = 'devbot 自动启动：工作日 22:00~06:00 每 30 分钟查「全员下班」'
+        Triggers = @((New-EveryMinutesTrigger 30 '22:00'))
+        Action = (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $devbotArg)
+        Principal = (New-ServicePrincipal 'SYSTEM' 'Highest')
+        Settings = (New-Settings 'PT30M')
     }
 )
+
 
 # 只注册指定的任务（R1 之前用 -Only anc-http 之类，避免动到交互类任务的 principal）
 if ($Only.Count -gt 0) {

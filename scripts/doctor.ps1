@@ -142,6 +142,8 @@ $ExpectedPrincipal = [ordered]@{
     'anc-update-watch'     = 'LOCAL SERVICE'
     'anc-workbuddy-launch' = $BotUser
     'anc-patch-guard'      = $BotUser
+    # devbot 自动启动：工作日 22:00~06:00 每 30 分钟查一次「全员下班」（2026-11-05 新增）
+    'anc-devbot'           = 'SYSTEM'
 }
 
 # ============ 自测：证明每类检查真的会 FAIL ============

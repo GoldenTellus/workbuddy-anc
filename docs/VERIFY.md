@@ -4318,3 +4318,168 @@ NEXT  库不存在，先把部署跑完再做自证。
 | SKIP 分支实测 | **未实测**（本机 17999 一直开着） |
 
 **D4.5 完成（SKIP 分支标未实测）。**
+
+## 46. devbot 自动启动：`scripts/devbot-scheduler.ps1`（2026-11-05）
+
+### 补的是哪个缺口
+
+`§1.2` 遗留 #1：`cli dayend all-off` 能算出 `allOff:true`，但**没有任何东西消费它**。
+
+夜里跑的是**固定时间**的计划任务（02:00 备份 / 03:00 清媒体），`devbot.ps1` **从来没有被自动调过**——`VERIFY §26` 记过，它只被 `e2e-loop.ps1` 手工调。
+
+**所以「迭代闭环全自动」这句话，实际上最后一步要人手工跑。**
+
+### 规则（脚本的全部价值，代码只是执行）
+
+跑，需要**全部满足**：
+
+| # | 条件 | 为什么 |
+|---|---|---|
+| 1 | **工作日**（周一~周五 且不在 `config.holidays`） | 周末不跑：**产出要人 review**，周末没人看 |
+| 2 | **名册非空**（`chat_bindings` ≥ 1） | 空名册**不是「都下班了」，是「还没配员工」**——产出没有对应的群/人接收 |
+| 3 | **`allOff:true` 或 已过零点** | 后者给「忘了说下班 / 加班没说」留后路。只认 `allOff` 的话，一个人忘说整夜都不跑 |
+| 4 | **有 `status='open'` 的 issue** | 没活干就不跑 |
+| 5 | **今天还没成功跑过** | 计划任务每 30 分钟调一次，不去重会重复跑 |
+
+**窗口 22:00 ~ 次日 06:00。** 06:00 后不跑：早上人要用 WorkBuddy（抢单实例），且产出没时间 review。
+
+**不跑不是错误**（退出码 0）——**绝大多数时候都不该跑**（白天、周末、没 issue）。
+
+**空名册的行为单独写明**，因为它是这套规则里最容易想错的一条：`allOff` 在空名册时是 `false`（`dayend.ts` 故意这么写："一个员工都没登记时说全员下班没有意义"）。如果只看 `allOff`，空名册永远不会跑到。所以规则把"名册非空"单独列为条件 2，而不是从 `allOff` 推。
+
+### 实测：整条链通了
+
+**真跑**（`-Force -Apply`，435 秒）：
+
+```
+=== devbot-scheduler ===
+时间: 2026-11-04 11:48:26  周Wednesday
+名册: 1 人   allOff=True   open issue=1
+
+WOULD RUN  issue #3  (anc-task / 查任务)
+RAN       issue #3 成功
+```
+
+**跑完之后逐项验证**：
+
+| 项 | 结果 |
+|---|---|
+| issue #3 状态 | `open` → **`drafted`**（note: `devbot 产出分支 devbot/issue-3`） |
+| 新分支 | `devbot/issue-3`，**ahead=1**，commit `0f7e315 devbot: 查任务只列今天到期的，逾期不混入` |
+| 改动 | `light/skills/anc-task/SKILL.md | 4 ++++` |
+| 旧分支 | 已改名为 `devbot/issue-3-bak-20261104-114831`（没删） |
+| persona | **已恢复成 company-bot**（hash 对上了） |
+| git | 切回 `main`，工作区干净 |
+| 状态文件 | `{lastRunDay:"2026-11-04", lastRunAt:"11:48:26", lastIssue:3, lastResult:"ok"}` |
+
+**去重生效**（不带 `-Force` 再跑）：
+
+```
+WOULD SKIP
+  - 当前 11:56 不在窗口内（22:00 ~ 次日 06:00）
+  - 没有 status=open 的 issue，没活干
+  - 今天已经成功跑过（issue #3，2026-11-04 11:48:26）
+```
+
+**三条原因都说清楚**，不只是"不跑"。
+
+### 计划任务 `anc-devbot`
+
+```
+名称: anc-devbot          状态: Ready
+动作: powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\workbuddy-anc\scripts\devbot-scheduler.ps1" -Apply
+触发: 每天 22:00  重复间隔=PT30M  持续=PT8H
+身份: SYSTEM  RunLevel=Highest
+```
+
+**注意动作指向仓库里的脚本，不是 `bin/` 里的**——见下面第 2 个坑。
+
+现在 `anc-*` 共 **10 个**（原 9 + `anc-devbot`）。
+
+### 修掉三个 bug（前两个是我自己引入的，第三个是既有的）
+
+#### ① `devbot.ps1` 不检查目标分支是否已存在 ★
+
+原来不管 `devbot/issue-3` 在不在，直接把「出 `devbot/issue-3` 分支」写进给模型的指令。
+
+模型执行 `git checkout -b` 会失败，然后**两种都坏**：
+
+- 切到旧分支 → **检查会通过**（分支在、有提交、改了文件），但**内容是上一次的旧产出**
+- 停下不干 → issue 永远 `open`
+
+**修**：`-Apply` 时先把旧分支改名成 `devbot/issue-N-bak-<时间戳>`。
+
+**为什么改名不删**：issue 还是 `open` 才走到这里（说明上次产出没被采纳），但**"没被采纳"不等于"没价值"**——改名保留两份，人早上能对比。实测那次就把 `devbot/issue-3` 改名成了 `-bak-20261104-114831`。
+
+**dry-run 不改名**（改名是破坏性操作，预检只报告）。
+
+#### ② `New-ScheduledTaskAction -Argument ('-NoProfile ...')` 的 Argument 变空
+
+```powershell
+New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy ...')
+# → Action.Argument 是空字符串
+```
+
+**原因**：**括号表达式以 `-` 开头，PowerShell 把它当成参数名**。
+
+**为什么现有任务没这个问题**：它们走 `New-PsAction`，函数内先赋值给 `$arg` 变量，`-Argument $arg` 展开后是值不是参数名。
+
+**还有第二层**：把 `$devbotArg` 定义在 `$defs` **之后**也不行——`@{}` 里的表达式在给 `$defs` 赋值时**就求值了**，那时 `$devbotArg` 还是 `$null`，报 `Argument is null or empty`。
+
+**两个坑叠在一起**，正确写法是：**先算进变量，且定义在 `$defs` 之前**。
+
+#### ③ `New-ScheduledTaskSettingsSet` 的参数名一直写错（既有 bug）
+
+```powershell
+- DisallowStartIfOnBatteries:$false   ← 不存在
+- StopIfGoingOnBatteries:$false       ← 不存在
+```
+
+**实际参数是** `-AllowStartIfOnBatteries` / `-DontStopIfGoingOnBatteries`（语义等价：`Disallow...:$false` == `Allow...`）。
+
+**为什么一直没发现**：`VERIFY §3` 记过——"演练没注册（会污染本机任务计划）。`REBUILD §3` 里那 9 个任务是**手工注册**的"。
+
+**所以 `register-tasks.ps1` 从来没被真跑过**，参数绑定错误一直藏着，直到这次要加 `anc-devbot` 才暴露。
+
+**这条值得记**：一份"用来替代手工步骤"的脚本，如果从来没人真跑过它，它的正确性就是零——而它看起来是对的。
+
+### `register-tasks.ps1` 也跟着改
+
+- 加 `-Repo` 参数（默认按脚本位置两级上溯）
+- 加 `anc-devbot` 定义，动作用**绝对路径**指向仓库的 `devbot-scheduler.ps1`
+- 头注释 `9 个` → `10 个`
+
+**为什么动作要指向仓库而不是 `bin/`**：`devbot-scheduler.ps1` 要 `git` 和 `light/personas/`。部署到 `bin/` 之后，脚本里的两级上溯会落到 `%ProgramData%\anc`——**那里没有仓库**。
+
+**这是"部署后路径假设"这一类问题的又一次**（`§34` 记过渲染器的模板路径，`REBUILD` 记过 `doctor.ps1` 的硬编码）。
+
+### `doctor` 从 29 项变 30 项
+
+把 `'anc-devbot' = 'SYSTEM'` 加进 `$ExpectedPrincipal`——**不加的话新任务坏了没人发现**（`Get-TaskCoverage` 只遍历期望表的 key）。
+
+实测：`ok=True fails=0 warns=2 checks=30`，10 个任务全 PASS，`-SelfTest` ALL PASS。
+
+**连带更新**：`PLAN` / `README` / `AGENTS` / `CLAUDE` / `ACCEPTANCE` / `UPSTREAM-COVERAGE` / `OPS` / `deploy-state.ps1` / `doctor-fault-matrix.mjs` / `preflight.ps1` 里所有"29 项 → 30 项"、"9 个任务 → 10 个任务"。**§0.1 的历史调整记录和 `VERIFY` 的历史章节不动。**
+
+### 未做 / 未验
+
+| 项 | 状态 |
+|---|---|
+| `task-anc-devbot` 的故障注入 | **未做**。故障矩阵从 28/29 变 **28/30**——新加的这一项没验过"弄坏它会 FAIL"。做法应该是把任务 Disabled，跑 doctor 看 `task-anc-devbot` 是否 FAIL |
+| 真实夜间自动触发（22:00 到点自己跑） | **未验**。这次是 `-Force` 强制跑的，绕过了时间窗口。窗口判定逻辑（22:00~06:00 / 工作日 / 节假日）只做了 dry-run 观察，没等真到 22:00 |
+| 周末 / 节假日分支 | **未验**。今天是周三，`config.json` 也没有 `holidays` 条目 |
+
+### 这一项的状态
+
+| 要素 | 状态 |
+|---|---|
+| 加 `scripts/devbot-scheduler.ps1` 且规则写清 | ✅ |
+| 工作日 22:00 后，`allOff:true` **或** 过零点 → 跑 | ✅ 代码就位；**窗口判定未在真实时间验证** |
+| 空名册行为写明 | ✅ 单列为条件 2，并解释为什么不能从 `allOff` 推 |
+| 注册成计划任务 `anc-devbot` | ✅ Ready，22:00 起每 30 分钟 × 8 小时 |
+| **真跑一次，证明「全员下班 → 自动跑 → issue 变 drafted」** | ✅ 435 秒，issue #3 → `drafted`，产出分支 `0f7e315` |
+| 顺手修 `devbot.ps1` 的分支冲突 | ✅（这是真跑才暴露的） |
+| 顺手修 `register-tasks.ps1` 的参数名错 | ✅（既有 bug，从来没人跑过那份脚本） |
+| `doctor` 覆盖新任务 | ✅ 30 项 |
+
+**第 6 项完成（真实夜间触发未验）。**

@@ -77,7 +77,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 | 改 `org/members/*.md` 后 `render deploy` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → 任一失败**整体还原**，不会留"一半新一半旧" |
 | `render verify` | 用指纹 + manifest 检出产物被手改（改过就说明线上与 git 不一致） |
 | 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除（不会再给他重建绑定）、open 任务转交新人、解绑群；**vault 里的档案不动** |
-| `doctor.ps1` | **29 项**体检：9 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
+| `doctor.ps1` | **30 项**体检：10 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 + 完整性校验；离机目标与本地**同盘时告警**（同盘不算离机）；失败必发运维告警；日档 60 份 + 每月 1 号留 12 份 |
 | 查"谁动过库" | `%ProgramData%\anc\data\audit.log` 每次 CLI 调用留一行（只记命令与目标，不记参数值） |
 | 查"资料是不是被绕过入库" | vault 里出现未跟踪文件、但 1 小时内没有成功的 `ingest apply` 记录 → `doctor` 直接 WARN |
@@ -110,13 +110,13 @@ Windows 主机（7×24）
 
 ## 现状
 
-- 里程碑 M0–M4 的功能都已交付：任务提醒、vault 与入库、渲染与接入、访谈与 A2A；补丁侧有锚点模式、自愈与守卫、canary、更新探测，主机上 9 个计划任务。
+- 里程碑 M0–M4 的功能都已交付：任务提醒、vault 与入库、渲染与接入、访谈与 A2A；补丁侧有锚点模式、自愈与守卫、canary、更新探测，主机上 **10 个**计划任务。
 - **终态 DoD 40 条：35 ✅ / 5 🟡 / 0 ⬜**（见 [docs/ACCEPTANCE.md](./docs/ACCEPTANCE.md)）。剩的 5 个全卡外部（员工机 / 企微后台 / 第二台真机），不是代码缺陷。
 - **迭代闭环跑通了**：员工在群里报一句问题 → `submission` → `issue`（规则表分诊）→ `patch draft` → devbot 出分支 → 人 review 合入 → `prune-closed` 清块。端到端 12 分钟，全程有记录（`VERIFY §21`–`§27`、`§38`）。
 - **补丁自愈三条路径验通**：锚点缺失 → 不重启并告警；hash 不符 → 降级锚点模式仍生效；进程崩塌 → 91 秒内拉起（`VERIFY §37`）。
 - **单机封顶**：2026-11-04 把本机能验的 8 项全做完（`VERIFY §34`–`§41`）。
 - **当前目标是 PLAN 1.0**（阶段 S 稳 / O 观 / L 环 / D 交），见 [docs/PLAN.md](./docs/PLAN.md)。**阶段 S/O/L 已全绿**（3/3 · 3/3 · 7/7），阶段 D 是 1/3。
-- `npm test` **107 项**全绿（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）；`doctor` **29 项**检查。
+- `npm test` **127 项**全绿（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）；`doctor` **30 项**检查。
 
 ## 从哪里开始读
 
