@@ -348,7 +348,9 @@ if (-not $w32) {
 }
 
 # 16 数据库
-$db = "$env:ProgramData\anc\data\anc.db"
+# 用 $Root 而不是 %ProgramData%：-Root 是"校验另一个部署根"的唯一入口，
+# 写死 ProgramData 会让 -Root 对这项失效——演练根上把库删了它照样 PASS（2026-11-04 踩到）。
+$db = Join-Path $Root 'data\anc.db'
 if (Test-Path $db) { Add-Result 'database' 'PASS' ((Get-Item $db).Length.ToString() + ' B') '-' }
 else { Add-Result 'database' 'FAIL' '数据库不存在' '跑一次 service cli 初始化' }
 
