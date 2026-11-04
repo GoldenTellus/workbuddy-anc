@@ -4873,27 +4873,71 @@ $now.ToString('yyyy-MM-dd')
 
 **这是这类 bug 的第 6 次**（前五次：`$V`/`$v`、`$PSItem`、`$pid`、`$args`、`$Done`/`$done`、`$Failed`/`$failed`）。**规律很清楚：凡是 `param()` 里声明的名字，脚本里就不能有大小写不同的同名变量。**
 
-#### ② `patch-state.json` 的陈旧状态会让补丁看起来"已应用"
+#### ② 一个没查明原因的现象（原结论已推翻，见下）
 
-**复现过程**：
+**当时记的**：`patch-state.json` 的陈旧状态会让补丁看起来「已应用」。
+
+**⚠ 这个结论不成立。事后复核推翻了它。**
+
+**原始现象**：
 
 ```
-13:19:13  补丁应用，写 patch-state.json {pid:13784, applied:true}
-13:50     我重启 WorkBuddy（Stop-Process + anc-workbuddy-launch）
+13:50     我重启 WorkBuddy（Stop-Process + Start-ScheduledTask anc-workbuddy-launch）
 14:00     17999 不监听 —— test-emit 没生效
-查 patch-state.json:  {pid:13784, applied:true, at:13:19}   ← pid 13784 早就死了
-实际 WorkBuddy pid:    1388, 7844, ...
+删 patch-state.json 再重启 → 17999 恢复正常
 ```
 
-**删掉 `patch-state.json` 再重启 → 17999 正常监听，`{pid:508, applied:true}` 且 508 活着。**
+**当时的推测**：`patch-state.json` 里的 `{pid:13784, applied:true}` 是陈旧状态（13784 早死了），启动器/守卫据此误判「已应用」而跳过。
 
-**结论**：这个残留状态**确实影响了启动行为**。
+**复核推翻了这个推测**，三条证据：
 
-**但没查明具体是哪段代码**：`launch-patched.ps1` 里 grep `applied` / `patch-state` / `$state` **都没有命中**（它只做"杀进程 → 重打补丁 → 启动"）。
+**a. `patch-guard.ps1` 的判定带进程时间窗，不是只看 `applied`**
 
-所以影响可能在 `inject.cjs` 或 `patch-guard` 里，**这次没追到底**。**按规矩标出来：现象确凿，机制未证实。**
+```powershell
+$at = [datetime]$s.at
+if ($okMode -and $at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true }
+if ($patched) { exit 0 }
+```
 
-`§16` 记过同类问题（"进程死了但状态文件还写着 applied"），当时也是只定性没修。**这次同样没修。**
+实测当前状态：`at=13:22:00`、主进程 `Start=13:21:57`，**`at` 比 `Start` 晚 3 秒** → 判定通过。
+
+所以「15 秒窗口 vs 29–60 秒冷启动会必然误判」这个猜想**也不成立**——因为 `at` 是注入成功后才写的，本来就晚于进程创建时间。
+
+**b. `selfheal.log` 里 13:45–13:59 一条记录都没有**
+
+```
+13:21:50 worker: 第 1 次启动 C:\ProgramData\anc\patch\launch-patched.ps1
+13:22:03 worker: 重启成功（补丁已生效）
+（之后到 13:47 无记录）
+```
+
+如果 13:50 那次真的走了自愈重启，日志里必有记录。**没有。**
+
+**c. `anc-workbuddy-launch` 的 `LastRunTime` 停在 `13:21:21`**
+
+```
+LastRunTime: 11/04/2026 13:21:21     ← 不是我 13:50 触发的那次
+LastTaskResult: 0
+```
+
+**说明 13:50 那次 `Start-ScheduledTask anc-workbuddy-launch` 根本没执行。**
+
+这个任务的触发器是 `MSFT_TaskLogonTrigger`（登录时）+ `Principal.LogonType = Interactive`。
+`Start-ScheduledTask` 对 Interactive 任务在某些会话状态下会静默不执行——**这更像是真正的原因**。
+
+**所以当时「删 patch-state 就好了」是巧合**：14:00 那次触发执行成功了，跟删不删那个文件无关。
+
+**当前结论**：
+
+| 项 | 状态 |
+|---|---|
+| `patch-state` 陈旧状态会影响启动 | **已推翻**（`patch-guard` 有 15 秒时间窗校验，`applied` 不是唯一判据） |
+| 15 秒窗口 vs 冷启动会误判 | **已排除**（实测差值 -3.3 秒，判定通过） |
+| 13:50 为什么没生效 | **最可能是 Interactive 任务的 `Start-ScheduledTask` 静默未执行**，未复现证实 |
+
+**教训**：当时只看到「删了就好」就下了因果结论，**没有先查这个文件被谁读、读的时候怎么判**。
+`grep patch-state` 命中 6 个文件，查一遍就能发现 `patch-guard.ps1` 有独立的时间窗校验，
+这个推测根本立不住。**「恢复手段有效」不等于「识别出的原因正确」。**
 
 #### ③ `config.json` 不存在时的行为
 
