@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, copyFi
 import { createHash } from 'node:crypto';
 import { join, relative, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadOrg } from './org.ts';
+import { loadOrg, splitList } from './org.ts';
 import { renderTemplate, fingerprint, checkLength, writeAtomic } from './render.ts';
 
 // 模板位置在两种布局下不同：仓库是 src/render → ../../light/templates，
@@ -62,7 +62,9 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
   const inputs: Array<{ path: string; content: string }> = [
     { path: 'company.md', content: readFileSync(join(orgDir, 'company.md'), 'utf8') },
   ];
-  for (const sub of ['roles', 'members']) {
+  // depts/ 也要进指纹：改了部门文件（技能集、vault 路径）却不算输入变化的话，
+  // manifest 的 input_sha256 不变，手改检测会把手动改过的产物当成「没动过」。
+  for (const sub of ['roles', 'depts', 'members']) {
     const d = join(orgDir, sub);
     if (!existsSync(d)) continue;
     for (const f of readdirSync(d).filter((x) => x.endsWith('.md'))) {
@@ -131,6 +133,9 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
       warnings.push(`成员 ${m.id} 没有 userid，跳过个人 persona（补上 members/${m.id}.md 的 userid 后重新渲染）`);
       continue;
     }
+    const dept = m.dept ? org.depts.get(m.dept) : undefined;
+    const dSkills = splitList(dept ? dept.skills : undefined);
+    const dPaths = splitList(dept ? dept.vault_paths : undefined);
     const text = renderTemplate(memberTpl, {
       fingerprint: fpLine,
       member_name: m.name,
@@ -139,6 +144,10 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
       vault_shared: org.company.vault_shared,
       local_workdir: org.company.local_workdir,
       owner_userid: m.userid,
+      // 部门为空时给「没限制」的措辞，不留空行（模板里那一行会显得像漏了）
+      member_dept: dept ? dept.name : "（未分部门，可用全部技能与全部 vault）",
+      member_skills: dSkills.length ? dSkills.join("、") : "全部",
+      member_vault_paths: dPaths.length ? dPaths.join("、") : "全部（按公司共享区的目录结构）",
     });
     const len = checkLength(text);
     if (!len.ok) throw new Error(`成员 ${m.id} 的 persona 超过 7500 字节（当前 ${len.bytes}）`);
@@ -150,7 +159,23 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
   const groups = {
     generated_at: new Date().toISOString(),
     input_sha256: inputSha,
-    members: org.members.filter((m) => !m.disabled).map((m) => ({ id: m.id, name: m.name, chat_id: m.chat_id || null, userid: m.userid || null, webhook_file: m.webhook_file || null })),
+    // 部门信息随 groups.json 一起下发：
+    //   skills / vault_paths 是空数组表示「没限制」，不是「什么都不给」
+    //   （老 org 没有 dept，走的就是这条路径）
+    members: org.members.filter((m) => !m.disabled).map((m) => {
+      const d = m.dept ? org.depts.get(m.dept) : undefined;
+      return {
+        id: m.id,
+        name: m.name,
+        chat_id: m.chat_id || null,
+        userid: m.userid || null,
+        webhook_file: m.webhook_file || null,
+        dept: m.dept ?? null,
+        dept_name: d ? d.name : null,
+        skills: splitList(d ? d.skills : undefined),
+        vault_paths: splitList(d ? d.vault_paths : undefined),
+      };
+    }),
   };
   mkdirSync(outDir, { recursive: true });
   // groups.json 是 bind import 的输入、manifest 是手改检测的基准：都走原子写，半截文件会让下一步误判

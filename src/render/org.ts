@@ -11,13 +11,41 @@ export interface Member {
   seat?: string;
   /** 停用（离职）：不再渲染 persona、不进 groups.json、产物要清掉 */
   disabled?: boolean;
+  /** 所属部门（org/depts/<id>.md）。缺省表示不归任何部门，按"全部技能、全部 vault"处理 */
+  dept?: string;
   bot?: string;
+}
+
+/**
+ * 部门。决定三件事：
+ *   1. 员工能看到哪些 vault 目录（vault_paths）
+ *   2. 装哪些技能（skills）——不是每个部门都要 anc-interview
+ *   3. 进哪个群（将来"一部门一群"的依据；现在仍是一人一群，chat_id 在 member 上）
+ *
+ * 为什么需要它：上游形态是"全公司一套技能"，但实际每个部门用到的技能差很多。
+ * 装全套会让个人 bot 的 persona 变长，也让模型分不清该用哪个。
+ */
+export interface Dept {
+  id: string;
+  name: string;
+  /** 逗号分隔的相对路径，相对 vault 根。空表示无限制 */
+  vault_paths: string;
+  /** 逗号分隔的技能 id。空表示全部 */
+  skills: string;
+  note?: string;
 }
 
 export interface Org {
   company: Record<string, string>;
   roles: Map<string, Record<string, string>>;
+  depts: Map<string, Dept>;
   members: Member[];
+}
+
+/** 把 "a, b , c" 拆成 [a,b,c]；空串返回 [] */
+export function splitList(v: string | undefined): string[] {
+  if (!v) return [];
+  return v.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
 export function parseFrontmatter(text: string): { fm: Record<string, string>; body: string } {
@@ -41,17 +69,20 @@ export function parseFrontmatter(text: string): { fm: Record<string, string>; bo
 
 /** id 会进输出路径（members/<id>/）：只许安全字符，../ 不能把产物写到 --out 外 */
 const MEMBER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** 部门 id 会进 groups.json 和 persona 文本，规则同成员 id */
+const DEPT_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 /** 会原样进 persona 的文本字段：拒绝控制字符、反引号、HTML 注释，限制长度，免得夹带指令或破坏 markdown */
 const PERSONA_TEXT_FIELDS = ['name', 'role', 'userid', 'chat_id'] as const;
 
 /** 允许出现的 frontmatter 键。拼错一个键会被静默忽略（字段没生效但不报错），所以白名单要收死。 */
 const KNOWN_KEYS: Record<string, string[]> = {
   company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir'],
-  member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled'],
+  member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled', 'dept'],
   role: ['id', 'name', 'duties'],
+  dept: ['id', 'name', 'vault_paths', 'skills', 'note'],
 };
 
-function assertKnownKeys(file: string, kind: 'company' | 'member' | 'role', fm: Record<string, string>): void {
+function assertKnownKeys(file: string, kind: 'company' | 'member' | 'role' | 'dept', fm: Record<string, string>): void {
   const allowed = KNOWN_KEYS[kind];
   const unknown = Object.keys(fm).filter((k) => !allowed.includes(k));
   if (unknown.length > 0) {
@@ -90,6 +121,23 @@ export function loadOrg(dir: string): Org {
     roles.set(id, { ...fm, id });
   }
 
+  // 部门：可选目录。没有 org/depts/ 时 depts 为空 Map（向后兼容，老 org 照样能渲染）
+  const depts = new Map<string, Dept>();
+  for (const f of readDir(join(dir, 'depts'))) {
+    const { fm } = parseFrontmatter(readFileSync(join(dir, 'depts', f), 'utf8'));
+    const id = fm.id || basename(f, '.md');
+    assertKnownKeys('depts/' + f, 'dept', fm);
+    if (!DEPT_ID.test(id)) throw new Error('部门 id 不合规（小写字母数字 _ -，≤64）: ' + id + '（depts/' + f + '）');
+    if (!fm.name) throw new Error('部门缺少 name: depts/' + f);
+    depts.set(id, {
+      id,
+      name: fm.name,
+      vault_paths: fm.vault_paths || '',
+      skills: fm.skills || '',
+      note: fm.note,
+    });
+  }
+
   const members: Member[] = [];
   for (const f of readDir(join(dir, 'members'))) {
     const { fm } = parseFrontmatter(readFileSync(join(dir, 'members', f), 'utf8'));
@@ -108,6 +156,7 @@ export function loadOrg(dir: string): Org {
       bot: fm.bot,
       // 只认字符串 "true"：写成 yes/1 之类不生效，避免"以为停用了其实没有"
       disabled: fm.disabled === 'true',
+      dept: fm.dept,
     });
   }
 
@@ -117,9 +166,13 @@ export function loadOrg(dir: string): Org {
     if (seen.has(m.id)) throw new Error('成员 id 重复: ' + m.id);
     seen.add(m.id);
     // 引用了不存在的角色 → persona 里的 role 字段会落空，行为与预期不符且不报错
+    // 引用了不存在的部门 → 技能集和 vault 范围都会落空，行为与预期不符且不报错
+    if (m.dept && !depts.has(m.dept)) {
+      throw new Error('成员 ' + m.id + ' 引用了不存在的部门: ' + m.dept + '（depts/ 下有: ' + ([...depts.keys()].join(', ') || '空') + '）');
+    }
     if (m.role && !roles.has(m.role)) {
       throw new Error('成员 ' + m.id + ' 引用了不存在的角色: ' + m.role + '（roles/ 下有: ' + [...roles.keys()].join(', ') + '）');
     }
   }
-  return { company, roles, members };
+  return { company, roles, depts, members };
 }

@@ -4022,3 +4022,159 @@ const REPO = resolve(import.meta.dirname, '..', '..');  // E:\workbuddy-anc     
 | `npm test` 全绿 | ✅ 115/115 |
 
 **D4.3 完成。**
+
+## 44. D4.4 部门结构：`org/depts/<id>.md`（2026-11-05）
+
+### 为什么需要部门
+
+上游的形态是「**全公司一套技能**」——所有人的个人 bot 装同样的技能，看同样的 vault。
+
+实际不是这样：
+
+- **研发部**要 `anc-vault-read` 查工艺文档，但不需要 `anc-interview`
+- **行政部**要 `anc-interview` 做访谈，但不需要读研发资料
+- **一个人能看到哪些目录**，本来就是部门级的，不是公司级的
+
+装全套的代价：
+
+1. **persona 变长**（每个 bot 的 persona 有 7500 字节上限）
+2. **模型分不清该用哪个技能**（技能越多越容易挑错）
+
+所以部门要决定三件事：
+
+| 决定什么 | 字段 | 落地到 |
+|---|---|---|
+| 能看到哪些 vault 目录 | `vault_paths` | `groups.json` + persona |
+| 装哪些技能 | `skills` | `groups.json` + persona |
+| 进哪个群 | （`member.chat_id`，现在仍是一人一群） | `groups.json` |
+
+### 数据格式
+
+`org/depts/engineering.md`：
+
+```yaml
+---
+id: engineering
+name: 研发部
+vault_paths: shared/工艺, internal/研发
+skills: anc-task, anc-vault-read
+---
+```
+
+**注意：逗号分隔的字符串，不是 YAML 数组。**
+
+原因是 `parseFrontmatter` 只接受 `key: value`（`§34` 定过：「只接受 key: value 或 # 注释」，混进别的东西要报错不静默）。上 `[a, b]` 要么改解析器、要么让格式迁就解析器——**选后者**，因为改解析器要动所有已有的 org 文件。
+
+`org/members/<id>.md` 加一行：
+
+```
+dept: engineering
+```
+
+### 校验（和 role 同一套口径）
+
+| 情况 | 行为 | 为什么 |
+|---|---|---|
+| 成员 `dept` 指向不存在的部门 | **报错** | 技能集和 vault 范围都会落空，**行为与预期不符且不报错** |
+| 部门缺 `name` | 报错 | persona 里会渲染成空 |
+| 部门 `id` 不合规 | 报错 | 会进 `groups.json` 和 persona 文本 |
+| 部门里写未知字段 | 报错 | 拼错的键会被静默忽略（`skill` 少个 `s` 就查不出来） |
+| **没有 `org/depts/` 目录** | **正常渲染** | 向后兼容：老 org 不用改 |
+
+### 产物
+
+**`groups.json` 的每个成员**：
+
+```json
+{
+  "id": "zhangsan", "name": "张三", "chat_id": "chat-1",
+  "dept": "engineering", "dept_name": "研发部",
+  "skills": ["anc-task", "anc-vault-read"],
+  "vault_paths": ["shared/工艺", "internal/研发"]
+}
+```
+
+**没部门的成员**：`dept: null`、`skills: []`、`vault_paths: []`。
+
+**空数组表示「没限制」，不是「什么都不给」**——这个区别写在代码注释里了，因为反过来理解会让 agent 禁用所有技能。
+
+**persona 多一节**：
+
+```markdown
+## 你属于哪个部门
+
+- 部门：研发部
+- 你能用的技能：anc-task、anc-vault-read
+- 你能看到的 vault 目录：shared/工艺、internal/研发
+
+**超出这个范围的请求，先问主人**——不要因为「能做」就去做（比如别的部门的资料、没给你的技能）。
+```
+
+**没有部门时**：`部门：（未分部门，可用全部技能与全部 vault）`，`技能：全部`。**不留 `{{...}}` 占位**（`renderTemplate` 遇到残留占位符会抛错，这是它故意的设计）。
+
+**persona 字节数**：1606 B → **1920 B**（涨 314 B，上限 7500）。
+
+### 一个容易漏的点：`depts/` 必须进输入指纹
+
+`renderOrg` 的 `input_sha256` 决定两件事：
+
+1. **manifest 的基准**（手改检测靠它）
+2. **`groups.json` 的 `input_sha256`**
+
+原来只算 `['roles', 'members']`。**加 `depts` 之前，改了部门文件（技能集变了）指纹不变** → manifest 认为输入没变化 → **手动改过的产物不会被识别成"手改过"**。
+
+改成 `['roles', 'depts', 'members']`，并加了测试断言。
+
+### 测试（12 条，进 `npm test`）
+
+```
+✔ splitList：逗号分隔的字符串拆成数组，空值返回空数组
+✔ loadOrg：没有 depts/ 目录时 depts 是空 Map（向后兼容老 org）
+✔ loadOrg：读得到部门，成员带上 dept
+✔ loadOrg：成员引用了不存在的部门要报错（关键：不能静默落空）
+✔ loadOrg：部门缺 name 要报错
+✔ loadOrg：部门 id 不合规要报错
+✔ loadOrg：部门里写未知字段要报错（拼错的键会被静默忽略）
+✔ renderOrg：groups.json 带上部门的 skills 与 vault_paths
+✔ renderOrg：persona 里写出部门、技能、vault 目录
+✔ renderOrg：没分部门的成员给「没限制」措辞，不留空占位
+✔ renderOrg：改部门文件会让输入指纹变（否则手改检测会漏）
+✔ renderOrg：停用的成员不出 persona，即使他有部门
+```
+
+**全量 `npm test`：127/127**（原 115 + 12），83 秒。
+
+### 向后兼容验证
+
+**现有 org（`D:\anc\org`）没有 `depts/`**：
+
+```
+渲染 exit=0
+company-bot/CODEBUDDY.md  4216 B
+groups.json  0 member(s)   ← 本来就 0（members/ 目录是空的）
+```
+
+**0 member 不是我的改动造成的**——`D:\anc\org\members` 和 `C:\ProgramData\anc\render\members` 都是空的，这台机器从来没建过成员文件。
+
+### 修掉的一个坑：模板锚点又没命中（CRLF）
+
+改 `light/templates/member-bot.md` 时，锚点一直不匹配。查出来是**文件是 CRLF、我的锚点用 `\n`**。
+
+这是今天**第 4 次**栽在 CRLF 上（前面：`PLAN.md` 的 §1.4 插入、`README` 的现状节、`verify` 脚本）。
+
+**规律**：凡是「用多行字符串做锚点去 replace 文件」的操作，都要先 `raw.replace(/\r\n/g,'\n')` 归一化，改完再还原。
+
+### 这一项的状态
+
+| 要素 | 状态 |
+|---|---|
+| `KNOWN_KEYS` 加 `dept`、新增 `dept` 类型 | ✅ |
+| 加载 `org/depts/` | ✅ |
+| 成员引用不存在的部门报错 | ✅（测试覆盖） |
+| `org/depts/<id>.md` 格式 `id/name/vault_paths/skills` | ✅ |
+| `member` 加 `dept` | ✅ |
+| 渲染按部门决定 vault 路径 + 技能集 | ✅（`groups.json` + persona 两处） |
+| 测试覆盖「部门不存在 → 报错」 | ✅ |
+| `npm test` 全绿 | ✅ 127/127 |
+
+**D4.4 完成。**
