@@ -1,4 +1,4 @@
-# 阻断项实测手册
+﻿# 阻断项实测手册
 
 版本:0.1(2026-10-29)。对应 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §7 的七条阻断项:T1–T5、T16、T17。任何一条不成立,都要先改结构再写代码。影响实现的 T6–T15、T18–T22 之后另写。
 
@@ -5548,3 +5548,170 @@ doctor           ok=True  fails=0  warns=2  checks=30
 维护者确认：**B1（两个 bot 都 @）之前测过、通过了**，与 `VERIFY §303` 的 T2 记录一致。
 
 `test1` 群现在有两个 BOT 只是**环境还在**，不是**首次具备条件**。
+
+## 54. D4.6 第一次真实走查：陌生 agent 照员工侧手册装，找出 17 条文档缺陷（2026-11-04/05）
+
+### 54.1 这次和 §29、§50 的区别
+
+`§29` 是我自己假装新人走了一遍；`§50` 只复验了那 4 处修好没有。
+
+**这次是真的陌生人**：在 WorkBuddy 里新开一个会话，只给它一句话——
+
+> 照 `E:\workbuddy-anc` 这个仓库，把这台机器装成【员工侧】。装完告诉我装到哪一步、哪一步卡住了、哪些文档写得不对。
+
+**它没有我这十几小时的上下文**，不知道任何踩过的坑。所以它找到的问题，是文档**真的**会绊倒人的地方。
+
+**它的报告在 `_research/VERIFY-EMPLOYEE-20261104.md`（170 行，不进 git）。**
+
+### 54.2 它守住了三条底线（这是走查可信的前提）
+
+1. **没有编造身份值** —— §1 问值表里 6 项只有人知道，它按手册写的「缺 → 停下来问」停了，没瞎填
+2. **没有杀自己** —— §6 要求 `Stop-Process WorkBuddy`，它识别出「我就是跑在 WorkBuddy 里的 agent，执行会终止当前会话」，拒绝执行
+3. **没有改文档** —— 只报告，不动手
+
+**三条都做到，报告才有价值。**
+
+### 54.3 它装到哪了
+
+```
+deploy-state: 4/7
+  preflight ✅  workbuddy ✅  files ✅  skills ✅
+  persona  ❌ failed   bind ⬜   verify ⬜
+```
+
+**§4 / §5 都成功**（71 个文件 + 8 个技能文件，全部 hash 校验通过），**硬卡在 §6 persona**。
+
+### 54.4 17 条文档缺陷（全部核实为真）
+
+**严重（会直接失败或写错地方）**
+
+| # | 问题 | 核实 |
+|---|---|---|
+| **P1** | §7 命令缺 `set` 子命令 → `ERROR 未知 bind 子命令` exit 2。**同一错误还写在 `deploy-verify.ps1:268` 的 fix 文案里** | ✅ `cli.ts:151` 只认 `set` |
+| **P2** | §7 报错表两行都是编的：「`缺少 --chat-id`」只在 `eval run` 分支有；「`chat_id` 不是 32 字符」**代码里根本没有长度校验**（`bindings.ts` 的 `clean()` 只查非空/≤200/控制字符）。实测 `bind set --chat-id SHORT` → `ok:true` | ✅ |
+| **P3** | §8 写「三项」，实际输出 **4 项**（多 `database`） | ✅ |
+| **P4** | §4 判据命令没带 `--db` → `cli.ts:46` 用 `DEFAULT_DB` → **真在 `C:\ProgramData\anc` 建了库**（实测 23:07:35 创建 `anc.db` + `audit.log`），违反 §0「不碰 ProgramData」和 §2「只写 LOCALAPPDATA」 | ✅ 目录确实被建了 |
+| **P5** | §8 `vault-read` 真实依赖 `render\groups.json` + `org\company.md` 的 `vault_shared:`，**手册 7 步没有一步生成它们**，`deploy.ps1 -Apply` 在空根上也不生成 → 全新机照做必 FAIL。给的 fix「跑 render deploy」也是错的 | ✅ 对照实验 C 证实 |
+| **P6** | §8 `database` FAIL 的 fix 说「跑 files 阶段」，但 `deploy.ps1 -Apply` 只落 71 个源码文件，不建库 | ✅ 对照实验 A/C |
+| **P7** | §4 回滚让用 `deploy.ps1 -Rollback`，**该参数不存在**（`param` 只有 `-Side/-Root/-Apply`；`-Rollback` 是 `deploy-skills.ps1` 的） | ✅ |
+| **P8** | §6 要求 `Stop-Process WorkBuddy` —— **执行会杀掉 agent 自己**，而文档紧接着写「让用户重新启动它」，与「让 agent 自己装完」自相矛盾 | ✅ 它拒绝执行，这一节永远验不完 |
+
+**中等 / 准确性**
+
+| # | 问题 |
+|---|---|
+| **P9** | §5「装 8 个技能」实为 **7 个**（8 个文件，第 8 个是 `.anc-backup`）；成功判据写「≥1」太松，漏装 6 个也能过 |
+| **P10** | §5 引用 `depts/<id>.md`，仓库里没有裸 `depts/`，公司侧是 `org/depts/<id>.md` |
+| **P11** | §6「（§10.4 里我们加的）」是残留引用（员工侧 §10 是卸载） |
+| **P12** | §6 占位符 `<你的 id>` 原样跑 → 先抛「路径中具有非法字符」，不是预设的「没有你的 persona」 |
+| **P13** | §6 成功判据只查文件内容，**不验 WorkBuddy 是否真加载了 persona** |
+| **P14** | §8 说 `bot-reply` SKIP 是「test-emit 默认关着」，**实际原因是「没有绑定群」**，只建 flag 并重启没用 |
+| **P15** | §4 判据命令的 `2>&1` 在 PS 5.1 下把 node 的 stderr 变成 `NativeCommandError`，中文按默认代码页乱码 |
+| **P16** | §3 检查② 只是 `Test-Path ~\WorkBuddy`，目录在就算「登录过」，不是登录判据 |
+| **P17** | §9 没写 `-AsFailed -Reason` 用法，卡住时原因进不了 `failed.error` |
+
+**它做了 6 组对照实验**（全在 `%TEMP%` 临时根，跑完删除，没动正式部署根），每一组都对应上述一条结论。**没有一个结论是靠推测的。**
+
+### 54.5 已修（17 条全部落地）
+
+`docs/AGENT-DEPLOY-EMPLOYEE.md` 从 438 行改到 575 行，二级标题 15 个、**无重复**。
+
+| 改动 | 内容 |
+|---|---|
+| **P4** | §4 判据命令加 `--db "$env:LOCALAPPDATA\anc\data\anc.db"`，并写明「这条命令顺便建库，§8 的 database 靠它」；去掉 `2>&1` 并说明原因 |
+| **P7** | §4 回滚改成「deploy.ps1 没有 -Rollback，用 backup\ 目录拷回」，技能回滚单独指向 `deploy-skills.ps1 -Rollback` |
+| **P1** | §7 补 `set` 子命令 |
+| **P5** | **新增 §5.5「从公司侧同步三个渲染产物」** —— 这是走查时卡住 §6 和 §8 的根因 |
+| **P8** | §6 重启拆成「情况 A：你跑在 WorkBuddy 里 → 只写标记不重启」/「情况 B：不是 → 自己重启」 |
+| **P3** | §8 三项改四项，补 `database` |
+| **P2/P9/P10/P11/P12/P14/P16/P17** | 报错表两行改写、技能数改正、引用路径改正、残留引用补全、占位符加警告、SKIP 两种原因、§3 判据说明、§9 补 `-AsFailed` |
+
+**`scripts/deploy-verify.ps1` 两处 fix 文案同步修正**（`database` 和 `bot-reply`，外加 `vault-read` 的 fix），BOM 保留、语法解析 0 错误。
+
+### 54.6 修的过程中又撞出两个新问题
+
+**① `vault-shared` 对管理员也只读，「把产物丢进共享区」这条最自然的通道是死的。**
+
+`§5.5` 最初我写的是「公司侧把产物放进 `vault-shared\_onboard`」，实测：
+
+```
+New-Item : 对路径"_onboard"的访问被拒绝 — UnauthorizedAccessException
+```
+
+查 ACL：
+
+```
+BUILTIN\Administrators    Allow  ReadAndExecute, Synchronize      ← 只有读
+```
+
+**这是 `D24` 的设计（vault 对 bot 只读，bot 只能写 `inbox`），不是配错了。** 但它意味着**跨机传递渲染产物不能走共享区**。
+
+**§5.5 因此改成三条通道**：A 直拷 `render\`（同机 / SMB 只读共享）、B U 盘、C 走 `inbox`（不推荐，会被入库进程当批次）。
+
+**② 员工侧按 §5.5 拷完后，`deploy-verify` 从 `ok:false` 变成 `ok:true`：**
+
+```
+pass=3 fail=0 skip=1
+  PASS database    库存在: %LOCALAPPDATA%\anc\data\anc.db
+  PASS bot-online  8 个 WorkBuddy 进程
+  SKIP bot-reply   没有绑定群
+  PASS vault-read  读到 .gitignore
+```
+
+**证明 §5.5 的拷贝逻辑是对的** —— 缺的从来不是代码，是「产物要同步过来说」这一步没人写。
+
+**`bot-reply` 仍是 SKIP**，按 `§53.1` 的规矩**不能算通过**。
+
+### 54.7 `ELECTRON_RUN_AS_NODE` —— 今天最贵的坑
+
+**现象**：`Start-Process WorkBuddy.exe` 之后进程 0.5 秒消失，`ExitCode=0`，**stderr 空、崩溃日志无、`~/.workbuddy` 都不重建**。
+
+**我先后排查了**（全部落空）：单实例锁、`SingletonLock`、崩溃转储、Defender 拦截、MOTW 标记、`app.asar` 完整性、`epoch-marker`/`last-launch` 残留、`--no-sandbox`、`--disable-gpu`。
+
+**真相**：
+
+```
+ELECTRON_RUN_AS_NODE = 1        ← 进程级，DSH 会话带下来的
+```
+
+**它让 Electron 以纯 Node 模式运行**：不启动 Chromium、不初始化应用、直接退 0。**因为它根本没走到 userData 那一步，所以什么日志都没有** —— 这也是为什么上面所有排查方向都落空。
+
+**正确起法**：
+
+```powershell
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = "$env:LOCALAPPDATA\Programs\WorkBuddy\WorkBuddy.exe"
+$psi.WorkingDirectory = Split-Path $psi.FileName -Parent
+$psi.UseShellExecute = $false
+$psi.EnvironmentVariables.Remove('ELECTRON_RUN_AS_NODE') | Out-Null
+[System.Diagnostics.Process]::Start($psi)
+```
+
+清掉后同一台机器立刻正常启动（5 个进程，主窗口出现，登录态还在）。
+
+**对项目的意义**：**部署 agent 如果跑在 Electron 派生的 shell 里**（DSH、VS Code 终端、某些 CI），启动 WorkBuddy 那一步会神秘失败，而且**没有任何错误信息可用**。这条已写进 `AGENT-DEPLOY-EMPLOYEE.md §6`（情况 B）和 `AGENT-VERIFY-HANDOFF.md` 的坑列表。
+
+### 54.8 D4.6 判据评估
+
+| 判据 | 这次 | 说明 |
+|---|---|---|
+| 陌生 agent | ✅ | 新会话，无本项目上下文 |
+| 拿到仓库 URL / 路径 | ✅ | 给了本地路径（private 仓库 clone 不了） |
+| 自己读文档、自己装 | ✅ | 装完 §2–§5 |
+| 装完并自证 | ◐ | §6–§8 被文档缺陷挡住，**这正是 D4.6 要暴露的东西** |
+| 干净机 | ◐ | 同机还有 `D:\anc` 公司侧数据，不是全新机 |
+
+**结论：D4.6 的第一步成立** —— 它证明「照文档走会遇到什么」是可以被别人验的，而且一次就找出 17 条。
+
+**还不能说 D4.6 全面通过**：`P13`（persona 是否真被加载）没验到，`§6` 的重启效应没验到，干净机也还不是。
+
+### 54.9 下一步
+
+**让它按修好的文档再走一遍** —— §5.5 是新的，§6 的重启逻辑改了，`deploy-verify` 的 fix 文案也改了。
+
+**重走的判据**：
+- `deploy-state` 能到 **7/7**（或在 §6 明确写出「待用户重启」）
+- `deploy-verify` 至少 `pass=3 fail=0`，`bot-reply` 允许 SKIP 但**原因要写对**
+- 它**不需要问任何 §1 之外的问题**
+
+**另外**：这次暴露的「`deploy.ps1` 不生成渲染产物」是**设计层的**，不是文档笔误。要不要让 `deploy.ps1` 在员工侧自动拉取公司侧产物，是个需要单独决定的事 —— 它牵涉「员工机怎么找到公司主机」。

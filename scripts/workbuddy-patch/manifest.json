@@ -1,26 +1,29 @@
 {
-    "name":  "anc-workbuddy-identity-injection",
-    "description":  "把企微 AIBot 回调里的 chatId / 发送人注入消息正文，让 agent 能读到群身份",
-    "workbuddyVersion":  "5.9.3",
-    "electron":  "37.10.3",
-    "target":  "main/wecomaibot-client.js",
-    "sha256":  "3510b3098686021a01827680b0d84a33daa9ef168b522fe8276ee72b8fae6fe5",
-    "size":  27427,
-    "prefix":  "[anc:chat=",
-    "bootstrapTarget":  "main/main-bootstrap.js",
-    "bootstrapReplacements":  [
-                                  [
-                                      "runStartupForceAutoUpdate(c,e.configStore,e.productSource)",
-                                      "void 0"
-                                  ],
-                                  [
-                                      "runEarlyForceUpgradeCheck(c)",
-                                      "void 0"
-                                  ]
-                              ],
-    "opsWebhookFile":  "%ProgramData%\\anc\\secrets\\ops-webhook.txt",
-    "toggleEnv":  "ANC_WB_PATCH",
-    "log":  "%USERPROFILE%\\anc\\workbuddy-patch.log",
-    "state":  "%ProgramData%\\anc\\data\\patch-state.json",
-    "canary":  "%ProgramData%\\anc\\data\\patch-canary.json"
+  "name": "anc-workbuddy-identity-injection",
+  "description": "把企微 AIBot 回调里的 chatId / 发送人注入消息正文，让 agent 能读到群身份",
+  "workbuddyVersion": "5.8.3",
+  "electron": "unknown-5.8.3",
+  "target": "main/wecomaibot-client.js",
+  "sha256": "8e9dc7207e58be76e3a71d90362e37a4c2a4d0e5d8a692edd81ad6f8d5c6bdb0",
+  "size": 94,
+  "prefix": "[anc:chat=",
+  "bootstrapTarget": "main/main-bootstrap.js",
+  "bootstrapReplacements": [
+    [
+      "runStartupForceAutoUpdate(c,e.configStore,e.productSource)",
+      "void 0"
+    ],
+    [
+      "runEarlyForceUpgradeCheck(c)",
+      "void 0"
+    ]
+  ],
+  "opsWebhookFile": "%ProgramData%\\anc\\secrets\\ops-webhook.txt",
+  "toggleEnv": "ANC_WB_PATCH",
+  "log": "%USERPROFILE%\\anc\\workbuddy-patch.log",
+  "state": "%ProgramData%\\anc\\data\\patch-state.json",
+  "canary": "%ProgramData%\\anc\\data\\patch-canary.json",
+  "note583": "5.8.3 用 rolldown 打包：wecomaibot-client.js 只剩 94 字节的 re-export，",
+  "note583b": "真正的类在 main/server.js（3.43MB）里，emitMessage/sendReply/sendStreamChunk 都在。",
+  "note583c": "inspect.mjs 的 anchorsOk 会误报 false，因为它只搜 wecomaibot-client.js。"
 }

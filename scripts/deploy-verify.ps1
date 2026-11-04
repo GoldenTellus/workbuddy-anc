@@ -63,7 +63,7 @@ function Get-CliJson([string[]]$cliArgs) {
 
 # ── 1. 库在不在（后面所有检查的前提）────────────────────────
 if (-not (Test-Path $db)) {
-    Add-Check 'database' 'FAIL' "没有库: $db" '先跑部署的 files 阶段（deploy.ps1 -Apply）'
+    Add-Check 'database' 'FAIL' "没有库: $db" ('库由 `cli.ts --db $db` 顺带创建（openDb 在检查命令组之前）；deploy.ps1 只放源码不建库。跑任意一条：node --no-warnings ' + (Join-Path $Root 'service\cli.ts') + ' --db "' + $db + '"')
     # 库都没有，后面查不了，直接输出
     $fail = @($results | Where-Object { $_.state -eq 'FAIL' }).Count
     $out0 = [pscustomobject]@{
@@ -265,7 +265,7 @@ if ($Side -eq 'employee') {
             } catch { }
         }
         if (-not $targetChat) {
-            Add-Check 'bot-reply' 'SKIP' '没有绑定群' '先 cli bind --chat-id <你的群> --employee <你的 id> --userid <你的 userid>'
+            Add-Check 'bot-reply' 'SKIP' '没有绑定群' '先 cli bind set --chat-id <你的群> --employee <你的 id> --userid <你的 userid>（注意 set 子命令不能省）'
         } else {
             $flag = Join-Path $Root 'data\test-emit.flag'
             if (-not (Test-Path $flag)) {
@@ -314,7 +314,7 @@ if ($Side -eq 'employee') {
             Add-Check 'vault-read' 'FAIL' 'groups.json 解析失败' '重跑 render deploy'
         }
     } else {
-        Add-Check 'vault-read' 'FAIL' "没有 $groupsPath" '跑 render deploy（部署的 files 阶段应该做了）'
+        Add-Check 'vault-read' 'FAIL' "没有 $groupsPath" '用 AGENT-DEPLOY-EMPLOYEE §5.5 从公司侧同步 render\groups.json 和 org\company.md —— deploy.ps1 只放渲染器源码，不生成这两个文件'
     }
 }
 

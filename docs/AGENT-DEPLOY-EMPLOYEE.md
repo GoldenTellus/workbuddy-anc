@@ -114,7 +114,9 @@ $wb = @(
 if (-not $wb) { throw 'WorkBuddy 没装——先装它再回来' }
 
 # ② 登录过
-if (-not (Test-Path (Join-Path $env:USERPROFILE 'WorkBuddy'))) { throw 'WorkBuddy 装了但没登录过' }
+# 注意：这一条**只是目录存在性检查**，不是真的登录判据。
+# 目录在 = 启动过至少一次；真登录要看能不能收到企微消息（§8 的 bot-online/bot-reply）。
+if (-not (Test-Path (Join-Path $env:USERPROFILE 'WorkBuddy'))) { throw 'WorkBuddy 装了但没启动过' }
 
 # ③ 进程在
 if (-not (Get-Process -Name 'WorkBuddy' -ErrorAction SilentlyContinue)) {
@@ -155,7 +157,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Side emp
 **成功判据**：退出码 0，且：
 
 ```powershell
-node --no-warnings "$env:LOCALAPPDATA\anc\service\cli.ts" 2>&1 | Select-Object -First 1
+$db = "$env:LOCALAPPDATA\anc\data\anc.db"
+node --no-warnings "$env:LOCALAPPDATA\anc\service\cli.ts" --db $db
+
+# 期望最后两行提示：
+#   ERROR 缺少命令组（…）
+#   FIX   看 docs/LOCAL-SERVICE.md
+# 退出码 2 —— 这是用法提示，不是故障。
+#
+# 三条硬要求：
+#  1. 必须带 --db。不带的话 cli 用默认库 %ProgramData%\anc\data\anc.db，
+#     员工侧就会建出公司侧的目录 —— 违反 §0「不碰 ProgramData」和 §2「只写 LOCALAPPDATA」。
+#  2. 不要加 2>&1。PS 5.1 会把 node 的 stderr 变成 NativeCommandError，
+#     中文还会按默认代码页乱码，你会把一条正常提示当成故障。
+#  3. 这条命令**顺便建库**：cli 在检查命令组之前就 openDb($db)，跑完 data\anc.db 就存在了。
+#     §8 的 database 检查靠的就是它 —— 手册没有别的建库步骤，不要去找。
 # 期望 "ERROR 缺少命令组（...）" —— 这是用法提示，不是故障
 ```
 
@@ -164,7 +180,19 @@ node --no-warnings "$env:LOCALAPPDATA\anc\service\cli.ts" 2>&1 | Select-Object -
 **回滚**：
 
 ```powershell
-powershell -File scripts\deploy.ps1 -Side employee -Rollback
+# 注意：deploy.ps1 没有 -Rollback 参数（param 只有 -Side / -Root / -Apply），
+# 照抄会报 NamedParameterNotFound。-Rollback 是 deploy-skills.ps1 的参数，别混用。
+#
+# deploy.ps1 落盘前自己在 backup\ 下留了完整副本，回滚就是把它拷回去：
+$root = "$env:LOCALAPPDATA\anc"
+$bak  = Get-ChildItem "$root\backup" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+if (-not $bak) { throw "没有 backup 目录，无从回滚" }
+"这次回滚会用: $($bak.FullName)"
+# 确认是那一次之后，再执行：
+#   Copy-Item "$($bak.FullName)\*" $root -Recurse -Force
+#
+# 技能单独回滚（这个才有 -Rollback）：
+powershell -File scripts\deploy-skills.ps1 -Rollback
 ```
 
 **装完**：
@@ -193,10 +221,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1 -A
 
 ```powershell
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
-# 期望 ≥ 1（至少 anc-task / anc-vault-read / anc-feedback 里你的部门用得上的那些）
+# 期望 7：light/skills 下有 7 个技能、8 个文件，第 8 个是 .anc-backup 备份目录，不是技能。
+# 原来写「≥ 1」太松：漏装 6 个也能过。低于 7 就回去看 deploy-skills.ps1 的输出。
 ```
 
-**员工侧和公司侧的区别**：**员工侧的技能集应该更小**。具体装哪些由 §6 的 `depts/<id>.md` 的 `skills` 决定，但 `deploy-skills.ps1` 是**全量复制**的——**这个差别目前由 persona 约束，不是由部署物理隔离**。
+**员工侧和公司侧的区别**：**员工侧的技能集应该更小**。具体装哪些由**公司侧** `org/depts/<id>.md` 的 `skills` 决定（见 `AGENT-DEPLOY-COMPANY.md §10.3`；仓库里没有裸 `depts/`），但 `deploy-skills.ps1` 是**全量复制**的——**这个差别目前由 persona 约束，不是由部署物理隔离**。
 
 > **已知限制**：技能是物理全量装的，部门差异只体现在 persona 里写的"你能用的技能"。
 > 想真正物理隔离，需要在 `deploy-skills.ps1` 加 `-Only <技能列表>` 参数。**现在没有。**
@@ -208,6 +237,73 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1 -A
 ```powershell
 powershell -File scripts\deploy-state.ps1 -Side employee -Mark skills -AsDone
 ```
+
+---
+
+## 5.5 从公司侧同步三个渲染产物（漏了必卡 §6 和 §8）
+
+**为什么有这一节**：`deploy.ps1 -Apply` 只把**渲染器源码**（`cli.ts` / `index.ts` / `org.ts` …）放进 `render\`，
+**不生成任何渲染产物**。而下面两节硬依赖三个文件，它们只能来自公司侧的渲染：
+
+| 文件 | 谁要它 | 缺了会怎样 |
+|---|---|---|
+| `render\members\<你的 id>\CODEBUDDY.md` | §6 装 persona | §6 直接抛「没有你的 persona」 |
+| `render\groups.json` | §8 `vault-read` | §8 FAIL「没有 render\groups.json」 |
+| `org\company.md`（至少要有 `vault_shared:`） | §8 靠它找共享区 | 同上 |
+
+**先确认缺不缺**：
+
+```powershell
+$Root = "$env:LOCALAPPDATA\anc"
+foreach ($p in "render\groups.json", "org\company.md", "render\members") {
+    "{0,-22} {1}" -f $p, $(if (Test-Path (Join-Path $Root $p)) { "有" } else { "缺" })
+}
+```
+
+**三个都「有」就跳过这一节。**
+
+### 通道 A：直接从公司主机拷（同机装、或公司主机开了 SMB 共享）
+
+> **先看这一条，能省你一次失败**：`vault-shared` 对 `BUILTIN\Administrators` **也只有读权限**
+> （`D24` 的设计：vault 对 bot 只读，bot 只能写 `inbox`）。
+> 所以「公司侧把产物丢进共享区、员工侧从共享区取」这个最直觉的做法，
+> 会报 `UnauthorizedAccessException` —— **这是故意的，不是配错了**。别在这上面浪费时间。
+
+**A-1 同机**（本机既有公司侧数据又在装员工侧）：
+
+```powershell
+$Root    = "$env:LOCALAPPDATA\anc"
+$company = "D:\anc"        # 公司侧根，按实际填
+
+New-Item -ItemType Directory -Path "$Root\render\members" -Force | Out-Null
+New-Item -ItemType Directory -Path "$Root\org" -Force | Out-Null
+Copy-Item (Join-Path $company "render\groups.json") "$Root\render\groups.json" -Force
+Copy-Item (Join-Path $company "org\company.md")     "$Root\org\company.md"     -Force
+Copy-Item (Join-Path $company "render\members\*")  "$Root\render\members"     -Recurse -Force
+```
+
+**A-2 网络共享**（公司主机把 anc 根开成**只读**共享）：把 `$company` 换成 `\\<公司主机>\anc-share`，其余同上。
+
+### 通道 B：U 盘 / 远程桌面手工拷
+
+照上面的目录结构摆进去即可。
+
+### 通道 C：走 `inbox`（不推荐）
+
+`inbox` 是 bot 唯一可写的目录，但入库进程会把里面的东西当待处理批次。
+除非 A / B 都不通，否则别用。
+
+**拷完复核**：
+
+```powershell
+$Root = "$env:LOCALAPPDATA\anc"
+foreach ($p in "render\groups.json", "org\company.md", "render\members") {
+    "{0,-22} {1}" -f $p, $(if (Test-Path (Join-Path $Root $p)) { "OK" } else { "仍然缺" })
+}
+```
+
+**注意**：`org\company.md` 只有公司名和 vault 路径，没有凭据，可以拷。
+`%ProgramData%\anc\secrets\` 里的东西**绝不能拷到员工机**。
 
 ---
 
@@ -230,7 +326,10 @@ if (Test-Path $LivePersona) {
 # ② 从公司侧拿到你的 persona，放到这里
 #    公司侧产物在：<公司主机>\render\members\<你的 id>\CODEBUDDY.md
 #    员工侧应放在：%LOCALAPPDATA%\anc\render\members\<你的 id>\CODEBUDDY.md
-$myId = '<你的 id>'   # §1 第 2 项对应的成员 id（不是 userid）
+# ⚠ 把 REPLACE_ME 换成真实成员 id（小写字母/数字/下划线/连字符）。
+#   别留尖括号：< 和 > 是 Windows 路径非法字符，会先抛「路径中具有非法字符」，
+#   而不是下面预设的「没有你的 persona」，方向就看错了。
+$myId = 'REPLACE_ME'   # §1 第 2 项对应的成员 id（不是 userid）
 $src = Join-Path $Root "render\members\$myId\CODEBUDDY.md"
 if (-not (Test-Path $src)) {
     throw "没有你的 persona: $src —— 要么公司侧还没渲染你，要么 id 不对"
@@ -255,13 +354,39 @@ Select-String -Path $LivePersona -Pattern '你属于哪个部门' -Quiet
 - **persona 里有别人的 userid** → **停**。这说明公司侧渲染错了，装上去个人 bot 会认错主人
 - **超过 7500 字节** → WorkBuddy 可能截断。让公司侧缩减 persona
 
-**重启 WorkBuddy**（必须，否则不生效）：
+**重启 WorkBuddy**（必须，否则 persona 不生效）—— 但**先判断你自己在不在里面**：
+
+> **不要直接执行 `Get-Process WorkBuddy | Stop-Process`。**
+> 这份手册的读者是 agent，多半就跑在 WorkBuddy 里。那条命令杀掉的是**你自己**，
+> 当前会话当场终止，后面 §7 绑定 / §8 自证 没人继续 —— 走查时正是卡在这里。
+
+**情况 A：你跑在 WorkBuddy 里**（大多数）→ 只标记，不重启：
+
+```powershell
+$marker = Join-Path $Root "data\pending-persona-reload.json"
+$obj = [ordered]@{
+    persona = $LivePersona
+    at      = (Get-Date).ToString("o")
+    reason  = "persona 改动要重启 WorkBuddy 才生效（VERIFY §18）"
+}
+$obj | ConvertTo-Json | Set-Content $marker -Encoding UTF8
+"persona 已装，待重启后生效。§7 / §8 不依赖 persona，先做完。"
+```
+
+然后继续做 §7 和 §8，最后在汇报里明确写：
+「persona 已落盘，**未生效** —— 需要用户重启 WorkBuddy 后再验一次」。
+
+**情况 B：你不是跑在 WorkBuddy 里**（Claude Code / Codex CLI 等）→ 自己重启：
 
 ```powershell
 Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 3
-# 让用户重新启动它（或找到 exe 路径自己启动）
+Start-Process "$env:LOCALAPPDATA\Programs\WorkBuddy\WorkBuddy.exe"
 ```
+
+**启动前先看这条**：如果进程 0.5 秒就退出、`ExitCode=0`、日志一行不写 —— 查 `ELECTRON_RUN_AS_NODE`。
+它设成 1 时 Electron 走纯 Node 模式，应用根本不初始化（`VERIFY §54`）。
+起进程时用 `ProcessStartInfo` 并 `$psi.EnvironmentVariables.Remove("ELECTRON_RUN_AS_NODE")`。
 
 > **为什么必须重启**：persona 是**每会话首次注入时读一次**（`VERIFY §18`）。不重启的话，当前会话还是旧 persona。
 
@@ -282,7 +407,7 @@ $Root = Join-Path $env:LOCALAPPDATA 'anc'
 $cli = "$Root\service\cli.ts"
 $db = "$Root\data\anc.db"
 
-node --no-warnings $cli --db $db bind --chat-id '<§1 第 3 项>' --employee '<你的成员 id>' --userid '<§1 第 2 项>'
+node --no-warnings $cli --db $db --json bind set --chat-id '<§1 第 3 项>' --employee '<你的成员 id>' --userid '<§1 第 2 项>'
 ```
 
 **成功判据**：
@@ -296,8 +421,8 @@ node --no-warnings $cli --db $db --json bind list
 
 | 报错 | 意思 | 怎么做 |
 |---|---|---|
-| `缺少 --chat-id` | 没传 | 补上 |
-| `chat_id 不是 32 字符` | 截断了 | 重新拿完整 chatId（群设置里复制整段） |
+| `未知 bind 子命令` | 少了 `set` | 用 `bind set --chat-id …`。`bind` 只认 `set` / `resolve` / `unbind` / `list` / `import` |
+| 短 chatId **被静默接受** | **代码里没有长度校验** | `bindings.ts` 的 `clean()` 只查非空 / ≤200 字符 / 控制字符。「32 字符」是 §1 的**约定，不是校验** —— 截断值会原样写入，绑完 bot 认不出群。绑之前自己数字符 |
 | 绑定成功但 bot 不认 | 补丁没装 | **员工侧不装补丁**，但个人 bot 需要 `from` 前缀才能认人。检查：WorkBuddy 里 persona 的「每轮先做的三件事」那段——如果消息里没有 `[anc:chat=... from=...]` 前缀，说明个人 bot 也没拿到群身份。**这是已知限制**，见下方说明 |
 
 > **员工侧的身份来源**：公司 bot 靠补丁（D17）拿到群身份。个人 bot **不装补丁**——它靠 WorkBuddy 自己带的企微身份。
@@ -322,13 +447,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 
 **成功判据**：`"ok": true`。
 
-**三项**：
+**四项**（早先版本写「三项」，漏了 `database`）：
 
 | 项 | 验什么 | 说明 |
 |---|---|---|
+| `database` | `data\anc.db` 存在 | 不存在 → FAIL。**由 §4 那条 `cli.ts --db` 顺带创建**，手册没有单独的建库步骤 |
 | `bot-online` | WorkBuddy 进程在 | 不在就 FAIL |
-| `bot-reply` | 注入一条消息 | `test-emit` 默认关着 → SKIP 是正常的 |
-| `vault-read` | 能读公司共享区里一个文件 | 路径不对或没权限 → FAIL；共享区空的 → SKIP（不算错） |
+| `bot-reply` | 注入一条消息 | 两种 SKIP：① 还没绑定群 ② `test-emit` 没开。**先看 `reason` 字段是哪个** |
+| `vault-read` | 读 `render\groups.json` + `org\company.md` 里 `vault_shared:` 指到的目录 | 缺这两个文件 → FAIL，回去做 §5.5 |
 
 **SKIP 不是通过。** 有 SKIP 时告诉用户"这几项没验，原因是 X"。
 
@@ -336,7 +462,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 
 - **`bot-online` FAIL** → 启动 WorkBuddy
 - **`vault-read` FAIL** → 检查 §1 第 4 项的路径；网络共享要能访问（`net use` 或凭据）
-- **`bot-reply` SKIP** → 正常。要验的话建 `%LOCALAPPDATA%\anc\data\test-emit.flag` 并重启 WorkBuddy
+- **`bot-reply` SKIP** → 看 `reason` 字段，两种原因处理方式不同：
+  - **「没有绑定群」** → 先做 §7。只建 `test-emit.flag` 没用，没绑定群就没有注入目标。
+  - **「test-emit 关闭（默认）」** → 建 `%LOCALAPPDATA%\anc\data\test-emit.flag`，然后重启 WorkBuddy（flag 启动时读一次）。
+    你跑在 WorkBuddy 里的话，重启会杀掉自己 —— 按 §6「情况 A」处理，写进汇报。
 
 **装完**：
 
@@ -367,10 +496,18 @@ powershell -File scripts\deploy-state.ps1 -Side employee -Json
 
 `next` 会告诉你从哪继续。流程：
 
-1. 看 `failed` 是哪节
+1. 看 `failed` 是哪节，**也看 `error` 字段** —— 那是上一次卡住的原因
 2. 修那一节（每节的「失败了怎么办」有写）
 3. **只重跑那一节**
 4. `-Mark <那节> -AsDone`
+
+**卡住时把原因记进去**（脚本支持，早先手册没写）：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side employee -Mark persona -AsFailed -Reason "缺 §1 的 userid；render\members 下没有产物"
+```
+
+不记原因，下一个接手的 agent 只能从头猜。
 
 ---
 
