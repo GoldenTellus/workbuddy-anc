@@ -276,7 +276,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1 -A
 **成功判据**：
 
 ```powershell
-# 应该是 8 个（anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-vault-read / anc-wb-patch / .anc-backup）
+# 应该是 7 个技能：anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-vault-read / anc-wb-patch
+# 另外还会有 1 个 .anc-backup 目录（deploy-skills 的备份），它不是技能，别算进来。
+# 早先这里写「8 个」，是把 .anc-backup 当成技能了 —— 照它做会一直以为少装了一个（VERIFY §55 P9）。
+# 所以下面这条数目录的判据是 >= 7 且有 .anc-backup 之外的 7 个 SKILL.md：
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
 ```
 
@@ -587,9 +590,20 @@ Set-Content "$Root\secrets\corpsecret.txt" -Value '<应用 secret>' -Encoding UT
     if (-not (Test-Path $f)) { throw "缺 $_" }
     if ((Get-Item $f).Length -lt 8) { throw "$_ 太短，可能是占位符" }
 }
-# ACL：secrets 目录只有管理员和 SYSTEM 能读
-(Get-Acl "$Root\secrets").Access | Where-Object { $_.IdentityReference -match 'Everyone|Users|Authenticated' }
-# 期望空（没有广泛可读的 ACE）
+# ACL：secrets 不能对广泛组可读（Everyone / BUILTIN\Users / Authenticated Users）
+#
+# ⚠ 但 LOCAL SERVICE 必须保留读权限 —— anc-service 和 anc-http 都是以它运行的。
+#   少了它，服务读不到 token，症状是 doctor 的 heartbeat FAIL，而任务记录显示
+#   「每分钟成功、退出码 0」，日志文件却不动。这条是 2026-11-05 实测踩出来的（VERIFY §62.3）。
+#
+# ① 有没有广泛可读（期望空）
+(Get-Acl "$Root\secrets").Access | Where-Object { $_.IdentityReference -match 'Everyone|BUILTIN\\Users|Authenticated' }
+#
+# ② 服务身份有没有读权限（期望至少一条；缺了就是收得太窄）
+(Get-Acl "$Root\secrets").Access | Where-Object { $_.IdentityReference -match 'LOCAL SERVICE' }
+#
+# 收紧用的命令（两个方向都要顾到）：
+#   icacls "$Root\secrets" /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'LOCAL SERVICE:(OI)(CI)RX'
 ```
 
 **失败了怎么办**：
@@ -605,6 +619,26 @@ powershell -File scripts\deploy-state.ps1 -Side company -Mark wecom -AsDone
 # 没拿到（正常，等用户给）
 powershell -File scripts\deploy-state.ps1 -Side company -Mark wecom -AsFailed -Reason "等用户提供 corpid/secret"
 ```
+
+---
+
+### 11.3 别忘了 data 目录的写权限（同一个坑的另一半）
+
+`secrets` 是「服务要读」，`data` 是「服务要写」。**两个方向都要顾**，否则都会以伪装的方式失败：
+
+```powershell
+# 服务身份要能写日志，否则 anc-loop.cmd 的 >> loop.log 重定向失败，
+# 任务显示"成功运行、退出码 0"，但 loop.log 的 mtime 不动 → doctor 的 heartbeat FAIL
+icacls "$Root\data" /grant 'LOCAL SERVICE:(OI)(CI)M'
+
+# 已经存在的日志文件不继承新 ACE，要逐个补
+foreach ($f in 'loop.log','http.log','patch-in.log','patch-out.log','selfheal.log','audit.log') {
+    $p = Join-Path "$Root\data" $f
+    if (Test-Path $p) { icacls $p /grant 'LOCAL SERVICE:(M)' | Out-Null }
+}
+```
+
+**验证方式**（读 ACL 不够，要实地跑）：造一个 `LOCAL SERVICE` 身份的临时任务跑 `anc-loop.cmd`，看 `loop.log` 的 mtime 有没有变。完整脚本见 `REBUILD.md §2.5`。
 
 ---
 
