@@ -1265,13 +1265,54 @@ outbox #67 [sent] attempts=1 err=-
 
 ### 顺带确认的两件事
 
-**1. `task cancel` 要求"执行人或交办人"**
+**1. `task cancel` 的 `--actor` 用法（我一开始也用错了）**
 
-用 `--requester-userid` 建的任务，`cancel` 时仍报「只有执行人或交办人能操作」——因为 `requester`（人名）和 `assignee` 都是 null，只有 `requester_userid`。这条限制本身是合理的（防止乱取消别人的任务），但**清理自己造的测试数据时会挡路**。这次是直接改库清的，注明在此。
+**这条也更正过。** 当初写的是"`requester` 和 `assignee` 都是 null 所以被挡，清理时会挡路"——**两处都错**：
 
-**2. `NO_WEBHOOK_FOR_CHAT` 是永久错误，不该重试**
+1. **校验用的不是人名字段**。`assertActor()` 看的是 `assignee_userid` / `requester_userid`：
 
-现在它被记进 `last_error` 后仍留在 outbox 里，靠 `next_attempt_at` 控制重试。清理时我把 `next_attempt_at` 置空才停下。永久性错误（找不到群/webhook）和临时性错误（网络抖动）应该有不同处理，但那是优化项，不在 gate S 范围。
+   ```ts
+   const ids = [task.assignee_userid, task.requester_userid].filter(Boolean) as string[];
+   if (!ids.length) return; // 没登记 userid 的任务不校验（兼容旧数据）
+   if (!actor || !ids.includes(actor)) throw ...;
+   ```
+
+2. **不是"挡路"，是我没传 `--actor`**。2026-11-04 实测：
+
+   ```
+   不传 --actor        → ERROR 只有执行人或交办人能操作（正确）
+   传 --actor <requester_userid> → ok, status=cancelled
+   传错的 actor        → ERROR（正确）
+   ```
+
+另外 `task add` 现在强制要 `--requester-userid`，所以"没登记 userid 的旧任务"根本造不出来——
+`if (!ids.length) return` 那段是给历史数据留的。
+
+**真正该记的教训**：清理测试数据时用 `--actor <该任务的 requester_userid>`，不要直接改库。
+我上次图快直接 UPDATE 了，还顺带写下两条错误结论。
+
+**2. `NO_WEBHOOK_FOR_CHAT` 的处理是对的（我一开始判断错了）**
+
+**这一条更正过**：当初写的是"它和临时错误走同一条重试路径，是优化项"，**这是错的**。
+
+`outbox.ts` 里本来就有分类：
+
+```js
+const PERMANENT = /NO_WEBHOOK_FOR_CHAT|webhook 文件内容不是 https URL|读不到 webhook 文件|.../i;
+const maxAttempts = PERMANENT.test(error) ? 1 : isTransient(error) ? 10 : 5;
+```
+
+`NO_WEBHOOK_FOR_CHAT` 命中 `PERMANENT` → `maxAttempts = 1`，**第一次失败就终止**；
+`requeueTransientFailures` 的 SQL 只捞网络类（`fetch failed` / `HTTP 5%` / `ETIMEDOUT` / `ENOTFOUND` / …），**不会回收它**。
+
+2026-11-04 事后核实 outbox 里的实物：
+
+```
+#66  status=failed  attempts=1  next_attempt_at=(空)  requeued_at=(空)
+```
+
+所以那次"清理时把 `next_attempt_at` 置空才停下"是**多余的**——它本来就没设。
+**教训：读代码下结论之前先看数据。** 我按"它应该有重试"的预期去解释现象，结果解释错了，还写进了文档。
 
 ## 21. L1：submission 收集端（2026-11-04 端到端通过）
 
@@ -2306,3 +2347,114 @@ PASS  结构可用（真机还要过 §2 恢复数据、§3 注册任务、§4 �
 同类还有 #18 的 MCP 接口缺失、#21 的两个技能降级成模板。这些都是**换机制达成的代价**，不是零成本。
 
 **判据达成了，不等于"和上游一样好"。** 这一点不该被统计数字盖过去。
+
+## 31. 三项技术债：一项真做了，两项是我上次误判（2026-11-04）
+
+我上一轮列了三条"技术债"，回头做的时候发现**两条根本不存在**。记在这里，包括我错在哪。
+
+### 一、`NO_WEBHOOK_FOR_CHAT` 会重试 —— **不存在**
+
+**我说过**：它和临时错误走同一条重试路径，是优化项。
+
+**实际**：`outbox.ts` 里本来就有分类。
+
+```js
+const PERMANENT = /NO_WEBHOOK_FOR_CHAT|webhook 文件内容不是 https URL|读不到 webhook 文件|.../i;
+const maxAttempts = PERMANENT.test(error) ? 1 : isTransient(error) ? 10 : 5;
+```
+
+命中 `PERMANENT` → `maxAttempts = 1`，**第一次失败就终止**。`requeueTransientFailures` 的 SQL 只捞网络类（`fetch failed` / `HTTP 5%` / `ETIMEDOUT` / `ENOTFOUND` / …），**不会回收它**。
+
+事后核实库里的实物：
+
+```
+#66  status=failed  attempts=1  next_attempt_at=(空)  requeued_at=(空)
+```
+
+**我为什么会错**：清理时我把 `next_attempt_at` 置空了，以为"不置空它就会一直重试"。实际那个字段本来就是 NULL。**我按"它应该有重试"的预期去解释现象，解释错了还写进了文档。**
+
+（另：置空 `next_attempt_at` 那次改动本身也是多余的——它本来就没设。）
+
+### 二、`task cancel` 清理被挡 —— **不存在**
+
+**我说过**：用 `--requester-userid` 建的任务，`cancel` 时报「只有执行人或交办人能操作」，因为 `requester`/`assignee` 人名为 null。
+
+**实际**：两处都错。
+
+**① 校验用的不是人名字段**。`tasks.ts` 的 `assertActor()`：
+
+```ts
+const ids = [task.assignee_userid, task.requester_userid].filter(Boolean) as string[];
+if (!ids.length) return; // 没登记 userid 的任务不校验（兼容旧数据）
+if (!actor || !ids.includes(actor)) throw ...;
+```
+
+看的是 `*_userid`，和人名无关。
+
+**② 不是"挡路"，是我没传 `--actor`**。实测：
+
+```
+不传 --actor                      → ERROR 只有执行人或交办人能操作（正确行为）
+传 --actor <requester_userid>     → ok, status=cancelled
+传错的 actor                      → ERROR（正确行为）
+```
+
+顺带发现：`task add` 现在强制要 `--requester-userid`，所以"没登记 userid 的旧任务"根本造不出来，`if (!ids.length) return` 那段是给历史数据留的。
+
+**真正该记的教训**：清理测试数据用 `--actor <该任务的 requester_userid>`，不要直接改库。上次图快直接 UPDATE，还写下两条错误结论。
+
+### 三、`patch prune` —— **这条是真的，做了**
+
+**问题**：模板版往 SKILL.md 插的「已知问题」块注明"修好后删掉这一段"，但只能人肉删。忘了删会一路膨胀把真指令挤没；删的时候找不准边界会删错。
+
+**实现**（`patch-drafts.ts` 的 `prune` + `cli patch prune`）：
+
+```
+cli patch prune --issue <N> --repo <仓库>            # 预览，删后全文写到临时文件
+cli patch prune --issue <N> --repo <仓库> --apply    # 真删
+```
+
+**两个设计决定**：
+
+1. **不依赖 draft 的 `skill_path`**。早期 draft（2026-11-02 那批）存的是**绝对路径**，而且指向已经废弃的 `%ProgramData%\anc\skills\`。定位改成走 `issue.skill` → `light/skills/<skill>/SKILL.md`。
+2. **按块边界删，不按字符匹配**。找 `> **已知问题 #N**` 那行，往下吃掉整个连续引用块（以 `>` 开头的行），再往前吃掉上方空行、往后吃掉下方空行——否则删完会留两个连续空行。
+
+**实测**：
+
+```
+预览  {"ok":true,"removed":true,"removedLines":4,"previewFile":"...anc-prune-1.md"}
+真删  {"ok":true,"removed":true,"removedLines":4}
+验证  还有「已知问题」块: False
+       git diff: 4 deletions(-)
+幂等  再删 → {"ok":false,"reason":"文件里没有「已知问题 #1」这一块（可能已经删过）"}
+```
+
+删之前「查任务」段是：
+
+```markdown
+## 查任务
+
+```powershell
+node ... task list --chat-id <chatid> --status open
+```
+
+> **已知问题 #1**（2026-11-03 登记，修好后删掉这一段）：
+> - 现象：刚才查任务那条回复不对——我说的是只看今天到期的，它把上周逾期的也列出来了
+> - 期望：应该按 due_at 过滤
+```
+
+删之后只剩代码块和空行——干净。
+
+**踩的坑**：`cli.ts` 里用了 `writeFileSync` 但 import 里没有（`node:fs` 那行只导了 `existsSync, readFileSync, readdirSync, statSync`）。症状是运行时报 `writeFileSync is not defined`，编译期不报。**这个项目是直接跑 `.ts`，没有类型检查兜底**，所以这类"用了没导"只能靠跑一次发现。
+
+### 小结
+
+| 项 | 我上次的判断 | 实际 |
+|---|---|---|
+| `NO_WEBHOOK` 重试 | 技术债 | **系统本来就是对的** |
+| `task cancel` 挡路 | 技术债 | **传 `--actor` 就行** |
+| `patch prune` 缺失 | 技术债 | **确实缺，已补** |
+
+**三条里两条错**，而且错的方式一样：**按预期解释现象，没去看代码和数据**。
+
+这两条都写进了 `VERIFY §20` 的更正块。留着比删掉好——下次再想说"这里应该有个 bug"时，先想想这两次。

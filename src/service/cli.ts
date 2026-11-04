@@ -2,7 +2,7 @@
 // 本地小服务 CLI：脚本方式给公司 bot 调（bind/task/reminder/outbox/a2a/config/loop/serve）
 // 用法见 docs/LOCAL-SERVICE.md；所有命令支持 --db 与 --json。
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { openDb, DEFAULT_DB } from './db.ts';
 import * as tasks from './tasks.ts';
@@ -363,6 +363,29 @@ if (group === 'summary') {
       const d = db.prepare('SELECT * FROM patch_drafts WHERE id = ?').get(id);
       if (!d) fail("没有这份 draft: #" + id);
       out({ ok: true, draft: d });
+    } else if (cmd === 'prune') {
+      // 删掉某条 issue 插进技能文件的「已知问题」块。默认只预览，--apply 才真删。
+      const id = typeof args.issue === 'string' ? Number(args.issue) : NaN;
+      if (!Number.isInteger(id) || id <= 0) fail('缺少 --issue <id>');
+      try {
+        const r = patchDrafts.prune(db, {
+          issueId: id,
+          repo: typeof args.repo === 'string' ? args.repo : undefined,
+          apply: args.apply === true,
+        });
+        if (!r.removed) {
+          out({ ok: false, ...r, preview: undefined });
+          fail(r.reason || '没能删除');
+        }
+        if (args.apply !== true && typeof r.preview === 'string' && r.preview.length) {
+          // 预览模式：把删后的全文写到临时文件，方便人 diff
+          const tmp = join(process.env.TEMP || '.', 'anc-prune-' + id + '.md');
+          writeFileSync(tmp, r.preview, 'utf8');
+          out({ ok: true, ...r, preview: undefined, previewFile: tmp, note: '预览已写到 ' + tmp + '；确认后加 --apply 才真删' });
+        } else {
+          out({ ok: true, ...r, preview: undefined });
+        }
+      } catch (e) { fail((e as Error).message); }
     } else fail('未知 patch 子命令（draft/list/show）');
   } else if (group === 'dayend') {
     // 迭代闭环第五步（L5）：员工说「下班」的记录。纯记录，不调模型。

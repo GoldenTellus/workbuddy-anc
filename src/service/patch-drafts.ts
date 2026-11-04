@@ -13,7 +13,7 @@
 //   3. 定位不到段落就报错，不猜位置（插错地方比不插更糟）
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Issue } from './issues.ts';
@@ -165,4 +165,102 @@ export function list(db: DatabaseSync, opts: { limit?: number; issueId?: number 
     ? db.prepare('SELECT * FROM patch_drafts WHERE issue_id = ? ORDER BY id DESC LIMIT ?').all(opts.issueId, limit)
     : db.prepare('SELECT * FROM patch_drafts ORDER BY id DESC LIMIT ?').all(limit);
   return rows as unknown as PatchDraft[];
+}
+
+// ── 清理：把插进技能文件的「已知问题」块删掉 ──────────────
+//
+// 为什么需要：模板版往 SKILL.md 里插的是一段引用块，注明"修好后删掉这一段"。
+// 靠人肉删有两个问题——忘了删会一路膨胀把真指令挤没；删的时候找不准边界会删错。
+//
+// 做法：draft 里存着当时的 patch_hint 原文，按它在文件里精确匹配。
+// **匹配不上就报错，不猜位置**——文件被人改过时猜错比不删更糟。
+
+export interface PruneResult {
+  /** 找到并（在 apply 时）删掉了吗 */
+  removed: boolean;
+  /** 删掉的行数（含规整掉的空行） */
+  removedLines: number;
+  /** 目标文件（仓库相对路径） */
+  file: string;
+  /** 删完之后的全文；未 apply 时也返回，方便人先看 */
+  preview: string;
+  /** 没能删除时的原因 */
+  reason?: string;
+}
+
+/**
+ * 删掉某条 issue 插进技能文件的块。
+ *
+ * `apply=false`（默认）只返回 preview，不写文件——先看再删。
+ */
+
+export function prune(
+  db: DatabaseSync,
+  opts: { issueId: number; repo?: string; apply?: boolean },
+): PruneResult {
+  const repo = opts.repo || process.cwd();
+
+  // **不依赖 draft 的 skill_path**：早期 draft（2026-11-02 那批）存的是绝对路径，
+  // 而且指向已经废弃的 %ProgramData%\anc\skills\。定位应该走 issue 的 skill → 仓库里的技能文件。
+  const issue = db
+    .prepare('SELECT id, skill, section FROM issues WHERE id = ?')
+    .get(opts.issueId) as { id: number; skill: string | null; section: string | null } | undefined;
+  if (!issue) {
+    return { removed: false, removedLines: 0, file: '', preview: '', reason: '没有这个 issue: #' + opts.issueId };
+  }
+  if (!issue.skill) {
+    return {
+      removed: false,
+      removedLines: 0,
+      file: '',
+      preview: '',
+      reason: 'issue #' + opts.issueId + ' 还没分诊（skill 为空）',
+    };
+  }
+
+  const relPath = join('light', 'skills', issue.skill, 'SKILL.md').replace(/\\/g, '/');
+  const absPath = join(repo, relPath);
+  if (!existsSync(absPath)) {
+    return { removed: false, removedLines: 0, file: relPath, preview: '', reason: '技能文件不存在: ' + absPath };
+  }
+
+  const original = readFileSync(absPath, 'utf8');
+  const lines = original.split(/\r?\n/);
+
+  // 找「> **已知问题 #<N>**」那一行，往下吃掉整个连续的引用块（以 > 开头的行）
+  const marker = '> **已知问题 #' + opts.issueId + '**';
+  let from = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(marker)) {
+      from = i;
+      break;
+    }
+  }
+  if (from < 0) {
+    return {
+      removed: false,
+      removedLines: 0,
+      file: relPath,
+      preview: original,
+      reason: '文件里没有「已知问题 #' + opts.issueId + '」这一块（可能已经删过）',
+    };
+  }
+
+  let to = from;
+  while (to + 1 < lines.length && lines[to + 1].trimStart().startsWith('>')) to++;
+
+  // 往前吃掉块上方的空行，往后吃掉块下方的空行，避免删完留下两个连续空行
+  let cutFrom = from;
+  while (cutFrom > 0 && lines[cutFrom - 1].trim() === '') cutFrom--;
+  let cutTo = to;
+  while (cutTo + 1 < lines.length && lines[cutTo + 1].trim() === '') cutTo++;
+
+  const kept = [...lines.slice(0, cutFrom), '', ...lines.slice(cutTo + 1)];
+  const out = kept.join('\n').replace(/\n{3,}/g, '\n\n');
+  const removedLines = lines.length - kept.length;
+
+  if (opts.apply) {
+    writeFileSync(absPath, out, 'utf8');
+  }
+  return { removed: true, removedLines, file: relPath, preview: out };
 }

@@ -36,10 +36,6 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json task list --chat-id <chatid> --status open
 ```
 
-> **已知问题 #1**（2026-11-03 登记，修好后删掉这一段）：
-> - 现象：刚才查任务那条回复不对——我说的是只看今天到期的，它把上周逾期的也列出来了
-> - 期望：应该按 due_at 过滤
-
 ## 完成 / 取消
 
 ```powershell
