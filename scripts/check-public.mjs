@@ -36,6 +36,13 @@ const FP = new RegExp([
   'qyapi\\.weixin\\.qq\\.com/cgi-bin/webhook/send\\?key=[A-Za-z0-9-]{8,}',
   'corpsecret\\s*=\\s*[A-Za-z0-9]{8,}',
   'ww[0-9a-f]{16}',
+    // 企微 chatId / userid：wrk/wok 开头 + 一长串。2026-11-04 补——原来只查 webhook key，
+    // 这三个真实 ID 进了 docs/VERIFY.md，脚本一条都没报。
+    'wrk[A-Za-z0-9]{20,}',
+    'wok[A-Za-z0-9_-]{20,}',
+    // 具体用户名的本机路径：文档只该出现 %USERPROFILE%。Administrator / Users\<name> 都算。
+    // anc-bot 是本仓库自己的标准用户示例（D25 之前的设计），不是真实人名——放行。
+    String.raw`C:\\Users\\(?!anc-bot\b)[A-Za-z][A-Za-z0-9._-]{2,}`,
 ].join('|'), 'i');
 
 // 3) secret 明文赋值（放行 ${ENV} / *** / null / true / false / { / [ / < / TBC / ...）

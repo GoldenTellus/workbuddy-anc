@@ -1224,7 +1224,7 @@ outbox #66 [failed]  NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_fi
 
 ```
 我用的      wrkcDlGwAAcaQxHs                      ← 20 字符，从日志的 chat=wrkcDlGwAAca 抄的
-真实的      wrkcDlGwAAcaQxHsYyEztVz2Jby1YbTw      ← 32 字符
+真实的      <chat_id>      ← 32 字符
 ```
 
 `resolve()` 拿这个短 id 查不到绑定 → `mentions: []` → 发送时找不到 webhook → FAIL。
@@ -1344,9 +1344,9 @@ POST 127.0.0.1:17999/emit
 submissions 2 → 3
 
 id          3
-chat_id     wrkcDlGwAAcaQxHsYyEztVz2Jby1YbTw
+chat_id     <chat_id>
 employee    本人                                     ← 从 chat_bindings 推出
-userid      wokcDlGwAAXCl5GBcPfwP7EGd2-YsUTw
+userid      <userid>
 text        刚才查任务那条回复不对——…应该按 due_at 过滤。   ← 一字不改
 status      new
 issue_id    (null)                                   ← 等 L2
@@ -1664,7 +1664,7 @@ persona 里也没有 "dayend" / "下班" 相关的职责说明  ← 根因
 id          1
 employee    本人
 userid      wokc…
-chat_id     wrkcDlGwAAcaQxHsYyEztVz2Jby1YbTw
+chat_id     <chat_id>
 note        这是验收测试
 day         2026-11-04
 at          19:54:26Z
