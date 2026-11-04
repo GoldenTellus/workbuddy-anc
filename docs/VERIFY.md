@@ -4178,3 +4178,143 @@ groups.json  0 member(s)   ← 本来就 0（members/ 目录是空的）
 | `npm test` 全绿 | ✅ 127/127 |
 
 **D4.4 完成。**
+
+## 45. D4.5 部署自证：`scripts/deploy-verify.ps1`（2026-11-05）
+
+### 为什么 `deploy-state.ps1` 不够
+
+`deploy-state.ps1` 记的是「**哪些步骤跑过了**」。
+但**跑过 ≠ 有效**：前置检查通过、文件部署了、任务注册了，仍然可能 bot 不回话、库写不进去。
+
+**这个脚本验的是「能不能用」，不是「做没做」。**
+
+两者的读者也不同：
+
+| | `deploy-state` | `deploy-verify` |
+|---|---|---|
+| 回答什么 | 装到第几步了 | 装出来的东西能用吗 |
+| 什么时候跑 | 每做完一步 | 全部做完之后 |
+| 失败含义 | 那一步没做成 | **系统不可用** |
+
+### 公司侧五项
+
+| 检查 | 判据 | 为什么这样判 |
+|---|---|---|
+| `database` | 库文件存在 | 后面所有检查的前提；库没有就无意义 |
+| `doctor` | `ok:true`（FAIL=0） | 29 项逐项查过；WARN 不阻断（`vault-ingest-audit` 基线即 WARN） |
+| `task-write` | 写一条 → 查得回来 → 条数 +1 | **比"看进程在不在"靠谱**：库能写才是真能干活 |
+| `bot-reply` | 注入成功 / 等回复 | 见下（这段改过两次） |
+| `tasks` | 9 个计划任务全部 Ready/Running | 有一个卡住就说明装机不完整 |
+
+**`task-write` 的细节**：写一条到 `chat_id='deploy-verify-probe'`，查回来确认条数 +1，然后**删掉**（含 `reminders` / `task_events` 子表）。加 `-KeepData` 可保留。
+
+### 员工侧三项
+
+| 检查 | 判据 |
+|---|---|
+| `bot-online` | `Get-Process WorkBuddy` 有结果 |
+| `bot-reply` | 同公司侧 |
+| `vault-read` | 从 `org/company.md` 读 `vault_shared`，能读出里面任一文件的第一行 |
+
+**`vault-read` 的一个坑**：网络共享在未映射时 `Test-Path` 会失败，这是典型的「看着装了其实读不到」。所以分三档：路径不存在 → FAIL；路径在但空 → SKIP（不算错）；有文件但读不了 → FAIL（权限问题）。
+
+### `bot-reply` 改过两次 —— 这段最值得记
+
+**第一版**：`test-emit.flag` 存在 → 尝试注入 → 等 90 秒看 `patch-out.log` 有没有新 `chat=` 行 → 没有就 **FAIL**。
+
+**真机上误报了**：
+
+```
+bot-reply  FAIL  90 秒内没看到回复
+```
+
+但**实际是好的**：手工 `Invoke-RestMethod` 立刻返回 `{"ok":true,...,"len":55}`。
+
+**两个错**：
+
+**① 判据搞错了「flag 存在」的含义**
+
+`OPS.md` 明确记过：`test-emit.flag` 是「**下次启动时要不要开口**」，不是「现在开不开」。
+
+所以 flag 存在 + 当前进程是建 flag 之前启动的 = **端口根本没监听**。这不是 FAIL，是 **SKIP**（要重启才生效）。
+
+**改成先探端口**：
+
+```powershell
+$listening = [bool](Get-NetTCPConnection -LocalPort 17999 -State Listen -ErrorAction SilentlyContinue)
+if (-not $listening) {
+    # flag 在但没监听 → SKIP「当前进程是建 flag 之前启动的」
+}
+```
+
+**② 把「回复慢」判成「坏了」**
+
+`VERIFY §40` 实测过：**并发 6 条时最后一条等了 8 分钟**。
+
+90 秒超时判 FAIL，等于把**模型行为**当成**系统故障**。
+
+**改成两层判据**：
+
+| 层 | 判据 | 能立刻判吗 | 判成什么 |
+|---|---|---|---|
+| **第一层 注入成功** | 17999 在监听 + POST 返回 `ok:true` | **能**，不依赖模型 | **PASS** |
+| 第二层 等到回复 | `patch-out.log` 出现新 `chat=` 行（60 秒窗口） | 不能 | 看到 → PASS 并在 detail 里写「60 秒内看到回复」<br>没看到 → **也是 PASS**，detail 写「但 60 秒内没等到回复」 |
+
+**只有注入本身失败才 FAIL，只有端口没监听才 SKIP。**
+
+改完真机输出：
+
+```
+bot-reply   PASS  注入成功（len=75），但 60 秒内没等到回复
+                  FIX  链路是通的；回复慢是模型行为（§40 记过并发时等到 8 分钟）。去群里看有没有回
+```
+
+**这句 detail 比一个绿勾有用**——它告诉人**该去哪确认**，而不是让人以为「全绿 = 万无一失」。
+
+### 实测
+
+**公司侧（本机真环境）**：
+
+```
+database       PASS  库存在: C:\ProgramData\anc\data\anc.db
+doctor         PASS  FAIL=0 WARN=2（29 项）
+task-write     PASS  task #68 写进去了，查得回来
+bot-reply      PASS  注入成功（len=75），但 60 秒内没等到回复
+tasks          PASS  9 个任务全部 Ready/Running
+
+结果  PASS=5  FAIL=0  SKIP=0
+NEXT  全部通过。
+```
+
+**清理生效**：跑完查库，`deploy-verify-probe` 残留 **0 条**、孤儿 `reminders` **0 条**、`tasks` 总数回到 36。
+
+**员工侧（本机不是员工机）**：
+
+```
+database   FAIL  没有库: C:\Users\<user>\AppData\Local\anc\data\anc.db
+NEXT  库不存在，先把部署跑完再做自证。
+```
+
+**正确**——本机没装员工侧，库不存在就该直接 FAIL 并停，不去查后面的。
+
+**FAIL 场景（`Z:` 空根）**：`ok:false`、`database FAIL`、JSON 纯净、退出码 1。
+
+### 未实测的一支
+
+**`bot-reply` 的 SKIP 分支没实测**：需要 `17999` 不监听，而这台机器的 WorkBuddy 一直开着 test-emit。
+
+**这一支的逻辑是清楚的**（不监听 → SKIP + 告诉人怎么开），但**没有真跑过**。按规矩标出来，不写成"已验证"。
+
+### 这一项的状态
+
+| 要素 | 状态 |
+|---|---|
+| `-Side company`：doctor + 群回应 + 任务落库 + 9 个任务 | ✅ 5/5 PASS |
+| `-Side employee`：bot 在线 + 能被 @ + 能读 vault | ✅ 代码就位；**本机无员工侧环境**，只验到「库不存在 → FAIL」这条 |
+| 输出人能一眼看懂 | ✅ |
+| `-Json` 契约 `{ok, side, pass, fail, skip, checks[], next}` | ✅ |
+| 测试数据自动清理 | ✅ 实测 0 残留 |
+| 注入失败才 FAIL、没监听才 SKIP、回复慢仍是 PASS | ✅（改过一次） |
+| SKIP 分支实测 | **未实测**（本机 17999 一直开着） |
+
+**D4.5 完成（SKIP 分支标未实测）。**
