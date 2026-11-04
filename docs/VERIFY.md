@@ -5242,7 +5242,7 @@ node src\service\cli.ts --db …\anc.db --json bind import --from D:\anc\render\
 |---|---|---|
 | 老群 `<chatId-老群>…` | `found:true` → **管理员** | 0 |
 | test2 `<chatId-test1>…` | `found:true` → **员工A** | 0 |
-| **未知群** `wrkcDlGwAAlp-UNKNOWN-…` | **`found:false`** | **1** |
+| **未知群** `<chatId-test1>-UNKNOWN-…` | **`found:false`** | **1** |
 
 **这就是「一人一群」的数据面**：
 
@@ -5874,7 +5874,7 @@ staff-a  含该 userid: True      ← 两份都 True
 
 ```yaml
 # D:\anc\org\members\staff-a.md
-- userid: wokcDlGwAAXCl5GBcPfwP7EGd2-YsUTw     # 原来：和 owner 一样
+- userid: <真实 userid>                        # 原来：和 owner 一样（同一个企微账号）
 + userid: test-staff-a-uid                      # 现在：明显是测试值
 ```
 
