@@ -5948,3 +5948,114 @@ deploy-verify 员工侧   ok=True  pass=3  fail=0  skip=1
 **这两件做完，`§55.5` 里「没验到的」才有可能收口**：persona 是否真被加载、bot 是否真回话。
 
 **另外仍然没验的**（不在这次范围）：技能按部门收窄（物理上全量 7 个）、§4 新的回滚写法、§10 卸载。
+
+## 57. WorkBuddy 5.8.3 → 5.9.3 升级：员工侧部署零损伤；5.8.3 其实是「异类」（2026-11-05）
+
+### 57.1 起因
+
+维护者指出：**重启后 WorkBuddy 会自动更新到最新版**。
+
+这本来是个威胁 —— 我们刚在 5.8.3 上装完员工侧，升级可能把现场冲掉。**结果是反过来的：升级什么都没破坏，还顺便澄清了一件事。**
+
+### 57.2 升级存活（逐项对比，全部一致）
+
+升级前把基线钉在 `E:\anc-backup-20261104\BASELINE-583-20261105-001516.txt`，重启后逐项对：
+
+| 项 | 5.8.3 | 5.9.3 | |
+|---|---|---|---|
+| WorkBuddy 版本 | 5.8.3 | **5.9.3** | 升级了 |
+| `app.asar` | 92.07 MB `3e50fcb5…` | **173.56 MB `dcabcd90…`** | **体积近翻倍** |
+| **装上的 persona** | 1990B `582b557259f3096e` | **1990B `582b557259f3096e`** | **完全一致 ✅** |
+| 员工侧文件数 | 156 / 1.09 MB | 156 / 1.09 MB | 一致 |
+| `deploy-state` | 7/7 | **7/7** | 一致 |
+| `render\groups.json` | `69ead9095c372b1d` | 同 | 一致 |
+| `org\company.md` | `4ca610859e682b9d` | 同 | 一致 |
+| `data\anc.db` | `fb291b77151870ba` | 同 | 一致 |
+| `deploy-verify` | `ok=True pass=3 fail=0 skip=1` | **同** | 一致 |
+| `~/.workbuddy` 表数 / sessions | 11 / 3 | 11 / 4 | 数据完好 |
+
+**最担心的那一项反而是最稳的**：升级**没有清掉** `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`，sha256 前后完全相同。
+
+**结论**：**员工侧部署跨版本存活。** 升级不碰 `~\WorkBuddy\Claw\`（那是工作区），也不碰 `%LOCALAPPDATA%\anc`。
+
+### 57.3 ★ 5.8.3 其实是「异类」，5.9.3 才是常态
+
+`main/wecomaibot-client.js` 在两个版本里根本不是一个东西：
+
+| | 字节 | 内容 | `emitMessage` 在哪 |
+|---|---|---|---|
+| **5.8.3** | **94** | `require("./rolldown-runtime.js");const e=require("./server.js");exports.WecomAiBotClient=e.mt;` | **不在这里**，在 `server.js`（3.43MB） |
+| **5.9.3** | **27427** | 完整实现 | **就在这个文件里** |
+
+`inspect.mjs` 的锚点检查因此给出完全相反的结论：
+
+```
+5.8.3:  hashMatches=false  emitMessage=0  class=1   anchorsOk=false
+5.9.3:  hashMatches=true   emitMessage=9  class=73  anchorsOk=true
+```
+
+**所以 `§54.4` 那句「`inspect.mjs` 有盲点」要限定**：
+
+- **在 5.9.3 上是准的** —— `anchorsOk: true` 与实际情况一致
+- **在 5.8.3 上误报** —— 因为它是 rolldown 打包的 re-export，实现被挪到 `server.js`，静态搜这个文件当然搜不到
+
+**这不是工具缺陷，是「re-export 结构」这个特例。** 但遇到 `anchorsOk: false` 时，不能立刻断定「补丁打不上」，要**先去 `server.js` 里确认一次**。
+
+### 57.4 manifest 必须跟着装的那一版走
+
+```
+5.9.3 的 wecomaibot-client.js  sha256 = 3510b3098686021a…  size = 27427
+5.8.3 的 wecomaibot-client.js  sha256 = 8e9dc7207e58be76…  size = 94
+```
+
+`preload.cjs` 是 **fail-closed**：目标文件 sha256 与 manifest 不符就只记日志、不打补丁。所以：
+
+- 装 5.8.3 时我把 manifest 改成了 `8e9dc720…` + `size: 94`
+- 升回 5.9.3 后**必须改回 `3510b309…` + `size: 27427`**，否则补丁静默失效
+
+**已从备份 `manifest-593-orig.json` 恢复**，`inspect.mjs` 确认 `hashMatches: true` / `anchorsOk: true`。
+
+**这就是 `§37` / `FORK-DIRECTION §11` 说的「随升级重放」在实操中的样子**：版本一变，manifest 的 `sha256` / `size` / `version` 三样都得跟着改，改完要用 `inspect.mjs` 核一遍。
+
+### 57.5 一个附带的确认
+
+**员工侧的 `bot-reply` 在 5.9.3 上仍然 SKIP**，原因和 `§8` 改的那条一致：
+
+```
+SKIP bot-reply  test-emit 关闭（默认）
+```
+
+**因为它缺的是补丁（`test-emit` 由 `preload.cjs` 提供），不是版本。** 5.9.3 上装了补丁就有 `test-emit`，没装就永远没有。
+
+**这条现在可以彻底定死**：员工侧 `bot-reply` = 设计上不可验，只能靠人在群里 @ 一次。
+
+### 57.6 当前状态
+
+```
+WorkBuddy      5.9.3（自动升级完成）
+manifest       5.9.3 / 27427 / 3510b309…   hashMatches=true  anchorsOk=true
+员工侧部署      156 文件 / 1.09 MB    deploy-state 7/7
+deploy-verify  ok=True pass=3 fail=0 skip=1
+补丁           **未装**（员工侧本来就不装）
+公司侧         **空**（%ProgramData%\anc 已改名、10 个任务已注销、5 个 -orig 目录留着）
+```
+
+### 57.7 R7 现在有材料了
+
+**真升级回归（1.0 判据第 2 条）需要的三样，现在都齐了**：
+
+1. **一个能装补丁的版本** —— 5.9.3，`anchorsOk: true`
+2. **一个能触发"版本变化"的旧安装包** —— `E:\Downloads\WorkBuddy-win32-x64-user-5.8.3.41334564-db0e9b51.exe`（420.7MB，腾讯签名 Valid）
+3. **回滚材料** —— `E:\anc-backup-20261104`（anc / workbuddy / anc-data 三份 + SNAPSHOT + 5 个 `-orig` 目录）
+
+**所以 R7 可以这样验**（不需要等厂商发版）：
+
+```
+① 恢复公司侧（从备份 + -orig 目录），装补丁，确认 patch-state applied
+② 降级到 5.8.3（用那个安装包）
+③ 看：补丁是否 fail-closed 失效、patch-guard 是否报警、bot 是否还在
+④ 升回 5.9.3（自动更新或安装包）
+⑤ 看：补丁能否重放、persona 和绑定是否还在 → 这才是「升级后自愈」
+```
+
+**没做** —— 这是下一件事。而且 ③ 那一步必然失效（5.8.3 的 sha256 和 manifest 不同），**关键是「失效时会不会明确报警，而不是静默」**。
