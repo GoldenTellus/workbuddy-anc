@@ -1826,7 +1826,7 @@ resolve_local_excel / get_cell_ranges / set_cell_range / run_command …   Excel
 weixinpay_*
 ```
 
-**没有通用的本地文件读写工具。** 唯一的希望是 `run_command`，而它在 Excel 那组里，看起来像是给表格用的。
+**没有通用的本地文件读写工具。** 当时以为唯一的希望是 `run_command`。
 
 实测：
 
@@ -1835,7 +1835,25 @@ weixinpay_*
 回复：42
 ```
 
-**它能跑任意系统命令并返回输出。** 这条以前是空白，现在成了 L4 的地基——devbot 能跑 `git`、`node`、`powershell` 全靠它。
+**当时写成"它能跑任意系统命令并返回输出"，这个归因是错的（2026-11-05 更正）。**
+
+查 `~/.workbuddy/mcp-tool-list.json`（54 个工具）才发现：
+
+- `run_command` 的描述是"执行 **Apps-Script 风格的 JavaScript** 完成表格操作"——它属于 Excel 插件，跑的是内置 JS 运行时里的 `SpreadsheetApp` / `Sheet` / `Range`，**不是系统命令**
+- 54 个工具里**没有任何** `shell` / `exec` / `bash` / `powershell` / `terminal`
+
+**真正跑命令的通道是 `SandboxCLIClient`**（`daemon.log` 里能看到 `[SandboxCLIClient]` / `[SandboxCenter]` / `[sandbox-cli]`）。
+
+证据不靠自述，靠 git 自己的记录：
+
+```
+9b5c2f0 HEAD@{2026-11-04 09:56:24}: commit: devbot: 查任务只列今天到期的 (issue #5)
+64020a2 HEAD@{2026-11-04 09:56:01}: checkout: moving from main to devbot/issue-5
+```
+
+`devbot.ps1` 里 11 处 `git -C` 全是读操作（`rev-parse` / `status` / `branch --list` / `log` / `diff`）+ 一处 `checkout`（切回起始分支），**没有 `checkout -b`、没有 `commit`**。那两个动作是模型自己跑的。
+
+**结论没变（L4 的地基仍然是"模型能执行命令"），但归因更正了**：不是 `run_command`，是 `SandboxCLIClient`。这个区别对 D4 很重要——如果要让 WorkBuddy 自部署，依赖的是 `SandboxCLIClient` 这个通道，而不是某个 Excel 工具。
 
 ### 架构：编排在外，思考在内
 
