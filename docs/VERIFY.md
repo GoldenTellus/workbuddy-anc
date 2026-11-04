@@ -5429,3 +5429,78 @@ if ($patched) { exit 0 }        # 只看状态文件的时间窗，不验证 hoo
 - `test-emit` 不能验出站（能力边界要写明）
 - test1 群有两个 BOT → E-3 有真环境了
 - 第三个群 `…AZwSG` 身份不明
+
+## 52. test2 的提醒通道打通 + org 成为 webhook 的唯一真相源（2026-11-05）
+
+### 52.1 问题
+
+`§50` 绑完 test2 后 `doctor` 报：
+
+```
+[FAIL] bindings  1/2 个群没登记 webhook_file，提醒会发不出去
+```
+
+原因是 `members/staff-a.md` 没写 `webhook_file`，`bind import` 导进去就是 `null`。
+
+**这是真实状态**：test2 的提醒确实发不出去。
+
+### 52.2 补齐
+
+**① 先验 webhook 真能用**（不是"配了就算"）：
+
+```powershell
+Invoke-RestMethod -Uri <test2 webhook> -Method POST -Body (自检文本)
+→ errcode=0  errmsg=ok
+```
+
+**② URL 只进 `secrets/`，`org` 里只写文件名**
+
+```
+%ProgramData%\anc\secrets\test2-webhook.txt     89B   ← 真实 URL
+D:\anc\org\members\staff-a.md                   webhook_file: test2-webhook.txt   ← 只有文件名
+```
+
+`org.ts` 的校验就是 `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.txt$/` —— **只接受文件名**，从结构上防止 URL 进 git。
+
+**③ 顺带补上 `owner` 的 webhook_file**
+
+原来 `owner` 的 `webhook_file` **只在数据库里有**（10-31 手工绑的，`wecom-webhook.txt`），`org/members/owner.md` 里**没写**。
+
+**隐患**：重建数据库就丢，而且 `D-7` 说「技能、模板、org 数据只走 git 变更 → 渲染器部署」——org 应该是唯一真相源。
+
+**已补**：`members/owner.md` 加 `webhook_file: wecom-webhook.txt`。
+
+### 52.3 结果
+
+```
+groups.json      owner   → "wecom-webhook.txt"
+                 staff-a → "test2-webhook.txt"
+
+chat_bindings    管理员  → wecom-webhook.txt   ✅
+                 员工A   → test2-webhook.txt   ✅
+                 缺 webhook 的群: 0
+
+doctor           ok=True  fails=0  warns=2  checks=30
+                 bindings: PASS — 2 个绑定都登记了 webhook
+```
+
+**`bind import` 两轮都是 `created:0, updated:2`** —— 说明它是「有值才更新」，不会把已有的 `webhook_file` 清空。这是对的（否则补一个成员会把别的成员配置清掉）。
+
+### 52.4 还没验的
+
+**webhook 配好 ≠ 提醒真能到。**
+
+真实链路是：`task` 到点 → `loop.ts` 按 `task.chat_id` 查 binding → 取 `webhook_file` → 发消息并 @ `binding.userid`。
+
+**没验**：造一条 `due_at` 在几分钟后的任务，看 test2 群里是否真的收到提醒、是否 @ 了员工A。
+
+**`§20` 验过提醒链路**（那条是造的数据），但那次只有老群一个 webhook。**多群路由（按 `task.chat_id` 分别发到各自的群）没验过。**
+
+### 52.5 一条待办
+
+`webhook_file` 现在有两处入口：
+
+1. `org/members/*.md`（渲染 → `groups.json` → `bind import`）
+2. `cli bind set --webhook-file`（直接写库）
+
+**第二处会让 org 和库不一致**，而 `D-7` 说 org 是唯一真相源。**没做约束**，只在文档里靠约定。如果要收紧，可以让 `doctor` 比对「库里 binding 的 webhook_file」和「渲染产物里的」是否一致。
