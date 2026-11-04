@@ -129,11 +129,31 @@ sh.Run """$cmdFile""", 0, False
         Release-Lock
         # 标成 restart-failed：守卫 60 分钟内不再触发，避免降级启动—再自愈的循环
         [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'restart-failed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+
+        # 2026-11-05（VERIFY §58 实证的缺陷）：失败时必须把 patch-state.json 也改成 applied=false。
+        # 否则它会一直留着上一次成功的内容（applied=True + 一个早死的 pid），
+        # doctor 看到 applied 就报 [PASS] patch，而实际上群身份注入是坏的 —— 状态骗人。
+        # 这条是"失败要留下可判信号"的最小实现：不是只写日志，而是让状态文件说真话。
+        $PatchStateFile = "$env:ProgramData\anc\data\patch-state.json"
+        try {
+            $failObj = [ordered]@{
+                applied  = $false
+                mode     = 'failed'
+                pid      = 0
+                at       = (Get-Date).ToString('o')
+                error    = ("自愈 " + $maxAttempt + " 次启动都没见到补丁日志；群身份注入不可用")
+                selfheal = 'restart-failed'
+            }
+            [IO.File]::WriteAllText($PatchStateFile, ($failObj | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+            Write-Log 'worker: 已把 patch-state.json 标成 applied=false（不让状态继续骗人）'
+        } catch {
+            Write-Log ("worker: 写 patch-state.json 失败: " + $_.Exception.Message)
+        }
         if (Test-Path $WebhookFile) {
             try {
                 $url = (Get-Content $WebhookFile -Raw).Trim()
                 if ($url) {
-                    $body = @{ msgtype = 'text'; text = @{ content = '[anc] 自愈重启失败：两次都没见到补丁日志，请人工用 launch-patched.ps1 重启（输出见 launcher.out）' } } | ConvertTo-Json -Depth 4 -Compress
+                    $body = @{ msgtype = 'text'; text = @{ content = ('[anc] 自愈重启失败：' + $maxAttempt + ' 次都没见到补丁日志，群身份注入当前不可用；请人工跑 launch-patched.ps1（输出见 launcher.out）') } } | ConvertTo-Json -Depth 4 -Compress
                     Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
                 }
             } catch { }

@@ -6433,3 +6433,95 @@ doctor        ok=False  fails=3  warns=3
 ```
 
 **goal 第 1 步实质达成**（判据已按实际可达性调整并留痕）。剩下 3 个 FAIL 是第 3 步。
+
+## 61. 修掉「状态骗人」：自愈失败时必须把 patch-state.json 标成 applied=false（2026-11-05）
+
+### 61.1 这条缺陷是 `§58` 实证出来的
+
+`§58` 里记过这个现场：
+
+```
+patch-state.json:   applied=True   mode=hash   pid=6880
+该 pid 现在活着:     False                      ← 进程早死了
+at:                 16:46:28                    ← 那是 5.9.3 时代
+```
+
+**而 `doctor` 报 `[PASS] patch: APPLIED(hash) + update-hook`。**
+
+也就是说：补丁早就没了，但**状态文件还在说"装好了"，体检也据此报通过**。
+
+**根因**：`anc-selfheal.ps1` 的失败分支只写了 `selfheal.state.json`（`status = 'restart-failed'`），**从来没碰过 `patch-state.json`** —— 那里面留着上一次成功的内容。
+
+### 61.2 改法
+
+在失败分支（`$ok` 为 false 时）补一段覆盖：
+
+```powershell
+$PatchStateFile = "$env:ProgramData\anc\data\patch-state.json"
+try {
+    $failObj = [ordered]@{
+        applied  = $false
+        mode     = 'failed'
+        pid      = 0
+        at       = (Get-Date).ToString('o')
+        error    = ("自愈 " + $maxAttempt + " 次启动都没见到补丁日志；群身份注入不可用")
+        selfheal = 'restart-failed'
+    }
+    [IO.File]::WriteAllText($PatchStateFile, ($failObj | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+    Write-Log 'worker: 已把 patch-state.json 标成 applied=false（不让状态继续骗人）'
+} catch {
+    Write-Log ("worker: 写 patch-state.json 失败: " + $_.Exception.Message)
+}
+```
+
+**顺带**把告警文案里写死的「两次」改成跟随 `$maxAttempt`（`§60` 已把它改成 4）：
+
+```
+'[anc] 自愈重启失败：' + $maxAttempt + ' 次都没见到补丁日志，群身份注入当前不可用；请人工跑 launch-patched.ps1'
+```
+
+### 61.3 为什么这条比「多写一行日志」重要
+
+`§58` 那天我之所以误判了半天，就是因为**只看 `patch-state.json` 和 `doctor` 的输出**，而这两处都在说"没问题"。真相在 `selfheal.log` 里（1015 行，写着「两次启动都没见到补丁日志」），但没人会先去看那个。
+
+**失败必须落在「别人会看的地方」。** 这条改动就是让 `patch-state.json` 说真话，从而让 `doctor` 也自动说实话 —— 不用额外教人去看哪个日志。
+
+### 61.4 实测：成功路径验到了，失败路径没验到
+
+**成功路径**（这次真的复现了一次自愈）：
+
+```
+$ powershell -File C:\ProgramData\anc\bin\anc-selfheal.ps1 -Apply -PatchDir C:\ProgramData\anc\patch
++15s  selfheal=restarting  applied=True
++30s  selfheal=healed      applied=True
+
+selfheal.log:
+  02:15:08  worker: 第 1 次启动 C:\ProgramData\anc\patch\launch-patched.ps1
+  02:15:21  worker: 重启成功（补丁已生效）
+
+最终: applied=True  mode=hash  pid=16788  alive=True
+```
+
+**第 1 次启动 → 13 秒后 healed。**
+
+**失败路径没验到** —— 要验它得让 4 次启动全部失败，而单次成功率 66.7%，4 次全失败只有 1.23% 概率，**强行制造得改代码或掐端口，会污染现场**。
+
+**所以这条改动目前是「代码改好、语法通过、已部署、成功路径实测通过、失败路径未实测」。** 记为待验证项，不写成"已验证"。
+
+### 61.5 顺带解掉 `§60.5` 那个待办
+
+`§60.5` 留了一个疑问：「`deploy.ps1` 里搜不到 `anc-selfheal` 的映射，但它确实被部署了，走的是哪条路径？」
+
+**这次查到了**：`deploy.ps1 -Apply` 之后，`C:\ProgramData\anc\bin\anc-selfheal.ps1` 从 11454B 变成 **12775B，时间戳 02:14:46**（正是这次 deploy 的时刻）。
+
+**所以是按目录整体拷贝，不是逐文件列举** —— 搜不到映射是正常的。**改 `scripts/` 下的文件后跑一次 `deploy -Apply` 就会同步到 `bin\`，这条路径是通的。**
+
+### 61.6 现状
+
+```
+补丁      applied=True  mode=hash  pid=16788 alive   17999 监听中
+自愈      重试 4 次；失败时回写 applied=false（新）
+doctor    fails=3（heartbeat / secrets-acl / http-health）—— 这 3 个是第 3 步
+```
+
+**goal 第 2 步完成**（代码层面），**失败路径留作待验证**。
