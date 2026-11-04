@@ -1051,7 +1051,7 @@ bot 答：**"没有「校验码」这回事。你要的是实验编号的话，�
 修好时间同步后重看 `patch-out.log`，第 3 行是：
 
 ```
-2026-11-03T18:23:06.100Z chat=wrkcDlGwAAca len=14
+2026-11-03T18:23:06.100Z chat=<chat_id 前 12 字符> len=14
 正文: O2-PHASE2-7731
 ```
 
@@ -1223,8 +1223,8 @@ outbox #66 [failed]  NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_fi
 对照绑定表：
 
 ```
-我用的      wrkcDlGwAAcaQxHs                      ← 20 字符，从日志的 chat=wrkcDlGwAAca 抄的
-真实的      <chat_id>      ← 32 字符
+我用的      <chat_id 前 20 字符>                     ← 从日志的 chat=<前 12 字符> 抄的，短了 12 个
+真实的      <完整 chat_id，32 字符>                 ← 数据库里的真实值
 ```
 
 `resolve()` 拿这个短 id 查不到绑定 → `mentions: []` → 发送时找不到 webhook → FAIL。
@@ -3559,7 +3559,7 @@ $db = Join-Path $Root 'data\anc.db'
 
 **① 没有串群**
 
-5 条回复的 `chat=` 全是 `wrkcDlGwAAca`（同一个群的截断形式）。**一条都没跑到别的群**。
+5 条回复的 `chat=` 全是 `<chat_id 前 12 字符>`（同一个群的截断形式）。**一条都没跑到别的群**。
 
 这只能说明"同一群内部不会串到别的群"——**"两个群同时来会不会互串"验不了**（只有一个绑定）。
 
