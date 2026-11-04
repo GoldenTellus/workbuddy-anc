@@ -390,7 +390,7 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 
 ```
 ☑ 群里报问题能落 submission  ← 2026-11-04：test-emit 注入「刚才查任务那条回复不对…」→ `submissions` 2→3，原话一字不改、employee 从绑定表推出、bot 回执「已记录 #3」，见 `VERIFY §21`
-◐ dayend 记录通了，但**自动识别「下班」未验证**  ← 2026-11-04：表/CLI/`all-off`/技能全部验证（显式指定技能后 bot 调用成功、`dayend=1`、`allOff=true`、幂等、107 测试没坏）。**但「下班了」这句话本身没触发技能**——那需要个人 bot，我们只有一个公司 bot，见 `VERIFY §24`
+☑ dayend 记录 + **自动识别「下班」已验**  ← 2026-11-04：临时给公司 bot 的 persona 加一段"收到下班就调 `anc-dayend`"，重启后用 test-emit 注入「我走了」→ 80s 后库多一行 `{"employee":"本人","day":"2026-11-04","at":"01:38:56Z"}`（`day` 是本地日期，它自己做的 UTC 换算）→ bot 回「下班记下了（09:38）。」→ `all-off` 判 `allOff:true`。**这不是个人 bot**（本机跑不了第二实例，VERIFY §33），验的是"技能触发链路"。另发现：同会话里它会用上下文代替查库（`VERIFY §36`）
 ☑ submission 能转成结构化 issue  ← 2026-11-04：规则表 11 条（关键词→技能→真实章节），symptom/expected 用字符串规则抽、不用模型；命中不了留 null 标「待人工分诊」；幂等；生产库 `submission #3 → issue #2`，见 `VERIFY §22`
 ☑ patch draft 的 diff 可应用且已应用一条  ← 2026-11-04：`cli patch draft` 从真实 issue 产出 unified diff，`git apply` 成功、`npm test` 107/107 没坏；**已应用到 `light/skills/anc-task/SKILL.md`**。评估：模板版覆盖「行为约束」类问题，覆盖不了「代码缺陷」和「功能缺失」，见 `VERIFY §23`
 ☑ devbot **全自动**跑出分支  ← 2026-11-04：`scripts/devbot.ps1` 切 persona→注入 issue→等→检查→恢复；实测产出 `devbot/issue-2`（`d9b73b3`，只改 `anc-task/SKILL.md`，`main` 未动，范围检查通过）。**前置突破：`run_command` 能跑任意系统命令**。但 eval 没证明"改对了"（缺逾期数据），见 `VERIFY §26`
