@@ -4707,7 +4707,7 @@ L40: $LivePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md'
 
 ```
 USERPROFILE=C:\Windows\system32\config\systemprofile
-USERNAME=WIN-QO0LGLP39AO$
+USERNAME=<HOST>$
 LivePersona=C:\Windows\system32\config\systemprofile\WorkBuddy\Claw\CODEBUDDY.md
 LivePersona-exists=False                    ← ① 目标不存在
 Repo-exists=True
