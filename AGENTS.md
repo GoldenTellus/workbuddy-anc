@@ -36,6 +36,8 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 | `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定。**0.4（2026-11-03）起 §3 按"零差距"口径重判**：原来 9 条"不适用"里只有 3 条是真的，5 条是"换机制达成"、1 条待补。**默认复用，不重复造**：先查本表 → 再查 `reference/upstream/` → 最后才自己写 |
 | `reference/upstream/` | 上游参考:未合并分支(含渲染器的改写来源 `feat-m1-w1`)、以后可能用到的上游技能与 MCP 骨架。不参与构建,README 写明每份什么时候会用 |
 | `docs/PLAN.md` | **里程碑 1.0**:阶段 S(稳)/O(观)/L(环)/D(交)、终态 DoD **40 条**、每阶段 gate；1.0 还要覆盖上游全部功能、零差距 |
+| `docs/AGENT-DEPLOY-COMPANY.md`、`AGENT-DEPLOY-EMPLOYEE.md` | **给 agent 的部署手册**（读者是 agent 不是人）：开工前的问值清单、每步的成功判据与回滚、分节跳转 |
+| **`docs/AGENT-VERIFY-HANDOFF.md`** | **给新机器的验证交接**：能验什么/不能验什么、待验证任务、**16 个踩过的坑**、6 个测试方法、工具速查。**换机器/换 agent 时先读这份** |
 | `docs/OPS.md`、`docs/REBUILD.md` | 主机运维:10 个计划任务、补丁与部署的唯一来源、维护开关、重建步骤 |
 | `SPEC.md` 等上游原文 | 设计文档原位保留并标了「上游原文」,仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
 

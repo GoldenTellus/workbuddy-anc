@@ -580,6 +580,9 @@ sendStreamChunk：只计数（判是否流式才是主出口）
 ### D4 让 agent 能自己装 ★ 1.0 第 4 条判据
 
 > 判据：**把一个没参与过这个项目的 agent 指向仓库 URL，它装完并自证。**
+>
+> **换机器时先读** `docs/AGENT-VERIFY-HANDOFF.md`——那份把"能验什么/不能验什么 + 16 个坑 + 测试方法"一起交出去了。
+> 部署手册本身是 `AGENT-DEPLOY-COMPANY.md` / `AGENT-DEPLOY-EMPLOYEE.md`；交接手册是它们的**前置读物**（先判断角色，再决定装哪一侧）。
 
 #### D4.1 两个入口文档 ✅ 2026-11-05（`VERIFY §47`）
 

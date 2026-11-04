@@ -22,7 +22,22 @@ https://github.com/GoldenTellus/workbuddy-anc
 **agent 会问你这几件事**（提前准备好）：企微 corpid 与群机器人 webhook、部门划分、员工名单与 userid。
 
 细节见 [docs/PLAN.md](./docs/PLAN.md) §2.4 与 §6 D4。**给 agent 的部署手册**：
-[docs/AGENT-DEPLOY-COMPANY.md](./docs/AGENT-DEPLOY-COMPANY.md) / [docs/AGENT-DEPLOY-EMPLOYEE.md](./docs/AGENT-DEPLOY-EMPLOYEE.md)（这两份还没写，见 PLAN D4）。
+[docs/AGENT-DEPLOY-COMPANY.md](./docs/AGENT-DEPLOY-COMPANY.md) / [docs/AGENT-DEPLOY-EMPLOYEE.md](./docs/AGENT-DEPLOY-EMPLOYEE.md)
+
+### 装完之后：验一遍（★ 新机器必读）
+
+**如果你是一台新机器、一个新 agent**，除了装，还请你帮忙验证——这个项目现在最缺的就是"第二个人能不能独立装起来"这件事被真正验过。
+
+**读这份**：[docs/AGENT-VERIFY-HANDOFF.md](./docs/AGENT-VERIFY-HANDOFF.md)
+
+它包含：
+
+- **这台机器能验什么、不能验什么**（先确认角色，别白干）
+- **待验证任务清单**（D4.6 / O-5 / E-1 的员工机一半 / devbot 22:00 自动触发 / REBUILD 复验）
+- **16 个踩过的坑**（PowerShell 大小写敏感、CRLF、`if` 解包数组、Interactive 任务静默不执行…）
+- **6 个可复用的测试方法**（故障注入、注入时间而不是改系统时间、真关掉而不是伪造 SKIP…）
+
+**装的时候会问你的**：机器是干净机还是员工机、有没有管理员权限。（这两份还没写，见 PLAN D4）。
 
 ---
 
