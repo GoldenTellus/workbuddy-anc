@@ -301,8 +301,12 @@ powershell -File scripts\deploy-state.ps1 -Side company -Mark skills -AsDone
 **做什么**：WorkBuddy 是闭源的，群身份靠**补丁**注入（消息开头加 `[anc:chat=<chatid> from=<userid>]`）。
 
 ```powershell
-# 应用补丁（会重启 WorkBuddy）
-powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\patch\apply.ps1" -Apply
+# 装补丁并启动 WorkBuddy（会重启它）。
+#
+# 注意：早先文档写的 patch\launch-patched.ps1 从来不存在，照着做会报"文件不存在"。
+# 实际入口是 launch-patched.ps1（2026-11-05 校正，VERIFY §59）。
+# 它自己会轮询 patch-state，最多等 150 秒再报结论，不需要你在外面猜时间。
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\patch\launch-patched.ps1"
 
 # 确认补丁生效
 Get-Content "$Root\data\patch-state.json" | ConvertFrom-Json
@@ -324,7 +328,7 @@ if (-not (Get-Process -Id $st.pid -ErrorAction SilentlyContinue)) { throw "patch
 |---|---|---|
 | `ANCHOR-MISS` | WorkBuddy 版本不是 5.9.3（锚点对不上） | **不重启、不硬套**。告诉用户"这个版本没验过"，把 `patch\manifest.json` 里的锚点按新版本调（看 `docs/WORKBUDDY-PATCH.md`） |
 | hash 不符但锚点还在 | 厂商改了这个文件 | 会自动降级成 `mode: "anchor"`，**仍然生效**（`VERIFY §37`）。日志里会有说明 |
-| 进程反复崩 | preload 在主进程里劫持 https 出事 | `patch-guard` 每分钟自愈。如果连续失败，关掉补丁：`apply.ps1 -Disable` |
+| 进程反复崩 | preload 在主进程里劫持 https 出事 | `patch-guard` 每分钟自愈（重试 4 次）。要彻底关补丁：用 `launch-patched.ps1 -NoPatch` 启动，或设环境变量 `ANC_WB_PATCH=0`（`apply.ps1 -Disable` 不存在，早先文档写错了） |
 
 **装完**：
 
@@ -689,7 +693,7 @@ NEXT  有 1 项没验（bot-reply），原因见 detail。
     而它只在 bot 收到过**真实群消息**之后才有值。**先去群里 @ 一次 bot，再重跑本脚本。**
     只建 `test-emit.flag` 解决不了这个。
   - **「test-emit 关闭」** → 建 `%ProgramData%\anc\data\test-emit.flag`，重启 WorkBuddy，等 8–30 秒。
-    注意 flag 是**启动时读一次**，建完必须重启。，再跑。
+    注意 flag 是**启动时读一次**，建完必须重启，再跑。
 - 有 SKIP 时告诉用户"这几项没验，原因是 X"。
 
 **失败了怎么办**：按每项的 `fix` 处理。改完**只重跑那一项也行**（`-SkipBot` 可以跳过 bot 那项）。
@@ -775,7 +779,10 @@ powershell -File scripts\deploy-state.ps1 -Side company -Reset -Apply
 # 任务
 Get-ScheduledTask -TaskName 'anc-*' | Unregister-ScheduledTask -Confirm:$false
 # WorkBuddy 补丁
-powershell -File "$Root\patch\apply.ps1" -Disable
+# 补丁是**运行时注入**（内存里给模块源码拼接，不写盘），所以没有"卸载补丁"这个动作。
+# 重装时只需要：① 删掉状态文件 ② 之后用 -NoPatch 启动一次
+Remove-Item "$Root\data\patch-state.json" -Force -ErrorAction SilentlyContinue
+powershell -File "$Root\patch\launch-patched.ps1" -NoPatch   # 不带补丁启动
 # 部署目录（保留 backup 和 secrets）
 Remove-Item "$Root\service","$Root\ingest","$Root\render","$Root\shared","$Root\bin","$Root\light","$Root\patch","$Root\data" -Recurse -Force
 # vault：**想清楚再删**，这是公司资料
@@ -788,8 +795,9 @@ Remove-Item "$Root\service","$Root\ingest","$Root\render","$Root\shared","$Root\
 powershell -File scripts\deploy.ps1 -Rollback
 # 技能回滚
 powershell -File scripts\deploy-skills.ps1 -Rollback
-# 补丁关闭（不改文件，只让 preload 不注入）
-powershell -File "$Root\patch\apply.ps1" -Disable
+# 补丁关闭（不改文件，只让 preload 不注入）。两种等价做法：
+powershell -File "$Root\patch\launch-patched.ps1" -NoPatch      # 本次不带补丁启动
+# 或设环境变量 ANC_WB_PATCH=0（preload.cjs 看到它就 module.exports={} 直接退出）
 ```
 
 ---
@@ -808,10 +816,12 @@ powershell -File scripts\preflight.ps1 -Side company              # §3
 # §4 建目录（见文档里的命令块）
 powershell -File scripts\deploy.ps1 -Apply                         # §5
 powershell -File scripts\deploy-skills.ps1 -Apply                  # §6
-powershell -File "$Root\patch\apply.ps1" -Apply                    # §7
+powershell -File "$Root\patch\launch-patched.ps1"                 # §7（会重启 WorkBuddy，自己等 patch-state）
 powershell -File "$Root\bin\register-tasks.ps1" -Root $Root -Apply # §8
 # §9 建 vault（见文档）
-powershell -File "$Root\bin\deploy-persona.ps1" -Apply             # §10
+# §10 是两步，别只跑第二步：
+node --no-warnings "$Repo\src\render\cli.ts" render --org $org --out "$Root\render"   # §10.6 ① 渲染
+powershell -File "$Root\bin\deploy-persona.ps1" -Source "$Root\render\company-bot\CODEBUDDY.md"  # §10.6 ② 装
 # §11 写企微凭据（见文档）
 powershell -File scripts\deploy-verify.ps1 -Side company          # §12
 
