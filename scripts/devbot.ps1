@@ -84,6 +84,30 @@ if ($dirty.Count -gt 0) {
 }
 Step "基线分支: $baseBranch（干净）"
 Step "目标分支: $branch"
+
+# ── 目标分支已存在？先改名保留 ────────────────────────────
+# 2026-11-05 修：原来不检查这个，模型拿到 "出 devbot/issue-N 分支" 的指令后
+#   git checkout -b 会失败（分支已存在），然后它要么切到旧分支、要么停下。
+# 前者更糟：检查会通过（分支在、有提交、改了文件），但内容是上一次的旧产出。
+#
+# 为什么改名而不是删除：issue 还是 open 才走到这里，说明上次产出没被采纳；
+# 但"没被采纳"不等于"没价值"，直接删会丢东西。改名保留，人早上能看到两份。
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$existing = @(& git -C $Repo branch --list $branch 2>&1 | Where-Object { $_ -match "\S" })
+if ($existing.Count -gt 0) {
+    if ($Apply) {
+        $bakBranch = "$branch-bak-$stamp"
+        & git -C $Repo branch -m $branch $bakBranch 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Step "目标分支已存在，改名保留: $bakBranch"
+        } else {
+            Fail "目标分支 $branch 已存在且改名失败" "手动执行 git branch -m $branch $bakBranch" 2
+        }
+    } else {
+        # dry-run 不动任何东西（改名是破坏性操作，预检阶段只报告）
+        Step "目标分支已存在（dry-run 不改名；加 -Apply 时会先改名为 $branch-bak-<时间戳>）"
+    }
+}
 Step "issue: skill=$($target.skill)  section=$($target.section)"
 # PowerShell 5.1 没有 ?? 运算符（那是 PS 7+），用 if 表达式代替
 $sympRaw = if ($target.symptom) { [string]$target.symptom } else { '' }
@@ -100,7 +124,7 @@ if (-not $Apply) {
 }
 
 # ── 切 persona ──────────────────────────────────────────
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+# $stamp 已在上面定义（备份分支名和 persona 备份共用同一个时间戳，便于对照）
 $backup = Join-Path $Root "data\persona-backup-$stamp.md"
 Copy-Item $LivePersona $backup -Force
 Copy-Item $DevPersona $LivePersona -Force
@@ -121,7 +145,7 @@ devbot 任务：issue #$Issue
 分支：$branch
 
 按 CODEBUDDY.md 里的流程做：只读三样东西（issue、SKILL.md、用例），想清楚为什么这段会让模型做出员工不满意的事，
-只改「$($target.section)」附近，出 $branch 分支并提交，然后跑 eval 确认没改坏。
+只改「$($target.section)」附近，用 `git checkout -b $branch` 建**新**分支并提交（这个分支名现在不存在，可以直接建），然后跑 eval 确认没改坏。
 最后回一句给早上看的人：改了什么、分支名、eval 结果。
 "@
 
