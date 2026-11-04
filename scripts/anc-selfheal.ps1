@@ -89,7 +89,12 @@ function Test-Patched {
     }
 
     $ok = $false
-    for ($attempt = 1; $attempt -le 2 -and -not $ok; $attempt++) {
+    # 2026-11-05（VERIFY §59）：--inspect-brk 注入的单次成功率实测约 66%（140/210）。
+    # 原来只重试 2 次，两次都失败的概率约 11%，即约 11% 的开机会落在"无补丁"。
+    # 改成 4 次后，(1/3)^4 ≈ 1.2%。代价只是多花最多几分钟。
+    # 注意：这不是"修好了注入"，是"承认它只有 66%，用重试把它兜住"。
+    $maxAttempt = 4
+    for ($attempt = 1; $attempt -le $maxAttempt -and -not $ok; $attempt++) {
         Write-Log ("worker: 第 $attempt 次启动 " + $launcher)
         # 经 Explorer 启动：与人工双击/relaunch.cmd 的路径一致，避免直接 Start-Process 导致的提前退出
         $launchVbs = "$env:ProgramData\anc\data\selfheal-launch.vbs"
@@ -98,10 +103,14 @@ Set sh = CreateObject("WScript.Shell")
 sh.Run """$cmdFile""", 0, False
 "@ | Set-Content $launchVbs -Encoding ascii
         Start-Process explorer.exe -ArgumentList $launchVbs
-        for ($i = 0; $i -lt 60; $i++) {
+        # 早先：进程数 0 且已过 20 秒就 break —— 但 --inspect-brk 暂停期间进程数本来就是 0，
+        # 这会把"还在注入"误判成"起不来"。改成：只有连续 80 秒都没进程才放弃。
+        $noProcStreak = 0
+        for ($i = 0; $i -lt 75; $i++) {
             Start-Sleep -Seconds 2
             if (Test-Patched) { $ok = $true; break }
-            if (-not (Get-Process WorkBuddy -ErrorAction SilentlyContinue) -and $i -ge 10) { break }
+            if (Get-Process WorkBuddy -ErrorAction SilentlyContinue) { $noProcStreak = 0 } else { $noProcStreak += 2 }
+            if ($noProcStreak -ge 80) { break }
         }
         if (-not $ok) {
             Write-Log ("worker: 第 $attempt 次未见补丁，清理后重试")
@@ -116,7 +125,7 @@ sh.Run """$cmdFile""", 0, False
         [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'healed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
     }
     else {
-        Write-Log 'worker: 两次启动都没见到补丁日志'
+        Write-Log ("worker: " + $maxAttempt + " 次启动都没见到补丁日志")
         Release-Lock
         # 标成 restart-failed：守卫 60 分钟内不再触发，避免降级启动—再自愈的循环
         [IO.File]::WriteAllText($StateFile, ([pscustomobject]@{ at = (Get-Date).ToString('o'); status = 'restart-failed' } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
