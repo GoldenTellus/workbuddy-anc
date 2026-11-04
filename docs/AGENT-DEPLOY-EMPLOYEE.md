@@ -521,7 +521,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 |---|---|---|
 | `database` | `data\anc.db` 存在 | 不存在 → FAIL。**由 §4 那条 `cli.ts --db` 顺带创建**，手册没有单独的建库步骤 |
 | `bot-online` | WorkBuddy 进程在 | 不在就 FAIL |
-| `bot-reply` | 注入一条消息 | 两种 SKIP：① 还没绑定群 ② `test-emit` 没开。**先看 `detail` 字段是哪个** |
+| `bot-reply` | 注入一条消息 | **员工侧永远 SKIP** —— `test-emit` 是补丁提供的，而员工侧不装补丁（见下面「为什么员工侧验不了这一项」） |
 | `vault-read` | 读 `render\groups.json` + `org\company.md` 里 `vault_shared:` 指到的目录 | 缺这两个文件 → FAIL，回去做 §5.5 |
 
 **SKIP 不是通过。** 有 SKIP 时告诉用户"这几项没验，原因是 X"。
@@ -534,10 +534,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
   - 「company.md 里没有 vault_shared」→ §5.5 同步的 `org\company.md` 不完整，重新同步
   - 「路径不可读」→ `org\company.md` 里那个路径在这台机器上访问不了（网络共享要 `net use` 或凭据）
   **注意**：这个路径来自 `org\company.md`，不是 §1 第 4 项 —— 别去改 §1。
-- **`bot-reply` SKIP** → 看 `detail` 字段（`deploy-verify` 的 checks 只有 `name`/`state`/`detail`/`fix`，**没有 `reason`**），两种原因处理方式不同：
-  - **「没有绑定群」** → 先做 §7。只建 `test-emit.flag` 没用，没绑定群就没有注入目标。
-  - **「test-emit 关闭（默认）」** → 建 `%LOCALAPPDATA%\anc\data\test-emit.flag`，然后重启 WorkBuddy（flag 启动时读一次）。
-    你跑在 WorkBuddy 里的话，重启会杀掉自己 —— 按 §6「情况 A」处理，写进汇报。
+- **`bot-reply` SKIP** → **员工侧这是正常的，不是故障。**
+
+### 为什么员工侧验不了这一项
+
+`test-emit`（`POST 127.0.0.1:17999/emit`）是**补丁**（`scripts/workbuddy-patch/preload.cjs`）提供的能力，
+而**员工侧不装补丁** —— 个人 bot 靠 WorkBuddy 自带的企微身份（`§7` / `FORK-DIRECTION D17`）。
+
+**所以员工侧既没有 17999 端口，`test-emit.flag` 也没用。** 早先版本这里写「建 flag 并重启」，
+那是从公司侧文档抄来的，**在员工侧执行只会白折腾**。
+
+**要验个人 bot 能不能回话，只有一条路**：
+
+1. 让用户在群里 @ 一次个人 bot
+2. 看群里有没有回复
+3. 把结果写进汇报：**「bot-reply 未验（员工侧无 test-emit），由人在群里确认：回了 / 没回」**
+
+**没有第三步就是没验。** SKIP 不是通过。
+
+**公司侧为什么能验**：公司侧装了补丁，有 `test-emit`，所以公司侧的 `bot-reply` 是真检查。
 
 **装完**：
 
