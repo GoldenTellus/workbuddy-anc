@@ -16,7 +16,7 @@
 | [1](#1-先判断这台机器能干什么) | **这台机器能验什么 / 不能验什么**、基础条件、做不了的 | **现在，先读这个** |
 | [2](#2-开工前十分钟) | 装起来、跑通、看进度 | 确认能做之后 |
 | [3](#3-待验证任务清单) | 按优先级排的任务 | 干活时逐条看 |
-| [4](#4-我踩过的坑) | **15 个坑，照抄会错** | **动手前通读一遍** |
+| [4](#4-我踩过的坑) | **24 个坑，照抄会错**（含 2026-11-05 新增的 8 条环境类） | **动手前通读一遍** |
 | [5](#5-测试方法) | 6 个可复用的思路 | 想不出怎么验时看 |
 | [6](#6-工具速查) | 每个脚本干什么、怎么调 | 随手查 |
 | [7](#7-交回什么) | 你要产出什么 | 收尾 |
@@ -452,6 +452,129 @@ if ($okMode -and $at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true 
 |---|---|---|
 | 回答 | 装到第几步 | **装出来的东西能用吗** |
 | 失败含义 | 那步没做成 | **系统不可用** |
+
+---
+
+### 4.4 环境与外部工具（2026-11-05 新增，8 条）
+
+这几条不在 PowerShell / 文本 / 判据里，属于「环境与外部工具」。**共同特征：失败时不报错。**
+
+#### ⑰ `ELECTRON_RUN_AS_NODE=1` 会让 Electron 应用静默退出
+
+**症状**：`Start-Process WorkBuddy.exe` 之后进程 0.5 秒消失，`ExitCode=0`，**stderr 空、崩溃日志无、连 userData 都不重建**。
+
+**根因**：这个环境变量让 Electron 以纯 Node 模式运行 —— 不启动 Chromium、不初始化应用、直接退 0。而它常常是**父进程带下来的**（某些 IDE / CI / 终端本身就是 Electron 派生）。
+
+**怎么避**：
+
+```powershell
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $exe
+$psi.UseShellExecute = $false
+$psi.EnvironmentVariables.Remove('ELECTRON_RUN_AS_NODE') | Out-Null
+[void][System.Diagnostics.Process]::Start($psi)
+```
+
+**诊断顺序**：进程 0 秒退出 + 无日志 → **先查这个变量**，别去查单实例锁 / 崩溃转储 / Defender / asar 完整性。我在这上面耗了一小时，全部方向都是错的。
+
+#### ⑱ 补丁注入不是 100%，实测约 66%
+
+**症状**：`workbuddy-patch.log` 只有 `[inject] env set: OK:<pid>`，然后**没有** `INJECTED` / `APPLIED`；`patch-state.json` 不写、17999 不监听、`WorkBuddy 进程: 0`。
+
+**根因**：`--inspect-brk` 暂停 → inject 设 `process.env.NODE_OPTIONS` → resume 这条路，有约 1/3 概率让主进程崩（事件日志留 `0xc0000005`）。
+
+**实测数据**：210 次 `env set` / 140 次 `APPLIED` = **66.7%**（`VERIFY §59`）。
+
+**怎么避**：
+
+- **别等固定时间。** 从放行到 `APPLIED` **约 60 秒**；等 25 秒就判失败是错的。
+- 用 `launch-patched.ps1`，它现在自己轮询 `patch-state.json`（最多 150 秒）再报结论。
+- `anc-selfheal.ps1` 已把重试 2 → 4 次：全失败概率 11.1% → **1.23%**。
+
+#### ⑲ 判「注入失败」前，先看日志有没有 `APPLIED`
+
+**症状**：`patch-state.json` 不存在，你就判注入失败 —— 但**日志里其实有 `APPLIED`**，只是没等到。
+
+**怎么避**：
+
+```powershell
+# 先看日志，再看状态文件
+Get-Content "$env:USERPROFILE\anc\workbuddy-patch.log" -Tail 20 | Select-String "APPLIED|INJECTED|ERROR"
+```
+
+看到 `APPLIED mode=hash` 就是成功了。**`patch-state.json` 不存在 ≠ 注入失败。**
+
+#### ⑳ `patch-state.json` 会跨版本残留，`doctor` 也信它
+
+**症状**：它写着 `applied=True`、`mode=hash`、`pid=6880`，而**那个 pid 早死了**。`doctor` 却报 `[PASS] patch: APPLIED(hash) + update-hook`。
+
+**根因**：自愈失败时只写了 `selfheal.state.json`，没回写 `patch-state.json`，所以它留着上一次成功的内容。
+
+**已修**（`VERIFY §61`）：`anc-selfheal.ps1` 的失败分支现在会覆盖成 `applied=false` + `error`。
+
+**怎么避**：判补丁是否真在，**必须同时满足**「`applied=true`」**和**「那个 `pid` 还活着」。只看前者会被骗。
+
+#### ㉑ `robocopy /E` 不带 ACL，恢复完权限会同时太宽和太窄
+
+**症状**：从备份恢复 `%ProgramData%\anc` 后 `doctor` 报两个 FAIL：
+
+- `secrets-acl`：`secrets` 对 `BUILTIN\Users` 可写（**太宽**）
+- `heartbeat`：`loop.log` 不更新（**太窄** —— 服务身份没写权限）
+
+**怎么避**：`robocopy` 只拷数据不拷权限，恢复完必须补 ACL。完整命令见 `REBUILD.md §2.5`。
+
+#### ㉒ `LOCAL SERVICE` 读不到 secrets，表现是「任务成功但日志不动」
+
+**症状**：`anc-service` 的 `LastRun` 每分钟在变、`LastResult=0x0`，但 `loop.log` 的 mtime 一直不动。
+
+**根因**：`secrets` 或 `data` 的 ACL 里漏了 `LOCAL SERVICE`。服务跑得起来，但 `cli.ts` 读不到 token / 写不了日志；而 `anc-loop.cmd` 的 `>> "%LOGF%" 2>&1` 重定向失败会让 `cmd` 提前退出 —— **任务计划那侧仍然显示成功**。
+
+**怎么避**：
+
+```powershell
+icacls "$env:ProgramData\anc\secrets" /grant:r 'LOCAL SERVICE:(OI)(CI)RX'   # 读
+icacls "$env:ProgramData\anc\data"    /grant    'LOCAL SERVICE:(OI)(CI)M'    # 写
+# 已有日志文件不继承新 ACE，逐个补
+foreach ($f in 'loop.log','http.log','patch-in.log','patch-out.log','selfheal.log','audit.log') {
+    $p = Join-Path "$env:ProgramData\anc\data" $f
+    if (Test-Path $p) { icacls $p /grant 'LOCAL SERVICE:(M)' | Out-Null }
+}
+```
+
+**验证别只读 ACL —— 造探针实地跑**（见下一条）。
+
+#### ㉓ 造同身份探针任务，比读 ACL 猜快得多
+
+**场景**：不确定「某个身份能不能跑某个命令」时。
+
+```powershell
+$act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c "<要验的脚本>"'
+$prin = New-ScheduledTaskPrincipal -UserId 'LOCAL SERVICE' -LogonType ServiceAccount
+Register-ScheduledTask -TaskName 'anc-probe-xxx' -Action $act -Principal $prin -Force | Out-Null
+Start-ScheduledTask -TaskName 'anc-probe-xxx'; Start-Sleep -Seconds 18
+"LastResult=0x{0:X}" -f (Get-ScheduledTaskInfo -TaskName 'anc-probe-xxx').LastTaskResult
+Unregister-ScheduledTask -TaskName 'anc-probe-xxx' -Confirm:$false
+```
+
+**看什么**：① 退出码 ② **副作用**（目标文件的 mtime 变没变）。
+
+**退出码 0 不代表副作用发生了** —— 这正是 ㉒ 那个坑能藏那么久的原因。
+
+#### ㉔ 文档里会引用「不存在的脚本」
+
+**症状**：照 `AGENT-DEPLOY-COMPANY.md §7` 跑 `patch\apply.ps1 -Apply` → 报「文件不存在」。
+
+**根因**：`apply.ps1` 从来不存在，实际入口是 `launch-patched.ps1`。**文档长期没被真跑过，所以没人发现。**
+
+**已修**（`VERIFY §62`）：六处引用全部改正。
+
+**通用教训**：照文档做之前，先扫一遍它引用的脚本是否真的存在：
+
+```powershell
+Select-String -Path docs\*.md -Pattern '[\w\\\.\-]+\.(ps1|mjs)' -AllMatches |
+  ForEach-Object { $_.Matches.Value } | Sort-Object -Unique |
+  ForEach-Object { "{0,-46} {1}" -f $_, (Test-Path $_) }
+```
 
 ---
 
