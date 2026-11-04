@@ -30,7 +30,11 @@
 
    - `evals`（用例）、`light`（渲染源）、`stage`（入库暂存）、`inbox` 是运行时才会被写到的，
      `deploy.ps1` 不管它们，漏建会在第一次用到时炸；
-   - `D:\anc` 假定有 D 盘。没有的话要先改 `company.md` 和计划任务里的路径。
+   - `D:\anc` 假定有 D 盘。没有的话要改三处：`company.md` 的 `vault_shared`/`vault_internal`、
+     计划任务里的路径、**以及 `doctor.ps1` 里两处硬编码**（`# 11 vault 目录 NTFS` 和
+     `# 20 vault 改动有没有入库记录`，都写着 `D:\anc\vault-shared`）。
+     漏改 doctor 的表现是：在别的盘符上跑它，vault 那两项查的还是 `D:` 上的真实目录
+     （`VERIFY §34` 第 ③ 点）。
 
 ## 2. 恢复数据
 

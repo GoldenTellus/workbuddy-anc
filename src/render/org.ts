@@ -21,8 +21,12 @@ export interface Org {
 }
 
 export function parseFrontmatter(text: string): { fm: Record<string, string>; body: string } {
-  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!m) return { fm: {}, body: text };
+  // 先剥 BOM：Windows 上手工编辑保存的文件常带 UTF-8 BOM，而 /^---/ 顶不住它——
+  // 结果是"文件明明有 name，却报缺少字段: name"，错得毫无线索。
+  // 2026-11-04 用 Z: 演练重建时踩到（PowerShell 5.1 的 Set-Content -Encoding UTF8 会加 BOM）。
+  const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const m = clean.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m) return { fm: {}, body: clean };
   const fm: Record<string, string> = {};
   for (const line of m[1].split(/\r?\n/)) {
     const t = line.trim();

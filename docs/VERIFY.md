@@ -2771,3 +2771,133 @@ Remove-Item "$env:TEMP\anc-offsite-test.vhd"
 ```
 
 **VHD 文件不在 `_research/` 也不在仓库**，它只是临时验证用的。
+
+## 34. O-5：用 Z: 当新机的盘，真装一遍（2026-11-04）
+
+### 做了什么
+
+`scripts/rebuild-z.ps1`：用 VHD 造的 `Z:`（`VERIFY §33`）模拟一台新机的 C 盘和 D 盘，按 `REBUILD §1/§3` 从零装，每步计时。
+
+```
+模拟 C 盘: Z:\anc-root     （对应 %ProgramData%\anc）
+模拟 D 盘: Z:\anc          （对应 D:\anc）
+```
+
+### 结果
+
+```
+OK §1 建 C 盘目录（15 个）                      0.1s
+OK §1 建 D 盘目录（5 个）                       0.1s
+OK §1 vault 建 git（模拟有历史）                 3.7s
+OK §3 deploy.ps1 -Apply                  4.4s
+OK §3 装技能（deploy-skills）                 3.2s
+OK 验证 部署文件数                              0.1s
+OK 验证 技能落盘                               0s
+OK 验证 cli 能跑（空库建表）                       2.2s
+OK 验证 company.md 路径指向 Z:                 0s
+OK 验证 渲染器能读 org                          0.3s
+OK doctor -Root Z:\anc-root              17.8s
+
+11 / 11 步成功   合计 31.9 s
+```
+
+**能换盘符装出来**：部署、技能落盘、空库建表、渲染读 org、doctor 全部在 `Z:` 下跑通。
+
+**doctor 的 `FAIL=1` 是合理的**：`backup-freshness 没有任何数据库备份`——新装的机器还没跑过第一次备份，这时候报 FAIL 是对的。
+
+### 但发现三个问题，两个是真 bug
+
+#### ① 我的脚本 bug：PowerShell 变量名大小写不敏感
+
+```
+XX §1 vault 建 git  →  fatal: cannot change to 'vault-shared\vault-shared'
+```
+
+`$VaultRoot = 'Z:\anc'` 被下面的 `foreach ($v in 'vault-shared','vault-internal')` **覆盖了**——PowerShell 里 `$V` 和 `$v` 是同一个变量。
+
+**改成 `$VaultRoot` 就好了。** 这是今天第三次踩 PowerShell 的大小写陷阱（前两次是 `$PSItem` 和 `$pid`）。
+
+#### ② 真 bug：渲染器不处理 BOM（已修）
+
+```
+XX 验证 渲染器能读 org  →  render 退出码 1: org/company.md 缺少字段: name
+```
+
+`company.md` 内容明明有 `name: 演练公司`，报却说缺 `name`。
+
+**根因在 `src/render/org.ts`**：
+
+```ts
+const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+```
+
+`^` 要匹配字符串开头。文件带 UTF-8 BOM（`EF BB BF`）时，`text[0]` 是 `\uFEFF` 而不是 `-`，**正则整个失败**，返回空的 `fm`，然后校验报"缺少字段"。
+
+**这个错得毫无线索**——文件看着完全正常。
+
+**修法**（`src/render/org.ts` 的 `parseFrontmatter`）：
+
+```ts
+const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+const m = clean.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+if (!m) return { fm: {}, body: clean };
+```
+
+**单测 5 个边界全过**：
+
+```
+OK 无 BOM（LF）             name="演练公司"
+OK 有 BOM（LF）             name="演练公司"
+OK 有 BOM（CRLF）           name="演练公司"
+OK 无 BOM（CRLF）           name="演练公司"
+OK 正文里也有 BOM 字符         name="演练公司"
+```
+
+`npm test` 107/107。
+
+**为什么这个 bug 值得修而不只是绕开**：BOM 的来源不只有 PowerShell 脚本——**Windows 上用记事本/部分编辑器手工编辑 `company.md` 也会加**。`REBUILD §2/§4` 里有好几处"手工改 frontmatter"的步骤，任何人改完保存一次就可能踩到，然后看到的是"缺少字段: name"这种毫无指向性的错误。
+
+#### ③ 真缺陷但没修：`doctor` 的 vault 路径硬编码
+
+`doctor.ps1` 里有两处（`# 11 vault 目录 NTFS` 和 `# 20 vault 改动有没有入库记录`）：
+
+```powershell
+$shared = 'D:\anc\vault-shared'
+$vault  = 'D:\anc\vault-shared'
+```
+
+**在 `Z:\anc-root` 上跑 doctor 时，这两项查的还是真实 `D:\anc\vault-shared`**：
+
+```
+W WARN vault-ingest-audit   3 个未跟踪文件，但 1 小时内没有成功入库记录
+```
+
+**那 3 个未跟踪文件是生产环境的**，和 `Z:` 上的演练根毫无关系。
+
+**试过改，改不动**：`doctor.ps1` 445 行，`# 10 SMB 共享权限` / `# 11 vault NTFS` 这组检查在文件里出现多次（`-SelfTest` 分支另有一份），我用脚本批量替换时把 `param` 块后面的代码撑坏了（15 个语法错误）。`git checkout --` 回退后决定**不动它**。
+
+**判断依据**：这个改动只影响"换盘符"这一个场景，而生产环境永远是 `D:\anc`。**改 445 行的脚本去支持一个不会发生的场景，风险大于收益。**
+
+**但要把代价写清楚**：`REBUILD §1` 原来那句"没有 D 盘的话要先改 `company.md` 和计划任务里的路径"**不完整**——还得改 `doctor.ps1` 的这两行。已补进 `REBUILD §1`。
+
+### 这次 O-5 到底验了什么、没验什么
+
+**验了的**：
+
+- 换盘符能不能装出来（能，11/11）
+- 各步耗时（31.9s，其中 doctor 占 17.8s）
+- 部署 / 技能 / 空库 / 渲染 / doctor 在非默认路径下是否正常
+- 顺带挖出一个真 bug（BOM）和一个真缺陷（doctor 硬编码）
+
+**没验的（永远是手工步骤）**：
+
+| 步骤 | 为什么 |
+|---|---|
+| `§2` 数据恢复 | 要真备份、真 vault、真 `_originals`。演练里是空占位 |
+| `§4` bot 恢复 | 要扫码登录企微、要真 WorkBuddy 会话 |
+| `§3` 计划任务 | 演练没注册（会污染本机任务计划）。`REBUILD §3` 里那 9 个任务是手工注册的 |
+| 真机环境差异 | 同一台机器同一套 OS，验的是"路径假设"，不是"新机器能不能用" |
+
+**所以 O-5 的 `🟡` 不能直接翻 `✅`**：它要求"干净机按 REBUILD 重建成功并计时"，而这次是**同机换盘符**，不是干净机。**已验的部分（§1/§3 的自动化步骤 + 渲染 + doctor）是可信的，§2/§4 仍然是空的。**
+
+这一条写进 `ACCEPTANCE` 的 O-5 备注里，不改状态。
