@@ -4925,5 +4925,5 @@ $now.ToString('yyyy-MM-dd')
 | D4.6 真验收 | 另一台机器 + 陌生 agent |
 | 5 个 DoD 🟡 | 企微后台 / 真员工 / 第二台真机 |
 | 1.0 第 2 条真升级回归 | 厂商发版 |
-| `patch-state` 陈旧状态的机制 | 这次没追到底，`launch-patched.ps1` 里没找到引用 |
+| `patch-state` 陈旧状态 | ~~机制未查明~~ → **已推翻这个假设**（见 §48.5 ②）：`patch-guard` 有 15 秒时间窗校验，真正原因是 Interactive 任务的 `Start-ScheduledTask` 可能静默不执行 |
 | 历史 35 个 commit 的 chatId | 转 public 前 `git filter-repo` |
