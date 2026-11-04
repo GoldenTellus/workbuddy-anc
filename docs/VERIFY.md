@@ -5852,3 +5852,99 @@ deploy-verify  ok:true  pass=3  fail=0  skip=1  exit 0
 3. **改 `vault-read` 判据**：从「读到任意文件」改成「读到业务文件」
 
 **前两项我做不到**（我没有企微身份，也不该重启用户的 WorkBuddy）。**第三项是代码，我能做。**
+
+## 56. 修掉「判据没有区分力」：给模拟成员换假 userid，并做装错人的反向验证（2026-11-05）
+
+### 56.1 起因
+
+`§55.3` 里那条最危险的绕过：**「哪个成员是我」是 agent 替人定的**。
+
+根因不在文档，在**测试数据**：我建 `D:\anc\org` 时图省事，`owner` 和 `staff-a` **用了同一个 userid**（因为只有一个人、一个企微账号）。结果：
+
+```
+owner    含该 userid: True
+staff-a  含该 userid: True      ← 两份都 True
+```
+
+`§6` 的判据①「persona 里有你的 userid（证明是你的）」**对两份同时成立，等于没有判据**。
+
+### 56.2 改法（方案 B：给模拟成员换假 userid）
+
+保留两个成员（`§50` 的多成员渲染现场还在），把模拟员工的 userid 换成明显是假的：
+
+```yaml
+# D:\anc\org\members\staff-a.md
+- userid: wokcDlGwAAXCl5GBcPfwP7EGd2-YsUTw     # 原来：和 owner 一样
++ userid: test-staff-a-uid                      # 现在：明显是测试值
+```
+
+**没选「删掉一个成员」（方案 A）**：会丢掉多成员渲染的现场，以后验多成员要重建。
+**没选「保持现状」（方案 C）**：判据永远没区分力，装错人都不知道。
+
+### 56.3 渲染后的断言
+
+```
+owner    含真实 userid: True    含 test-staff-a-uid: False   1990B
+staff-a  含真实 userid: False   含 test-staff-a-uid: True    1968B
+userid 去重后: 2   ✅
+```
+
+### 56.4 反向验证：判据真能抓住装错人 ★
+
+**只测正向（装对的人 → 通过）等于没测。** 所以故意装错的：
+
+```
+把 staff-a 的 persona（含 test-staff-a-uid）装到 WorkBuddy，
+然后用 owner 的真实 userid 跑 §6 判据：
+
+  ① persona 里有 owner 的 userid: False
+     ✅ 判据抓住了：这是别人的 persona
+  ② 有部门段: True
+  ③ 字节数: 1968（上限 7500）
+  实际装的是: staff-a（员工A）
+```
+
+**判据从「对两份都 True」变成「能指出这是别人的」—— 这才是判据（`§53.1`）。**
+
+验证完已恢复成 `owner` 的 persona。
+
+### 56.5 又是 §5.5：公司侧改了，员工侧必须重同步
+
+改完 org 重新渲染后，员工侧 `%LOCALAPPDATA%\anc\render\members` **还是旧的**（`agent` 早先按 §5.5 拷的那份，那时 `staff-a` 还是真实 userid）。所以「含真实 uid 的份数」一开始仍然报了 **2**。
+
+按 §5.5 通道 A-1 重新同步：
+
+```
+render\groups.json    MATCH ✅
+org\company.md        MATCH ✅
+含真实 uid 的份数: 1  ✅
+```
+
+**这是今天第三次证明同一件事**：`deploy.ps1` 不生成产物 → 产物必须同步 → **公司侧一改就要重同步**。`§5.5` 里那句「哈希对拍」不是形式主义，就是为这个场景写的。
+
+### 56.6 现状
+
+```
+deploy-verify 员工侧   ok=True  pass=3  fail=0  skip=1
+  PASS database    库在
+  PASS bot-online  10 个 WorkBuddy 进程
+  SKIP bot-reply   test-emit 关闭（默认）
+  PASS vault-read  读到 company/ANC架构详解.md
+
+公司侧 chat_bindings（重建后由 org 导入，webhook 齐全）
+  员工A    uid=test-staff-a-uid      hook=test2-webhook.txt
+  管理员   uid=<真实 userid>          hook=wecom-webhook.txt
+```
+
+**员工侧装的是 `owner` 的 persona** —— 因为只有 `owner` 对应真实的企微身份；`staff-a` 现在是个模拟成员（假 uid），不能当真的用。
+
+### 56.7 剩下的两件事，都得人来
+
+| # | 事项 | 为什么只能是人 |
+|---|---|---|
+| 1 | **重启 WorkBuddy** | persona 每会话首次注入读一次（`§18`）。我重启会杀掉当前会话，也就是杀掉正在写这段的 agent |
+| 2 | **重启后验 `bot-reply`** | 需要 `test-emit.flag` + 重启，然后看群里有没有回。**SKIP 不算通过** |
+
+**这两件做完，`§55.5` 里「没验到的」才有可能收口**：persona 是否真被加载、bot 是否真回话。
+
+**另外仍然没验的**（不在这次范围）：技能按部门收窄（物理上全量 7 个）、§4 新的回滚写法、§10 卸载。
