@@ -298,16 +298,36 @@ if ($Side -eq 'employee') {
                 # 网络路径在未映射时 Test-Path 可能失败，这是常见的"看着装了其实读不到"
                 Add-Check 'vault-read' 'FAIL' ("读不到 " + $vaultShared) '检查网络共享是否可访问（net use / 凭据）；共享区是只读挂载'
             } else {
-                $anyFile = Get-ChildItem $vaultShared -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($anyFile) {
+                # 只认业务资料：company/ 或 collab/ 下的 .md。
+                # 早先版本用 -Recurse -File 抓任意文件，结果根目录的 .gitignore 也被当成「能读共享区」——
+                # 读到 .git 内部文件不算数。见 VERIFY §55.6。
+                $bizFile = $null
+                $bizDirUsed = ""
+                foreach ($d in @('company', 'collab')) {
+                    $dir = Join-Path $vaultShared $d
+                    if (-not (Test-Path $dir)) { continue }
+                    $f = Get-ChildItem $dir -Recurse -File -Filter '*.md' -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($f) { $bizFile = $f; $bizDirUsed = $d; break }
+                }
+
+                if ($bizFile) {
                     try {
-                        $null = Get-Content $anyFile.FullName -TotalCount 1 -ErrorAction Stop
-                        Add-Check 'vault-read' 'PASS' ('读到 ' + $anyFile.Name) ''
+                        $null = Get-Content $bizFile.FullName -TotalCount 1 -ErrorAction Stop
+                        Add-Check 'vault-read' 'PASS' ('读到 ' + $bizDirUsed + '/' + $bizFile.Name) ''
                     } catch {
-                        Add-Check 'vault-read' 'FAIL' ('文件在但读不了: ' + $anyFile.Name) '权限问题：共享区要可读'
+                        Add-Check 'vault-read' 'FAIL' ('业务文件在但读不了: ' + $bizDirUsed + '/' + $bizFile.Name) '权限问题：共享区要可读'
                     }
                 } else {
-                    Add-Check 'vault-read' 'SKIP' '共享区是空的（还没入库任何资料）' '这不算错；入库一份资料后再跑'
+                    # 没有业务 .md：区分「整个共享区空」和「有东西但没有业务资料」
+                    # 后者是真缺口 —— 说明能读目录却读不到该读的东西
+                    $otherFile = Get-ChildItem $vaultShared -Recurse -File -ErrorAction SilentlyContinue |
+                                 Where-Object { $_.FullName -notmatch '\\\.git\\' -and $_.FullName -notmatch '\\_originals\\' } |
+                                 Select-Object -First 1
+                    if ($otherFile) {
+                        Add-Check 'vault-read' 'FAIL' '共享区能读，但 company/ 和 collab/ 下没有 .md' '确认 vault_shared 指的是共享区根（不是某一层子目录）；或先入库一份资料'
+                    } else {
+                        Add-Check 'vault-read' 'SKIP' '共享区是空的（还没入库任何资料）' '这不算错；入库一份资料后再跑'
+                    }
                 }
             }
         } catch {
