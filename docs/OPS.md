@@ -1,6 +1,6 @@
 # 主机运维
 
-对应 [PLAN.md](./PLAN.md) 阶段 R（R1 运行身份迁移）与 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.1/§5.10。
+对应 [PLAN.md](./PLAN.md) 阶段 D（运行身份迁移已按 D25 关闭）与 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.1/§5.10。
 
 ## 计划任务
 
