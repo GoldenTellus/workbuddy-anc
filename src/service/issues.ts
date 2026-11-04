@@ -193,3 +193,32 @@ export function setTriage(db: DatabaseSync, id: number, skill: string | null, se
     .run(skill, section, verify, skill ? null : '规则表没命中，需要人工分诊', now, id);
   return Number(r.changes) > 0;
 }
+
+// 往 issues.ts 追加：改状态的函数 + 批量清理的前提
+// 现状：issues 表有 status 列，但代码里没有改它的函数 —— issue 一旦建出来就永远停在 open。
+// 这导致两件事做不了：① 修好了没法标记 ② "清理已关闭 issue 的技能块"没有触发条件。
+
+export type IssueStatus = 'open' | 'drafted' | 'closed' | 'rejected';
+
+/**
+ * 改 issue 的状态。
+ *
+ * 允许的值：open（待处理）/ drafted（已有 patch draft）/ closed（改完并合入）/ rejected（不会修）。
+ *
+ * **rejected 是后加的**：表注释里原本只写了 open|drafted|closed，但 2026-11-03 那批数据里
+ * 已经出现了 rejected（issue #1）。以实际用法为准，把它收进值域。
+ */
+export function setStatus(db: DatabaseSync, id: number, status: IssueStatus, note?: string): boolean {
+  const now = new Date().toISOString();
+  const r = note
+    ? db.prepare('UPDATE issues SET status = ?, note = ?, updated_at = ? WHERE id = ?').run(status, note, now, id)
+    : db.prepare('UPDATE issues SET status = ?, updated_at = ? WHERE id = ?').run(status, now, id);
+  return Number(r.changes) > 0;
+}
+
+/** 按状态列 issue，批量操作前先看清楚。 */
+export function listByStatus(db: DatabaseSync, status: IssueStatus, limit = 200): Issue[] {
+  return db
+    .prepare('SELECT * FROM issues WHERE status = ? ORDER BY id DESC LIMIT ?')
+    .all(status, limit) as unknown as Issue[];
+}

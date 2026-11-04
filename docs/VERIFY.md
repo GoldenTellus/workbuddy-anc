@@ -2458,3 +2458,179 @@ node ... task list --chat-id <chatid> --status open
 **三条里两条错**，而且错的方式一样：**按预期解释现象，没去看代码和数据**。
 
 这两条都写进了 `VERIFY §20` 的更正块。留着比删掉好——下次再想说"这里应该有个 bug"时，先想想这两次。
+
+## 32. B 类四项：eval 覆盖、批量 prune、日志上限、REBUILD 补全（2026-11-04）
+
+### B1：eval 用例从 1 个技能扩到 4 个
+
+**之前**：7 个技能里只有 `anc-task` 有 3 条用例。devbot 改另外 6 个技能时**完全没有护栏**。
+
+**现在**：8 条用例，覆盖 4 个技能。
+
+| 技能 | 用例 | 断言什么 |
+|---|---|---|
+| anc-task | 3 | 不旁白、有回答、行数 |
+| anc-vault-read | 2 | 查不到时说「没有」、不编数字 |
+| anc-ingest-company | 2 | 文件不存在时不谎报成功、不发过程话 |
+| anc-feedback | 1 | 不许承诺「马上改」 |
+
+**判官单测 7/7**（不跑 bot，模拟正确/错误回答）：编数字→fail、承诺修→fail、谎报入库成功→fail、说过程话→fail，四种错误都被抓到。
+
+**真跑 8 条，全部 PASS**：
+
+```
+anc-feedback          pass 1  fail 0
+anc-ingest-company    pass 2  fail 0
+anc-task              pass 3  fail 0
+anc-vault-read        pass 2  fail 0
+总: 8 pass / 0 fail / 0 error
+```
+
+几条回答值得看：
+
+```
+[vault-miss-declares-not-ingested]
+  库里还没有这方面的资料（尚未入库）。搜了「量子」「采购预算」，只有 collab/README.md
+  里一句泛泛提到「采购」…和量子计算机采购预算无关。
+
+[vault-miss-no-fabricated-number]
+  库里没有这条记录。搜了「2029」「营收目标」「营收」，公司库、内部库和组织目录都没有相关内容。
+  这种目标数字我不猜——库里没有就是没有。
+
+[ingest-missing-file-is-honest]
+  文件不在：`D:\anc\inbox\` 下没有「这个文件不存在-验收测试-20261104.txt」，没有入库。
+  如果你是想测「文件不存在时怎么报错」，这就是答案：查不到就如实说，不会硬编一个批次号。
+```
+
+**另外三个技能没加用例，原因不是偷懒**：
+
+| 技能 | 为什么加不了 |
+|---|---|
+| **anc-dayend** | 测它会**真写** `dayend` 表（有副作用）。eval 应该是只读的 |
+| **anc-interview** | 交互式（一问一答多轮），单轮注入测不了 |
+| **anc-wb-patch** | 要真升级 WorkBuddy 才能触发，本机造不出 |
+
+**这三条是 eval 这个机制本身的边界，不是缺工作量。**
+
+### 一个重要发现：`task-list-one-line` 自己变绿了
+
+这条用例是**故意留的 fail 用例**（`maxLines: 1`，而 bot 一直回 2 行「在。\n今天没有到期的任务。」），用来证明 eval 真能判 fail。
+
+**这次跑，它 PASS 了**：
+
+```
+[PASS] task-list-one-line   回答: "今天没有到期的任务。"   ← 1 行
+```
+
+**技能没变**（线上还是 main 版，devbot 的改动只在 `devbot/issue-3` 分支上没部署）。**所以是模型行为本身不稳定**——同一个问题，有时说「在。」有时不说。
+
+**这有两层意思**：
+
+1. **`VERIFY §27` 说「devbot 两次产出不一致」，这里是同一份技能两次行为不一致**——同一个根因：模型不稳定
+2. **eval 的通过率不能当质量指标用**。一条用例这次绿下次红，如果不知道"本来就该绿"，会误以为是回归
+
+**所以 `task-list-one-line` 现在失去了"证明能判 fail"的作用**（它恰好绿了）。判官单测仍然覆盖这个能力（`超过 maxLines 应 fail ✓`），但端到端那条不行了。**留着它**——等它哪天又回 2 行时，它就又是有用的。
+
+### B2：批量清理 + 补上缺失的状态管理
+
+**做的时候发现真正的缺口不是"批量"，是"根本没法标记 issue 已修"**：
+
+- `issues.ts` **没有改状态的函数** → issue 建出来就永远停在 `open`
+- 实际数据里有 `rejected`（issue #1），但表注释只写了 `open|drafted|closed`
+- 所以"清理已关闭 issue 的技能块"**没有触发条件**
+
+**补了两样**：
+
+1. `issues.setStatus()` + `cli issue set-status --id N --to closed|rejected|open|drafted`
+2. `patchDrafts.pruneClosed()` + `cli patch prune-closed [--apply]`
+
+**`pruneClosed` 只扫 `closed`，不扫 `rejected`**——rejected 的意思是"不会修"，那段提醒记录的是一个已知且决定不修的问题，对模型仍然有价值，应该留着。
+
+**实测**：
+
+```
+造场景  issue #2 标 closed → 生成 draft #7 → git apply（4 行）
+预览    {"scanned":1,"removed":1,"skipped":0,"removedLines":4,"applied":false}
+真删    {"scanned":1,"removed":1,"removedLines":4,"applied":true}
+验证    「已知问题」块: False
+幂等    再跑 → {"removed":0,"skipped":1,"reason":"文件里没有「已知问题 #2」这一块"}
+```
+
+### B3：出站日志从 400 字提到 2000 字，超了明确标记
+
+**改的是 `preload.cjs`**：
+
+```js
+const MAX_OUT_TEXT = 2000;
+const cut = s.length > MAX_OUT_TEXT;
+const body = s.slice(0, MAX_OUT_TEXT).replace(/\r?\n/g, '\\n') +
+  (cut ? ' …[截断，原文 ' + s.length + ' 字]' : '');
+```
+
+两个变化：**上限提 5 倍**，**截断时打标记**。原来超了 400 字就是直接截断，读的人分不清"这就是全文"还是"被切了"。
+
+**踩的坑**：第一次用 PowerShell 脚本改，**中文全乱码 + 换行丢失 + 语法错误**（`node --check` 报 `Unexpected token 'const'`）。`git checkout --` 回退后改用 `read` + `edit` 工具一次改对。
+
+**教训**：`preload.cjs` 这种含中文的关键文件，**不要用 PowerShell 拼接字符串去改**。`edit` 工具要先 `read` 过才能匹配（否则 CRLF 会让 `old_string` 找不到）。
+
+### B4：REBUILD 的 §2 和 §4 补上可执行的自查
+
+**§2 恢复数据**原来只有 3 行 `Copy-Item`，**恢复完没有任何验证**。补了四项自查：
+
+| 项 | 怎么查 | 判据 |
+|---|---|---|
+| 库 | `task list` / `bind list` / `config list` 三条 | 都返回合法 JSON |
+| vault git | `git -C D:\anc\vault-* log --oneline -3` | 能 log 说明 `.git` 一起带过来了 |
+| 原件数 | 数 `_originals/` 下的文件 | 和备份前对得上（**最容易漏**，不在 git 里） |
+| 密钥 | 列 `secrets/` 的名字和大小（**不打印内容**） | 至少有 `wecom-webhook.txt` |
+
+**§4 第 5 步**原来是「群里发一句，有回复即可」——**要真人**。改成用 `§4b` 的 test-emit 自己验。
+
+### 小结
+
+| 项 | 做了什么 | 验了什么 |
+|---|---|---|
+| B1 eval 覆盖 | 7 条新用例（4 技能） | 判官单测 7/7 + 真跑 8 条全 PASS |
+| B2 批量 prune | `setStatus` + `pruneClosed` | 预览/真删/幂等/rejected 不误伤 |
+| B3 日志上限 | 400 → 2000 + 截断标记 | 语法检查（**运行验证要重启后才有新日志**） |
+| B4 REBUILD | §2 自查清单 + §4 去人工 | 结构检查 |
+
+`npm test` 107/107，`check-public` 零输出。
+
+### B3 的验证：历史数据证明这个改动有实际收益
+
+改完之后先查了历史日志里 `len=` 的分布（33 条）：
+
+```
+条数: 33    最长: 3052 字    前 5: 3052, 1655, 271, 127, 120
+超过 400 字的: 2 条
+```
+
+**有两条真超过 400**，而且看它们实际被记了多少：
+
+```
+2026-11-02T11:04:12Z  len=3052  实际记录=410 字符  截断标记=无
+2026-11-02T12:00:36Z  len=1655  实际记录=410 字符  截断标记=无
+```
+
+**3052 字的回答只留下 410 字符，而且没有任何标记**——读日志的人根本分不清"这就是全文"还是"被切了"。
+这是 B3 要解决的实际问题，不是假想的。
+
+**单元测试**（跑不了真实长回答场景，所以把 `body` 的生成逻辑原样复制出来测）：
+
+```
+短回答（56 字）                记录=  34  标记=无  OK
+正好 400 字（旧上限边界）        记录= 400  标记=无  OK
+1000 字（旧上限会截、新上限不截） 记录=1000  标记=无  OK
+正好 2000 字                   记录=2000  标记=无  OK
+2001 字（刚超）                记录=2016  标记=有  OK
+3052 字（历史那条真实长度）      记录=2016  标记=有  OK
+
+换行转义：第一行\n第二行\n第三行     OK
+源码核对：有 MAX_OUT_TEXT = 2000 / 有截断标记 / 没有旧的 slice(0, 400)   OK
+```
+
+**部署确认**：线上 `%ProgramData%\anc\patch\preload.cjs` 与仓库 hash 一致，重启后 `APPLIED mode=hash`。
+
+**诚实说明**：这条改动**没有在真实长回答上验证过**——历史上的长回答是特定问题（`git index.lock` 排查、读 Excel）触发的，造不出来。
+能验的是"逻辑对"和"文件已生效"，不能验的是"下次真遇到长回答时效果如何"。等它自然发生。

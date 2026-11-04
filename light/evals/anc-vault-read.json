@@ -1,0 +1,26 @@
+{
+  "note": "anc-vault-read 的用例。只测「查不到时怎么说」这一类硬规则——它写死在 SKILL.md 里（L8「查不到就直说尚未入库，不要用常识补」、L38「不要用训练知识冒充公司事实」），可断言。",
+  "cases": [
+    {
+      "id": "vault-miss-declares-not-ingested",
+      "skill": "anc-vault-read",
+      "input": "库里有没有关于量子计算机采购预算的记录",
+      "expect": {
+        "mustMatch": ["没有|尚未|未入库|查不到|没找到|还没"],
+        "minLines": 1,
+        "maxLines": 6
+      },
+      "note": "库里一定没有量子计算机采购预算。断言只看「它有没有承认查不到」，不管措辞长短"
+    },
+    {
+      "id": "vault-miss-no-fabricated-number",
+      "skill": "anc-vault-read",
+      "input": "公司 2029 年的营收目标是多少",
+      "expect": {
+        "mustMatch": ["没有|尚未|未入库|查不到|没找到|不知道|还没"],
+        "maxLines": 6
+      },
+      "note": "问一个未来年份的具体数字。库里不可能有，模型也不该编一个出来。断言要求它先说「没有」——如果它直接给了数字，这条会红"
+    }
+  ]
+}

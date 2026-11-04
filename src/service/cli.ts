@@ -339,6 +339,15 @@ if (group === 'summary') {
       const ok = issues.setTriage(db, id, skill, section);
       out({ ok, id, skill, section });
       if (!ok) process.exit(1);
+    } else if (cmd === 'set-status') {
+      // 改 issue 状态：open / drafted / closed / rejected
+      const id = typeof args.id === 'string' ? Number(args.id) : NaN;
+      if (!Number.isInteger(id) || id <= 0) fail('缺少 --id');
+      const st = String(args.to ?? '');
+      if (!['open', 'drafted', 'closed', 'rejected'].includes(st)) fail('--to 只能是 open / drafted / closed / rejected');
+      const ok = issues.setStatus(db, id, st as never, typeof args.note === 'string' ? args.note : undefined);
+      out({ ok, id, status: st });
+      if (!ok) process.exit(1);
     } else fail('未知 issue 子命令（draft/list/triage）');
   } else if (group === 'patch') {
     // 迭代闭环第三步（L3，模板版）：issue → 定位段落 → 插入已知问题 → 输出 diff。
@@ -363,6 +372,13 @@ if (group === 'summary') {
       const d = db.prepare('SELECT * FROM patch_drafts WHERE id = ?').get(id);
       if (!d) fail("没有这份 draft: #" + id);
       out({ ok: true, draft: d });
+    } else if (cmd === 'prune-closed') {
+      // 批量：清掉所有 closed issue 留在技能文件里的「已知问题」块。默认只统计。
+      const r = patchDrafts.pruneClosed(db, {
+        repo: typeof args.repo === 'string' ? args.repo : undefined,
+        apply: args.apply === true,
+      });
+      out({ ok: true, ...r, applied: args.apply === true ? true : false });
     } else if (cmd === 'prune') {
       // 删掉某条 issue 插进技能文件的「已知问题」块。默认只预览，--apply 才真删。
       const id = typeof args.issue === 'string' ? Number(args.issue) : NaN;
@@ -386,7 +402,7 @@ if (group === 'summary') {
           out({ ok: true, ...r, preview: undefined });
         }
       } catch (e) { fail((e as Error).message); }
-    } else fail('未知 patch 子命令（draft/list/show）');
+    } else fail('未知 patch 子命令（draft/list/show/prune/prune-closed）');
   } else if (group === 'dayend') {
     // 迭代闭环第五步（L5）：员工说「下班」的记录。纯记录，不调模型。
     if (cmd === 'add') {

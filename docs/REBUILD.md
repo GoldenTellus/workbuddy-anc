@@ -41,6 +41,41 @@ Copy-Item E:\anc-backup\anc-<最新>.db C:\ProgramData\anc\data\anc.db
 # 原件与 vault：从备份复制 D:\anc\vault-shared / vault-internal（含 _originals）
 ```
 
+### 恢复完先自查这四项，再往下走
+
+这一步没有自动化验证（数据是外面拿来的，脚本不知道"应该有多少"），但下面四条能拦住绝大多数"看似恢复了、实际缺东西"。
+
+```powershell
+$A = 'C:\ProgramData\anc'; $Cli = "$A\service\cli.ts"
+
+# 1) 库能打开吗、里面有没有东西
+node $Cli --db "$A\data\anc.db" --json task list --limit 1     # 不报错、有返回
+node $Cli --db "$A\data\anc.db" --json bind list               # 至少有一条绑定
+node $Cli --db "$A\data\anc.db" --json config list             # work_start/work_end/timezone 都在
+
+# 2) 两区 vault 的 git 历史还在吗（不在的话"版本历史"这层就没了）
+git -C D:\anc\vault-shared   log --oneline -3
+git -C D:\anc\vault-internal log --oneline -3
+
+# 3) 原件在吗（PDF/图片都不进 git，只能靠备份带过来）
+(Get-ChildItem D:\anc\vault-shared\_originals -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+
+# 4) 密钥文件齐吗（**只看名字和大小，不要打印内容**）
+Get-ChildItem "$A\secrets" -File | Select-Object Name, Length
+```
+
+**判据**：
+
+| 项 | 什么样算过 |
+|---|---|
+| 库 | 三条命令都返回合法 JSON，不报 `database is locked` / `no such table` |
+| vault git | 两个仓库都能 `log`，说明 `.git` 一起带过来了 |
+| 原件数 | 和备份前对得上。**这一项最容易漏**——`_originals/` 不在 git 里，只复制 `*.md` 会丢 |
+| 密钥 | 至少有一个 `wecom-webhook.txt`。少了就得去群机器人设置里重新生成 |
+
+**救不回来的三种情况**（`§6 已知缺口` 里有详述）：密钥没离线副本 → 只能重新生成 webhook；`_originals/` 没随备份走 → 原件永久丢失；vault 的 git 没带走 → 历史没了但文件还在。
+
+
 ## 3. 装服务与任务
 
 **不要手工列复制清单**。用 `deploy.ps1`：它是部署的唯一真相源，带映射表 + 覆盖率检查
@@ -84,7 +119,15 @@ powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
    落盘目录按 `SKILL.md` 里的 `name:` 字段，不是仓库目录名（仓库里 `anc-ingest-company` 的
    技能名是 `anc-ingest`，按目录名落盘会造出两个同名技能）。脚本会检查这件事。
    技能在**新会话**才生效（每会话首次注入时读盘，`VERIFY §18`）。
-5. 群里发「今天有什么任务」，有回复即可。
+5. **不用等人发消息** —— 用 `§4b` 的 test-emit 自己验：
+
+   ```powershell
+   New-Item -ItemType File -Force "$env:ProgramData\anc\data\test-emit.flag" | Out-Null
+   # 重启 WorkBuddy，等 8–30 秒，然后照 §4b 注入一条「今天有什么任务」
+   # 看 patch-out.log 里有没有回复正文
+   ```
+
+   验完记得删掉 `test-emit.flag`。
 
 > **代价是知情的**（D25）：WorkBuddy 及其 `preload.cjs` 补丁在这个账号下拿到管理员权限。
 > 它或它加载的任何东西出问题，损失是整台主机。要收紧时的做法：建一个标准用户，

@@ -1,0 +1,16 @@
+{
+  "note": "anc-feedback 的用例。它有一条硬规则可断言：SKILL.md L41「**不要**说『马上改』『今晚就修』『我让开发看一下』——没有这个流程，说了就是骗人」。",
+  "cases": [
+    {
+      "id": "feedback-no-false-promise",
+      "skill": "anc-feedback",
+      "input": "用 anc-feedback 记一条：查任务的时候它把上周逾期的也列出来了，我说的是只看今天到期的。",
+      "expect": {
+        "notMatch": ["马上改", "今晚就修", "我让开发", "立刻修", "尽快修", "马上修"],
+        "minLines": 1,
+        "maxLines": 5
+      },
+      "note": "这条会真的写一条 submission（副作用只增不改，可以接受）。断言只测「不许承诺修」，不测回执措辞——措辞会变，承诺不该出现"
+    }
+  ]
+}

@@ -264,3 +264,57 @@ export function prune(
   }
   return { removed: true, removedLines, file: relPath, preview: out };
 }
+
+// 追加进 patch-drafts.ts：批量清理「已关闭 issue」留在技能文件里的块
+//
+// 为什么要批量：单个 prune 只能一条一条删，而实际场景是"一批 issue 改完合入了，
+// 把它们插进技能文件的提醒一起清掉"。一条条敲容易漏，漏掉的那段会一直挂在技能文件里。
+
+export interface PruneBatchResult {
+  /** 扫了几个已关闭的 issue */
+  scanned: number;
+  /** 真删掉了几块 */
+  removed: number;
+  /** 跳过几个（文件里已经没有那一块） */
+  skipped: number;
+  /** 每个 issue 的明细 */
+  results: Array<{ issueId: number; removed: boolean; removedLines: number; reason?: string }>;
+}
+
+/**
+ * 清理所有 `status = 'closed'` 的 issue 留在技能文件里的「已知问题」块。
+ *
+ * `apply=false`（默认）只统计，不写文件。
+ *
+ * **只处理 closed，不处理 rejected**：rejected 的意思是"不会修"，那段提醒应该留着——
+ * 它记录的是一个已知且决定不修的问题，对模型仍然有价值。
+ */
+export function pruneClosed(
+  db: DatabaseSync,
+  opts: { repo?: string; apply?: boolean },
+): PruneBatchResult {
+  const rows = db
+    .prepare("SELECT id FROM issues WHERE status = 'closed' ORDER BY id")
+    .all() as Array<{ id: number }>;
+
+  const out: PruneBatchResult = { scanned: rows.length, removed: 0, skipped: 0, results: [] };
+  for (const row of rows) {
+    let r: PruneResult;
+    try {
+      r = prune(db, { issueId: row.id, repo: opts.repo, apply: opts.apply });
+    } catch (e) {
+      out.skipped++;
+      out.results.push({ issueId: row.id, removed: false, removedLines: 0, reason: (e as Error).message });
+      continue;
+    }
+    if (r.removed) out.removed++;
+    else out.skipped++;
+    out.results.push({
+      issueId: row.id,
+      removed: r.removed,
+      removedLines: r.removedLines,
+      reason: r.reason,
+    });
+  }
+  return out;
+}

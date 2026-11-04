@@ -65,8 +65,15 @@ global.__ancLogOut = function (chatId, text) {
   try {
     if (!fs.existsSync(OUT_FLAG)) return;
     const s = String(text == null ? '' : text);
+    // 出站记录只留前 MAX_OUT_TEXT 字。2026-11-04 从 400 提到 2000：
+    // 400 字不够 eval 断言用（长回答的后半截看不到，判断「结尾有没有 X」必然错）。
+    // 超了明确标记，别让读的人以为那就是全文。
+    const MAX_OUT_TEXT = 2000;
+    const cut = s.length > MAX_OUT_TEXT;
+    const body = s.slice(0, MAX_OUT_TEXT).replace(/\r?\n/g, '\\n') +
+      (cut ? ' …[截断，原文 ' + s.length + ' 字]' : '');
     const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 12) +
-      ' len=' + s.length + ' text=' + s.slice(0, 400).replace(/\r?\n/g, '\\n') + '\n';
+      ' len=' + s.length + ' text=' + body + '\n';
     fs.appendFileSync(OUT_LOG, line, 'utf8');
   } catch (e) {}
 };
