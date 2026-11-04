@@ -2,7 +2,7 @@
 
 > **还有一条终态要求在本文之外**：1.0 必须覆盖上游全部功能模块、零差距（PLAN §2 第 5 条）。
 > 逐项对照见 [`UPSTREAM-COVERAGE.md`](./UPSTREAM-COVERAGE.md)，当前 ✅11 / 🔄4 / 🟡3 / ⬜2 / ➖0。
-> 换句话说：本文 40 条 + 上游 20 个模块的逐项 ✅，才构成完整的 1.0 验收。
+> 换句话说：本文 40 条 + 上游 **21 项**的逐项结论，才构成完整的 1.0 验收。
 
 > 每条的"证据"必须是仓库里能查到的具体位置。查不到的标 ⬜ 并写清卡点，不记成通过。
 
@@ -65,7 +65,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | A-5 | 转公开检查可执行、零输出、exit 0；`_research/` 未被跟踪 | ✅ | `scripts/check-public.mjs:16-71`；`.gitignore:9-10`；本次落盘后实跑：零输出、退出码 0（见本文 §2） | — |
 | A-6 | 资料不上云：正文不作为对话内容；只传路径/标题/结构化字段，摘要本地生成 | ✅ | 机制落地三层：①`src/shared/summarize.ts`（`summarizeMarkdown` / `searchAndSummarize`，纯本地规则）；②入库响应带 `summaries`，bot 只转述不再自行总结（技能里已写死"不要自己再总结一遍，那等于把正文交给模型"）；③`src/shared/audit.ts` 的 JSONL 只记命令与目标、不记参数值；`doctor` 的 `vault-ingest-audit` 抓绕过入口的写入 | 「正文不外发」现在是机制 + 文字双约束：摘要路径不出网（summarize 无 import 网络模块），技能禁止模型二次加工 |
 | O-1 | 9 个计划任务齐、principal 与部署账号一致、`IgnoreNew` | ✅ | `scripts/register-tasks.ps1:58`（`-MultipleInstances IgnoreNew`）、`:71-136`（9 个任务定义）；`scripts/doctor.ps1:133-143`（9 项期望 principal）；`docs/OPS.md:5-19` | 9/9 Ready，principal=部署账号（D25），doctor 全 PASS |
-| O-2 | doctor 覆盖全部关键面，且每项都能证明会 FAIL | ✅ | `scripts/doctor-fault-matrix.mjs`：**26/28 项**已注入验证（11 组，全部"注入→断言变红→恢复→断言回绿"，最终 FAIL=0）；`vault-ingest-audit` 有真实触发观察（基线 WARN + D24 那次 bot 直写时也报过）；`doctor -SelfTest` 6 条 fixture 断言。见 VERIFY §15 | 仅 `database` 未注入：需停两个服务+杀进程，留维护窗口（它是信息项，只报文件大小） |
+| O-2 | doctor 覆盖全部关键面，且每项都能证明会 FAIL | ✅ | `scripts/doctor-fault-matrix.mjs`：**28/29 项**已注入验证（11 组，全部"注入→断言变红→恢复→断言回绿"，最终 FAIL=0）；`vault-ingest-audit` 有真实触发观察（基线 WARN + D24 那次 bot 直写时也报过）；`doctor -SelfTest` 6 条 fixture 断言。见 VERIFY §15 | 仅 `database` 未注入：需停两个服务+杀进程，留维护窗口（它是信息项，只报文件大小） |
 | O-3 | watchdog 覆盖 WorkBuddy/心跳/outbox 积压，同类告警有冷却 | ✅ | `scripts/watchdog.ps1:19`（心跳 >10 分钟）、`:27`（积压 ≥50）、`:41`（WorkBuddy 不在跑）、`:76`（30 分钟冷却）；`docs/OPS.md:15` | 告警实发记录在主机与运维群，不在仓库 |
 | O-4 | 备份离机（另一块盘或 UNC），含 vault 与 SQLite；恢复演练过 | ✅ | `scripts/backup-anc.ps1:88-124`（保留策略、`DiskNumber` 比对、同盘告警、离机复制）；`src/service/backup.ts`；测试 `src/service/service.test.ts:620`、`:640`；`docs/OPS.md:157-162` | 当前 `E:` 与 `C:` 同在 Disk 0，"离机"只是同盘拷贝（`docs/PLAN.md:246`）；恢复演练无记录（REBUILD §2 只有步骤） ；2026-11-04 实测同盘检测有效（Disk 0 认出、WARN 发出、不重复刷屏、仍照常复制，`VERIFY §28`），但本机只有一块物理盘，真离机做不到   **2026-11-04 达成**：用 `diskpart` 造 VHD 挂成 Disk 1（`Z:`），真离机备份成立（无同盘告警、文件落 Z:），再从 Z: 恢复验证 8 张表数量全对 + `integrity_check: ok`。见 `VERIFY §33` |
 | O-5 | 干净机按 REBUILD 重建成功并计时 | 🟡 | **演练完成，真机未做**：`scripts/rebuild-drill.ps1` 在空目录建目录+部署+verify，21.4 s / 56 文件 / `deploy-layout PASS`（REBUILD §7 基线） | 没有第二台干净机；§2 数据恢复、§4 bot 扫码无法自动化   2026-11-04 用 VHD 造的 `Z:` 当新机盘真装了一遍：11/11 步、31.9s、`company.md` 指向 Z: 后渲染和 doctor 都能跑（`VERIFY §34`）。**但这不等于"干净机"**——`§2 数据恢复`和`§4 bot 登录`是手工步骤，演练里是空占位；计划任务没注册。**状态保持 🟡**，因为条款要的是"干净机"不是"换盘符" |

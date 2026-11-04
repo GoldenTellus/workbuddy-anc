@@ -19,7 +19,7 @@
 
 ---
 
-## 1. 总表（20 个模块）
+## 1. 总表（21 项）
 
 | # | 上游模块 | 上游位置 | 状态 | 本项目在哪 |
 |---|---|---|---|---|
@@ -34,11 +34,11 @@
 | 9 | Persona 系统（七段式模板） | SPEC §4.1 | ✅ | `light/templates/company-bot.md`、`light/personas/` |
 | 10 | persona-as-code 管线 | SPEC §4.2 | ✅ | `src/render/`（git 变更 → 渲染 → 部署，D15） |
 | 11 | 对话层与任务层 | SPEC §4.3 | ✅ | 任务登记/完成/提醒（`src/service/`） |
-| 12 | Skill 系统（格式 + 部署） | SPEC §5 | ✅ | `light/skills/`（5 个技能）+ 渲染器同步 |
+| 12 | Skill 系统（格式 + 部署） | SPEC §5 | ✅ | `light/skills/`（8 个技能）+ 渲染器同步 |
 | 13 | **技能迭代闭环**（聊天挖掘→问题池→devbot→eval） | SPEC §5 | ✅ | **2026-11-04 做完并端到端跑通**：`submissions`（L1）→ `issues` 规则表分诊（L2）→ `patch_drafts`（L3）→ `devbot.ps1` 自动出分支（L4）→ `eval` 判 pass/fail（L6）→ `e2e-loop.ps1` 串起来（L7）。见 `VERIFY §21`–`§27` |
 | 14 | Onboarding：对话式冷启动 | SPEC §6 | 🔄 | **目的**是"新公司/新员工不用看文档就能把知识装进系统"，**入口不同**：员工侧有 `anc-interview`（对话式逐题访谈）；**公司级建库是管理员一次性操作**（建 `D:\anc\org` + 投文档给 `anc-ingest`），不做对话式。**差异与理由**：公司级建库只在开张时做一次，对话式带来的上手成本优势抵不上多写一个技能的成本；如果将来要开第二家公司，这一项要补 |
 | 15 | 安全模型（Identity / Scope / Model 三层） | SPEC §7 | ✅ | D19–D25 裁决 + ACL + 出站扫描 + 审计 |
-| 16 | 运维与可观测（防假绿、watchdog、日报） | SPEC §8 | ✅ | `doctor`（28 项）+ `anc-watchdog` + `anc-boot-alert` + 备份（保留 7 份）。**日报不做**（2026-11-03 裁决：单人单机没人读，探针已答"坏没坏"） |
+| 16 | 运维与可观测（防假绿、watchdog、日报） | SPEC §8 | ✅ | `doctor`（29 项）+ `anc-watchdog` + `anc-boot-alert` + 备份（保留 7 份）。**日报不做**（2026-11-03 裁决：单人单机没人读，探针已答"坏没坏"） |
 | 17 | 包形态与命令面（npm + `anc` CLI） | SPEC §9 | 🔄 | **目的**是给操作者一个命令面，**做到了**：`C:\ProgramData\anc\service\cli.ts` 有 task / submission / issue / patch / dayend / eval / config / bind / backup 九个子命令组。**差异**：不发布 npm 包（单机部署，没有多消费者），用部署目录代替包分发 |
 | 18 | vault-service（Cloudflare R2 + MCP 五工具 + `_history/`） | `light/vault-service/` | 🔄 | **目的**是"知识库 + 版本历史 + 可查询"，三样都做到了，换的是机制：R2 → 本地目录（`D:\anc\vault-*`）、`_history/` → **git 历史**、MCP 五工具 → `anc-vault-read` 技能 + `cli`。**代价**：没有 MCP 那种"任何 agent 都能调"的通用接口，只能本项目的技能用 |
 | 19 | harness-proxy：`system-prompt-proxy` | `tools/harness-proxy/` | ➖ | 前提是能改写引擎的请求；WorkBuddy 闭源，改不了 |
@@ -110,7 +110,7 @@ R6 实测过：切到另一个工作区后，读的是该工作区的规则，**
 上游 §8 有四样：防假绿探针、watchdog、**日报**、成本策略。
 
 本项目有前三样里的两样半：
-- 防假绿：`doctor` 28 项 + `heartbeat` 判 `loop.log` 新鲜度 ✅
+- 防假绿：`doctor` 29 项 + `heartbeat` 判 `loop.log` 新鲜度 ✅
 - watchdog：`anc-watchdog` 独立任务 ✅
 - **日报**：⬜ 没有（token 用量、活跃度、问题挖掘都没有）
 - 成本策略：➖ 不适用（单人单机，没有"多 bot 抢订阅池"的问题）
@@ -170,7 +170,7 @@ R6 实测过：切到另一个工作区后，读的是该工作区的规则，**
 | 链路本体 | 收集（submission）→ 汇总（结构化 issue）→ devbot（改技能出分支）→ 安装 | PLAN L1–L5、L7 |
 | **eval 回归** | 驱动 WorkBuddy 回放，比对回答——这是上游闭环的**安全气囊**，缺了它 devbot 改坏的技能没人发现 | PLAN L6 |
 
-**这两块补完，#13 转 ✅，20 个模块就一项 ⬜ 都没有了。**（Harness 已转 ➖，不计入待补）
+**这两块补完，#13 转 ✅，21 项就一项 ⬜ 都没有了。**（Harness 已转 ➖，不计入待补）
 
 ### 3.4 还剩下的差异（不算差距，但要写明）
 
