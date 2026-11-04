@@ -306,7 +306,7 @@ const PATCH_BODY = [
   '        var __origM = __d.value;',
   '        __d.value = function () {',
   '          try { global.__ancLastClient = this; } catch (e) {}',
-  '          // [实验] 2026-11-05 暂时摘掉 hit 探针，验证它是否影响原生方法行为\n',
+  '          try { if (global.__ancHookHit) global.__ancHookHit(__m); } catch (e) {}',
   '          return __origM.apply(this, arguments);',
   '        };',
   '        try { Object.defineProperty(__ancCls.prototype, __m, __d); } catch (e) {}',

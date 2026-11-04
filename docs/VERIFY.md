@@ -4974,6 +4974,14 @@ LastTaskResult: 0
 
 ## 49. 「bot 收到消息但不回」追到底：模型正常，出站断了（2026-11-05）
 
+> **⚠ 本节的结论「出站断了」已被 `§51` 推翻。**
+>
+> 当时依据是 `patch-out.log` / `narration-filter.log` 没新增、`sendReply` 零调用 ——
+> 但**那几个只是信号，不是判据**：回复走的是别的路径，群里一直是能回话的（维护者截图证实）。
+>
+> **本节保留作为「一次失败的归因」的记录**：正确的事实（入站正常、模型输出正常、
+> `WecomAiBotClient` 的 send* 零调用）都在，只是最后那步推断错了。
+
 ### 49.1 现象
 
 2026-11-04 18:48 起，两个群 @ 公司 bot 都没反应。到 19:59 一直没恢复。
@@ -5287,3 +5295,137 @@ PASS  结构可用（真机还要过 §2 恢复数据、§3 注册任务、§4 �
 - `D:\anc\render\`：`groups.json` + `manifest.json` + `company-bot/` + `members/{owner,staff-a}/`
 - `chat_bindings`：2 行（管理员/老群、员工A/test2）；导入前的 1 行备份在 `data\_bindings-backup.json`
 - **persona 没换**（还是手写版），WorkBuddy 没重启，`doctor` / `npm test` / `check-public` 不受影响
+
+## 51. 推翻 §49：出站没断，是「判据失效」；顺带定位补丁运行时失效（2026-11-05）
+
+### 51.1 §49 错在哪
+
+`§49` 写的结论是「**出站断了**」，依据三条：
+
+1. `patch-out.log` 停在 11:51，没新增
+2. `narration-filter.log` 停在 03:51
+3. `patch-hooks.log` 的 HIT 里，`sendReply` / `replyStream` / `sendStreamChunk` 全部零调用
+
+**但 21:02 维护者在企微群里 @ 了 bot，它回了**：
+
+```
+郭帅：@郭帅的机器人 你好
+郭帅的机器人 BOT：在呢，说吧。
+```
+
+**所以出站是通的。**
+
+**错在哪**：把「某个 hook 没被调用」当成了「功能坏了」。
+
+- `patch-out.log` 只在 `sendReply(chatId, text)` 被调用时写一行
+- `sendReply` 不是唯一出口 —— 它不被调用，日志就永远空
+- **「日志空」只能证明「没走这条路」，不能证明「没回复」**
+
+**这跟 `§48.5` 是同一个错误**：从信号缺失反推功能故障，没去验证功能本身。
+
+**教训（第二次记）**：**判据必须证明「它错的时候会报」，否则它只是一个信号，不是判据。**
+
+### 51.2 现在确定的事实
+
+| 事实 | 证据 |
+|---|---|
+| 真实群消息能回话 | 维护者截图：21:02 @ → 「在呢，说吧。」 |
+| 入站 / 前缀注入正常 | `patch-in.log` 有完整 chatId + userid（test1 和 test2 两个群都有） |
+| `emitMessage` hook 活着 | `patch-hooks.log` HIT：`emitMessage ×1`、`onMessage ×2` |
+| **`WecomAiBotClient` 的 send* 全零调用** | `sendReply` / `replyStream` / `sendStreamChunk` / `sendMediaMessage` / `sendCustomCmd` 都是 `—` |
+| **test-emit 注入后模型确实处理了** | 会话 `13:20:39` 更新（`completed`） |
+| **test-emit 的回复发不出去** | 三条出站日志零新增 |
+
+**推论**：**真实企微消息的回复不经过 `WecomAiBotClient.prototype.sendReply`**（至少 5.9.3 现在不走），而 `test-emit` 因为没有真实回传通道，回复到模型产出就断了。
+
+### 51.3 两个判据失效，影响面
+
+| 判据 | 原来用来验什么 | 现在 |
+|---|---|---|
+| `patch-out.log` | 出站文本、`§25` eval 采回复 | **失效**（不再写入） |
+| `narration-filter.log` | 出站旁白过滤统计（`§17`） | **失效**（同时停了） |
+
+**`§17` 的连带影响**：O1 的出站旁白过滤挂在 `sendReply` 上。**如果 `sendReply` 不再被调用，那层过滤现在等于没生效。** 但 `§17` 的结论本来就是「代码层做不到，只能靠 persona 约束」——**所以是「从降级退到无」，不是「从有到无」**。persona 那条约束还在。
+
+**`test-emit` 的能力边界要写明**：
+
+- ✅ 能验：入站解析、前缀注入、persona 行为、技能触发、模型输出内容
+- ❌ 不能验：回复是否真的发到群里（没有真实回传通道）
+
+**`§40`（并发压力）和 `§41`（错误恢复）用 test-emit 得出的结论仍然成立** —— 它们验的是「入站 + 模型处理」，没声称验出站。
+
+### 51.4 顺带定位：补丁运行时失效，`patch-guard` 抓不到 ★
+
+**这是本轮真正的缺陷，比 `§49` 那个假结论重要。**
+
+**现象**（2026-11-04 20:54 那次）：
+
+```
+patch-state.json: {applied:true, mode:hash, pid:9776, at:19:42}
+但 test-emit → ok:true，patch-in.log 没有新增
+→ emitMessage 的 hook 实际上没挂
+```
+
+**重启后恢复**（pid 19108，test-emit 立刻被记录）。
+
+**为什么 `patch-guard` 没发现**：
+
+```powershell
+if ($okMode -and $at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true }
+if ($patched) { exit 0 }        # 只看状态文件的时间窗，不验证 hook 是否真在
+```
+
+**它信的是「注入那一刻写下的 applied」，不是「现在还在不在」。**
+
+**`§16` 记过同类问题，但那次是「进程死了，状态文件还在」** —— 这次更隐蔽：**进程活着，状态文件也对，只是 hook 丢了**。
+
+**可能的触发**：维护者改企微机器人的「使用方式」设置时，AIBot 客户端被重建，新实例没吃到原型上的 hook（未证实，但时间吻合）。
+
+**要做到「可判」需要**：`preload.cjs` 定期写心跳文件（比如 30 秒），`patch-guard` 检查心跳新鲜度 —— 心跳停了就重放。**没做**，记在待办。
+
+### 51.5 顺带发现：test1 群里有两个 BOT
+
+维护者截图显示 `test1` 群成员：
+
+```
+郭帅         群主
+郭帅的机器人  BOT     ← 公司 bot
+小张 BOT              ← 第二个 bot
+```
+
+**这正是 `D7` 设计的「三方群」结构**（本人 + 公司 bot + 个人 bot）。
+
+**所以 E-3「两个 bot 都 @ 才回应」现在有真环境可验了** —— 之前一直缺这个条件（`VERIFY §303` 的 T2 只在单 bot 环境验过）。
+
+**没验**，记在待办。
+
+### 51.6 会话里出现的第三个群
+
+```
+会话 bdef553d： [anc:chat=wrkcDlGwAAZwSGGGyy2XArRQILNyQqIQ from=wokc…]
+```
+
+**这个 chatId 不在 `chat_bindings` 里**（bindings 只有 test1 的 `…AAlp` 和老群的 `…AAca`）。
+
+说明还有第三个群曾 @ 过 bot。**如果它就是 `test2`**，那 `bindings` 里绑的 `…AAlp` 其实是 `test1` —— **群名和 chatId 的对应关系要重新确认**（维护者说的是「test2」，截图显示的是「test1」）。
+
+### 51.7 这一轮的净结果
+
+**修掉的**：
+
+1. `__ancLogOut` 的 chatId 从 12 位改 64 位（原缺陷）
+2. 新增 `patch-in.log`（入站可观测）
+3. 新增 `patch-hooks.log`（方法命中可观测）
+4. hit 探针在对照实验后忘记恢复 → **已恢复**
+
+**推翻的**：
+
+- `§49` 的「出站断了」→ 实际是「判据失效」
+- 「`sendReply` 是出站唯一出口」→ 5.9.3 现在不走它
+
+**新发现的**：
+
+- **补丁运行时失效，`patch-guard` 抓不到**（要加心跳）
+- `test-emit` 不能验出站（能力边界要写明）
+- test1 群有两个 BOT → E-3 有真环境了
+- 第三个群 `…AZwSG` 身份不明
