@@ -61,6 +61,43 @@ const STATE = expand(mf.state || '%ProgramData%\anc\data\patch-state.json');
 const __ancPath = require('path');
 const OUT_FLAG = __ancPath.join(__ancPath.dirname(STATE), 'log-out.flag');
 const OUT_LOG = __ancPath.join(__ancPath.dirname(STATE), 'patch-out.log');
+// 入站记录（2026-11-05 加）：AIBot 收到一条消息就记一行。
+// 为什么需要：出站日志（patch-out.log）只在 bot **回话**时才有，
+// 而「消息到底进没进来」和「进来了但没回」是两件事，靠出站日志分不开。
+// 排障场景：新群 @ 了 bot 但没反应——是这个群没收到，还是收到了但没回？
+const IN_LOG = __ancPath.join(__ancPath.dirname(STATE), 'patch-in.log');
+// 方法清单 + 命中记录（2026-11-05 加）：定位「出站到底走哪个方法」。
+// 为什么需要：patch-out.log 只记 sendReply，sendStreamChunk 没 hook。
+// 结果「bot 收到消息但不回」时分不清是「走流式没记」还是「模型真没输出」。
+// 这个探针把原型方法名列一遍，并把每次调用记下来 —— 用文件证据代替猜。
+const HOOKS_LOG = __ancPath.join(__ancPath.dirname(STATE), 'patch-hooks.log');
+const __ancHitCount = Object.create(null);
+global.__ancHookList = function (names) {
+  try {
+    const line = new Date().toISOString() + ' LIST [' + names.join(', ') + ']' + '\n';
+    fs.appendFileSync(HOOKS_LOG, line, 'utf8');
+  } catch (e) {}
+};
+global.__ancHookHit = function (name) {
+  try {
+    if (!/send|reply|stream|message|emit|post|deliver/i.test(name)) return;
+    __ancHitCount[name] = (__ancHitCount[name] || 0) + 1;
+    const line = new Date().toISOString() + ' HIT ' + name + ' #' + __ancHitCount[name] + '\n';
+    fs.appendFileSync(HOOKS_LOG, line, 'utf8');
+  } catch (e) {}
+};
+
+global.__ancLogIn = function (chatId, user, content) {
+  try {
+    const s = String(content == null ? '' : content);
+    const t = s.length > 300 ? s.slice(0, 300) + '...' : s;
+    const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 64) +
+      ' from=' + String(user || '').slice(0, 64) + ' len=' + s.length +
+      ' text=' + t.replace(/\r?\n/g, '\\n') + '\n';
+    fs.appendFileSync(IN_LOG, line, 'utf8');
+  } catch (e) {}
+};
+
 global.__ancLogOut = function (chatId, text) {
   try {
     if (!fs.existsSync(OUT_FLAG)) return;
@@ -72,7 +109,12 @@ global.__ancLogOut = function (chatId, text) {
     const cut = s.length > MAX_OUT_TEXT;
     const body = s.slice(0, MAX_OUT_TEXT).replace(/\r?\n/g, '\\n') +
       (cut ? ' …[截断，原文 ' + s.length + ' 字]' : '');
-    const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 12) +
+    // chat 记完整值（原来是 slice(0,12)，2026-11-05 改）。
+    // 为什么：12 位只够「日志里区分不同群」，不够 `cli bind --chat-id` —— 那要 32 位完整值。
+    // 结果是「想从日志抓 chatId 去绑定」这条路被自己堵死，只能靠别的手段反查。
+    // 安全性不降：这个文件在 %ProgramData%\anc\data\，本来就不进 git，
+    // 而且同一行里已经有完整回复文本（比 chatId 敏感得多）。切片 0,64 只是防异常长度。
+    const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 64) +
       ' len=' + s.length + ' text=' + body + '\n';
     fs.appendFileSync(OUT_LOG, line, 'utf8');
   } catch (e) {}
@@ -243,7 +285,7 @@ const PATCH_BODY = [
   '      try {',
   '        if (m && typeof m.content === "string" && !m.__ancTagged) {',
   '          m.content = m.content.replace(/\\[\\s*anc\\s*[:\\uFF1A]/gi, "[anc-quoted:");',
-  '          if (m.chatId) m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + "] " + m.content;',
+  '          if (m.chatId) { try { if (global.__ancLogIn) try { global.__ancLogIn(m.chatId, m.user, m.content); } catch (e) {} m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + "] " + m.content; } catch (e) {} }',
   '          try { Object.defineProperty(m, "__ancTagged", { value: true, enumerable: false }); } catch (e) {}',
   '        }',
   '        try { if (global.__ancCanaryWrite) global.__ancCanaryWrite({ at: new Date().toISOString(), chatId: !!(m && m.chatId), user: !!(m && m.user), contentStr: !!(m && typeof m.content === "string") }); } catch (e) {}',
@@ -255,6 +297,8 @@ const PATCH_BODY = [
   '    // connect / onMessage / sendStreamChunk 这几个名字覆盖不全（实测重启后仍拿不到），',
   '    // 所以直接包装原型上所有方法：bot 只要调用任何一个，实例就落进 __ancLastClient。',
   '    try {',
+  '      var __ancFns = Object.getOwnPropertyNames(__ancCls.prototype).filter(function (n) { return n !== "constructor" && n.indexOf("__anc") !== 0 && typeof __ancCls.prototype[n] === "function"; });',
+  '      try { if (global.__ancHookList) global.__ancHookList(__ancFns); } catch (e) {}',
   '      Object.getOwnPropertyNames(__ancCls.prototype).forEach(function (__m) {',
   '        if (__m === "constructor" || __m.indexOf("__anc") === 0) return;',
   '        var __d = Object.getOwnPropertyDescriptor(__ancCls.prototype, __m);',
@@ -262,6 +306,7 @@ const PATCH_BODY = [
   '        var __origM = __d.value;',
   '        __d.value = function () {',
   '          try { global.__ancLastClient = this; } catch (e) {}',
+  '          // [实验] 2026-11-05 暂时摘掉 hit 探针，验证它是否影响原生方法行为\n',
   '          return __origM.apply(this, arguments);',
   '        };',
   '        try { Object.defineProperty(__ancCls.prototype, __m, __d); } catch (e) {}',

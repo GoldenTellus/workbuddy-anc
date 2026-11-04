@@ -4971,3 +4971,144 @@ LastTaskResult: 0
 | 1.0 第 2 条真升级回归 | 厂商发版 |
 | `patch-state` 陈旧状态 | ~~机制未查明~~ → **已推翻这个假设**（见 §48.5 ②）：`patch-guard` 有 15 秒时间窗校验，真正原因是 Interactive 任务的 `Start-ScheduledTask` 可能静默不执行 |
 | 历史 35 个 commit 的 chatId | 转 public 前 `git filter-repo` |
+
+## 49. 「bot 收到消息但不回」追到底：模型正常，出站断了（2026-11-05）
+
+### 49.1 现象
+
+2026-11-04 18:48 起，两个群 @ 公司 bot 都没反应。到 19:59 一直没恢复。
+
+**表面证据**（一开始只有这些，看不出原因）：
+
+| 文件 | 状态 |
+|---|---|
+| `patch-in.log`（入站） | 有记录：老群 + test2 + 3 条探针 |
+| `patch-canary.json` | `{chatId:true, user:true, contentStr:true}` → `emitMessage` hook 被调用 |
+| `patch-state.json` | `{applied:true, mode:hash, pid}`，该 pid 活着 |
+| **`patch-out.log`（出站）** | **停在 11:51，没新增** |
+| **`narration-filter.log`** | **停在 03:51** |
+
+### 49.2 做了什么（按顺序，每步都在排除一种可能）
+
+| # | 动作 | 结果 | 排除了什么 |
+|---|---|---|---|
+| 1 | 修 `preload.cjs` chatId 截断（`slice(0,12)` → `slice(0,64)`） | 部署 + 重启正常 | — |
+| 2 | 加入站日志 `__ancLogIn` → `patch-in.log` | 通了，中文正常 | **入站链路没问题** |
+| 3 | 加方法探针 `__ancHookList` / `__ancHookHit` → `patch-hooks.log` | 拿到完整方法名清单 | 见 49.3 |
+| 4 | 摘掉 hit 探针（怀疑它干扰） | **还是不回** | **不是探针干扰** |
+| 5 | **完全回滚 `preload.cjs` 到 git HEAD** + 部署 + 重启 | **还是不回** | **不是今天任何改动** |
+| 6 | 干净重启 WorkBuddy（`Stop-Process` + `anc-workbuddy-launch`）+ 注入 | **还是不回** | **不是会话卡死** |
+| 7 | 查 `daemon.log` / `main.log` / 网络 | 全 200，无认证/额度错误 | **不是网络、不是额度** |
+
+### 49.3 方法探针拿到的清单（决定性）
+
+`patch-hooks.log` 里的 `LIST` 行：
+
+```
+getStatus, onMessage, onStatusChange, onEnterChat, replyEnterChatWelcome,
+connect, waitForInitialConnectionReady, sendReply, replyStream, generateStreamId,
+uploadMedia, sendMediaMessage, sendCustomCmd, sendStreamChunk, disconnect, dispose,
+disconnectAndWait, setupEventListeners, isDuplicate, recordMsgId, getMediaTempDir,
+saveTempFile, sanitizeFilename, downloadMedia, ...
+```
+
+**`sendReply`、`replyStream`、`sendStreamChunk` 都在原型上** —— 所以「出站走流式、不经过 `sendReply`」这个假设**排除了**：三个方法都存在。
+
+**HIT 统计（注入 3 条后）**：
+
+```
+emitMessage   × 3     ← 入站到了
+onMessage     × 2
+sendReply          没有命中
+replyStream        没有命中
+sendStreamChunk    没有命中
+sendMediaMessage   没有命中
+```
+
+**入站三个方法有命中，出站四个方法一个都没有。** 不是"走流式没记日志"，是**根本没有尝试发送**。
+
+### 49.4 决定性证据：模型回复了，但没发出去
+
+WorkBuddy 的会话记录在 `~/.workbuddy/projects/c-<cwd 转义>/<sessionId>.jsonl`。
+
+Claw 会话 `9095229a-...`（就是 bot 那个工作目录）的最后一条 assistant：
+
+```json
+{
+  "role": "assistant",
+  "status": "completed",
+  "content": [{"type": "output_text", "text": "好"}],
+  "providerData": {
+    "model": "deepseek-v4.1-flash",
+    "requestModelName": "快速",
+    "stepSeq": 193
+  },
+  "message": {"usage": {
+    "input_tokens": 91503,
+    "output_tokens": 2,
+    "cache_read_input_tokens": 88320
+  }},
+  "cwd": "c:\\Users\\Administrator\\WorkBuddy\\Claw"
+}
+```
+
+**模型完全正常**：调的是 `deepseek-v4.1-flash`，输出 2 个 token（就是「好」），`status: completed`。
+
+**所以链条是**：
+
+```
+企微消息 → emitMessage（✅ 注入前缀）→ 进 Claw 会话（✅ jsonl 有 user 记录）
+  → 模型调用（✅ deepseek-v4.1-flash，91K 上下文）
+  → 模型输出「好」（✅ status=completed，output_tokens=2）
+  → ❌ 没有交给 sendReply / sendStreamChunk
+  → 群里看不到
+```
+
+**断在倒数第二步。**
+
+### 49.5 排除表
+
+| 假设 | 证据 | 结论 |
+|---|---|---|
+| 会话卡在 `working` 阻塞后续 | `sessions` 表里唯一那个 `working` 是 **10-26 的**（`cwd` 空、`transport: cloud`、`origin: teams`），跟今天无关 | **排除** |
+| 上下文太大 / 额度用完 | `usage` 正常返回，无 401/403/429 | **排除** |
+| 网络断了 | `launcher.out` 全 200 | **排除** |
+| `non-2xx` 是根因 | 那是 `listEnterprisePublishedAgents` 的 400，**从 02:16 就有**，那时 bot 能回 | **排除** |
+| 我的改动引入 | 回滚到 git HEAD 仍不回 | **排除** |
+| 流式路径没记日志 | 三个出站方法都存在，但**零调用** | **排除** |
+| **WorkBuddy 自身没把回复交给发送层** | 模型 `status=completed` 但 `sendReply` 零调用 | **剩这个** |
+
+### 49.6 结论与边界
+
+**这是 WorkBuddy 产品侧的行为，本项目补丁管不到。**
+
+理由：补丁做的是「给 `emitMessage` 套壳注入群身份」和「给 `sendReply` 套壳过滤旁白」。**回复要不要走 `sendReply` 是厂商内部的决定**，`preload.cjs` 没有任何代码能让它走。
+
+**时间线暗示最后一次正常是 11:51**（`patch-out.log` 最后一条），之后 13:16 有过一次自愈重启。**但从回滚实验看，跟补丁版本无关**——所以更可能是那次重启后 WorkBuddy 内部某个状态变了，具体机制**没有本地手段确认**（要厂商日志或界面）。
+
+### 49.7 这一轮的净收获
+
+**三个真缺陷被修掉**（都在 `scripts/workbuddy-patch/preload.cjs`）：
+
+1. **`__ancLogOut` 把 chatId 切成 12 位**（`slice(0, 12)`）→ 改成 `slice(0, 64)`。
+   12 位只够"日志里区分不同群"，**不够 `cli bind --chat-id`（要 32 位）**——等于"想从日志抓 chatId 去绑群"这条路被自己堵死。
+2. **没有入站日志**：原来只有 `patch-out.log`（出站），**"消息没进来"和"进来了没回"完全分不开**。现在 `patch-in.log` 记 `chat`/`from`/`len`/`text`。
+3. **没有方法命中探针**：现在 `patch-hooks.log` 会记原型方法清单 + 每次调用。**这次就是靠它排除"流式路径"假设的。**
+
+**三条都是"平时不暴露，一到排障就卡死"的那类缺陷。**
+
+### 49.8 还能做什么
+
+| 方向 | 可行性 |
+|---|---|
+| 让 WorkBuddy 走非流式回复 | 需要找到它的配置项（未找到） |
+| hook `sendStreamChunk` 自己发 | **不行**——它根本没被调用，hook 一个不被调的方法没用 |
+| 在没有 `sendReply` 时兜底：从 jsonl 读模型输出、自己调企微 webhook 发 | **理论可行但违背 D3**（确定性的事交给本地服务是对的，但"抢在产品前面发消息"会导致重复发送） |
+| 等厂商修 / 换 WorkBuddy 版本 | 唯一干净的路 |
+| **确认这是不是只在长会话上发生**（`input_tokens: 91503` 很大） | **可本地验**：清一个短会话再试。**没做**，因为清会话会丢历史 |
+
+### 49.9 未验证
+
+- 「出站是 13:16 那次自愈重启后坏的」——**时间上像，但没有因果证据**（回滚实验说明跟补丁无关，那只能是产品运行时状态）
+- 短会话会不会正常——**没验**，因为要清历史
+- `sendReply` 在 WorkBuddy 5.9.3 里的调用条件——**只能靠反编译，这次没做**
