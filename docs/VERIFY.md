@@ -4643,3 +4643,287 @@ powershell -File "$Root\bin\deploy-persona.ps1" -Source "$Root\render\company-bo
 | 演练没覆盖的步骤 | ✅ 标出来了（patch / tasks / wecom / bot-reply / 真新机） |
 
 **D4.1 完成（演练覆盖 8 节，5 项标为"要人参与"）。**
+
+## 48. 补完四项"能自己做但没做"的验证（2026-11-05）
+
+### 这四项是什么
+
+`§46` / `§47` 结案时留下的四笔账，都是**验证**不是**实现**——代码都在，缺的是"弄坏它看会不会报"：
+
+1. `task-anc-devbot` 的故障注入（故障矩阵 28/29 → 28/30 时新加的那项没验）
+2. devbot 真实夜间触发（`-Force` 那次绕过了时间窗口）
+3. `deploy-verify` 的 SKIP 分支（`17999` 一直开着，走不到那条路）
+4. 周末 / 节假日分支（验时是周三，`config.json` 也没 `holidays`）
+
+**顺带发现两个真 bug，见 §48.5。**
+
+---
+
+### 48.1 `task-anc-devbot` 故障注入
+
+```
+注入前   doctor: ok=True  fails=0  checks=30
+注入     Disable-ScheduledTask -TaskName 'anc-devbot' → State=Disabled
+注入后   doctor: ok=False  fails=1
+           FAIL task-anc-devbot
+                detail: 任务被禁用
+                fix   : Enable-ScheduledTask 恢复；确实要长期停用请改 PLAN 并在 doctor 加豁免
+恢复     Enable-ScheduledTask → State=Ready
+恢复后   doctor: ok=True  fails=0  checks=30
+           task-anc-devbot PASS — 状态 Ready / Administrator
+```
+
+**关键**：`fails=1` 而且**只报 `task-anc-devbot` 一项**——说明 `$ExpectedPrincipal` 里加的这一条真的接上了 `Get-TaskCoverage` 的循环，不是一个装饰性的表项。
+
+**故障矩阵：28/30 → 29/30。**
+
+（还差 1 项，是 `vault-ingest-audit` 的上限本身是 WARN 而不是 FAIL，`§39` 定过。）
+
+---
+
+### 48.2 devbot 真实触发 —— 发现 SYSTEM 身份根本跑不通 ★
+
+**这一项原本以为只是"等时间窗口"，实际撞出一个硬 bug。**
+
+#### 触发链路（先验计划任务本身）
+
+```powershell
+Start-ScheduledTask -TaskName 'anc-devbot'
+→ LastRunTime: 2026-11-04 13:13:13
+→ LastTaskResult: 0（成功）
+```
+
+**任务被触发、以正确身份跑完、退出码 0。** 但**没写 `devbot-scheduler.json`**——因为当时不在 22:00~06:00 窗口内，脚本正确 SKIP。**不写状态是对的**（设计就是"只有真跑才写"）。
+
+#### 然后用 SYSTEM 身份跑探针，撞出两个硬伤
+
+先确认 `devbot.ps1` 的 persona 路径：
+
+```powershell
+L40: $LivePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md'
+```
+
+`anc-devbot` 注册时的 principal 是 **SYSTEM**。用临时计划任务（SYSTEM 身份）跑探针：
+
+```
+USERPROFILE=C:\Windows\system32\config\systemprofile
+USERNAME=WIN-QO0LGLP39AO$
+LivePersona=C:\Windows\system32\config\systemprofile\WorkBuddy\Claw\CODEBUDDY.md
+LivePersona-exists=False                    ← ① 目标不存在
+Repo-exists=True
+git=git.exe : fatal: detected dubious ownership in repository at 'E:/workbuddy-anc'
+    'E:/workbuddy-anc/.git' is owned by: .../Administrator
+    but the current user is: NT AUTHORITY/SYSTEM      ← ② git 直接拒绝
+node=v24.13.1
+```
+
+**两个硬伤**：
+
+| # | 问题 | 后果 |
+|---|---|---|
+| ① | `%USERPROFILE%` 变成 `C:\Windows\system32\config\systemprofile` | 那里没有 WorkBuddy。`Copy-Item` 切 persona 会失败，或写到错的用户下——**devbot 改了 persona，但真正的 WorkBuddy 读的是别人的那份** |
+| ② | `git` 报 `dubious ownership` | SYSTEM 不是仓库的 owner，**所有 git 命令全部失败**。devbot 出不了分支，检查也做不了 |
+
+**所以 `anc-devbot` 用 SYSTEM 是完全错的——这个任务根本跑不通。**
+
+#### 修法
+
+**改 principal 为 `$BotUser`（交互）**，和 `anc-workbuddy-launch` / `anc-patch-guard` 一致——因为 devbot 要动的就是**同一个用户的** WorkBuddy persona，身份必须一致。
+
+```powershell
+# register-tasks.ps1
+Principal = (New-InteractivePrincipal $BotUser)   # 原来是 New-ServicePrincipal 'SYSTEM' 'Highest'
+```
+
+**同时给 `devbot.ps1` 加了防御**：
+
+```powershell
+# 新增 -LivePersona 参数（可显式覆盖）
+# 新增启动自检：
+if (-not (Test-Path (Split-Path -Parent $LivePersona))) {
+    $personaDir = Split-Path -Parent $LivePersona
+    $who = $env:USERNAME
+    Fail "persona 目录不存在: $personaDir（当前用户 $who）" \
+         "如果当前用户是 SYSTEM，说明 anc-devbot 的 principal 配错了——改成管理员账号，或显式传 -LivePersona" 2
+}
+```
+
+**为什么要这个自检**：不做的话，principal 配错会一路跑到 `Copy-Item` 才炸，错误信息是"找不到路径"，**看不出是身份问题**。现在会在启动第一步就说清是谁、哪个目录、可能是什么原因。
+
+**重注册 + 核实**：
+
+```
+register-tasks.ps1 -Only anc-devbot -BotUser Administrator -Apply
+→ anc-devbot   Administrator/Interactive   OK
+
+Get-ScheduledTask anc-devbot
+→ User=Administrator  Logon=Interactive  State=Ready
+```
+
+`doctor` 的期望值也跟着改成 `$BotUser`（原来写死 `'SYSTEM'`，改了 principal 之后会误报）：
+
+```
+task-anc-devbot  PASS  状态 Ready / Administrator
+```
+
+#### 时间窗口四种分支
+
+**给 `devbot-scheduler.ps1` 加 `-AsOf`**（注入"现在"是几点）。为什么要加：窗口判定没法靠等来验证——要么等到真到 22:00，要么改系统时间（会影响 service / 提醒 / 备份所有定时逻辑，不做）。
+
+| 注入时间 | `willRun` | `isWorkday` / `isHoliday` | 判定依据 |
+|---|---|---|---|
+| `2026-11-04 12:00`（周三中午） | **false** | — | `当前 12:00 不在窗口内（22:00 ~ 次日 06:00）` |
+| `2026-11-04 22:30`（周三夜） | false* | isWorkday=True isHoliday=False | **窗口判定通过**，只剩"没有 open issue" |
+| `2026-11-05 02:00`（周四凌晨） | false* | — | **过零点判定通过**，只剩"没有 open issue" |
+| `2026-11-07 22:30`（周六夜） | **false** | — | `今天是周末（Saturday），devbot 产出的分支要人 review，周末没人看` |
+
+\* 这两行 `willRun=false` 是因为 issue #3 在 `§46` 那次真跑里已经变成 `drafted`，库里没有 `status='open'` 的 issue 了。**时间窗口这一层已经通过**（原因里不再有"不在窗口内"）。
+
+**真跑链路**已经在 `§46` 验证过（435 秒，issue #3 → `drafted`，产出 `0f7e315`）。所以这一项现在的完整链条是：
+
+```
+计划任务能触发（LastTaskResult=0）
+  → 身份正确（Administrator，不是 SYSTEM）
+  → 时间判定对（四种分支验过）
+  → 条件满足时会真跑（§46 的 435 秒那次）
+```
+
+**唯一没验的**：真到 22:00 由计划任务自己触发一次完整跑（现在是 `Start-ScheduledTask` 手工触发 + `-Force` / `-AsOf` 注入）。**这一条要等**，或者接受"触发链路 + 判定逻辑 + 真跑链路三段分别验过"这个等价性。
+
+---
+
+### 48.3 `deploy-verify` 的 SKIP 分支
+
+**做法**：真关掉 test-emit，而不是伪造。
+
+```powershell
+# ① 删 flag
+Remove-Item C:\ProgramData\anc\data\test-emit.flag
+# ② 重启 WorkBuddy（flag 是启动时读一次）
+Stop-Process WorkBuddy -Force; 触发 anc-workbuddy-launch; 等 45–80 秒
+# ③ 确认 17999 不再监听
+Get-NetTCPConnection -LocalPort 17999 -State Listen  → False
+```
+
+**`deploy-verify` 输出**：
+
+```
+database       PASS  库存在: C:\ProgramData\anc\data\anc.db
+doctor         PASS  FAIL=0 WARN=2（30 项）
+task-write     PASS  task #70 写进去了，查得回来
+bot-reply      SKIP  test-emit 关闭（默认状态），17999 没监听
+                     FIX  要验群回应：建 ...test-emit.flag（内容随意），重启 WorkBuddy（flag 是启动时读一次），等 8–30 秒再重跑
+tasks          PASS  10 个任务全部 Ready/Running
+
+结果  PASS=4  FAIL=0  SKIP=1
+NEXT  没有 FAIL，但有 1 项 SKIP——那不是通过，是没验。列在下面了。
+```
+
+**三件事都对**：
+
+1. **判成 SKIP 不是 FAIL** —— 这是 `§45` 改过的判据（原来判 FAIL，在真机上误报过）
+2. **`ok=True`** —— SKIP 不算失败（但 `next` 明确说"那不是通过"）
+3. **`fix` 告诉人怎么开** —— 具体到文件名、为什么要重启、等多久
+
+**恢复**：建回 flag → 重启 → 17999 重新监听 → 注入一条测试消息 `ok=true`。
+
+---
+
+### 48.4 周末 / 节假日分支
+
+**周末**已在上面的表格里验过（`2026-11-07 22:30` → `今天是周末（Saturday）`）。
+
+**节假日**需要 `config.json` 里的 `holidays`，而这台机器**原本没有 `config.json`**（服务用默认值）。造一个临时的：
+
+```powershell
+[IO.File]::WriteAllText('C:\ProgramData\anc\data\config.json',
+    '{"holidays":["2026-11-05"]}', (New-Object Text.UTF8Encoding($false)))
+```
+
+| 注入时间 | `isHoliday` | `isWorkday` | 判定 |
+|---|---|---|---|
+| `2026-11-04 22:30`（周三） | **False** | **True** | 窗口内、工作日、非节假日 ✓ |
+| `2026-11-05 22:30`（周四，标为节假日） | **True** | **False** | `今天是节假日（2026-11-05 在 config.holidays 里）` ✓ |
+
+**验完立刻删掉 `config.json`**（原本就没有）。删完确认服务没坏：
+
+```
+health: ok
+anc-http 状态: Running
+```
+
+---
+
+### 48.5 顺带撞出的三个问题
+
+#### ① `-Now` 参数和 `$now` 变量撞名（今天第 6 次）
+
+加测试参数时写成 `[string]$Now`，脚本里又用 `$now = Get-Date`。
+
+**后果**：`[string]` 的类型约束把后面赋的 `DateTime` **强制转回字符串**，于是
+
+```
+$now.ToString('yyyy-MM-dd')
+→ Cannot find an overload for "ToString" and the argument count: "1"
+```
+
+**因为 `$Now` 和 `$now` 是同一个变量**（PowerShell 大小写不敏感），而参数的类型约束一直生效。
+
+**改法**：参数改名 `-AsOf`。
+
+**这是这类 bug 的第 6 次**（前五次：`$V`/`$v`、`$PSItem`、`$pid`、`$args`、`$Done`/`$done`、`$Failed`/`$failed`）。**规律很清楚：凡是 `param()` 里声明的名字，脚本里就不能有大小写不同的同名变量。**
+
+#### ② `patch-state.json` 的陈旧状态会让补丁看起来"已应用"
+
+**复现过程**：
+
+```
+13:19:13  补丁应用，写 patch-state.json {pid:13784, applied:true}
+13:50     我重启 WorkBuddy（Stop-Process + anc-workbuddy-launch）
+14:00     17999 不监听 —— test-emit 没生效
+查 patch-state.json:  {pid:13784, applied:true, at:13:19}   ← pid 13784 早就死了
+实际 WorkBuddy pid:    1388, 7844, ...
+```
+
+**删掉 `patch-state.json` 再重启 → 17999 正常监听，`{pid:508, applied:true}` 且 508 活着。**
+
+**结论**：这个残留状态**确实影响了启动行为**。
+
+**但没查明具体是哪段代码**：`launch-patched.ps1` 里 grep `applied` / `patch-state` / `$state` **都没有命中**（它只做"杀进程 → 重打补丁 → 启动"）。
+
+所以影响可能在 `inject.cjs` 或 `patch-guard` 里，**这次没追到底**。**按规矩标出来：现象确凿，机制未证实。**
+
+`§16` 记过同类问题（"进程死了但状态文件还写着 applied"），当时也是只定性没修。**这次同样没修。**
+
+#### ③ `config.json` 不存在时的行为
+
+验节假日时才发现这台机器**根本没有 `config.json`**。`grep` 结果：`devbot-scheduler.ps1` 里 `if (Test-Path $configFile) { ... }`，不存在就 `$holidays = @()`。
+
+**没问题**，但要注意：**给这台机器写 `config.json` 会改变服务行为**（它会从"全默认"变成"读文件"）。所以验完必须删。这次删了，`health: ok`。
+
+---
+
+### 48.6 四项验证的最终状态
+
+| # | 项 | 结果 |
+|---|---|---|
+| 1 | `task-anc-devbot` 故障注入 | ✅ 禁用 → `FAIL=1` 且只报它；恢复 → `ok=True`。**故障矩阵 29/30** |
+| 2 | devbot 真实触发 | ✅ 计划任务触发 `LastTaskResult=0`；**身份 bug 已修**（SYSTEM → Administrator）；四种时间分支全对；真跑链路 `§46` 已验。**唯一没验：真到 22:00 自己触发一次** |
+| 3 | `deploy-verify` 的 SKIP 分支 | ✅ 真关 test-emit → `SKIP` + `ok=True` + fix 具体；恢复后 17999 重新监听 |
+| 4 | 周末 / 节假日 | ✅ 周末 → `SKIP`；节假日 → `SKIP` 且原因指名"在 config.holidays 里"。临时 `config.json` 已删 |
+
+**顺带**：修了 `anc-devbot` 的 principal（**原本这个任务完全跑不通**）；发现 `patch-state` 陈旧状态问题但**没修也没查明机制**；`-Now` 撞名已改。
+
+### 48.7 还差什么
+
+**能自己做的验证，到这里就做完了。** 剩下的都是"要外部条件"：
+
+| 项 | 卡在哪 |
+|---|---|
+| 真到 22:00 由计划任务自己触发一次 | 等时间（或接受三段分别验过的等价性） |
+| `vault-ingest-audit` 从 WARN 变 FAIL | 它的上限设计就是 WARN（`§39`） |
+| D4.6 真验收 | 另一台机器 + 陌生 agent |
+| 5 个 DoD 🟡 | 企微后台 / 真员工 / 第二台真机 |
+| 1.0 第 2 条真升级回归 | 厂商发版 |
+| `patch-state` 陈旧状态的机制 | 这次没追到底，`launch-patched.ps1` 里没找到引用 |
+| 历史 35 个 commit 的 chatId | 转 public 前 `git filter-repo` |

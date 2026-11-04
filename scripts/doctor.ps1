@@ -143,7 +143,10 @@ $ExpectedPrincipal = [ordered]@{
     'anc-workbuddy-launch' = $BotUser
     'anc-patch-guard'      = $BotUser
     # devbot 自动启动：工作日 22:00~06:00 每 30 分钟查一次「全员下班」（2026-11-05 新增）
-    'anc-devbot'           = 'SYSTEM'
+    # **不是 SYSTEM**：devbot.ps1 要切当前用户的 WorkBuddy persona，
+    # SYSTEM 的 %USERPROFILE% 是 systemprofile（那里没有 WorkBuddy），且 git 会拒绝
+    # （dubious ownership）。和 anc-workbuddy-launch / anc-patch-guard 同 principal。
+    'anc-devbot'           = $BotUser
 }
 
 # ============ 自测：证明每类检查真的会 FAIL ============

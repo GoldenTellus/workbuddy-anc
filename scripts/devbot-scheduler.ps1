@@ -53,6 +53,18 @@ param(
     # 忽略工作日/时间窗口/当天去重，强制跑一次（排查用）
     [switch]$Force,
 
+    # 把"现在"当成这个时间（测试用，生产**不要传**）。格式 "yyyy-MM-dd HH:mm"。
+    #
+    # 为什么需要它：窗口判定（22:00~06:00 / 工作日 / 节假日）没法靠等来验证——
+    # 要么等到真到 22:00，要么改系统时间（会影响 service / 提醒 / 备份所有定时逻辑，不干）。
+    # 注入时间只影响"判断"，不影响后续动作，所以四种分支能一次验完。
+    #
+    # **参数名不能叫 -Now**：$Now 和 $now 是同一个变量（PowerShell 大小写不敏感），
+    # 而 [string] 的类型约束会把后面赋的 DateTime 强制转回字符串，
+    # 于是 $now.ToString("yyyy-MM-dd") 报「Cannot find an overload」。
+    # 这是这类 bug 第 6 次出现（前五次：$Done/$done、$V/$v、$PSItem、$pid、$args）。
+    [string]$AsOf = '',
+
     [switch]$Json
 )
 
@@ -66,7 +78,9 @@ $cli = Join-Path $Repo 'src\service\cli.ts'
 $stateFile = Join-Path $Root 'data\devbot-scheduler.json'
 $configFile = Join-Path $Root 'data\config.json'
 
-$now = Get-Date
+# 生产：$AsOf 为空，用真实时间。测试：注入固定时间。
+# 注意 $AsOf/$now 不是同一个变量（不同名前缀），不会互相污染。
+$now = if ($AsOf) { [datetime]::ParseExact($AsOf, 'yyyy-MM-dd HH:mm', $null) } else { Get-Date }
 $today = $now.ToString('yyyy-MM-dd')
 
 # ── 读 config（节假日）──────────────────────────────────────

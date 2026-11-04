@@ -102,7 +102,7 @@
 | **阶段 D** | **1/3**（无隐性知识 ✅；ACCEPTANCE 无 🟡、第二台机器 未达成） |
 | 测试 | `npm test` **107/107** |
 | 体检 | `doctor` **FAIL=0 WARN=1**（WARN 是 `vault-ingest-audit`，基线即 WARN） |
-| 故障矩阵（O-2） | **28/30 项**注入验证 + 1 项（`vault-ingest-audit`）真实触发过 WARN（`anc-devbot` 未注入，见 §46） |
+| 故障矩阵（O-2） | **29/30 项**注入验证（2026-11-05 补 `task-anc-devbot`，`§48`）+ 1 项（`vault-ingest-audit`）上限即 WARN |
 | 主机 | **10 个**计划任务 · 公司 bot 在跑（WorkBuddy 7 进程 + 补丁已加载，`mode: hash`） |
 | 技能 | **8 个**（原 5 + `anc-dayend` / `anc-feedback`；`.anc-backup` 是系统目录不算） |
 | **eval 用例** | **4 个技能 / 8 个用例**（`anc-task` 3 / `anc-vault-read` 2 / `anc-ingest-company` 2 / `anc-feedback` 1） |
@@ -153,7 +153,7 @@
 | 3 | **dayend 自动识别** | 注入「我走了」→ 80s 后库多一行、`day` 是本地日期、`allOff:true`；**gate L 从 6☑+1◐ 变 7/7** | `§36` |
 | 4 | **补丁自愈三路径** | ANCHOR-MISS→`exit 3` 不重启 / hash 不符→降级 `anchor` 仍生效 / 崩塌→91s 拉起 | `§37` |
 | 5 | **闭环最后一环** | devbot 自动标 `drafted`、`issue close --merged`、`prune-closed` 现在真能触发 | `§38` |
-| 6 | **doctor 30 项** | 28 注入 + 1 真实证据（2026-11-05 加 `anc-devbot` 后变 30）；`database` 原判"不做"是错的，用 `-Root` 就能注 | `§39` |
+| 6 | **doctor 30 项** | **29 注入** + 1 真实证据（`§48` 补上 `task-anc-devbot` 的注入）；`database` 原判"不做"是错的，用 `-Root` 就能注 | `§39` |
 | 7 | **并发压力** | 6 条 145ms 注入、5 条回复、无串群无死锁；**发现同群消息会被合并** | `§40` |
 | 8 | **错误恢复** | serve 44s 起 / bot 91s 起 / `test-emit.flag` 要重启才生效 | `§41` |
 

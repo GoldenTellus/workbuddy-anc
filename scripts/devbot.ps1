@@ -26,6 +26,13 @@ param(
     [string]$Repo = '',
     [string]$ChatId = '',
     [string]$UserId = '',
+
+    # WorkBuddy 的 CODEBUDDY.md 路径。默认按当前用户的 %USERPROFILE% 算。
+    # 为什么要能覆盖：这个脚本会以计划任务身份跑（anc-devbot）。
+    # 2026-11-05 实测：principal 若是 SYSTEM，%USERPROFILE% 变成
+    #   C:\Windows\system32\config\systemprofile —— 那里没有 WorkBuddy，
+    # 切 persona 会静默写到错误的位置。显式传这个参数能让错误立刻暴露。
+    [string]$LivePersona = '',
     [int]$TimeoutSec = 420,
     [switch]$Apply,
     [switch]$Restore
@@ -37,7 +44,16 @@ function Step($msg) { Write-Host "[devbot] $msg" }
 
 if (-not $Repo) { $Repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 $Root = Join-Path $env:ProgramData 'anc'
-$LivePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md'
+if (-not $LivePersona) { $LivePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md' }
+
+# 启动自检：persona 路径必须存在。
+# 不做这个检查的话，principal 配错（比如 SYSTEM）会一路跑到 Copy-Item 才炸，
+# 而且错误信息是「找不到路径」——看不出是身份问题。
+if (-not (Test-Path (Split-Path -Parent $LivePersona))) {
+    $personaDir = Split-Path -Parent $LivePersona
+    $who = $env:USERNAME
+    Fail "persona 目录不存在: $personaDir（当前用户 $who）" "如果当前用户是 SYSTEM，说明 anc-devbot 的 principal 配错了——改成管理员账号，或显式传 -LivePersona" 2
+}
 $DevPersona = Join-Path $Repo 'light\personas\devbot\CODEBUDDY.md'
 $ProdPersona = Join-Path $Repo 'light\personas\company-bot\CODEBUDDY.md'
 $Db = Join-Path $Root 'data\anc.db'

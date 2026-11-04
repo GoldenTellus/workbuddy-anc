@@ -149,13 +149,21 @@ $defs = @(
     },
     @{
         # devbot 自动启动：工作日 22:00~06:00 每 30 分钟查一次「全员下班」，满足条件就跑一条 open issue。
-        # **这个任务的动作指向仓库里的脚本，不是 bin/ 里的**：
-        #   devbot-scheduler 要 git 和 light/personas/，部署到 bin/ 之后两级上溯会落到 %ProgramData%\anc，
-        #   那里没有仓库。所以这里显式用 -File <仓库>\scripts\devbot-scheduler.ps1 -Repo <仓库>。
+        #
+        # **动作指向仓库里的脚本，不是 bin/ 里的**：devbot-scheduler 要 git 和 light/personas/，
+        #   部署到 bin/ 之后两级上溯会落到 %ProgramData%\anc，那里没有仓库。
+        #
+        # **principal 必须是 $BotUser（交互），不能是 SYSTEM**。2026-11-05 实测 SYSTEM 下两个硬伤：
+        #   ① devbot.ps1 的 $LivePersona = %USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md，
+        #      SYSTEM 的 %USERPROFILE% 是 C:\Windows\system32\config\systemprofile —— 那里没有 WorkBuddy，
+        #      切 persona 会写到不存在的位置（或写到错的用户下）
+        #   ② git 直接拒绝：fatal: detected dubious ownership（仓库属于 Administrator，当前是 SYSTEM）
+        # 这和 anc-workbuddy-launch / anc-patch-guard 用同一个 principal —— 因为 devbot 要动的是
+        # 同一个用户的 WorkBuddy persona。
         Name = 'anc-devbot'; Desc = 'devbot 自动启动：工作日 22:00~06:00 每 30 分钟查「全员下班」'
         Triggers = @((New-EveryMinutesTrigger 30 '22:00'))
         Action = (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $devbotArg)
-        Principal = (New-ServicePrincipal 'SYSTEM' 'Highest')
+        Principal = (New-InteractivePrincipal $BotUser)
         Settings = (New-Settings 'PT30M')
     }
 )
