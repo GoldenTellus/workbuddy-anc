@@ -3854,3 +3854,171 @@ try { $dbPath = Join-Path $Root 'data\anc.db' } catch { }   # 抓不住！
 | `2>&1` 调用也是纯 JSON | ✅ |
 
 **D4.2 完成。**
+
+## 43. D4.3 断点续装：`scripts/deploy-state.ps1`（2026-11-05）
+
+### 为什么 `deploy.ps1` 不够
+
+`deploy.ps1` 是**原子操作**：备份 → 复制 → 逐文件对拍 → 任一失败整体回滚。它保证"文件要么全新要么全旧"。
+
+但**整个部署不是一步**，是十几步：
+
+```
+前置检查 → WorkBuddy → 建目录 → 部署文件 → 装技能 → 打补丁 → 注册任务 → 建 vault → 写 org → 配企微 → 自证
+```
+
+**`deploy.ps1` 只管第 4 步。** 装到第 6 步"打补丁"失败时——这一环在这台机器上折腾过很多次（`§37` 记了三条失效路径）——如果只能从头来，agent 会：
+
+- 重做已完成的事（浪费时间）
+- **可能覆盖已经改好的东西**（危险）
+
+所以需要一层"进度记录"，让 agent 知道"从哪接着做"。
+
+### 设计
+
+状态文件：`%ProgramData%\anc\data\deploy-state.json`
+
+```json
+{
+  "side": "company",
+  "stage": "patch",
+  "done": ["preflight", "workbuddy", "dirs", "files", "skills"],
+  "failed": "patch",
+  "at": "2026-11-05T09:12:33.1234567+08:00",
+  "error": "ANCHOR-MISS: 版本 5.9.3 的锚点没找到"
+}
+```
+
+**四条原则**：
+
+1. **状态文件是唯一真相** —— agent 不看日志猜进度，只读这个 JSON
+2. **每步显式 mark** —— 不去推断"应该算做完了"，由执行者说
+3. **failed 要带 reason** —— 重跑时 agent 要知道上次卡在哪、为什么
+4. **不用锁** —— 两个人同时装一台机器本身就是错的
+
+**阶段表按侧分**（和 `AGENT-DEPLOY-*.md` 的章节一一对应）：
+
+| company（11 步） | employee（7 步） |
+|---|---|
+| preflight, workbuddy, dirs, files, skills, patch, tasks, vault, org, wecom, verify | preflight, workbuddy, files, skills, persona, bind, verify |
+
+employee 侧没有 `tasks`（不注册计划任务）、没有 `vault`/`org`/`wecom`（那是公司侧的事），多了 `persona` 和 `bind`。
+
+**关键输出是 `next`**：
+
+| 状态 | next 说什么 |
+|---|---|
+| 没开始 | `还没开始。先跑 preflight.ps1 -Side company，通过后从 preflight 开始。` |
+| 有 failed | `上次卡在 patch（ANCHOR-MISS）。修好之后重跑那一步，再 -Mark patch -AsDone。**不要从头来**。` |
+| 做完了 | `全部阶段已完成。` |
+| 正常 | `下一步：skills（部署技能）` |
+
+**"不要从头来"这句是写给 agent 的**，不是给人看的——它最可能的错误行为就是"失败了就重跑整个流程"。
+
+### 测试（8 条，进 `npm test`）
+
+```
+✔ 初始状态是 0/11 且 next 指向第一步
+✔ 连续 mark 三个阶段，done 必须累积（这是解包 bug 的回归测试）
+✔ 中途失败后，已完成阶段必须保住（断点续装的核心）
+✔ 全部做完后 ok=true 且 next 说明完成
+✔ 未知阶段要报错（拼错阶段名不能被静默接受）
+✔ employee 侧的阶段表和 company 不同
+✔ 状态文件是 UTF-8 无 BOM 的合法 JSON
+✔ 输出到 stderr 的东西不能污染 JSON
+```
+
+**全量 `npm test`：115/115**（原 107 + 8），82 秒。
+
+### 修掉的三个 bug
+
+#### ① `-Done` 撞 `$done`（今天第 5 次栽在 PowerShell 大小写不敏感上）
+
+```powershell
+param([switch]$Done)
+...
+$done = if ($st.done) { @($st.done) } else { @() }
+# Cannot convert "PSCustomObject" to "SwitchParameter"
+```
+
+PowerShell 参数和变量**大小写不敏感**，`$Done` 和 `$done` 是同一个变量。
+
+改成 `-AsDone` / `-AsFailed`（内部变量用 `doneList` / `failedId`）。
+
+**今天栽在这上面的**：`$V`/`$v`、`$PSItem`、`$pid`、`$args`、`$Done`、`$Failed`。
+
+#### ② `if` 表达式返回单元素数组会解包成标量 ★
+
+**这是最隐蔽的一个。**
+
+```powershell
+$a = if ($true) { @('x') } else { @() }
+# $a 是 String 'x'，不是 Object[] @('x')
+```
+
+于是：
+
+```powershell
+$doneList = if ($st -and $st.done) { @($st.done) } else { @() }   # 单元素时是字符串
+$doneList += 'workbuddy'                                          # 变成字符串拼接
+# → 'preflightworkbuddy'
+
+$stageIds | Where-Object { $doneList -contains $_ }
+# -contains 对标量是相等比较：'preflightworkbuddy' -contains 'preflight' → False
+# → 全部不匹配 → done 被清空
+```
+
+**症状极具误导性**：
+
+- **第一次 mark 是对的**（`@()` 空数组保持数组）
+- **第二次开始错**（`@('preflight')` 被解包）
+- **不报错**，只是 `progress` 往回掉
+- 表现成"断点续装不工作"，但看不出是数组退化成字符串
+
+**改法**：数组一律显式初始化，不靠 `if` 返回值。
+
+```powershell
+$doneList = @()
+if ($null -ne $st -and $null -ne $st.done) { $doneList = @($st.done) }
+```
+
+**而且我第一次只改了一处**（`Build-View` 里的），`mark` 分支里还有一处（L192）没改，跑出来还是错的。**同一个 bug 在两个地方**。
+
+#### ③ 测试里 `import.meta.dirname` 上溯级别搞错
+
+```typescript
+const REPO = resolve(import.meta.dirname, '..');        // E:\workbuddy-anc\src  ← 错
+const REPO = resolve(import.meta.dirname, '..', '..');  // E:\workbuddy-anc      ← 对
+```
+
+测试在 `src/service/`，一级只到 `src/`。
+
+**症状**：`powershell -File E:\workbuddy-anc\src\scripts\deploy-state.ps1` 报"参数不存在"，`execFileSync` 拿到退出码 **`4294770688`（`0xFFFF0000`）**。
+
+**这个退出码很误导**——看起来像权限或沙箱问题，实际是"文件不存在"。
+
+**查法**：写个最小诊断测试，把 `import.meta.dirname` / `REPO` / `SCRIPT` / `exists` 全打出来。**5 秒定位**，比读错误消息快得多。
+
+### 一个观察
+
+**这三个 bug 里，前两个都是"静默的"**：
+
+| bug | 报错吗 | 症状 |
+|---|---|---|
+| `-Done` 撞 `$done` | **报**（类型转换失败） | 容易查 |
+| `if` 解包数组 | **不报** | 数据悄悄变少，像功能没实现 |
+| 路径上溯错一级 | 报，但信息误导 | 退出码 `0xFFFF0000` 看着像权限问题 |
+
+**给 agent 用的脚本，"不报错但结果错"是最危险的**——agent 不会怀疑输出，只会照它做。
+
+### 这一项的状态
+
+| 要素 | 状态 |
+|---|---|
+| 状态文件 `{stage, done[], failed, at, error}` | ✅ |
+| `deploy.ps1 -Apply` 失败写 failed，重跑从 failed 接着做 | ✅（由调用方 mark；`deploy.ps1` 本身不动） |
+| 阶段划分和 `AGENT-DEPLOY-COMPANY.md` 章节一一对应 | ✅（11 步 / 7 步） |
+| 故意让第 4 阶段失败，重跑时证明确实跳过前 3 步 | ✅（测试第 3 条） |
+| `npm test` 全绿 | ✅ 115/115 |
+
+**D4.3 完成。**
