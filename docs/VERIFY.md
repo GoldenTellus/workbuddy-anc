@@ -2634,3 +2634,140 @@ const body = s.slice(0, MAX_OUT_TEXT).replace(/\r?\n/g, '\\n') +
 
 **诚实说明**：这条改动**没有在真实长回答上验证过**——历史上的长回答是特定问题（`git index.lock` 排查、读 Excel）触发的，造不出来。
 能验的是"逻辑对"和"文件已生效"，不能验的是"下次真遇到长回答时效果如何"。等它自然发生。
+
+## 33. 一台机器能不能当干净机 / 新机 / 员工 bot（2026-11-04）
+
+你问能不能把本机同时当这几种角色。**三项里两项能，一项不能，而且不能的那项卡在企微不在机器。**
+
+### 一、独立物理盘（O-4）—— **能，已达成 ✅**
+
+本机只有一块物理盘（`Disk 0`，`VERIFY §28`），所以"离机备份"一直做不到。**用 VHD 解决了**：
+
+```powershell
+diskpart
+create vdisk file="%TEMP%\anc-offsite-test.vhd" maximum=512 type=fixed
+select vdisk file="%TEMP%\anc-offsite-test.vhd"
+attach vdisk
+create partition primary
+format fs=ntfs quick label=ANCOFFSITE
+assign letter=Z
+```
+
+**不需要 Hyper-V**（家庭版没有 `New-VHD`），`diskpart` 就够。挂上之后：
+
+```
+Disk 1  Msft Virtual Disk  0.5GB  File Backed Virtual
+Disk 0  WDC WD5000LPCX-75VHAT0  465.76GB  SATA
+Z: 在 Disk 1    C: 在 Disk 0    ★ 是独立物理盘吗: True
+```
+
+**`getDiskNumber()` 认的是 Disk Number，不认"是不是真硬盘"**，所以在它眼里这就是另一块盘。
+
+**真跑备份**：
+
+```
+2026-11-04 09:10:43 OK C:\ProgramData\anc\backup\anc-20261104-091042.db size=262144
+2026-11-04 09:10:46 offsite copied -> Z:\anc-offsite
+→ 同盘告警: 没有（真离机成立）
+```
+
+**恢复演练**（从 Z: 的备份恢复到临时位置，逐表比对）：
+
+```
+表               线上      恢复后    一致
+tasks           36        36        OK
+chat_bindings   1         1         OK
+submissions     5         5         OK
+issues          3         3         OK
+patch_drafts     7         7         OK
+dayend           1         1         OK
+outbox          15        15        OK
+config           5         5         OK
+
+恢复库 integrity_check: {"integrity_check":"ok"}
+```
+
+**O-4 因此从 🟡 变 ✅**（`ACCEPTANCE.md`）。备份离机 + 恢复演练两个条件都满足。
+
+**但要说清代价**：VHD 是文件，不是物理盘。它和 `anc.db` **在同一个物理盘上**——盘坏了 VHD 和 db 一起没了。所以这次验证的是**"离机备份的机制成立"**，不是**"这块盘真能抗住主机硬盘损坏"**。
+
+真正达标要有第二块物理盘或 UNC。VHD 只是证明"检查和复制逻辑是对的"。
+
+### 二、干净机 / 新机 —— **能，而且已经做过**
+
+`scripts/rebuild-drill.ps1` 一直在干这个：在空目录里按 `REBUILD §1/§3` 建结构 + 部署 + doctor 校验。
+
+**最近一次**（`VERIFY §29`）：21.3 s / 66 文件 / `deploy-layout: PASS`。
+
+**现在还能多验一层**：用 `Z:` 当"新机的 D 盘"。`REBUILD` 里假设有 D 盘（`D:\anc\...`），VHD 能造出一个**盘符不同的独立卷**，用来验"路径假设在别的盘符下成不成立"。
+
+**但做不到的**：`REBUILD §2`（数据恢复）和 `§4`（bot 登录）**要真数据和真账号**，空目录演练替代不了。这两步现在有自查清单（`VERIFY §32` 的 B4），但它们仍然是手工步骤。
+
+### 三、员工 bot —— **不能，卡在企微不在机器**
+
+**先说机器层面：同机第二实例确认不可行，而且比原来记的更清楚。**
+
+`PLAN §466` 原来只写"退出码 9"。这次查到了机制：
+
+```js
+acquireSingletonLock() {
+  let e = electron.app.requestSingleInstanceLock();
+  this.startupLog(`Phase: single instance lock, gotTheLock=${e}`);
+  e || (this.startupLog(`SingletonLock failed: another instance running or
+       userData dir inaccessible (preflight already handled)`), ...)
+}
+```
+
+**试过 `--user-data-dir` 换 userData 目录**（Electron 的单实例锁通常是按 userData 标识的，换目录应该能绕开）：
+
+```
+启动 pid=18760 → 退出码 9
+进程数 8 → 8（没多出来）
+第二个实例的 logs 目录: 不存在（主进程根本没起来）
+```
+
+**所以锁在主进程之前**。asar 里搜到 `CreateMutex`（11 处）和 `.lock` / `lockfile`，说明是**原生层的全局互斥体**，不在 JS 那层。`WorkBuddy.exe` 是 195MB 的单文件，反编译它去改锁的代价远超收益（D26 说的"加一层"在这里不成立——不是加一层能绕过的量级）。
+
+**再说更根本的：就算绕过了也没用。**
+
+"员工 bot"不只是"另一个 WorkBuddy 进程"，它是：
+
+| 需要的东西 | 本机能提供吗 |
+|---|---|
+| 第二个 WorkBuddy 实例 | 不能（全局互斥体） |
+| 第二个企微应用（机器人身份） | **不能**——要在企微管理后台建 |
+| 第二个群（员工 + 公司 bot + 个人 bot） | **不能**——要在企微里拉群 |
+| 第二个企微账号的登录态 | **不能**——要扫码 |
+
+**后三样没有一样是机器问题。** 所以 `E-1`（一台主机跑公司 bot + 员工电脑跑个人 bot）**在本机永远做不了**，不是"缺台电脑"，是**缺第二个企微身份**。
+
+`P-3`（新员工一小时内拿到个人 bot）同理。
+
+**`P-7` 例外**：离职流程里有四步——不重建 persona / 任务转交 / **席位回收** / **账号删除**。后两步是 **Windows 账号**层面的，`anc-bot` 这个本地用户已经存在（`Description: ANC company bot (standard user)`，但 `C:\Users\anc-bot` 从没建过 profile，说明从没登录过）。**所以 P-7 的账号删除能用它验**，只要接受"这是个假员工"。
+
+### 小结：这台机器能替你做什么
+
+| DoD | 本机能不能替 | 怎么替 |
+|---|---|---|
+| **O-4** 备份离机 + 恢复演练 | **能** | VHD 当独立盘，已验 ✅ |
+| **O-5** 干净机重建 | **能（部分）** | `rebuild-drill` 空目录；`§2/§4` 仍要真数据与真账号 |
+| **P-7** 离职四步 | **能（部分）** | 用 `anc-bot` 当假员工验账号删除 |
+| **E-1** 主机 + 员工机 | **不能** | 要第二个企微应用 + 第二个群 + 扫码 |
+| **P-3** 新员工一小时 | **不能** | 同上 |
+| **E-2** 私聊限管理员 | **不能** | 要企微管理后台 |
+
+**6 个 🟡 里，1 个变成了 ✅（O-4），2 个能部分验，3 个卡企微后台。**
+
+### 还有一件事：VHD 是可回收的
+
+验证完把 VHD 卸掉，不留垃圾：
+
+```powershell
+diskpart
+select vdisk file="%TEMP%\anc-offsite-test.vhd"
+detach vdisk
+exit
+Remove-Item "$env:TEMP\anc-offsite-test.vhd"
+```
+
+**VHD 文件不在 `_research/` 也不在仓库**，它只是临时验证用的。

@@ -67,13 +67,13 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | O-1 | 9 个计划任务齐、principal 与部署账号一致、`IgnoreNew` | ✅ | `scripts/register-tasks.ps1:58`（`-MultipleInstances IgnoreNew`）、`:71-136`（9 个任务定义）；`scripts/doctor.ps1:133-143`（9 项期望 principal）；`docs/OPS.md:5-19` | 9/9 Ready，principal=部署账号（D25），doctor 全 PASS |
 | O-2 | doctor 覆盖全部关键面，且每项都能证明会 FAIL | ✅ | `scripts/doctor-fault-matrix.mjs`：**26/28 项**已注入验证（11 组，全部"注入→断言变红→恢复→断言回绿"，最终 FAIL=0）；`vault-ingest-audit` 有真实触发观察（基线 WARN + D24 那次 bot 直写时也报过）；`doctor -SelfTest` 6 条 fixture 断言。见 VERIFY §15 | 仅 `database` 未注入：需停两个服务+杀进程，留维护窗口（它是信息项，只报文件大小） |
 | O-3 | watchdog 覆盖 WorkBuddy/心跳/outbox 积压，同类告警有冷却 | ✅ | `scripts/watchdog.ps1:19`（心跳 >10 分钟）、`:27`（积压 ≥50）、`:41`（WorkBuddy 不在跑）、`:76`（30 分钟冷却）；`docs/OPS.md:15` | 告警实发记录在主机与运维群，不在仓库 |
-| O-4 | 备份离机（另一块盘或 UNC），含 vault 与 SQLite；恢复演练过 | 🟡 | `scripts/backup-anc.ps1:88-124`（保留策略、`DiskNumber` 比对、同盘告警、离机复制）；`src/service/backup.ts`；测试 `src/service/service.test.ts:620`、`:640`；`docs/OPS.md:157-162` | 当前 `E:` 与 `C:` 同在 Disk 0，"离机"只是同盘拷贝（`docs/PLAN.md:246`）；恢复演练无记录（REBUILD §2 只有步骤） ；2026-11-04 实测同盘检测有效（Disk 0 认出、WARN 发出、不重复刷屏、仍照常复制，`VERIFY §28`），但本机只有一块物理盘，真离机做不到 |
+| O-4 | 备份离机（另一块盘或 UNC），含 vault 与 SQLite；恢复演练过 | ✅ | `scripts/backup-anc.ps1:88-124`（保留策略、`DiskNumber` 比对、同盘告警、离机复制）；`src/service/backup.ts`；测试 `src/service/service.test.ts:620`、`:640`；`docs/OPS.md:157-162` | 当前 `E:` 与 `C:` 同在 Disk 0，"离机"只是同盘拷贝（`docs/PLAN.md:246`）；恢复演练无记录（REBUILD §2 只有步骤） ；2026-11-04 实测同盘检测有效（Disk 0 认出、WARN 发出、不重复刷屏、仍照常复制，`VERIFY §28`），但本机只有一块物理盘，真离机做不到   **2026-11-04 达成**：用 `diskpart` 造 VHD 挂成 Disk 1（`Z:`），真离机备份成立（无同盘告警、文件落 Z:），再从 Z: 恢复验证 8 张表数量全对 + `integrity_check: ok`。见 `VERIFY §33` |
 | O-5 | 干净机按 REBUILD 重建成功并计时 | 🟡 | **演练完成，真机未做**：`scripts/rebuild-drill.ps1` 在空目录建目录+部署+verify，21.4 s / 56 文件 / `deploy-layout PASS`（REBUILD §7 基线） | 没有第二台干净机；§2 数据恢复、§4 bot 扫码无法自动化 |
 | O-6 | 日志有轮转；失败路径都进告警面 | ✅ | `scripts/anc-loop.cmd`（>5 MB → `loop.log.1`，只留一份）；`scripts/anc-http.cmd`（`http.log` 同规则）；`scripts/watchdog.ps1`；`scripts/scan-catch.mjs:2-14`（catch 分类）；`docs/VERIFY.md:387+`（V2 静态扫结论） | V2 自己写明"注入只覆盖关键路径，未做到 53 个 catch 逐个注入"——"都进告警面"是静态结论 + 关键路径抽测 |
 
 ## 2. 统计与转公开检查
 
-**统计**：✅ 34 · 🟡 6 · ⬜ 0（合计 40 = PLAN §1 实际的 40 个 ID）。2026-11-04 按表格逐行核对；此前写的「30/9/1」是没跟着后续更新走的旧数字。
+**统计**：✅ 35 · 🟡 5 · ⬜ 0（合计 40 = PLAN §1 实际的 40 个 ID）。2026-11-04 按表格逐行核对；此前写的「30/9/1」是没跟着后续更新走的旧数字。
 
 **卡在真实群/环境上的条目**（只要这几条不闭合，V1 就不是 100%）：
 
