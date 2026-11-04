@@ -6525,3 +6525,185 @@ doctor    fails=3（heartbeat / secrets-acl / http-health）—— 这 3 个是�
 ```
 
 **goal 第 2 步完成**（代码层面），**失败路径留作待验证**。
+
+## 62. `doctor` 从 fails=3 到 fails=0：三个 FAIL 是三种不同的东西（2026-11-05）
+
+### 62.1 三个 FAIL 各是什么
+
+清空前 `doctor` 报：
+
+```
+[FAIL] heartbeat      249 分钟没有 tick
+[FAIL] secrets-acl    secrets 对广泛组可读
+[FAIL] http-health    anc-http 任务在但端口没响应
+```
+
+**看着都是「服务没跑」，实际上是三个完全不同的原因。** 分开说。
+
+### 62.2 `secrets-acl`：恢复备份时把继承权限带回来了
+
+`robocopy /E` 只拷文件，**不拷 ACL** —— 所以 `secrets\` 丢了原来收窄的权限，退回到从 `ProgramData` 继承的宽权限：
+
+```
+修前:  SYSTEM FullControl / Administrators FullControl
+       CREATOR OWNER 268435456
+       BUILTIN\Users  ReadAndExecute, Synchronize
+       BUILTIN\Users  Write                      ← 任意用户可写
+```
+
+第一次修法（**这一步我修错了**）：
+
+```powershell
+icacls $sec /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F'
+```
+
+**这修得太过** —— 它把 `LOCAL SERVICE` 也挡在门外了，而 **`anc-service` / `anc-http` 正是以 `LOCAL SERVICE` 身份运行的**。
+
+第二次补上：
+
+```powershell
+icacls $sec /grant:r 'LOCAL SERVICE:(OI)(CI)RX'      # 只读就够，服务只读 token/webhook
+```
+
+**一条教训**：**收窄 ACL 时，必须先把「谁会读它」列出来**。服务身份往往不是 `SYSTEM`，也不是 `Administrators`。
+
+### 62.3 `heartbeat`：`loop.log` 对 `LOCAL SERVICE` 没有写权限
+
+**这是最难找的一条，因为所有间接证据都说"服务在跑"。**
+
+`doctor` 的判据（L235）：看 `C:\ProgramData\anc\data\loop.log` 的 mtime，超过 5 分钟就 FAIL。
+
+而 `anc-service` 的执行记录看起来完全正常：
+
+```
+State=Ready   LastRun=02:26:26 → 02:27:27 → 02:28:28   Result=0x0
+触发器: MSFT_TaskDailyTrigger  重复=PT1M  持续=P9999D
+```
+
+**每分钟都在跑、结果都是成功，但 `loop.log` 一直停在 02:19:39。**
+
+**定位手段：造一个同权限的探针任务。**
+
+```powershell
+$act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c "C:\ProgramData\anc\bin\anc-loop.cmd"'
+$prin = New-ScheduledTaskPrincipal -UserId 'LOCAL SERVICE' -LogonType ServiceAccount
+Register-ScheduledTask -TaskName 'anc-probe-ls' -Action $act -Principal $prin -Force
+```
+
+结果：`LastResult=0x1`，探针文件根本没生成。
+
+**再查 `loop.log` 的 ACL**：
+
+```
+SYSTEM            FullControl
+Administrators    FullControl
+BUILTIN\Users     ReadAndExecute, Synchronize      ← 只有读
+                                                  ← 没有 LOCAL SERVICE
+```
+
+而 `anc-loop.cmd` L15 是：
+
+```cmd
+"C:\Program Files\nodejs\node.exe" ... loop --once --db ... >> "%LOGF%" 2>&1
+```
+
+**`>>` 重定向失败 → `cmd` 报错退出**。所以任务"成功运行"、但一行日志都没写进去。
+
+**修法**：
+
+```powershell
+icacls 'C:\ProgramData\anc\data' /grant 'LOCAL SERVICE:(OI)(CI)M'   # 目录给 Modify，子文件继承
+# 已有日志文件不继承新 ACE，要逐个补
+icacls loop.log /grant 'LOCAL SERVICE:(M)'
+```
+
+**探针复验**：`LastResult=0x0`，`loop.log` 从 02:29:29 跳到 02:33:37 ✅
+
+**修好后连查 2 分钟，`loop.log` 自己在跳**（0.5 → 0 → 0.6 → 0.1 分钟前），说明触发器真的在维护节奏了，不是我手动跑造成的假象。
+
+### 62.4 `http-health`：服务本身没问题，是「我查错了端口」
+
+一开始我一直探 `18765` —— **那是猜的**。实际端口是 **17891**，`cli.ts serve` 启动时会打印：
+
+```
+{"ok":true,"url":"http://127.0.0.1:17891","token_configured":true}
+```
+
+而且 `doctor` 探的不是 `/health` 而是 **`/__anc_health`**（免 token 端点）：
+
+```powershell
+$h = Invoke-RestMethod -Uri 'http://127.0.0.1:17891/__anc_health' -TimeoutSec 3
+```
+
+手动起一次 serve 后它会返回：
+
+```
+{"ok":true,"detail":"tick 3 分钟前","ts":"..."}
+```
+
+**所以 `http-health` 从来没坏过** —— 坏的是「服务没启动」，以及**我查的端口号是错的**。
+
+**顺带一个坑**：`/health`、`/api/health`、`/` 都返回 **401**（要 token），只有 `/__anc_health` 是免 token 的。我第一次探 `/health` 看到 401，差点以为是鉴权坏了。
+
+### 62.5 `deploy-verify` 的 `bot-reply`：409 不该判 FAIL
+
+修完上面三个之后 `deploy-verify` 还剩一个 FAIL：
+
+```
+[FAIL] bot-reply   注入失败: The remote server returned an error: (409) Conflict.
+```
+
+**409 不是故障**，是 `preload.cjs` 里这一段的正常分支：
+
+```javascript
+if (!global.__ancLastClient) return reply(409, { ok: false, error: '还没有实例引用：先让 bot 收到一条真实消息' });
+```
+
+`global.__ancLastClient` 只在 bot 收到过**真实群消息**之后才会有值。所以 409 的含义是「先让群里 @ 一次」。
+
+**原来是判 FAIL**（`deploy-verify.ps1` L199-200），导致**干净的机器上 `deploy-verify` 永远 `ok=false`**。改成判 SKIP：
+
+```powershell
+if ($emitDetail -match '409') {
+    Add-Check 'bot-reply' 'SKIP' '还没有实例引用（需先在群里收到一条真实消息）' '这是设计：test-emit 依赖一个活的 WecomAiBotClient 实例。让群里有人 @ 一次 bot，再重跑本脚本'
+} else {
+    Add-Check 'bot-reply' 'FAIL' ...
+}
+```
+
+改完：
+
+```
+deploy-verify 公司侧:  ok=True  pass=4  fail=0  skip=1
+  [PASS] database    库存在
+  [PASS] doctor      FAIL=0 WARN=3（30 项）
+  [PASS] task-write  task #73 写进去了，查得回来
+  [SKIP] bot-reply   还没有实例引用（需先在群里收到一条真实消息）
+  [PASS] tasks       10 个任务全部 Ready/Running
+```
+
+### 62.6 最终状态
+
+```
+doctor         ok=True  fails=0  warns=3
+  [PASS] heartbeat     0 分钟内有 tick
+  [PASS] http-health   tick 0 分钟前
+  [PASS] secrets-acl   secrets 只对服务身份与管理员可读
+  [PASS] patch         APPLIED(hash) + update-hook
+  [PASS] 10 个 task-anc-*  全 Ready
+
+deploy-verify  ok=True  pass=4  fail=0  skip=1
+
+3 个 WARN 都是设计内的：
+  secrets-in-git      没指定 -Repo 跳过仓库扫描
+  canary              需要先收到一条真实群消息
+  vault-ingest-audit  3 个未跟踪文件，1 小时内没入库记录
+```
+
+### 62.7 这一轮的教训
+
+**「三个 FAIL 长得一样，原因完全不同」。** 如果按同一个思路修（都当"服务没跑"去启动服务），`secrets-acl` 和 `heartbeat` 永远不会好 —— 它们一个是 ACL 太宽、一个是 ACL 太窄。
+
+**而 `heartbeat` 那条尤其阴**：任务记录显示每分钟成功运行、退出码 0，唯一的异常是「日志文件不动」。**要不是造了个同权限的探针任务去实地跑一次，光看任务状态永远发现不了。**
+
+**探针任务这个手法值得记住**：不确定「某个身份能不能跑某个命令」时，造一个只跑一次的临时任务、用目标身份跑、看退出码和副作用，比读 ACL 猜要快得多。

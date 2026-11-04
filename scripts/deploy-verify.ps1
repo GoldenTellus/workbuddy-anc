@@ -197,7 +197,15 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
                 }
 
                 if (-not $emitOk) {
-                    Add-Check 'bot-reply' 'FAIL' ('注入失败: ' + $emitDetail.Substring(0, [Math]::Min(80, $emitDetail.Length))) '17999 在监听但 POST 失败；看 WorkBuddy 的 daemon.log'
+                    # 2026-11-05（VERIFY §62）：409 不是故障，是「还没有实例引用」。
+                    # preload.cjs 的 /emit 会检查 global.__ancLastClient（一个活的 WecomAiBotClient 实例），
+                    # 它只在 bot 收到过真实群消息之后才有值。所以 409 的含义是「先让群里 @ 一次」。
+                    # 早先这里一律判 FAIL，导致干净的机器上 deploy-verify 永远 ok=false。
+                    if ($emitDetail -match '409') {
+                        Add-Check 'bot-reply' 'SKIP' '还没有实例引用（需先在群里收到一条真实消息）' '这是设计：test-emit 依赖一个活的 WecomAiBotClient 实例。让群里有人 @ 一次 bot，再重跑本脚本'
+                    } else {
+                        Add-Check 'bot-reply' 'FAIL' ('注入失败: ' + $emitDetail.Substring(0, [Math]::Min(80, $emitDetail.Length))) '17999 在监听但 POST 失败；看 WorkBuddy 的 daemon.log'
+                    }
                 } else {
                     # 注入成功 = 链路通。再花 60 秒看一眼有没有回复，超时不算失败。
                     $outLog = Join-Path $Root 'data\patch-out.log'
