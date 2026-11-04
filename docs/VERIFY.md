@@ -5112,3 +5112,178 @@ Claw 会话 `9095229a-...`（就是 bot 那个工作目录）的最后一条 ass
 - 「出站是 13:16 那次自愈重启后坏的」——**时间上像，但没有因果证据**（回滚实验说明跟补丁无关，那只能是产品运行时状态）
 - 短会话会不会正常——**没验**，因为要清历史
 - `sendReply` 在 WorkBuddy 5.9.3 里的调用条件——**只能靠反编译，这次没做**
+
+## 50. org 从零员工到两员工：D4.4 真数据 + E-2 数据面 + REBUILD 复验（2026-11-05）
+
+### 50.1 起因
+
+`§44` 写的部门结构（`org/depts/<id>.md` 的 `skills` / `vault_paths`）当时只有 **12 条单元测试**，输入全是合成数据。而 `D:\anc\org\members\` 一直是**空的**——「公司」是个零员工的空壳，`groups.json` 渲染出 0 个成员。
+
+**P-3（新员工上线）从来没被真正走过**，因为压根没员工可上线。
+
+### 50.2 建了什么
+
+仓库里没有这些文件（运行时数据），写进 `D:\anc\org\`：
+
+**`depts/engineering.md`**
+
+```yaml
+---
+id: engineering
+name: 研发部
+vault_paths: company, collab
+skills: anc-task, anc-vault-read, anc-feedback
+note: 研发部负责产品与交付，能读写主动作与公司共享区
+---
+```
+
+**`members/owner.md`**（老群）与 **`members/staff-a.md`**（test2）
+
+```yaml
+---
+name: 管理员            # staff-a 是「员工A」
+userid: wokc…TsUTw
+chat_id: wrkcDlGwAAca…  # staff-a 是 wrkcDlGwAAlp…
+dept: engineering
+---
+```
+
+`id` 从文件名推断，不写在 frontmatter 里（`org.ts` 的 `KNOWN_KEYS.member` 不含 `id`）。
+
+### 50.3 渲染：15 条断言全过
+
+```powershell
+node src\render\cli.ts render --org D:\anc\org --out D:\anc\render --json
+```
+
+```json
+{"ok":true,"groups":2,"tampered":[],"warnings":[],
+ "outputs":[
+   {"file":"D:\\anc\\render\\company-bot\\CODEBUDDY.md","bytes":4216},
+   {"file":"D:\\anc\\render\\members\\owner\\CODEBUDDY.md","bytes":1990},
+   {"file":"D:\\anc\\render\\members\\staff-a\\CODEBUDDY.md","bytes":1984}]}
+```
+
+**断言 1：`groups.json` 的部门四字段**（两个成员各 4 项，共 8 项）
+
+```
+owner    dept="engineering" ✅  dept_name="研发部" ✅
+         skills=["anc-task","anc-vault-read","anc-feedback"] ✅
+         vault_paths=["company","collab"] ✅
+staff-a  同上 4 项全 ✅
+断言: ✅8  ❌0
+```
+
+**断言 2：member persona 里的部门段**（7 项）
+
+```
+✅ 含「你属于哪个部门」  ✅ 含「研发部」
+✅ 含 anc-task  ✅ anc-vault-read  ✅ anc-feedback
+✅ 含 company   ✅ collab
+断言: ✅7  ❌0
+```
+
+渲染出的原文：
+
+```
+## 你属于哪个部门
+
+- 部门：研发部
+- 你能用的技能：anc-task、anc-vault-read、anc-feedback
+- 你能看到的 vault 目录：company、collab
+
+**超出这个范围的请求，先问主人**——不要因为「能做」就去做（比如别的部门的资料、没给你的技能）。
+```
+
+**这是 D4.4 第一次在真数据上通过**——`§44` 的 12 条测试是合成的，这次喂的是真 member + 真部门。
+
+### 50.4 顺带确认：渲染版和手写版一致
+
+`§47` 留了一句「渲染器模板与手写 persona **内容必须一致**」。这次是第一次能对比：
+
+| | 字节 | 行数 |
+|---|---|---|
+| 渲染出来的 `company-bot/CODEBUDDY.md` | 4216 | 56 |
+| 手写的 `light/personas/company-bot/CODEBUDDY.md` | 4159 | 54 |
+
+**只差 4 行，全是元信息**：
+
+```
++ # GoldenTellus 公司 bot（渲染产物，勿手改）
++ > 渲染器模板：`src/render` 从 org 数据生成公司 bot 的 persona。它与手写的 … **内容必须一致**
++ <!-- anc:input-sha256:937cc8975bbecfb2ae52b6c5b0ac74facc3fc57d7346fc6cc18b408a66314280 -->
++ 你是 GoldenTellus 的公司 bot，跑在主机上…            ← 手写版是「制造企业试点的公司 bot」
+```
+
+**所以那条约束守住了**：正文逻辑一致，差的只是标题措辞和指纹。
+
+**当前没换成渲染版**——因为 bot 现在不回话（`§49`），换 persona 无法验证效果，只是引入变量。等出站恢复后再换。
+
+### 50.5 绑群：`bind import` 一次到位
+
+```powershell
+node src\service\cli.ts --db …\anc.db --json bind import --from D:\anc\render\groups.json
+→ {"ok":true,"created":1,"updated":1,"skipped":0}
+```
+
+**`created:1`** = test2 新建；**`updated:1`** = 老群从 `本人` 更新成 `管理员`。
+
+### 50.6 E-2 的数据面：三个群的 resolve
+
+| 群 | `bind resolve` | exit |
+|---|---|---|
+| 老群 `wrkcDlGwAAca…` | `found:true` → **管理员** | 0 |
+| test2 `wrkcDlGwAAlp…` | `found:true` → **员工A** | 0 |
+| **未知群** `wrkcDlGwAAlp-UNKNOWN-…` | **`found:false`** | **1** |
+
+**这就是「一人一群」的数据面**：
+
+- 两个不同群 → 两个不同 employee（不串）
+- 一个没绑过的群 → `found:false` + exit 1（查不到人，**不可能冒充**）
+
+**注意 E-2 仍然不算 ✅**：它的判据是两半——「一人一群」+「**私聊公司 bot 仅管理员**」。后半句是企微后台的可见范围开关，本机没有权限。
+
+**但前半句从"代码里写了"变成"真数据验过"了。**
+
+### 50.7 REBUILD 走查复验（把 `◐` 的理由换掉）
+
+`§29` 走查过一遍、改了 4 处，但**修完没有再走一遍**，所以 PLAN 里那项标的是 `◐`。
+
+这次逐条确认 4 处都修对了：
+
+| `§29` 的卡点 | `REBUILD.md` 现在的写法 | 结果 |
+|---|---|---|
+| ① 备份说「第二块盘 `E:\anc-backup`」，但本机只有一块物理盘 | L9：`anc-backup` 每天 02:00（本地保留 14 份；**离机目标要自己配**） | ✅ |
+| ② 目录清单两处不一致、共缺 4 个 | `evals`(L23) `inbox`(L23) `light`(L24) `stage`(L25) 全在 | ✅ |
+| ③ §4 技能是手工复制，没提 `deploy-skills.ps1` | L119–123 改成调脚本，并写了「落盘按 `SKILL.md` 的 `name:` 不是仓库目录名」的坑 | ✅ |
+| ④ §5 说「全 PASS 才算完」 | L209：**doctor 的合格线是 `FAIL=0`，不是「全 PASS」**。当前基线 `WARN=1` | ✅ |
+
+**结构演练**（`scripts/rebuild-drill.ps1`，不碰 `%ProgramData%`，用 `%TEMP%`）：
+
+```
+演练根: %TEMP%\anc-drill-20261104-203016
+建目录结构            0.1s
+部署运行件（-Apply）   3.8s   71 个文件逐一校验通过
+doctor 校验结构       20.9s
+合计 24.8 s
+deploy-layout: PASS
+PASS  结构可用（真机还要过 §2 恢复数据、§3 注册任务、§4 恢复 bot）
+```
+
+**和 `§34` 的 Z: 演练对比**：那次 21.4 秒 / 56 文件，这次 **24.8 秒 / 71 文件**——文件从 56 涨到 71（`§42`–`§47` 新增了 `preflight` / `deploy-state` / `deploy-verify` / `devbot-scheduler` 等），耗时涨 3.4 秒，**同比例，说明没有引入意外的开销**。
+
+### 50.8 PLAN 里那项为什么还留 `◐`
+
+**没有改成 `☑`**，但**理由变了**：
+
+- 原来：改了 4 处，**没复验**
+- 现在：**4 处确认 + 结构演练通过**，但**没做"人照文档从头到尾手工走一遍"**——`REBUILD.md` 的 §2（数据恢复）、§3（注册任务）、§4（bot 登录）都需要真数据 / 真扫码，演练脚本覆盖不到
+
+**所以 `◐` 的含义从「没复验」变成「结构层验了，操作层要真机」。** 这个区别写进 PLAN。
+
+### 50.9 环境
+
+- `D:\anc\org\`：`company.md` + `depts/engineering.md` + `members/{owner,staff-a}.md`
+- `D:\anc\render\`：`groups.json` + `manifest.json` + `company-bot/` + `members/{owner,staff-a}/`
+- `chat_bindings`：2 行（管理员/老群、员工A/test2）；导入前的 1 行备份在 `data\_bindings-backup.json`
+- **persona 没换**（还是手写版），WorkBuddy 没重启，`doctor` / `npm test` / `check-public` 不受影响
