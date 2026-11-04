@@ -5,12 +5,22 @@
 [CmdletBinding()]
 param(
     [string]$Repo = 'E:\workbuddy-anc',
+
+    # 哪一侧：决定部署根。和 preflight / deploy-state / deploy-verify 保持一致。
+    #   company  → %ProgramData%\anc（要注册任务、写 ProgramData，需管理员）
+    #   employee → %LOCALAPPDATA%\anc（个人电脑上不该有 ProgramData 级别的写入）
+    # 2026-11-05 加：原来只有 -Root，agent 读文档时得自己拼路径，容易错。
+    [ValidateSet('company', 'employee')]
+    [string]$Side = 'company',
+
     [string]$Root = '',
     [switch]$Apply
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not $Root) { $Root = Join-Path $env:ProgramData 'anc' }
+if (-not $Root) {
+    $Root = if ($Side -eq 'company') { Join-Path $env:ProgramData 'anc' } else { Join-Path $env:LOCALAPPDATA 'anc' }
+}
 
 function Fail([string]$msg, [string]$fix, [int]$code) {
     Write-Host "ERROR $msg"
@@ -19,7 +29,15 @@ function Fail([string]$msg, [string]$fix, [int]$code) {
 }
 
 if (-not (Test-Path (Join-Path $Repo '.git'))) { Fail "不是仓库根: $Repo" '用 -Repo 指向仓库根（含 .git 的目录）' 2 }
-if (-not (Test-Path $Root)) { Fail "部署根不存在: $Root" '先按 REBUILD.md 建 %ProgramData%\anc 及各子目录' 2 }
+if (-not (Test-Path $Root)) {
+    # FIX 文案按侧分：员工侧不该被指向 %ProgramData%
+    $fixDir = if ($Side -eq 'company') {
+        '先建 %ProgramData%\anc 及各子目录（REBUILD §1 / AGENT-DEPLOY-COMPANY §4）'
+    } else {
+        '先建 ' + $Root + ' 及各子目录（AGENT-DEPLOY-EMPLOYEE §4 有命令）'
+    }
+    Fail "部署根不存在: $Root" $fixDir 2
+}
 
 # 目标子目录 ← 源；bin 只取 scripts 顶层（不含 workbuddy-patch / verify 子目录）
 $Map = @(

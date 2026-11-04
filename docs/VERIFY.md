@@ -4483,3 +4483,163 @@ New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -Execut
 | `doctor` 覆盖新任务 | ✅ 30 项 |
 
 **第 6 项完成（真实夜间触发未验）。**
+
+## 47. D4.1 两份部署文档：`AGENT-DEPLOY-COMPANY.md` / `AGENT-DEPLOY-EMPLOYEE.md`（2026-11-05）
+
+### 为什么这两份和 `REBUILD.md` / `ONBOARDING.md` 不重复
+
+| 文档 | 读者 | 假设 |
+|---|---|---|
+| `REBUILD.md` | **人**（运维） | 主机坏了，人照着重建 |
+| `ONBOARDING.md` | **人**（运维） | 新人入职，人处理账号 |
+| **`AGENT-DEPLOY-*.md`** | **agent** | **只有仓库 URL，其余什么都不知道** |
+
+差别不是措辞，是**结构**：
+
+| 形态要求 | 为什么 |
+|---|---|
+| 开头一张「开工前问清的清单」 | agent 不能编造 corpId / userid / chatId，必须知道**哪些必须问人** |
+| 每步有**成功判据** | "应该好了"是人的判断，agent 需要可执行的断言 |
+| 每步有**回滚动作** | agent 会犯错，犯错后要能退回 |
+| 分节可跳转 + 每节有独立 id | 不让 agent 一次读 900 行 |
+| **禁止"问我"** | 要么从清单拿，要么明确写"停下来问用户这个值" |
+| 公司侧**第 0 步单列** | 那一步 agent 做不了（WorkBuddy 装不了自己） |
+
+### 公司侧：11 节 + 2 个附录
+
+节 id 和 `deploy-state.ps1 -Side company` 的 11 个阶段**一一对应**：
+
+```
+preflight → workbuddy → dirs → files → skills → patch → tasks → vault → org → wecom → verify
+```
+
+**注意 `workbuddy` 在最前面**：它是第 0 步（只有人能做），但阶段表里排在 `preflight` 之后——因为 `preflight` 本身就是"检查 WorkBuddy 装没装"的那一环。**文档里把它单列成 §2 并标明"这一步 agent 做不了"，阶段表里它仍是第 2 个**。
+
+（这个顺序差异写进文档了，否则 agent 会困惑"为什么 §2 在 §3 前面但阶段表里 workbuddy 在 preflight 后面"。）
+
+### 员工侧：7 节
+
+```
+preflight → workbuddy → files → skills → persona → bind → verify
+```
+
+**和公司侧的六处不同**（文档末尾有对照表）：
+
+| 维度 | 公司侧 | 员工侧 |
+|---|---|---|
+| 部署根 | `%ProgramData%\anc` | **`%LOCALAPPDATA%\anc`** |
+| 管理员权限 | 必需 | 不需要 |
+| 计划任务 | 10 个 | **0 个** |
+| 补丁 | 要装 | **不装**（除非认不出主人） |
+| vault | **建**两区 | 只**读**共享区 |
+| persona | 渲染公司 bot 的 | 接收**本人**的 |
+
+### 演练：按文档在 `Z:` 上走一遍，找出 4 个错
+
+**这是写文档最值钱的一步**——不真走一遍，错的地方永远发现不了。
+
+#### ① `deploy.ps1` 没有 `-Side`（文档写了 `-Side employee`）
+
+原来只有 `-Root`。员工侧文档写 `deploy.ps1 -Side employee -Apply` → **参数不存在**。
+
+**修**：给 `deploy.ps1` 加 `-Side`（`company`/`employee`），按侧算默认 `$Root`。现在四个脚本参数风格一致：
+
+```
+preflight.ps1    -Side
+deploy-state.ps1 -Side
+deploy-verify.ps1 -Side
+deploy.ps1       -Side   ← 新增
+```
+
+**顺带修**：`部署根不存在` 的 `FIX` 文案原来是写死的 `%ProgramData%\anc`，员工侧看到会误导。改成按侧分。
+
+#### ② `deploy-skills.ps1` 有 `-Target`，文档没写
+
+它默认写 `%USERPROFILE%\.workbuddy\skills`——员工机上是对的，但**演练时没法指到 `Z:`**（会污染真实的技能目录）。
+
+**修**：文档补上 `-Target` 说明（"演练 / 多用户机"用）。
+
+#### ③ §10.6 的渲染命令完全写错 ★
+
+文档原来写：
+
+```powershell
+powershell -File "$Root\bin\deploy-persona.ps1" -Apply
+```
+
+**两个错**：
+
+1. **`deploy-persona.ps1` 没有 `-Apply` 参数**（它是 `-Source` / `-Target` / `-Rollback` / `-DryRun`）
+2. **它根本不渲染**——它的作用是把 `light/personas/company-bot/CODEBUDDY.md` 复制到 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`，**是"装 persona"不是"生成 persona"**
+
+**渲染器本体是 `src/render/cli.ts`**。
+
+**修**：拆成两步写清：
+
+```powershell
+# ① 渲染
+node --no-warnings "$Repo\src\render\cli.ts" render --org $org --out "$Root\render"
+# ② 装
+powershell -File "$Root\bin\deploy-persona.ps1" -Source "$Root\render\company-bot\CODEBUDDY.md"
+```
+
+#### ④ 员工侧 `persona` 那节说"从公司侧拿"，但没说怎么拿
+
+文档原来只写"把公司侧渲染出来的复制过来"，没给具体动作。补上：备份现有 → 检查 `userid` 是自己的 → 复制 → **必须重启 WorkBuddy**（persona 每会话首次注入读一次，`VERIFY §18`）。
+
+### 演练实测结果
+
+```
+§3 preflight   ok=True  blockers=0
+§4 dirs        Root 15 个 / Vault 5 个（和文档说的一致）
+§5 files       71 个文件部署并逐一校验通过，exit=0
+§6 skills      8 个技能（用 -Target 指到 Z:）
+§9 vault       两区 .git 都建了，collab 目录在
+§10 org        4 个文件写进去，渲染 exit=0
+   产物        company-bot 4292B / members/zhangsan 1950B / groups.json 548B
+   groups.json dept=engineering  dept_name=研发部
+               skills=[anc-task, anc-vault-read]
+               vault_paths=[shared/工艺, internal/研发]
+§10.6 装       exit=0，source/target sha 一致（8777225…），4292B
+§12 verify     ok=False  database FAIL（Z: 演练根没建库，正确的）
+```
+
+**`groups.json` 那段是 D4.4 的实战验证**——部门真的影响了技能集和 vault 路径，不只是字段传过去了。
+
+### 演练**没有**做到的事
+
+| 项 | 为什么 |
+|---|---|
+| **§7 patch** | 会改真实 WorkBuddy 的 preload。演练没法在 `Z:` 上模拟（补丁装在 `%USERPROFILE%` 下的 WorkBuddy 本体上） |
+| **§8 tasks** | 会污染本机任务计划（`VERIFY §3` 就是这条） |
+| **§11 wecom** | 没有真实 corpid/secret |
+| **§12 的 `bot-reply`** | 演练根没有跑的 bot |
+| **整条链在"真新机"上跑** | 见 D4.6 的硬边界——要另一台机器 |
+
+**这五项都标在文档里当"要人参与 / 要真机"的步骤**，没写成"已验证"。
+
+### 文档规模
+
+| 文档 | 行数 |
+|---|---|
+| `AGENT-DEPLOY-COMPANY.md` | 约 900 行（11 节 + 速查附录） |
+| `AGENT-DEPLOY-EMPLOYEE.md` | 约 480 行（7 节 + 与公司侧的差异表） |
+
+**"900 行"和"不要让 agent 一次读 300 行"不矛盾**——文档开头有**分节跳转表**（节 id + 内容 + 耗时），agent 按 `deploy-state` 的 `next` 只读当前那一节。
+
+### 这一项的状态
+
+| 要素 | 状态 |
+|---|---|
+| 两份文档存在 | ✅ |
+| 开头有「开工前问清的清单」 | ✅ 公司侧 11 项、员工侧 7 项，含"缺了怎么办" |
+| 每步有成功判据（可执行断言） | ✅ |
+| 每步有回滚动作 | ✅ |
+| 分节可跳转（节 id + 耗时） | ✅ |
+| 禁止"问我"（要么给值要么说停下来问） | ✅ |
+| 公司侧第 0 步单列 | ✅ §2，标明"agent 做不了" |
+| **自己按文档在 `Z:` 上走一遍** | ✅ 走了 §3/§4/§5/§6/§9/§10/§10.6/§12 |
+| **卡住的每一处都改** | ✅ 改了 4 处（`deploy.ps1` 加 `-Side`、FIX 文案、`-Target` 说明、§10.6 渲染命令） |
+| 演练没覆盖的步骤 | ✅ 标出来了（patch / tasks / wecom / bot-reply / 真新机） |
+
+**D4.1 完成（演练覆盖 8 节，5 项标为"要人参与"）。**

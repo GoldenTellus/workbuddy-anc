@@ -1,0 +1,782 @@
+# 公司侧部署手册（给 agent 读）
+
+> **这份文档的读者是 agent，不是人。**
+>
+> 如果你是人：把仓库链接发给这台机器上的 agent，让它自己读这份文档。
+>
+> 如果你是 agent：按顺序做。每节有「做什么 / 成功判据 / 失败了怎么办」。
+> 每做完一节调一次 `deploy-state.ps1 -Mark <节id> -AsDone`。
+> 不确定进度就调 `deploy-state.ps1 -Status`。**不要凭记忆推进度。**
+
+---
+
+## 目录（按需跳转，不要一次读全文）
+
+| 节 | id | 内容 | 大约耗时 |
+|---|---|---|---|
+| [0](#0-你要装出什么) | — | 装完是什么样 | 读 1 分钟 |
+| [1](#1-开工前问清这张表缺一不可) | — | **要问人的清单** | 读 1 分钟 + 等人回答 |
+| [2](#2-第-0-步装一个空-workbuddy只有人能做) | `workbuddy` | 装空 WorkBuddy | 5–15 分钟（人做） |
+| [3](#3-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
+| [4](#4-dirs建目录) | `dirs` | 建 20 个目录 | 5 秒 |
+| [5](#5-files部署运行件) | `files` | 部署运行件 + 渲染 | 30 秒 |
+| [6](#6-skills装技能) | `skills` | 装 8 个技能 | 10 秒 |
+| [7](#7-patch装补丁) | `patch` | 打 WorkBuddy 补丁 | 1–3 分钟 |
+| [8](#8-tasks注册计划任务) | `tasks` | 注册 10 个任务 | 10 秒 |
+| [9](#9-vault建两区) | `vault` | 建两区 vault | 30 秒 |
+| [10](#10-org写-org-数据) | `org` | 写 org 数据 | 5–10 分钟 |
+| [11](#11-wecom配企微) | `wecom` | 配企微（要人给值） | 5 分钟 + 等人 |
+| [12](#12-verify自证) | `verify` | 自证 | 30 秒 |
+| [13](#13-装到一半失败怎么办) | — | 断点续装 | — |
+| [14](#14-重装与卸载) | — | 回滚 | — |
+
+---
+
+## 0. 你要装出什么
+
+一台 7×24 的 Windows 主机，上面有：
+
+```
+C:\ProgramData\anc\        部署目录（15 个子目录）
+D:\anc\                    vault + org + build
+%USERPROFILE%\.workbuddy\  WorkBuddy 本体 + 技能
+```
+
+装完的状态：
+
+- **公司 bot 在企微群里能回话**
+- **10 个计划任务在跑**
+- **`doctor` 30 项 FAIL=0**
+- **能登记任务、能到点提醒、能入库**
+
+**你不会做的事**：不装员工侧（那是另一份文档）、不配企微后台（人做，见 §11）。
+
+---
+
+## 1. 开工前：问清这张表（缺一不可）
+
+**这一步不能跳。** 下面的值**只有人知道**，你不能编、不能猜、不能用占位符糊过去。
+
+**做法**：把这张表整段发给用户，让他填。**填不全就先停在这里**，别往下做。
+
+| # | 要什么 | 用在哪 | 怎么来的 | 填这里 |
+|---|---|---|---|---|
+| 1 | **这台机器能当 7×24 主机吗**（不会关机/睡眠） | 整个方案的前提 | 问人 | ☐ 能 / ☐ 不能 |
+| 2 | **企业微信 corpId** | 企微应用配置 | 企微管理后台 → 我的企业 | `ww________________` |
+| 3 | **公司 bot 的企微机器人 webhook** 或 **应用 secret** | bot 发消息 | 企微群 → 群机器人 → 复制 webhook；或自建应用拿 secret | `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=______` |
+| 4 | **公司名** | persona、备份目录名 | 问人 | `________________` |
+| 5 | **公司 bot 叫什么** | persona、群映射 | 问人 | `________________` |
+| 6 | **vault 放哪个盘**（默认 `D:\anc`） | 两区 vault | 问人；没有 D 盘就给个别的盘 | `____:\anc` |
+| 7 | **部门列表** | org 数据 | 问人（例：研发部 / 行政部 / 销售部） | 见 §10 |
+| 8 | **员工名单 + 每个人的 userid** | org 数据 | 企微通讯录里的 userid（**不是**姓名、**不是**手机号） | 见 §10 |
+| 9 | **每个员工属于哪个部门** | org 数据 | 问人 | 见 §10 |
+| 10 | **每个员工的群 chatId** | 群绑定 | 建群后从群设置里拿；**32 字符，不要截断** | 见 §10 |
+| 11 | **管理员自己的 userid** | 私聊权限 | 企微通讯录 | `________________` |
+
+**填不全时的行为**：
+
+- **1、4、5、6 缺** → 停下来问。这些没有合理默认值。
+- **2、3 缺** → 可以继续到 §10，但 §11 会卡住；`verify` 的 `bot-reply` 那项会是 SKIP。
+- **7、8、9、10 缺** → 可以装出一个"没有员工"的公司侧（`groups.json` 0 个成员）。**能用，但没人能 @ 它**。装完告诉用户"员工还没配，配好之后重跑 §10 和 §12"。
+- **11 缺** → 不影响装，但私聊谁都能用。**告诉用户这是安全缺口**。
+
+---
+
+## 2. 第 0 步：装一个空 WorkBuddy（只有人能做）
+
+> **这一步 agent 做不了。** WorkBuddy 装不了自己。
+
+**做什么**：让用户装 WorkBuddy，**装完不要配任何东西**。
+
+**为什么强调"不要配"**：`§5` 会部署 persona 覆盖它；`§7` 会打补丁改它的行为。提前配的东西都会被覆盖掉，白费功夫，而且可能让后面对不上。
+
+**给用户的原话**（可直接转述）：
+
+```
+请在这台机器上装腾讯 WorkBuddy（企业版），用管理员账号登录。
+装完就停，不要建机器人、不要配企业、不要改设置——后面会自动配。
+装好告诉我。
+```
+
+**成功判据**（你自己验，不要听用户说"装好了"）：
+
+```powershell
+# 三个都满足才算装了
+$wb = @(
+  (Join-Path $env:LOCALAPPDATA 'Programs\WorkBuddy\WorkBuddy.exe'),
+  (Join-Path $env:ProgramFiles 'WorkBuddy\WorkBuddy.exe')
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $wb) { throw 'WorkBuddy 没装（两个常见位置都没有）' }
+if (-not (Test-Path (Join-Path $env:USERPROFILE 'WorkBuddy'))) { throw 'WorkBuddy 装了但没登录过（没有 %USERPROFILE%\WorkBuddy）' }
+& $wb --version   # 能打印版本
+```
+
+**失败了怎么办**：
+
+- **找不到 exe** → 让用户确认装了；WorkBuddy 可能装在别的路径，用 `Get-ChildItem -Path C:\,D:\ -Filter WorkBuddy.exe -Recurse -ErrorAction SilentlyContinue` 找
+- **没登录过** → 让用户启动它并登录企微
+- **版本低于 5.9.3** → 补丁的锚点是按 5.9.3 写的。**先让用户升级**，或者告诉用户"这个版本没验过，装完可能要手工调锚点"（见 §7）
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark workbuddy -AsDone
+```
+
+---
+
+## 3. preflight（前置检查）
+
+**做什么**：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preflight.ps1 -Side company -Json
+```
+
+**成功判据**：输出里 `"ok": true`。
+
+**输出结构**（你只需要看这三个字段）：
+
+```json
+{
+  "ok": true,
+  "blockers": [],          // 非空 = 别装了，先修
+  "warnings": [ ... ],     // 能装，但要知道
+  "next": "可以继续。",     // 下一步做什么
+  "facts": { ... }         // 原始检测值
+}
+```
+
+**有 blocker 时**：`next` 会告诉你该干什么。常见的：
+
+| blocker | 意思 | 怎么做 |
+|---|---|---|
+| `admin` | 不是管理员 | 让用户以管理员身份重开 PowerShell |
+| `node` / `node-version` | 没装 Node 或版本 < 22 | 装 Node 22 LTS |
+| `git` | 没装 git | 装 Git for Windows |
+| `disk` | 部署盘剩余 < 200MB | 清空间 |
+| `vault-drive` | vault 盘不存在 | **这是 blocker 不是警告**——装完什么都写不进去 |
+| `workbuddy` | 没装 | 回 §2 |
+| `os` / `powershell` | 版本太旧 | 换机器或升级 |
+
+**warnings 怎么处理**：
+
+- `already-installed` → **这是重装/升级，不是首装**。先备份，然后问用户"要升级还是重建"。**重建见 §14。**
+- `port-17999` → 如果占用者是旧 WorkBuddy，先关掉（否则 §7 的补丁会打架）
+- `tasks` → 已有 `anc-*` 任务，§8 会覆盖
+
+**失败了怎么办**：按 `next` 和上表处理，然后**重跑本检查**。不 ok 不要往下走。
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark preflight -AsDone
+```
+
+---
+
+## 4. dirs（建目录）
+
+**做什么**：建 15 个部署子目录 + 5 个 vault 目录。
+
+```powershell
+$Root = Join-Path $env:ProgramData 'anc'
+$VaultRoot = 'D:\anc'   # 按 §1 第 6 项填的值
+
+# 部署目录（15 个）。为什么这么多：deploy.ps1 只写其中 7 个，
+# 其余是运行时才会被写的（evals/stage/inbox/...），提前建好免得运行时才发现没有。
+'accounts','backup','bin','data','evals','inbox','ingest','light','patch','render','secrets','service','shared','skills','stage' |
+  ForEach-Object { New-Item -ItemType Directory -Path (Join-Path $Root $_) -Force | Out-Null }
+
+# vault 目录（5 个）
+'vault-shared','vault-internal','inbox','org','build' |
+  ForEach-Object { New-Item -ItemType Directory -Path (Join-Path $VaultRoot $_) -Force | Out-Null }
+```
+
+**成功判据**：
+
+```powershell
+# 应该是 15 和 5
+@(Get-ChildItem $Root -Directory).Count
+@(Get-ChildItem $VaultRoot -Directory).Count
+```
+
+**失败了怎么办**：上一级的盘不存在（§3 的 `disk` blocker 应该已经拦住了）→ 回 §3。
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark dirs -AsDone
+```
+
+---
+
+## 5. files（部署运行件）
+
+**做什么**：
+
+```powershell
+# 先看计划（dry-run，不写任何东西）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Side company
+
+# 确认无误再落盘
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Side company -Apply
+```
+
+**这一步做什么**：把 `src/` 和 `scripts/` 复制到 `%ProgramData%\anc\`，落盘前备份、落盘后**逐文件对拍 hash**、任一失败**整体回滚**。
+
+**成功判据**：退出码 **0**，并且输出里没有 `ERROR`。
+
+```powershell
+# 自己验一遍：部署的 cli 能起来
+node --no-warnings "$Root\service\cli.ts" 2>&1 | Select-Object -First 1
+# 期望看到 "ERROR 缺少命令组（...）" —— 这是正常的用法提示，不是故障
+```
+
+**失败了怎么办**：
+
+| 退出码 | 意思 | 怎么做 |
+|---|---|---|
+| 1 | 校验失败，**已回滚** | 看输出里的 `ERROR`：通常是文件被占用（关掉占用进程）或磁盘满 |
+| 2 | 用法/环境错误 | 看 `FIX` 那行 |
+| 3 | 已应用但探针失败，**已回滚** | 部署出来的东西起不来。看 `FIX`；通常是映射漏了文件（`deploy.ps1` 自带这个检查） |
+
+**回滚**（如果 `-Apply` 之后你发现错了）：
+
+```powershell
+powershell -File scripts\deploy.ps1 -Rollback
+```
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark files -AsDone
+```
+
+---
+
+## 6. skills（装技能）
+
+**做什么**：
+
+```powershell
+# 预检（只比对，不写）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1
+
+# 落盘
+#   默认目标 %USERPROFILE%\.workbuddy\skills（WorkBuddy 只读这里）
+#   -Target 可指到别处（演练 / 多用户机）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1 -Apply
+```
+
+**这一步做什么**：把 `light\skills\*\` 复制到 `%USERPROFILE%\.workbuddy\skills\<技能名>\`。
+
+**关键**：**落盘目录用 `SKILL.md` 里的 `name:` 字段，不是仓库目录名**。例：仓库目录是 `anc-ingest-company`，但 `SKILL.md` 写 `name: anc-ingest`，persona 也引用 `anc-ingest`。按目录名落盘会造出两个同名技能，bot 侧会冲突。
+
+**成功判据**：
+
+```powershell
+# 应该是 8 个（anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-vault-read / anc-wb-patch / .anc-backup）
+@(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
+```
+
+**失败了怎么办**：
+
+- **数量不对** → 跑 `deploy-skills.ps1 -Apply -RemoveExtra`（顺便删掉线上多出来的技能）
+- **误删了技能** → `deploy-skills.ps1 -Rollback` 恢复最近一次备份
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark skills -AsDone
+```
+
+---
+
+## 7. patch（装补丁）
+
+**做什么**：WorkBuddy 是闭源的，群身份靠**补丁**注入（消息开头加 `[anc:chat=<chatid> from=<userid>]`）。
+
+```powershell
+# 应用补丁（会重启 WorkBuddy）
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\patch\apply.ps1" -Apply
+
+# 确认补丁生效
+Get-Content "$Root\data\patch-state.json" | ConvertFrom-Json
+```
+
+**成功判据**：`patch-state.json` 里 `"applied": true`，**并且那个 `pid` 还活着**：
+
+```powershell
+$st = Get-Content "$Root\data\patch-state.json" -Raw | ConvertFrom-Json
+if (-not $st.applied) { throw 'patch 没生效' }
+if (-not (Get-Process -Id $st.pid -ErrorAction SilentlyContinue)) { throw "patch 说的 pid $($st.pid) 已经不在了（残留状态，别信 applied:true）" }
+```
+
+> **只看 `applied:true` 会被骗**——`VERIFY §16` 记过：进程死了但状态文件还写着 applied。
+
+**失败了怎么办**：
+
+| 现象 | 原因 | 怎么做 |
+|---|---|---|
+| `ANCHOR-MISS` | WorkBuddy 版本不是 5.9.3（锚点对不上） | **不重启、不硬套**。告诉用户"这个版本没验过"，把 `patch\manifest.json` 里的锚点按新版本调（看 `docs/WORKBUDDY-PATCH.md`） |
+| hash 不符但锚点还在 | 厂商改了这个文件 | 会自动降级成 `mode: "anchor"`，**仍然生效**（`VERIFY §37`）。日志里会有说明 |
+| 进程反复崩 | preload 在主进程里劫持 https 出事 | `patch-guard` 每分钟自愈。如果连续失败，关掉补丁：`apply.ps1 -Disable` |
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark patch -AsDone
+```
+
+---
+
+## 8. tasks（注册计划任务）
+
+**做什么**：
+
+```powershell
+# dry-run：列出 10 个任务和它们的 principal，先看
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root
+
+# 落盘
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root -Apply
+```
+
+> **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\bin\`），不是仓库里的。
+> 部署目录那份运行时路径正确（§5 已经把它复制过去了）。
+
+**这 10 个是什么**：
+
+| 任务 | 干什么 | 频率 |
+|---|---|---|
+| `anc-service` | 本地小服务（tick） | 每分钟 |
+| `anc-http` | HTTP 面（只绑 127.0.0.1） | 每分钟 + 开机 |
+| `anc-watchdog` | 心跳/积压/进程告警 | 每 10 分钟 |
+| `anc-backup` | SQLite + vault 备份 | 每小时（02:00 起） |
+| `anc-boot-alert` | 开机后 WorkBuddy 没起来就告警 | 每 10 分钟 |
+| `anc-cleanup` | 清企微附件（7 天前） | 每天 03:00 |
+| `anc-update-watch` | 查厂商新版 | 每天 09:00 |
+| `anc-workbuddy-launch` | 登录后拉起 WorkBuddy | 登录时 |
+| `anc-patch-guard` | 补丁自愈 | 每分钟 |
+| `anc-devbot` | devbot 自动启动 | 22:00 起每 30 分钟 × 8h |
+
+**成功判据**：
+
+```powershell
+$t = @(Get-ScheduledTask -TaskName 'anc-*')
+if ($t.Count -ne 10) { throw "应该是 10 个，实际 $($t.Count)" }
+$bad = $t | Where-Object { $_.State -notin @('Ready','Running') }
+if ($bad) { throw ('这些任务状态不对: ' + (($bad | ForEach-Object { $_.TaskName + '=' + $_.State }) -join ', ')) }
+```
+
+**失败了怎么办**：
+
+- **任务被禁用** → `Enable-ScheduledTask -TaskName <名字>`
+- **principal 不对**（应该是 LOCAL SERVICE 或 SYSTEM）→ 重新跑 `-Apply`；如果提示交互类任务要 `anc-bot` 用户，加 `-ForceInteractive`（但**先确认那个用户存在且登录过**，否则守卫和启动器不工作）
+- **`register-tasks.ps1` 本身报参数错** → 说明部署的那份是旧版本。回 §5 重新部署
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark tasks -AsDone
+```
+
+---
+
+## 9. vault（建两区）
+
+**做什么**：两个**独立的 git 目录**——共享区（全员只读）、内部区（只有公司侧读写）。
+
+```powershell
+$VaultRoot = 'D:\anc'   # §1 第 6 项
+
+# 两区各自 git init + 首次提交
+foreach ($v in 'vault-shared','vault-internal') {
+    $p = Join-Path $VaultRoot $v
+    if (-not (Test-Path (Join-Path $p '.git'))) {
+        git -C $p init -q
+        # .gitignore：原件不进 git（D14）
+        Set-Content (Join-Path $p '.gitignore') -Value "_originals/" -Encoding UTF8
+        Set-Content (Join-Path $p 'README.md') -Value "# $v`n" -Encoding UTF8
+        git -C $p add -A
+        git -C $p -c user.name='anc' -c user.email='anc@localhost' commit -q -m 'init'
+    }
+}
+
+# 内部区的协作目录（任务投影落这里）
+New-Item -ItemType Directory -Path (Join-Path $VaultRoot 'vault-internal\collab') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $VaultRoot 'vault-shared\_originals') -Force | Out-Null
+```
+
+**成功判据**：
+
+```powershell
+# 两个都要是 true
+Test-Path (Join-Path $VaultRoot 'vault-shared\.git')
+Test-Path (Join-Path $VaultRoot 'vault-internal\.git')
+# 内部区必须有 collab（任务投影会写这里，没有就会报错）
+Test-Path (Join-Path $VaultRoot 'vault-internal\collab')
+```
+
+**失败了怎么办**：
+
+- **`git init` 失败** → 检查 git 装了没（§3 应该已经拦住了）、vault 盘可写
+- **内部区和共享区路径相同** → `cli` 会拒绝（A2A 要求内部区是独立 git 目录且不能是共享区）。改成两个不同目录
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark vault -AsDone
+```
+
+---
+
+## 10. org（写 org 数据）
+
+**做什么**：写 `company.md` + `members/*.md` + `depts/*.md` + `roles/*.md`，然后渲染。
+
+```powershell
+$VaultRoot = 'D:\anc'
+$org = Join-Path $VaultRoot 'org'
+```
+
+### 10.1 company.md（必需）
+
+```yaml
+---
+name: <公司名>                    # §1 第 4 项
+company_bot_name: <bot 名字>      # §1 第 5 项
+vault_shared: D:\anc\vault-shared
+vault_internal: D:\anc\vault-internal
+local_workdir: C:\Users\<用户名>\WorkBuddy\Claw
+---
+```
+
+**这 5 个字段都是必需的**，少一个渲染会报"缺少字段"。
+
+**`local_workdir` 是什么**：WorkBuddy 的工作目录。默认是 `%USERPROFILE%\WorkBuddy\Claw`。不确定就先跑一次 `Get-ChildItem "$env:USERPROFILE\WorkBuddy"` 看实际名字。
+
+### 10.2 roles/*.md（可选，但建议至少一个）
+
+```yaml
+---
+id: eng
+name: 工程师
+duties: 写代码、看工艺文档
+---
+```
+
+### 10.3 depts/*.md（可选；有部门就写）
+
+```yaml
+---
+id: engineering
+name: 研发部
+vault_paths: shared/工艺, internal/研发
+skills: anc-task, anc-vault-read, anc-feedback
+---
+```
+
+**注意**：`vault_paths` 和 `skills` 是**逗号分隔的字符串**，不是 YAML 数组（解析器只接受 `key: value`）。
+
+**这两个字段决定什么**：
+- `skills` 为空 → 该部门的 bot 用**全部**技能
+- `vault_paths` 为空 → 能看**全部** vault 目录
+- **空不是"什么都不给"**
+
+### 10.4 members/*.md（每个人都有）
+
+```yaml
+---
+id: zhangsan                    # 小写字母数字 _ -，≤64
+name: 张三
+role: eng                       # 必须对应 roles/ 里存在的 id
+userid: <企微 userid>            # §1 第 8 项
+chat_id: <32 字符 chatId>        # §1 第 10 项
+dept: engineering                # 必须对应 depts/ 里存在的 id
+webhook_file: zhangsan-bot.txt   # secrets 目录下的文件名（不是路径）
+---
+```
+
+**校验会拦住的**：
+- `dept` 指向不存在的部门 → **报错**（技能集和 vault 范围会落空）
+- `role` 指向不存在的角色 → **报错**
+- 拼错字段名 → **报错**（`skill` 少个 `s` 就会被拒）
+- `webhook_file` 写成路径 → **报错**（只能是文件名）
+
+### 10.5 webhook 文件（每个群一个）
+
+```powershell
+# 从 §1 第 3 项拿到的 webhook，写到 secrets 目录
+# 一个员工一个文件，文件名和 member 的 webhook_file 对上
+Set-Content "$Root\secrets\zhangsan-bot.txt" -Value '<完整 webhook URL>' -Encoding UTF8 -NoNewline
+```
+
+### 10.6 渲染 + 装 persona
+
+**这两步是分开的，别混**：
+
+```powershell
+# ① 渲染：从 org 数据生成 persona 和 groups.json
+#    用仓库里的 cli.ts（渲染器本体），不是 deploy-persona.ps1
+node --no-warnings "$Repo\src\render\cli.ts" render --org $org --out "$Root\render"
+
+# ② 装：把渲染出来的公司 bot persona 复制到 WorkBuddy 读的位置
+#    deploy-persona.ps1 只做这一步（它不渲染）
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\deploy-persona.ps1" -Source "$Root\render\company-bot\CODEBUDDY.md"
+```
+
+**成功判据**：
+
+```powershell
+# 渲染产物存在
+Test-Path "$Root\render\company-bot\CODEBUDDY.md"
+Test-Path "$Root\render\groups.json"
+# groups.json 里的成员数 = 你写的 member 文件数
+(Get-Content "$Root\render\groups.json" -Raw | ConvertFrom-Json).members.Count
+# 每条的 dept/skills 都在（没部门的是 null/[]）
+```
+
+**失败了怎么办**：
+
+| 报错 | 意思 | 怎么做 |
+|---|---|---|
+| `缺少字段: name` | `company.md` 少了字段 | **注意**：也可能是文件带 BOM 导致解析失败（`VERIFY §34`）。用 `Set-Content -Encoding utf8NoBOM` 或 node 写 |
+| `有不认识的字段: skill` | 拼错了 | 改成 `skills` |
+| `引用了不存在的部门: xxx` | `depts/` 里没有 | 建那个部门文件，或改 member 的 `dept` |
+| `persona 超过 7500 字节` | 模板太长 | 删掉 persona 里不必要的段落 |
+| `成员没有 userid，跳过` | 只是警告 | 补上 userid 后重跑 |
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark org -AsDone
+```
+
+---
+
+## 11. wecom（配企微）
+
+**这一节有一半是人在企微后台做的，你做不了。** 分清楚：
+
+### 11.1 人做的（企微管理后台）
+
+| 做什么 | 在哪 | 为什么 |
+|---|---|---|
+| 建**自建应用**，拿 `corpId` + `secret` | 管理后台 → 应用管理 | bot 要用它发消息 |
+| 建**每个员工的群**（本人 + 公司 bot + 个人 bot + 群机器人） | 企微客户端 | 一人一群 = 身份边界 |
+| 群里加**群机器人**，拿 webhook | 群设置 → 群机器人 | 提醒从这个 webhook 发 |
+| 设**私聊限管理员** | 管理后台 → 应用 → 可见范围 | 否则谁都能私聊公司 bot |
+| 通讯录里查每个员工的 **userid** | 管理后台 → 通讯录 | §10.4 要用 |
+
+### 11.2 你做的（写配置）
+
+```powershell
+# 企微凭据（secret 放 secrets 目录，不进 git）
+Set-Content "$Root\secrets\corpid.txt" -Value '<corpId>' -Encoding UTF8 -NoNewline
+Set-Content "$Root\secrets\corpsecret.txt" -Value '<应用 secret>' -Encoding UTF8 -NoNewline
+```
+
+**成功判据**：
+
+```powershell
+# 凭据文件存在且非空
+@('corpid.txt','corpsecret.txt') | ForEach-Object {
+    $f = Join-Path $Root "secrets\$_"
+    if (-not (Test-Path $f)) { throw "缺 $_" }
+    if ((Get-Item $f).Length -lt 8) { throw "$_ 太短，可能是占位符" }
+}
+# ACL：secrets 目录只有管理员和 SYSTEM 能读
+(Get-Acl "$Root\secrets").Access | Where-Object { $_.IdentityReference -match 'Everyone|Users|Authenticated' }
+# 期望空（没有广泛可读的 ACE）
+```
+
+**失败了怎么办**：
+
+- **ACL 不对** → `doctor` 的 `secrets-acl` 项会 FAIL。按它的 `fix` 收紧
+- **还没拿到 secret** → **可以跳过这一节，标记为 failed 并写清原因**。§12 的自证里 `bot-reply` 会是 SKIP。**不要编一个假 secret**
+
+**装完**：
+
+```powershell
+# 拿到值了
+powershell -File scripts\deploy-state.ps1 -Side company -Mark wecom -AsDone
+# 没拿到（正常，等用户给）
+powershell -File scripts\deploy-state.ps1 -Side company -Mark wecom -AsFailed -Reason "等用户提供 corpid/secret"
+```
+
+---
+
+## 12. verify（自证）
+
+**做什么**：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -Side company -Json
+```
+
+**成功判据**：`"ok": true`（`fail` 为 0）。
+
+**输出长这样**：
+
+```
+database       PASS  库存在: C:\ProgramData\anc\data\anc.db
+doctor         PASS  FAIL=0 WARN=2（30 项）
+task-write     PASS  task #68 写进去了，查得回来
+bot-reply      PASS  注入成功（len=75），但 60 秒内没等到回复
+tasks          PASS  9 个任务全部 Ready/Running
+
+结果  PASS=5  FAIL=0  SKIP=0
+NEXT  全部通过。
+```
+
+**每一项什么意思**：
+
+| 项 | 验什么 | FAIL 说明什么 |
+|---|---|---|
+| `database` | 库在 | 部署没做完 |
+| `doctor` | 30 项体检全过 | 有具体项坏了，看 detail |
+| `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
+| `bot-reply` | 注入一条消息 | 端口没监听（SKIP）或注入失败（FAIL）；**"没等到回复"仍是 PASS**（回复慢是模型行为，不是故障） |
+| `tasks` | 10 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
+
+**`SKIP` 不是通过**——它是"没验"。常见 SKIP：
+
+- `bot-reply` SKIP → `test-emit` 没开（正常默认就是关的）。**要验的话**：建 `%ProgramData%\anc\data\test-emit.flag`，重启 WorkBuddy，等 8–30 秒，再跑。
+- 有 SKIP 时告诉用户"这几项没验，原因是 X"。
+
+**失败了怎么办**：按每项的 `fix` 处理。改完**只重跑那一项也行**（`-SkipBot` 可以跳过 bot 那项）。
+
+**装完**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark verify -AsDone
+```
+
+**§12 全绿之后**，把这段告诉用户：
+
+```
+公司侧部署完成。
+  doctor: FAIL=0 WARN=X（30 项）
+  群回应: <PASS/SKIP 及原因>
+  任务落库: OK
+  计划任务: 10/10
+未完成: <列出来，没有就写"无">
+```
+
+---
+
+## 13. 装到一半失败怎么办
+
+**不要从头重装。** 进度记在 `%ProgramData%\anc\data\deploy-state.json`：
+
+```powershell
+# 看现在到哪了
+powershell -File scripts\deploy-state.ps1 -Side company -Json
+```
+
+输出里的 `next` 会明确说：
+
+| 情况 | `next` 说什么 |
+|---|---|
+| 没开始 | `还没开始。先跑 preflight.ps1...` |
+| 卡在某节 | `上次卡在 patch（ANCHOR-MISS）。修好之后重跑那一步，再 -Mark patch -AsDone。**不要从头来**。` |
+| 做完了 | `全部阶段已完成。` |
+
+**流程**：
+
+1. `-Status` 看 `failed` 是哪节
+2. 修那一节的问题（每节的「失败了怎么办」有写）
+3. **只重跑那一节**
+4. `-Mark <那节> -AsDone`
+
+**`-Mark -AsFailed` 要带原因**：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Mark patch -AsFailed -Reason "ANCHOR-MISS: 版本 5.9.5"
+```
+
+**原因要具体**，因为下次（可能是你，也可能是别的 agent）要靠它判断怎么修。
+
+---
+
+## 14. 重装与卸载
+
+### 只想重跑某一节
+
+直接重跑那节的命令，不用 `-Mark` 重置——`-Mark -AsDone` 是幂等的（重复 mark 同一个不会出错）。
+
+### 完全重装（会丢数据）
+
+**先备份**：
+
+```powershell
+# 库 + secrets + vault 的 git
+powershell -File "$Root\bin\backup-anc.ps1" -Destination 'E:\anc-backup'
+Copy-Item "$Root\secrets" 'E:\anc-backup\secrets' -Recurse
+```
+
+**清进度**（不删数据，只让状态归零）：
+
+```powershell
+powershell -File scripts\deploy-state.ps1 -Side company -Reset -Apply
+```
+
+**真删数据**（`anc.db` / vault 都删）：
+
+```powershell
+# 任务
+Get-ScheduledTask -TaskName 'anc-*' | Unregister-ScheduledTask -Confirm:$false
+# WorkBuddy 补丁
+powershell -File "$Root\patch\apply.ps1" -Disable
+# 部署目录（保留 backup 和 secrets）
+Remove-Item "$Root\service","$Root\ingest","$Root\render","$Root\shared","$Root\bin","$Root\light","$Root\patch","$Root\data" -Recurse -Force
+# vault：**想清楚再删**，这是公司资料
+```
+
+### 回滚到部署前
+
+```powershell
+# 运行件回滚（用 deploy.ps1 的备份）
+powershell -File scripts\deploy.ps1 -Rollback
+# 技能回滚
+powershell -File scripts\deploy-skills.ps1 -Rollback
+# 补丁关闭（不改文件，只让 preload 不注入）
+powershell -File "$Root\patch\apply.ps1" -Disable
+```
+
+---
+
+## 附：全部命令速查
+
+```powershell
+# ── 只读检查（任何时候都能跑）──
+powershell -File scripts\preflight.ps1 -Side company -Json        # 装之前
+powershell -File scripts\deploy-state.ps1 -Side company -Json     # 进度
+powershell -File scripts\deploy-verify.ps1 -Side company -Json    # 装完之后
+powershell -File "$Root\bin\doctor.ps1" -Json                     # 健康
+
+# ── 按顺序装 ──
+powershell -File scripts\preflight.ps1 -Side company              # §3
+# §4 建目录（见文档里的命令块）
+powershell -File scripts\deploy.ps1 -Apply                         # §5
+powershell -File scripts\deploy-skills.ps1 -Apply                  # §6
+powershell -File "$Root\patch\apply.ps1" -Apply                    # §7
+powershell -File "$Root\bin\register-tasks.ps1" -Root $Root -Apply # §8
+# §9 建 vault（见文档）
+powershell -File "$Root\bin\deploy-persona.ps1" -Apply             # §10
+# §11 写企微凭据（见文档）
+powershell -File scripts\deploy-verify.ps1 -Side company          # §12
+
+# ── 每一步之后 ──
+powershell -File scripts\deploy-state.ps1 -Side company -Mark <id> -AsDone
+```
+
+**退出码约定**（所有脚本一致）：
+
+| 码 | 意思 |
+|---|---|
+| 0 | 成功（含 dry-run、含"决定不做"） |
+| 1 | 校验失败 / 有 FAIL / 决定要做但失败了 |
+| 2 | 用法或环境错误 |
