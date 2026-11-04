@@ -3736,3 +3736,121 @@ reminders: cancelled=36  sent=24
 ### 一个要记的行为
 
 `test-emit.flag` 语义是"**下次启动时**要不要开口"，不是"**现在**开不开"。这个区别在文档里必须写死——否则会有人以为删了就是关了。
+
+## 42. D4.2 前置检查：`scripts/preflight.ps1`（2026-11-05）
+
+### 为什么要单独一个脚本
+
+`doctor.ps1` 是"装好之后查这套系统还健康吗"，29 项、慢（~18s）、输出是给人看的。
+**装之前**要回答的是另一个问题：**这台机器能不能装？** agent 需要的是能直接判断的 JSON，不是一份体检报告。
+
+两者的差别不只是检查项，是**读者的差别**：
+
+| | doctor | preflight |
+|---|---|---|
+| 什么时候跑 | 装好之后、每次出问题 | 装之前、装失败之后重跑 |
+| 读者 | 人（运维） | **agent** |
+| 输出 | `{ok, fails, warns, checks[]}` | `{ok, side, blockers[], warnings[], next, facts{}}` |
+| 关键字段 | `fails` 数量 | **`next` —— 下一步做什么** |
+| 耗时 | ~18s（要查 9 个任务 + 补丁 + ACL） | <2s（只看环境） |
+
+`next` 是核心：**agent 不知道"现在该干什么"，必须有人告诉它。**
+
+### 检查项与判据
+
+| 项 | 判 | 为什么 |
+|---|---|---|
+| OS build | <17763 → **blocker**；<19041 → warn | 补丁链依赖 Electron preload，1809 以下缺 .NET 类 |
+| PowerShell | <5 → blocker；>5 → warn | 这套脚本只在 5.1 验过，7.x 有语法差异 |
+| 管理员 | **company 侧**不满足 → blocker；employee 侧不要求 | 公司侧要注册计划任务、写 ProgramData、改 ACL |
+| node | 没有或 <22 → blocker | 服务本身是 node 跑的 |
+| git | 没有 → blocker | 补丁和部署都从仓库读 |
+| Root 盘剩余 | <200MB → blocker；盘不存在 → **blocker** | |
+| vault 盘 | 不存在 → **blocker**（company 侧）；剩余 <500MB → warn | **装完写不进去，"能装"是假的** |
+| 已装过（有库） | **warn 不是 blocker** | 重装是合法场景，但 agent 必须知道"这是升级不是首装" |
+| 端口 17999 | 占用 → warn | 可能是这套系统自己的 test-emit，也可能要关掉的旧实例 |
+| 已有 `anc-*` 任务 | warn | 重装会覆盖 |
+| WorkBuddy 装了没 | 没有 → **blocker**（两侧都要） | company 侧第 0 步就是装它；employee 侧本来就该有 |
+
+### 五场景实测（都用 `2>&1` 调用，模拟 agent 的常见写法）
+
+```
+A 干净（Z: 演练根）  ok=True   blockers=0                  warnings=3（vault-disk / port / tasks）
+B vault 盘不存在     ok=False  blockers=1(vault-drive)     warnings=3
+C Root 盘不存在      ok=False  blockers=1(disk)            warnings=2
+D employee 侧        ok=True   blockers=0                  warnings=1（只有 port）
+E 本机（已装好）      ok=True   blockers=0                  warnings=3（already-installed / port / tasks）
+```
+
+**每一项的判都对**：
+- A 和 E 都是 `ok:true`，但 E 多一个 `already-installed` —— 因为 `C:\ProgramData\anc\data\anc.db` 存在
+- D 只有 1 个 warn —— employee 侧不查 `ProgramData`（**这一条是修过的**，见下）
+- B/C 都是 `ok:false` 且 blocker 指向正确的项
+
+### 修掉的三个真 bug
+
+**① employee 侧也在查 `ProgramData`**
+
+第一版 `$Root` 默认值写死 `Join-Path $env:ProgramData 'anc'`，两侧共用。结果 employee 侧在个人电脑上查 `C:\ProgramData\anc\data\anc.db`，误报 `already-installed`。
+
+改成按侧分：
+
+```powershell
+$Root = if ($Side -eq 'company') { Join-Path $env:ProgramData 'anc' } else { Join-Path $env:LOCALAPPDATA 'anc' }
+```
+
+**② vault 盘不存在只报 WARN**
+
+第一版是 `Warn`。但**vault 盘不存在，装完什么都写不进去**——这时候说"可以装"是骗人的，第一次入库就炸。
+
+改成 `Block`。
+
+**③ `Join-Path` 的 `DriveNotFound` 是**非终止错误**，`try/catch` 抓不住**
+
+这是这次最有价值的发现。
+
+`$Root = 'Q:\nope\anc'` 时：
+
+```powershell
+try { $dbPath = Join-Path $Root 'data\anc.db' } catch { }   # 抓不住！
+```
+
+`Join-Path` 抛的是 `DriveNotFoundException`，**在 PS 5.1 里它是非终止错误**，直接打到 stderr，`catch` 收不到。
+
+**症状极具误导性**：
+
+- 脚本**实际跑成功了**（JSON 里 `ok:false` + `disk` blocker 全对）
+- 但 stderr 里有错误文本
+- agent 用 `powershell ... 2>&1`（**没人不这么写**）→ **JSON 被污染 → 解析失败**
+- 表现成"脚本崩了"，实际没崩
+
+**修法两层**：
+
+1. 每个路径操作加 `-ErrorAction SilentlyContinue`
+2. **`$ErrorActionPreference = 'SilentlyContinue'`**（原来是 `'Continue'`）
+
+第 2 条是关键：**这个脚本的输出只有两种——JSON 或人读的文本。任何非终止错误打到 stderr 都会污染它。所有判断都由 `Block`/`Warn` 显式做，不靠错误流兜。**
+
+### 这个坑值得单独记
+
+**"脚本成功了但输出被自己污染"** 比"脚本失败"难查得多——因为：
+
+- 退出码是对的（0 或 1）
+- 人肉看输出是好的（不带 `2>&1` 时）
+- 只有 agent 那种"捕获所有输出再解析"的用法才会暴露
+
+**而 agent 恰恰是这份脚本的目标读者。**
+
+所以给 agent 读的脚本要有一条硬规矩：**输出只能是结构化数据，所有噪音都要在源头压掉，不能指望调用方过滤。**
+
+### 这一项的状态
+
+| 要素 | 状态 |
+|---|---|
+| 输出 `{ok, blockers[], warnings[], next, facts{}}` | ✅ |
+| blocker 非空时 `ok:false` 且 `next` 明确 | ✅（B/C 场景验证） |
+| 用 Z: 演练根和本机各跑一次，两种情况判对 | ✅（五场景） |
+| 退出码 0/1 正确 | ✅ |
+| `2>&1` 调用也是纯 JSON | ✅ |
+
+**D4.2 完成。**
