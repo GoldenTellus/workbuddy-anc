@@ -18,7 +18,7 @@
 | [2](#2-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
 | [3](#3-workbuddy确认-workbuddy-已登录) | `workbuddy` | 确认 WorkBuddy 在 | 1 分钟 |
 | [4](#4-files部署运行件) | `files` | 部署运行件 | 30 秒 |
-| [5](#5-skills装技能) | `skills` | 装 8 个技能 | 10 秒 |
+| [5](#5-skills装技能) | `skills` | 装 7 个技能（8 个文件） | 10 秒 |
 | [6](#6-persona部署个人-persona) | `persona` | 部署个人 persona | 1 分钟 |
 | [7](#7-bind绑定本人的群) | `bind` | 绑定群 | 1 分钟 |
 | [8](#8-verify自证) | `verify` | 自证 | 30 秒 |
@@ -51,6 +51,20 @@
 
 **填不全就别往下做。** 这些值只有人知道。
 
+> **问不到时的规矩（第二轮走查暴露的漏洞）**
+>
+> 早先版本没说清「哪些能从同步过来的产物读、哪些不能」，agent 就自己从
+> `render\groups.json` 里读 userid / chatId / 成员 id，然后推断着装 —— 装错人不会报错，
+> 只会静默地让个人 bot 去服务别人。**现在的分界**：
+>
+> | 项 | 能不能从产物读 | 为什么 |
+> |---|---|---|
+> | 2 userid、3 chatId、2′ 成员 id | **不能，必须问人** | 这三个决定「bot 服务谁、消息从哪来、装哪份 persona」。读错了不报错，只装错 |
+> | 4 共享区路径 | 可以 | 由 `org\company.md` 的 `vault_shared:` 决定，§5.5 会同步过来 |
+> | 5 公司 bot 名、6 部门 | 可以 | 渲染 persona 时已写死，读 persona 即可 |
+>
+> **拿不到 2 / 3 / 2′ 时唯一的正确动作是停下来问**，不是从产物里猜。
+
 | # | 要什么 | 用在哪 | 怎么来的 | 填这里 |
 |---|---|---|---|---|
 | 1 | **这台电脑是你自己的吗**（不是共用的） | 前提 | 问人 | ☐ 是 / ☐ 不是 |
@@ -64,7 +78,9 @@
 **缺的时候**：
 
 - **2、3 缺** → 停下来问。persona 认不出主人，个人 bot 会「听所有人的话」——这是安全问题
-- **4 缺** → 可以装，但读不了公司资料；`verify` 的 `vault-read` 会 FAIL
+- **4 缺** → 可以装；`verify` 的 `vault-read` **不一定** FAIL ——
+  它读的路径来自 `org\company.md` 的 `vault_shared:`（§5.5 同步过来的那份），不是从你这里问到的值。
+  早先版本这里写「会 FAIL」，第二轮走查时没填第 4 项却 PASS 了，所以改了。
 - **6 缺** → 按"未分部门"处理（全部技能、全部 vault）。**能用，但范围没收窄**
 - **1 是"不是"** → **停下来**。共用电脑上装个人 bot 会让别人也能用你的身份
 
@@ -260,7 +276,23 @@ foreach ($p in "render\groups.json", "org\company.md", "render\members") {
 }
 ```
 
-**三个都「有」就跳过这一节。**
+**三个都「有」时**：不要直接跳过。先看它们是不是**你自己同步来的**。
+
+- 如果是你刚按下面的通道拷的 → 跳过后续，往下走
+- 如果是**别人预先放好的**（你不知道来源）→ **仍然照 A-1 重跑一遍并核对哈希**，
+  因为「有文件」不等于「是对的人的那份」。产物放错人（装成别人的 persona）比缺文件更糟。
+
+核对方法：
+
+```powershell
+$Root      = "$env:LOCALAPPDATA\anc"
+$company   = "D:\anc"        # 公司侧根，按实际填
+foreach ($rel in "render\groups.json", "org\company.md") {
+    $a = (Get-FileHash (Join-Path $Root $rel)    -Algorithm SHA256).Hash
+    $b = (Get-FileHash (Join-Path $company $rel) -Algorithm SHA256).Hash
+    "{0,-22} {1}" -f $rel, $(if ($a -eq $b) { "MATCH" } else { "MISMATCH —— 员工侧这份不是公司侧当前产物" })
+}
+```
 
 ### 通道 A：直接从公司主机拷（同机装、或公司主机开了 SMB 共享）
 
@@ -313,6 +345,32 @@ foreach ($p in "render\groups.json", "org\company.md", "render\members") {
 
 **关键概念**：persona 由**公司侧**渲染（因为要读 org 数据），员工侧只是**接收 + 安装**。
 
+### 先确定「哪个成员是我」—— 这一步不能推断
+
+`render\members\` 下可能有多个成员（公司里有几个人就有几份）。**装错了就是装了别人的身份**，
+个人 bot 会去服务别人、把任务记到别人名下。
+
+**判定顺序**（前一条不成立才走下一��）：
+
+1. **问用户**：「你在 org 里是哪个成员 id？」—— §1 的第 2′ 项。**这是首选，不允许用推断代替。**
+2. 只有一种情况可以自己定：`render\groups.json` 里 **userid 唯一**，且你从别处确切知道本人 userid。
+   这时按 userid 反查成员 id。
+3. **`groups.json` 里多个成员共用同一个 userid 时（同机测试常见），必须问人** ——
+   这时任何「按 userid 匹配」都会同时匹配到多份，等于没匹配。
+
+```powershell
+$Root = "$env:LOCALAPPDATA\anc"
+$g = Get-Content "$Root\render\groups.json" -Raw | ConvertFrom-Json
+$arr = if ($g -is [array]) { $g } else { $g.members }
+"在 render\members 下的成员："
+Get-ChildItem "$Root\render\members" -Directory | ForEach-Object { "  - " + $_.Name }
+"groups.json 里的 userid 分布："
+$arr | Group-Object userid | ForEach-Object {
+    "  userid=" + $_.Name + "  成员=" + (($_.Group | ForEach-Object { $_.employee }) -join ", ")
+    if ($_.Count -gt 1) { "    ⚠ 多个成员共用同一个 userid —— 不能用它区分，必须问用户哪个 id 是本人" }
+}
+```
+
 ```powershell
 $Root = Join-Path $env:LOCALAPPDATA 'anc'
 $LivePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md'
@@ -339,10 +397,20 @@ Copy-Item $src $LivePersona -Force
 
 **成功判据**：
 
+> **第 ① 条只在你的 userid 唯一时才算证明。**
+> 如果 `groups.json` 里多个成员共用同一个 userid（同机测试常见），
+> 「persona 含这个 userid」对所有成员的 persona 同时为 True —— **它证明不了这份是你的**。
+> 那种情况下只能用「你告诉我是哪个成员 id」来确认，别靠这条判据。
+
 ```powershell
-# ① persona 里有你的 userid（证明是你的，不是别人的）
-Select-String -Path $LivePersona -Pattern '<你的 userid>' -Quiet
-# ② 有部门段（§10.4 里我们加的）
+# ① persona 里有你的 userid（userid 唯一时才证明是你的）
+$uid = '<你的 userid>'
+$hits = @(Get-ChildItem "$Root\render\members" -Directory | Where-Object {
+    (Get-Content (Join-Path $_.FullName 'CODEBUDDY.md') -Raw) -match [regex]::Escape($uid)
+})
+"含该 userid 的 persona 份数: " + $hits.Count + "（>1 说明这条判据没区分力，必须问人确认成员 id）"
+
+# ② 有部门段
 Select-String -Path $LivePersona -Pattern '你属于哪个部门' -Quiet
 # ③ 字节数在 7500 以内
 (Get-Item $LivePersona).Length
@@ -453,7 +521,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 |---|---|---|
 | `database` | `data\anc.db` 存在 | 不存在 → FAIL。**由 §4 那条 `cli.ts --db` 顺带创建**，手册没有单独的建库步骤 |
 | `bot-online` | WorkBuddy 进程在 | 不在就 FAIL |
-| `bot-reply` | 注入一条消息 | 两种 SKIP：① 还没绑定群 ② `test-emit` 没开。**先看 `reason` 字段是哪个** |
+| `bot-reply` | 注入一条消息 | 两种 SKIP：① 还没绑定群 ② `test-emit` 没开。**先看 `detail` 字段是哪个** |
 | `vault-read` | 读 `render\groups.json` + `org\company.md` 里 `vault_shared:` 指到的目录 | 缺这两个文件 → FAIL，回去做 §5.5 |
 
 **SKIP 不是通过。** 有 SKIP 时告诉用户"这几项没验，原因是 X"。
@@ -461,8 +529,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 **失败了怎么办**：
 
 - **`bot-online` FAIL** → 启动 WorkBuddy
-- **`vault-read` FAIL** → 检查 §1 第 4 项的路径；网络共享要能访问（`net use` 或凭据）
-- **`bot-reply` SKIP** → 看 `reason` 字段，两种原因处理方式不同：
+- **`vault-read` FAIL** → 先看缺的是哪个：
+  - 「没有 render\groups.json」→ 回去做 §5.5
+  - 「company.md 里没有 vault_shared」→ §5.5 同步的 `org\company.md` 不完整，重新同步
+  - 「路径不可读」→ `org\company.md` 里那个路径在这台机器上访问不了（网络共享要 `net use` 或凭据）
+  **注意**：这个路径来自 `org\company.md`，不是 §1 第 4 项 —— 别去改 §1。
+- **`bot-reply` SKIP** → 看 `detail` 字段（`deploy-verify` 的 checks 只有 `name`/`state`/`detail`/`fix`，**没有 `reason`**），两种原因处理方式不同：
   - **「没有绑定群」** → 先做 §7。只建 `test-emit.flag` 没用，没绑定群就没有注入目标。
   - **「test-emit 关闭（默认）」** → 建 `%LOCALAPPDATA%\anc\data\test-emit.flag`，然后重启 WorkBuddy（flag 启动时读一次）。
     你跑在 WorkBuddy 里的话，重启会杀掉自己 —— 按 §6「情况 A」处理，写进汇报。
