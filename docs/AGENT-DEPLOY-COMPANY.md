@@ -196,9 +196,16 @@ $VaultRoot = 'D:\anc'   # 按 §1 第 6 项填的值
 **成功判据**：
 
 ```powershell
-# 应该是 15 和 5
+# 部署目录：应该是 15
 @(Get-ChildItem $Root -Directory).Count
-@(Get-ChildItem $VaultRoot -Directory).Count
+
+# vault 目录：**至少 5**，不是「正好 5」。
+# 运行时还会多出这些，它们不是建错了：
+#   render        —— 渲染产物（§10.6 的 --out 指到 %ProgramData%ancender，
+#                    但 vault 根下也可能有一个历史遗留的 render）
+#   _acl-verify   —— D24 验 ACL 时的测试目录（可以删）
+#   inbox/_originals 等运行时目录
+@(Get-ChildItem $VaultRoot -Directory).Count   # 期望 >= 5
 ```
 
 **失败了怎么办**：上一级的盘不存在（§3 的 `disk` blocker 应该已经拦住了）→ 回 §3。
@@ -461,6 +468,33 @@ local_workdir: C:\Users\<用户名>\WorkBuddy\Claw
 ```
 
 **这 5 个字段都是必需的**，少一个渲染会报"缺少字段"。
+
+**怎么写这个文件**（编码值得注意）：
+
+```powershell
+$org = "$VaultRoot\org"
+New-Item -ItemType Directory -Path $org -Force | Out-Null
+
+# 用 .NET 写无 BOM 的 UTF-8。不要用 Set-Content -Encoding UTF8 ——
+# PS 5.1 下它会加 BOM。渲染器虽然已经兼容 BOM（VERIFY §34 修过），
+# 但无 BOM 更干净，也省得以后换工具再踩一次。
+$body = @'
+---
+name: <公司名>
+company_bot_name: <bot 名字>
+vault_shared: D:\anc\vault-shared
+vault_internal: D:\anc\vault-internal
+local_workdir: C:\Users\<用户名>\WorkBuddy\Claw
+---
+'@
+[IO.File]::WriteAllText("$org\company.md", $body, (New-Object Text.UTF8Encoding($false)))
+
+# 确认没 BOM（前三个字节不应该是 EF BB BF）
+$b = [IO.File]::ReadAllBytes("$org\company.md")
+if ($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) { Write-Host "有 BOM（渲染器兼容，但不理想）" } else { Write-Host "无 BOM，OK" }
+```
+
+**depts / members / roles 的 `.md` 同样用这个写法。**
 
 **`local_workdir` 是什么**：WorkBuddy 的工作目录。默认是 `%USERPROFILE%\WorkBuddy\Claw`。不确定就先跑一次 `Get-ChildItem "$env:USERPROFILE\WorkBuddy"` 看实际名字。
 
