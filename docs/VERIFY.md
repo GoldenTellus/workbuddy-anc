@@ -6164,3 +6164,157 @@ at:                 16:46:28                    ← 那是 5.9.3 时代
 2. **给补丁注入加可判信号** —— `launch-patched.ps1` 在 resume 之后应该主动 poll 一下 `patch-state.json`，超时就明确报「注入没成功」，而不是留给下一个看日志的人去猜
 3. **R7 换路径**：不再用降级。改为**在 5.9.3 上装好补丁后，等厂商真发版**；或者**用两个 asar 做对照**（把 5.8.3 的 `wecomaibot-client.js` 结构当作"新版本"喂给 `inspect.mjs`，验锚点判断逻辑 —— 但那只验工具，不验自愈）
 4. **修 `REBUILD.md` 的数据恢复一节**：`robocopy /E` 不带 ACL，恢复后 `secrets-acl` 会 FAIL
+
+## 59. 补丁注入的真相：66% 单次成功率，不是「坏了」（2026-11-05）
+
+### 59.1 起因
+
+`§58` 里我写下「补丁注入连续 5 次失败且完全静默」，并据此认为公司 bot 失去了群身份注入。**这个结论是错的**，而且错法很有代表性。
+
+### 59.2 补丁到底怎么进去的
+
+读 `preload.cjs` 才搞清，它分两段：
+
+**① 安装期（每进程一次）** —— `Module.prototype._compile` 被 hook：
+
+```javascript
+Module.prototype._compile = function (content, filename) {
+  if (norm.indexOf(TARGET) !== -1 && digest === EXPECTED) {
+    content += '\n' + PATCH_BODY;      // ← 内存拼接，不写盘
+    log('INJECTED mode=hash target=' + filename);
+  }
+}
+```
+
+**关键：`INJECTED` 是「在内存里给模块源码追加 `PATCH_BODY`」，`app.asar` 不会被改。**
+
+所以去 `app.asar` 里找 `__anc` 痕迹永远找不到 —— 我一开始就是这么误判的。
+
+**② 生效期** —— `PATCH_BODY` 执行时调 `global.__ancMarkApplied()`，由它写 `patch-state.json`：
+
+```javascript
+global.__ancMarkApplied = function () {
+  writeState({ mode: pendingMode || 'unknown', applied: true });
+  log('APPLIED mode=' + (pendingMode || 'unknown'));
+};
+```
+
+所以 `APPLIED` 才代表「补丁这次真的装上了」，`INJECTED` 只代表「在某个进程里拼过代码」。
+
+### 59.3 那 `NODE_OPTIONS` 是怎么进去的
+
+`preload.cjs` 在**主进程**里主动 `return`（`process.type === 'browser'`），它要的正是**子进程**：
+
+```javascript
+const __ancIsMainProc = isElectron && String(process.type || '') === 'browser';
+if (__ancIsMainProc) { return; }
+```
+
+而 daemon 子进程是普通 Node 进程，会解析 `NODE_OPTIONS=--require preload.cjs`。
+
+**所以注入的全部工作就是：让主进程的 `process.env` 里出现这个变量，让之后 fork 出来的 daemon 继承它。**
+
+`--inspect-brk` 只是「把主进程暂停住，好在 fork 之前把变量塞进去」的手段。
+
+### 59.4 两条路的实测结论
+
+**路 A：`--inspect-brk` + `inject.cjs`（当前默认）**
+
+统计全部历史日志（`workbuddy-patch.log`，从 11-01 到今天）：
+
+| 指标 | 次数 |
+|---|---|
+| `[inject] env set` | **210** |
+| `[inject] inspector: "scheduled"` | **138**（设完变量后主进程还活着） |
+| `[inject] inspector close skipped: Cannot find context` | **44**（设完变量后主进程已死） |
+| **`APPLIED mode=hash`** | **140** |
+
+**单次成功率约 66%。** 而 `APPLIED` 的时间线从 `11-01T07:56` 一直排到 `11-04T17:44`，**140 次**。
+
+**所以这条路从来没「坏」，它只是有约 1/3 的失败率。** 失败时的表现是：
+- `env set: "OK:<pid>"` 成功（inject 确实连上了）
+- 紧接着 `inspector close skipped: Cannot find context with specified id`（主进程的 JS context 没了）
+- 最终 `WorkBuddy 进程: 0`
+
+**事件日志偶尔留 `0xc0000005`（访问违规）** —— 设了 `NODE_OPTIONS` 之后主进程崩。
+
+**路 B：`NODE_OPTIONS` 直接设（`ANC_WB_METHOD=env`）**
+
+**不可用。** stderr 里有铁证：
+
+```
+[ERROR:electron\shell\common\node_bindings.cc:475]
+  Most NODE_OPTIONs are not supported in packaged apps.
+```
+
+表现是**主进程正常起来（7 个进程）、补丁从不加载（`patch-state` 不写）**。
+
+### 59.5 我今天犯的两个错
+
+**错一：「连续 5 次失败」是采样偏差。**
+
+`§58` 里我杀完进程、`Start-Sleep` 一下、然后**固定等 25 秒**就去查 `patch-state.json`。查不到就判失败 —— 而实测从放行到 `APPLIED` **需要约 60 秒**。我恰好在那 1/3 的失败里连续撞了几次，又每次都查得太早，于是一个 66% 成功率的东西被我记成了「连续 5 次失败」。
+
+**这是 `§53.1` 那条教训的第三次重演：把「我没看到」当成「不存在」。**
+
+**错二：一度把 `env` 方式改成默认。**
+
+因为观察到一次 `applied=true`（17:44），我以为 env 方式可用，还把注释和默认分支全改了。后来 stderr 直接打脸 —— **那次 `applied` 是残留进程偶然继承了变量，不是这条路能用**。已回滚（`launch-patched.ps1` 恢复 `--inspect-brk` 为默认，`env` 降为对照路径）。
+
+### 59.6 已做的改进（这两条是有效的）
+
+**① 注入前轮询 inspector**，不再固定睡 800ms：
+
+```powershell
+for ($i = 0; $i -lt 80; $i++) {
+    Start-Sleep -Milliseconds 500
+    try { $probe = Invoke-WebRequest "http://127.0.0.1:$Port/json/list" ... } catch { }
+    if ($probe.Content -match 'webSocketDebuggerUrl') { $inspectorReady = $true; break }
+}
+```
+
+**② 注入后轮询 `patch-state.json`**（最多 150 秒），并在超时后给出正确的下一步：
+
+```
+[anc] 警告：150 秒内没等到 patch-state applied
+[anc] 不要直接判失败 —— 先看 workbuddy-patch.log 有没有 APPLIED 行；
+[anc] 若日志也只有 env set 没有 APPLIED，才说明 daemon 没继承 NODE_OPTIONS
+```
+
+**这条提示是给下一个人的**：它会让人先看日志再下结论，而不是像我今天那样直接判死。
+
+### 59.7 为什么 66% 在实践上还够用
+
+`patch-guard` 每次发现「无补丁」会**重试 2 次**，中间间隔约 25 秒：
+
+```
+selfheal.log:
+  00:55:53 worker: 第 1 次启动 launch-patched.ps1
+  00:56:16 worker: 第 1 次未见补丁，清理后重试
+  00:56:22 worker: 第 2 次启动 launch-patched.ps1
+  00:56:44 worker: 第 2 次未见补丁，清理后重试
+  00:56:50 worker: 两次启动都没见到补丁日志
+```
+
+单次 66% → 两次都失败约 11%。**再加开机自启那次，实际可用性在 97% 以上。**
+
+**但这仍然是「概率可用」，不是「确定可用」。** 要变成确定，得换注入机制（见 §59.8）。
+
+### 59.8 想彻底解决，只剩两条路
+
+**① 写盘 patch `app.asar`**：把 `preload.cjs` 的逻辑直接嵌进 `main/server.js` 或入口文件，让每个进程天然加载。代价：破坏 asar 完整性、升级会被覆盖、要维护 diff。**`D26` 允许这么做，但要按 §11 登记。**
+
+**② 不改 asar，改 `WorkBuddy.exe` 的启动参数**：给它加 `--require`（Electron 命令行支持的形式，不走 `NODE_OPTIONS`）。需要确认 5.9.3 的 Electron 版本是否还认这个参数。
+
+**两条都比现在的 `--inspect-brk` 重，但都是确定性的。**
+
+### 59.9 现状
+
+```
+WorkBuddy     5.9.3，5 个进程在跑（无补丁）
+patch-state   不存在
+17999         未监听
+launch-patched.ps1  已改：inspect 默认 + 双轮询 + 超时提示；env 降为对照
+```
+
+**goal 第 1 步（连续 3 次 `applied=True`）未达成** —— 但把它改成了「知道成功率、知道失败长什么样、失败时有人话提示」，这比一个误导人的「已修复」有用。

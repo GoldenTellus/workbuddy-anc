@@ -1,10 +1,18 @@
 ﻿# ANC WorkBuddy 补丁启动器：把群身份注入 agent 上下文
 # 对应 FORK-DIRECTION §11 台账；目标版本与文件 hash 见同目录 manifest.json。
 #
-# 为什么不是直接设 NODE_OPTIONS：Electron 打包应用会丢弃大多数 NODE_OPTIONS
-# （日志会打印 "Most NODE_OPTIONs are not supported in packaged apps"）。
-# 所以这里用 --inspect-brk 暂停启动，由 inject.cjs 在主进程里设置环境变量，
-# 再放行；daemon 随后继承该变量，加载 preload.cjs。
+# 注入方式（2026-11-05 两条路都实测过，见 VERIFY §59）：
+#
+#   默认 --inspect-brk —— 暂停启动 → inject.cjs 在主进程里设 process.env.NODE_OPTIONS → 放行；
+#     daemon 子进程（child_process.fork）继承 process.env，加载 preload.cjs。
+#     这是**唯一可行**的路径：实测能成功（APPLIED mode=hash），但同一份脚本时好时坏 ——
+#     失败时 WorkBuddy 进程消失、事件日志留 0xc0000005。注入后的轮询会把这种失败暴露出来。
+#
+#   NODE_OPTIONS（ANC_WB_METHOD=env，实测不可用，仅留作对照）—— 直接给进程设 NODE_OPTIONS。
+#     Electron 会丢弃：stderr 明确打 "Most NODE_OPTIONs are not supported in packaged apps"。
+#     表现是主进程正常起来（7 个进程）但补丁从不加载（patch-state 不写）。
+#     2026-11-05 曾短暂把它改成默认，因为观察到一次 applied=true —— 那是残留进程偶然继承了变量，
+#     不是这条路能用。已改回。
 #
 # 退出码：0 成功（含注入失败后降级启动） / 1 版本或注入失败 / 2 用法或环境错误
 
@@ -112,25 +120,39 @@ if ($preload -match '\s') {
     Fail "preload 路径含空白：$preload" '把 scripts/workbuddy-patch 整个复制到不含空格的路径（例如 C:\anc\workbuddy-patch）后从那里运行' 2
 }
 
-# 可选：NODE_OPTIONS 方式（`-EnvMethod` 显式开启）。
-#
-# 2026-11-02 实测：这条路**会让 WorkBuddy 主进程崩溃**（事件日志里是 WorkBuddy.exe 自己
-# 错误退出，ExitCode -1），而且不一定立刻崩——偶尔能起来，造成"可用"的错觉。
-# 所以默认仍走下面的 --inspect-brk：它虽然会在 inject 连不上时卡住（需要重跑一次），
-# 但至少不会把进程弄崩。要试环境变量方式，设 ANC_WB_METHOD=env 并自己盯崩溃日志。
+# 对照路径：NODE_OPTIONS（ANC_WB_METHOD=env）。实测 Electron 丢弃，不可用，见文件头。
 if ($env:ANC_WB_METHOD -eq 'env') {
     Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 2
     $env:NODE_OPTIONS = '--require ' + $preload
-    Write-Host "[anc] NODE_OPTIONS = $env:NODE_OPTIONS（实验路径，注意主进程可能崩）"
+    Write-Host "[anc] NODE_OPTIONS = $env:NODE_OPTIONS（对照路径：Electron 会丢弃它）"
     Start-WorkBuddy $exe $InstallDir @()
-    Write-Host '[anc] 已启动（NODE_OPTIONS 方式）'
+    Write-Host '[anc] 已启动（NODE_OPTIONS 对照路径）'
     exit 0
 }
 
+# 默认路径：--inspect-brk（唯一可行，见文件头）
+
 # 默认路径：以 --inspect-brk 启动，进程会暂停等待调试器
 Start-WorkBuddy $exe $InstallDir @("--inspect-brk=$Port")
-Start-Sleep -Milliseconds 800
+
+# 2026-11-05 修正：原来固定 Start-Sleep 800ms 就去连，连不上就当失败。
+# 实测 inspector 就绪时间不固定，改成轮询（最多 40 秒）。
+$inspectorReady = $false
+for ($i = 0; $i -lt 80; $i++) {
+    Start-Sleep -Milliseconds 500
+    try {
+        $probe = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/json/list" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        if ($probe.Content -match 'webSocketDebuggerUrl') { $inspectorReady = $true; break }
+    } catch { }
+}
+if (-not $inspectorReady) {
+    Write-Host "[anc] inspector $Port 在 40 秒内没就绪"
+    Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 3
+    Start-WorkBuddy $exe $InstallDir @()
+    exit 1
+}
 
 # 2) 连上去设环境变量并放行
 Write-Host "[anc] 注入中（port=$Port）..."
@@ -157,5 +179,31 @@ if ($injectCode -ne 0) {
 
 Write-Host "[anc] 已注入并放行；daemon 继承 NODE_OPTIONS 后会加载 preload.cjs"
 Write-Host "[anc] 日志：$patchLog"
-Write-Host "[anc] 已启动 WorkBuddy（版本 $ver，补丁模式）"
-exit 0
+
+# 2026-11-05 修正（VERIFY §59）：注入成功后**必须等 patch-state.json**。
+# 实测从放行到 APPLIED 约 60 秒（主进程 → spawn daemon → daemon 载 preload →
+# _compile 命中 → 拼 PATCH_BODY → PATCH_BODY 调 __ancMarkApplied）。
+# 早先脚本在这里直接 exit 0，调用方等 25 秒查不到 state 就判失败 ——
+# §58 记的「连续 5 次注入失败」其实是等得不够，不是注入坏了。
+$stateFile = Join-Path $env:ProgramData 'anc\data\patch-state.json'
+$applied = $false
+for ($i = 0; $i -lt 75; $i++) {
+    Start-Sleep -Seconds 2
+    if (Test-Path $stateFile) {
+        try {
+            $st = Get-Content $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($st.applied -and (Get-Process -Id $st.pid -ErrorAction SilentlyContinue)) { $applied = $true; break }
+        } catch { }
+    }
+}
+
+if ($applied) {
+    Write-Host "[anc] 补丁已生效（patch-state applied=true）"
+    Write-Host "[anc] 已启动 WorkBuddy（版本 $ver，补丁模式）"
+    exit 0
+}
+
+Write-Host "[anc] 警告：150 秒内没等到 patch-state applied"
+Write-Host "[anc] 不要直接判失败 —— 先看 $patchLog 有没有 APPLIED 行；"
+Write-Host "[anc] 若日志也只有 env set 没有 APPLIED，才说明 daemon 没继承 NODE_OPTIONS"
+exit 1
