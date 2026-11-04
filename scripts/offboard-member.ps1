@@ -75,25 +75,29 @@ $failed = @()
 
 # 1) 重新渲染（deployOrg 会清掉停用成员的产物，并对拍）
 Write-Host '[1/4] 重渲染 ...'
-$renderOut = & $node 'C:\ProgramData\anc\render\cli.ts' deploy --org $OrgDir --out $OutDir --json 2>&1 | Out-String
+# node 24 的 `ExperimentalWarning: SQLite` 会走 stderr。原来这两处是 `& $node --no-warnings ... 2>&1 | Out-String`，
+# 而本脚本 $ErrorActionPreference = Stop —— warning 被 `2>&1` 抓成"输出"后触发终止，
+# 表现是「[1/4] 成功、[4/4] 没执行、账号没删」而且没有任何错误指向真因（2026-11-04 踩到）。
+# 所以所有 node 调用都带 --no-warnings。别删。
+$renderOut = & $node --no-warnings 'C:\ProgramData\anc\render\cli.ts' deploy --org $OrgDir --out $OutDir --json 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) { $failed += ('render: ' + $renderOut.Trim()) }
 else { Write-Host ('      ' + $renderOut.Trim()) }
 
 # 2) 转交任务
 if ($ToUserid -or $ToName) {
     Write-Host '[2/4] 转交任务 ...'
-    $args = @('C:\ProgramData\anc\service\cli.ts', 'task', 'reassign', '--from', $FromUserid)
-    if ($ToUserid) { $args += @('--to', $ToUserid) }
-    if ($ToName) { $args += @('--to-name', $ToName) }
-    $args += @('--actor', 'offboard')
-    $re = & $node @args 2>&1 | Out-String
+    $cliArgs = @('--no-warnings', 'C:\ProgramData\anc\service\cli.ts', 'task', 'reassign', '--from', $FromUserid)
+    if ($ToUserid) { $cliArgs += @('--to', $ToUserid) }
+    if ($ToName) { $cliArgs += @('--to-name', $ToName) }
+    $cliArgs += @('--actor', 'offboard')
+    $re = & $node --no-warnings @cliArgs 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { $failed += ('reassign: ' + $re.Trim()) } else { Write-Host ('      ' + $re.Trim()) }
 }
 
 # 3) 解绑群
 if ($ChatId) {
     Write-Host '[3/4] 解绑群 ...'
-    $ub = & $node 'C:\ProgramData\anc\service\cli.ts' bind unbind --chat-id $ChatId 2>&1 | Out-String
+    $ub = & $node --no-warnings 'C:\ProgramData\anc\service\cli.ts' bind unbind --chat-id $ChatId 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { $failed += ('unbind: ' + $ub.Trim()) } else { Write-Host ('      ' + $ub.Trim()) }
 }
 

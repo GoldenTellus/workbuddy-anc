@@ -2901,3 +2901,128 @@ W WARN vault-ingest-audit   3 个未跟踪文件，但 1 小时内没有成功�
 **所以 O-5 的 `🟡` 不能直接翻 `✅`**：它要求"干净机按 REBUILD 重建成功并计时"，而这次是**同机换盘符**，不是干净机。**已验的部分（§1/§3 的自动化步骤 + 渲染 + doctor）是可信的，§2/§4 仍然是空的。**
 
 这一条写进 `ACCEPTANCE` 的 O-5 备注里，不改状态。
+
+## 35. P-7 离职四步：真跑通了，顺带挖出两个渲染缺陷（2026-11-04）
+
+### 做法
+
+用 `anc-bot`（本地用户，有账号没 profile）当假员工，`D:\anc\org\members\` 里造两个成员：`test-offboard`（`disabled: true`）+ `test-receiver`（接手人）。然后 `offboard-member.ps1 -Apply` 真跑。
+
+**第一次跑 `moved:0` / `removed:0`** ——假成员身上没数据，"转交"和"解绑"等于没验。所以补造了数据重来：
+
+```
+tasks #62/#63   assignee_userid = u-test-offboard
+chat_bindings   chat_id = chat-test-offboard → u-test-offboard
+```
+
+### 四步全绿
+
+```
+[offboard] test-offboard  APPLY
+  1) 重新渲染：清掉 members/test-offboard 产物，并从 groups.json 移除
+  2) 转交 open 任务：u-test-offboard -> u-test-receiver
+  3) 解绑群：chat-test-offboard
+  4) 删除 Windows 账号：anc-bot（不可逆）
+
+[1/4] 重渲染 ...   {"ok":true,"verified":2,"outputs":2,"members":1}
+[2/4] 转交任务 ... {"ok":true,"moved":1,"taskIds":[63]}
+[3/4] 解绑群 ...   {"ok":true,"removed":1}
+[4/4] 删除 Windows 账号 ... 已删除 anc-bot
+[offboard] 完成。vault 里的档案与入库记录未动（D21 复核保留）。
+exit=0
+```
+
+**事后核对**：
+
+```
+任务 #62  open  assignee=u-test-receiver
+任务 #63  open  assignee=u-test-receiver
+还挂在 u-test-offboard 上的任务: 0
+绑定里还有 chat-test-offboard 吗: 0
+anc-bot 存在: False
+```
+
+**四步都真的生效了**，不是"报告说成功"。
+
+### 修了一个真 bug：`-Apply` 会在第 2 步静默中断
+
+**第一次真跑时**：
+
+```
+[1/4] 重渲染 ...        OK
+[2/4] 转交任务 ...
+  node.exe : (node:16516) ExperimentalWarning: SQLite is an experimental feature...
+  ...脚本在这里死了...
+[4/4] 删除 Windows 账号    ← 没执行
+```
+
+**根因**：脚本开头 `$ErrorActionPreference = 'Stop'`，而 node 调用写的是 `& $node ... 2>&1 | Out-String`。node 24 的 `ExperimentalWarning: SQLite` 走 stderr，被 `2>&1` 抓进"输出"后触发终止。
+
+**表现极具误导性**：`[1/4]` 成功、`[4/4]` 没执行、账号没删、**没有任何错误信息指向真因**。
+
+**修法**：所有 node 调用加 `--no-warnings`（3 处）。顺带把 `$args` 改成 `$cliArgs`——那是 PowerShell 自动变量，赋值行为不可靠。
+
+**这个 bug 值得记**：它不是"某处逻辑写错了"，是**两个正确的东西（`ErrorActionPreference=Stop` 和 `2>&1`）组合起来吃掉了 stderr 里的 warning**。而且只在**真跑 `-Apply`** 时才暴露——dry-run 在第 65 行就 `exit 0` 了，根本走不到这里。
+
+**所以"dry-run 通过"不能当成"`-Apply` 也能通过"的证明。**
+
+### 挖出两个渲染缺陷（未修）
+
+#### ① 成员从 org 删掉后，产物不清理
+
+`D:\anc\build\` 里：
+
+```
+company-bot:    11 个   ← 正常
+test-receiver:  6 个    ← **成员文件已删除，产物还在**
+```
+
+`render deploy` 会清 **`disabled: true` 成员**的产物（`test-offboard` 那 6 个确实没了），但**不会清"从 `members/` 目录里删掉的成员"的产物**——它只认当前 org 里有什么，不认目录里曾经有什么。
+
+**后果**：如果一个人不是因为离职、而是手滑删了 org 文件，他的 `CODEBUDDY.md` 会一直留在 `build/` 里。**而这个文件是会被部署到 WorkBuddy 的**——一个"不存在的人"的 persona 还在。
+
+**正确做法**（没做）：`deploy` 完成后扫一遍 `build/*/`，凡是不在 `groups.json.members` 里的目录都删掉（或者至少告警）。
+
+#### ② `.bak-<时间戳>` 备份永久累积
+
+```
+groups.json.bak-*      10 个（2026-11-02 到 11-04）
+manifest.json.bak-*    10 个
+.CODEBUDDY.md.bak-*    多个
+```
+
+每次 `render deploy` 都先备份现有文件再写新的，**从不清理**。这两天渲染了 10 次，就积了 10 组。
+
+**现在的量无所谓**（几 KB），但**按天渲染跑一年就是几千个备份文件**。
+
+**正确做法**（没做）：只保留最近 N 份（比如 12），或者按天保留。
+
+**为什么没修**：这两个都是渲染器的行为改动，牵涉 `deployOrg` 的清理策略和备份策略。**手动删掉现有残留够用了**，改代码要连测试一起改（`render.test.ts` 有 11KB），风险大于收益——而且 `VERIFY §27` 说过「产出的东西要人 review 后才上主机」，残留产物不会自动生效。
+
+**但记在这里**：这是两个真实的、会随时间恶化的缺陷。
+
+### 清理
+
+```
+恢复 anc-bot（New-LocalUser，标准用户，密码随机）
+删 test-offboard.md / test-receiver.md
+删 build\test-receiver\（残留产物）
+删测试任务 #62 #63
+重渲染（members: 0，回到干净状态）
+删备份 anc.db.p7-backup
+```
+
+### 这个 DoD 的状态
+
+**P-7 的 🟡 保持不动。** 原因：
+
+| 条款要素 | 验到了吗 |
+|---|---|
+| `disabled: true` → 不重建 persona | **验到了**（产物消失、groups.json 移除） |
+| 任务转交 | **验到了**（`moved:1`，事后核对 assignee 变了） |
+| 席位回收 | **没验**——要企微席位，本机没有 |
+| 账号删除 | **验到了**（`anc-bot` 真被删，事后确认不存在） |
+
+四步里三步验到，**"席位回收"这一项卡在企微后台**。所以条款整体仍然不成立，🟡 保持不变。
+
+**但已经把"能验的那三步"从"只在临时 org 上跑过 dry-run"推进到"真跑 -Apply、真改数据、真删账号、事后核对"。**
