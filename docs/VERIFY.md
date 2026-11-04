@@ -6059,3 +6059,108 @@ deploy-verify  ok=True pass=3 fail=0 skip=1
 ```
 
 **没做** —— 这是下一件事。而且 ③ 那一步必然失效（5.8.3 的 sha256 和 manifest 不同），**关键是「失效时会不会明确报警，而不是静默」**。
+
+## 58. R7 第一次尝试：降级路上撞到「补丁注入本来就不可靠」（2026-11-05）
+
+### 58.1 目标与手段
+
+**R7（1.0 判据第 2 条：补丁在升级后能自愈）**，本来打算用「降级再升级」来验，因为厂商没发新版。
+
+三样材料当时都齐了：5.9.3 + 补丁（`anchorsOk: true`）、5.8.3 安装包（腾讯签名 Valid）、三份备份 + 5 个 `-orig` 目录。
+
+### 58.2 实际发生了什么
+
+| 步骤 | 结果 |
+|---|---|
+| 恢复公司侧（robocopy 从 `E:\anc-backup-20261104\anc`） | ✅ 12710 文件 / 1314.6 MB，与基线一致；`chat_bindings` 2 行、`tasks` 36 条都在 |
+| `deploy.ps1 -Side company -Apply` | ✅ 71 文件；manifest `hashMatches: true` / `anchorsOk: true` |
+| `register-tasks.ps1 -Apply -BotUser Administrator` | ✅ 10 个任务全部 Ready |
+| `anc-workbuddy-launch` 启动 + 注入 | ✅ **成功**：`INJECTED mode=hash` / `APPLIED`，17999 监听 |
+| 降级：卸 5.9.3 | ✅ 18 秒，`ProgramData\anc` 全程没被动 |
+| 降级：装 5.8.3 | ✅ 72 秒，版本 5.8.3 |
+| **5.8.3 + 补丁启动** | ❌ **失败**：`[inject] env set: OK` → `inspector: scheduled` → **没有后续** |
+| **5.8.3 自己升级回 5.9.3** | ✅ 它自己做了：`app.quit()` + NSIS `/S --updated /UPDATE=1` |
+| 装回 5.9.3（用缓存里的更新包） | ✅ 56 秒 |
+| **5.9.3 + 补丁再启动** | ❌ **也失败了**：同样是 `env set OK` → `inspector: scheduled` → 没有后续 |
+
+### 58.3 ★ 死结在哪
+
+`launch-patched.ps1` 用的是 `--inspect-brk` + `inject.cjs`：
+
+```powershell
+# L6  所以这里用 --inspect-brk 暂停启动，由 inject.cjs 在主进程里设置环境变量
+# L119 它虽然会在 inject 连不上时卡住（需要重跑一次）
+Start-WorkBuddy $exe $InstallDir @("--inspect-brk=$Port")
+```
+
+**而拦截自动升级的 `update-hook` 是在补丁体里装的。** 于是：
+
+```
+5.8.3 启动 → --inspect-brk 注入失败 → update-hook 没装上 → 拦不住升级
+        → UpdateService 拉 5.9.3 安装器 → 自己升回去
+```
+
+**降级停不住，所以「降级→升级」这条路验不了 R7。**
+
+### 58.4 但挖出两个真缺陷
+
+**① `patch-state.json` 跨版本残留，状态骗人（`§51.4` 的实证）**
+
+```
+patch-state.json:   applied=True   mode=hash   pid=6880
+该 pid 现在活着:     False                      ← 进程早死了
+at:                 16:46:28                    ← 那是 5.9.3 时代
+```
+
+**`patch-guard` 的行为其实完全正确**（`selfheal.log` 有 1015 行）：
+
+```
+00:55:41  安排自愈重启（约 5 秒后 bot 短暂离线）
+00:55:53  worker: 第 1 次启动 launch-patched.ps1
+00:56:16  worker: 第 1 次未见补丁，清理后重试
+00:56:22  worker: 第 2 次启动 launch-patched.ps1
+00:56:44  worker: 第 2 次未见补丁，清理后重试
+00:56:50  worker: 两次启动都没见到补丁日志
+00:58:44  cooldown: 上次自愈在 2 分钟前，跳过
+```
+
+**检测到了、重试了 2 次、记录失败、进冷却 —— 都对。**
+**唯一的问题是：自愈失败后不回写 `patch-state.json`。** 所以任何只看那个文件的判断（包括 `doctor`）都会以为补丁好着。
+
+**② `--inspect-brk` 注入流程本身不稳**
+
+同一天里：
+- `16:46` 成功（`INJECTED` / `APPLIED`）
+- `16:58` 失败（5.8.3）
+- `17:04` 失败（重装的 5.9.3）
+
+**同一份脚本、同一份 manifest，成功和失败交替出现，每次都只写到 `inspector: scheduled` 就没了。** `launch-patched.ps1` 自己的注释就承认「会在 inject 连不上时卡住」——**但它没承认这句话的真实含义是：注入可能静默失败，而状态文件仍显示成功。**
+
+### 58.5 所以 R7 现在的结论
+
+**判据第 2 条（补丁在升级后能自愈）仍然未达成。** 而且原因比"厂商没发版"更根本：
+
+**「自愈」的前提是「补丁能装上」。而补丁的注入流程本身有 50% 级别的失败率，且失败时不产生任何可判信号。**
+
+`§37` 验过「伪造失效三路径」——**那是验「补丁体内部的判断逻辑」，验不到「注入这一步」**。这次撞上的是更外层：**`--inspect-brk` 暂停 → inject 设环境变量 → resume**，这一串里任何一环脱节，补丁就是没装上，而**外面看起来一切正常**（进程在跑、`patch-state` 说 applied）。
+
+### 58.6 顺带暴露：恢复公司侧后三个 FAIL
+
+`doctor` 报：
+
+```
+[FAIL] heartbeat     183 分钟没有 tick          ← anc-service 没启动
+[FAIL] secrets-acl   secrets 对广泛组可读        ← 恢复备份时 ACL 丢了
+[FAIL] http-health   anc-http 任务在但端口没响应
+```
+
+**前两个是恢复备份的副作用**（`robocopy` 不带 ACL；服务没重启）。**第三个和补丁注入失败同源** —— 服务进程没真正跑起来。
+
+**这不是缺陷，是「恢复备份不等于恢复系统」** —— 文件对了，ACL 和服务状态还得单独修。这条要写进 `REBUILD.md` 的数据恢复一节。
+
+### 58.7 下一步（按优先级）
+
+1. **修 `patch-guard`：自愈失败必须回写 `patch-state.json`（`applied=false` + 原因）** —— 否则"状态骗人"这条永远在
+2. **给补丁注入加可判信号** —— `launch-patched.ps1` 在 resume 之后应该主动 poll 一下 `patch-state.json`，超时就明确报「注入没成功」，而不是留给下一个看日志的人去猜
+3. **R7 换路径**：不再用降级。改为**在 5.9.3 上装好补丁后，等厂商真发版**；或者**用两个 asar 做对照**（把 5.8.3 的 `wecomaibot-client.js` 结构当作"新版本"喂给 `inspect.mjs`，验锚点判断逻辑 —— 但那只验工具，不验自愈）
+4. **修 `REBUILD.md` 的数据恢复一节**：`robocopy /E` 不带 ACL，恢复后 `secrets-acl` 会 FAIL
