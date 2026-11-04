@@ -80,6 +80,69 @@ Get-ChildItem "$A\secrets" -File | Select-Object Name, Length
 **救不回来的三种情况**（`§6 已知缺口` 里有详述）：密钥没离线副本 → 只能重新生成 webhook；`_originals/` 没随备份走 → 原件永久丢失；vault 的 git 没带走 → 历史没了但文件还在。
 
 
+### 2.5 恢复 ACL —— `robocopy` 不带权限，这一步不做后面全错
+
+**这一段是 2026-11-05 实测补的**（`VERIFY §62`）。之前这份 runbook 只讲拷文件、没讲权限，结果按它恢复完 `doctor` 报 3 个 FAIL，**其中 2 个是权限问题**。
+
+**为什么**：`robocopy /E` 只拷数据、**不拷 ACL**。恢复出来的目录会退回从 `%ProgramData%` 继承的默认权限，而那套默认权限对这台机器**同时太宽和太窄**：
+
+- **太宽**：`secrets\` 会变成 `BUILTIN\Users` 可写 → `doctor` 的 `secrets-acl` 直接 FAIL
+- **太窄**：`data\` 下的日志对 `LOCAL SERVICE` 只读不写 → 服务跑得起来但写不进 `loop.log`，`doctor` 的 `heartbeat` FAIL，而**任务记录显示「每分钟成功、退出码 0」**
+
+**「太窄」这一半尤其阴**：所有间接证据都说服务正常，唯一异常是日志文件不动。不造探针实地跑一次，光看任务状态永远发现不了。
+
+```powershell
+$A = 'C:\ProgramData\anc'
+
+# ① secrets：SYSTEM / Administrators 全控 + LOCAL SERVICE 只读
+#    LOCAL SERVICE 不能漏 —— anc-service 和 anc-http 都是以它运行的
+icacls "$A\secrets" /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'LOCAL SERVICE:(OI)(CI)RX'
+
+# ② data：服务身份要能写日志
+icacls "$A\data" /grant 'LOCAL SERVICE:(OI)(CI)M'
+
+# ③ 已经存在的日志文件不继承新 ACE，要逐个补
+foreach ($f in 'loop.log','http.log','patch-in.log','patch-out.log','selfheal.log','audit.log') {
+    $p = Join-Path "$A\data" $f
+    if (Test-Path $p) { icacls $p /grant 'LOCAL SERVICE:(M)' | Out-Null }
+}
+```
+
+**判据**：
+
+| 项 | 怎么查 | 期望 |
+|---|---|---|
+| secrets 不对外 | `(Get-Acl "$A\secrets").Access \| % { $_.IdentityReference }` | 只有 SYSTEM / Administrators / LOCAL SERVICE，**没有 BUILTIN\Users** |
+| 服务能写日志 | 见下面的探针 | `LastResult=0x0` 且 `loop.log` 的 mtime 变了 |
+
+**用探针验证服务身份真能写**（比读 ACL 靠谱得多）：
+
+```powershell
+$ll = "$A\data\loop.log"; $before = (Get-Item $ll).LastWriteTime
+$act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c "C:\ProgramData\anc\bin\anc-loop.cmd"'
+$prin = New-ScheduledTaskPrincipal -UserId 'LOCAL SERVICE' -LogonType ServiceAccount
+Register-ScheduledTask -TaskName 'anc-probe-ls' -Action $act -Principal $prin -Force | Out-Null
+Start-ScheduledTask -TaskName 'anc-probe-ls'; Start-Sleep -Seconds 18
+$i = Get-ScheduledTaskInfo -TaskName 'anc-probe-ls'
+"LastResult=0x{0:X}" -f $i.LastTaskResult
+"loop.log 更新: {0}" -f ((Get-Item $ll).LastWriteTime -gt $before)
+Unregister-ScheduledTask -TaskName 'anc-probe-ls' -Confirm:$false
+```
+
+**为什么要造探针**：任务计划里显示「成功运行、退出码 0」**并不代表脚本里的重定向成功了**。用同一个身份、同一个脚本实地跑一次，看**副作用**（文件时间有没有变），才能确定。
+
+**恢复完顺手重启服务**，让它们用新权限重新读 secrets：
+
+```powershell
+Start-ScheduledTask -TaskName 'anc-service'
+Start-ScheduledTask -TaskName 'anc-http'
+Start-Sleep -Seconds 60
+powershell -File E:\workbuddy-anc\scripts\doctor.ps1
+# 期望 fails=0；如果 http-health 还 FAIL，确认 17891 在监听（不是 18765，那个是猜的）
+```
+
+---
+
 ## 3. 装服务与任务
 
 **不要手工列复制清单**。用 `deploy.ps1`：它是部署的唯一真相源，带映射表 + 覆盖率检查
