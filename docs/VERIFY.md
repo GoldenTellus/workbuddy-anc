@@ -3293,3 +3293,123 @@ FAIL=0 WARN=1
 重启后立刻看 `patch-state.pid` 还是旧的。等了 40 秒才变成新 pid。
 
 **原因**：state 由补丁体（preload）在 WorkBuddy 启动过程中写，而 WorkBuddy 冷启动本身要 30 秒左右。**所以"重启后 pid 没变"不代表"补丁没生效"**——要看 `applied` 字段和 `selfheal.log`。
+
+## 38. 迭代闭环补上最后一环：状态流转打通（2026-11-04）
+
+### 缺的是什么
+
+跑完 L7 端到端之后有个悬空：**issue 建出来就永远停在 `open`**。
+
+- `devbot` 跑完出了分支，但 issue 还是 `open`——"这条已经有分歧方案了"这件事没记下来
+- 人把分支合入后，也没人把 issue 标 `closed`
+- 结果 `patch prune-closed`（清掉"已知问题"块）**永远扫不到东西**——`VERIFY §32` 做的批量清理**没有触发条件**
+
+**这是典型的"做了后半截，前半截没人接"**：prune 本身没错，但它依赖一个**没人执行的前置动作**。
+
+### 补了三处
+
+**① `devbot.ps1` 成功时自动标 `drafted`**
+
+在 `Step "产出有效..."` 之后、`exit 0` 之前插：
+
+```powershell
+try {
+    $mark = & node --no-warnings $Cli --db $Db --json issue set-status --id $Issue --to drafted --note "devbot 产出分支 $branch"
+    if ($LASTEXITCODE -eq 0) { Write-Host "  issue #$Issue → drafted" }
+    else { Write-Host "  WARN 标 drafted 失败（不影响分支）: ..." }
+} catch { Write-Host "  WARN 标 drafted 失败（不影响分支）: $($_.Exception.Message)" }
+```
+
+**失败只报 WARN 不中断**：分支已经产出了，标状态失败不该把整个 devbot 判失败。
+
+**② 加 `cli issue close --id N [--branch B]`**
+
+比 `set-status --to closed` 好记，而且能留痕"哪个分支解决的"：
+
+```
+{"ok":true,"id":4,"status":"closed"}   note 自动变成 "合入分支: devbot/issue-4"
+```
+
+**③ `submission` 分组的 close 挪到 `issue` 分组**
+
+第一次加的时候放错位置了。改法：`s.replace(anchor, block)` 命中了**第一个** `} else if (cmd === 'set-status') {`——那是 `submission` 分组的（只接受 `triaged`/`dropped`），不是 `issue` 的。
+
+结果：`cli submission close` 能跑（无意义），`cli issue close` 报"未知子命令"。
+
+**改成按行号定位**（先找块、摘出来、再插到 `issue` 分组的 `set-status` 后面）才对。
+
+**教训**：`cli.ts` 里有多个同名 `cmd ===` 分支，**字符串替换不可靠**——要按分组上下文或行号。
+
+### 全链路实测
+
+```
+[L1] submission #7  employee=本人  created=True
+[L2] issue #4       anc-task/查任务
+[L3] draft #8       插入 4 行 → apply exit=0 → 技能文件里有块: True
+[L5] issue close    {"ok":true,"id":4,"status":"closed"}  note="合入分支: devbot/issue-4"
+[L7] prune-closed   预览: scanned=2 removed=1
+                    真删: scanned=2 removed=1（#4 删 4 行，#2 跳过因为早删过）
+验证                还有块吗: False
+issue 状态          #4 closed（合入分支: devbot/issue-4）
+```
+
+### devbot 那条也真跑了
+
+造 `submission #8 → issue #5`，跑 `devbot.ps1 -Issue 5 -Apply`：
+
+```
+exit=0  耗时 430s
+分支 devbot/issue-5 存在: True
+提交数: 1
+9b5c2f0 devbot: 查任务只列今天到期的，逾期不混入 (issue #5)
+改了文件: 1
+产出有效：全在允许范围内
+issue #5 → drafted          ← 自动标的
+persona 已恢复
+```
+
+**issue 状态事后核对**：
+
+```
+#5  drafted   devbot 产出分支 devbot/issue-5
+#4  closed    合入分支: devbot/issue-4
+#3  open
+#2  closed    验收：测试状态流转
+#1  rejected  L7 链路演示...
+```
+
+**五种状态全出现了**：`open` / `drafted` / `closed` / `rejected`，每个都带着对应的 note。
+
+### 闭环现在长这样
+
+```
+员工说一句
+  → submissions           L1  ✓
+  → issues（分诊）         L2  ✓
+  → patch_drafts          L3  ✓
+  → devbot 分支 + 标 drafted  L4  ✓  ← 这次补的
+  → 人 review 合入
+  → issue close --merged   L5  ✓  ← 这次补的
+  → prune-closed 清块       L7  ✓  ← 现在才真能触发
+  → eval                   L6  ✓
+```
+
+**"合入"那一步仍然是人的动作**——这是设计（`VERIFY §27`）。但**除了那一步，前面和后面都接上了**。
+
+### 踩的两次
+
+**① `||` 在 PowerShell 5.1 里不存在**
+
+```powershell
+'  #' + $_.id + '  ' + $_.status + ($_.note || '')
+```
+
+报"`||` 不是此版本中的有效语句分隔符"。这是今天第 4 次踩 PS 5.1 的语法限制（前三次：`??`、`$PSItem` 阴影、`$V`/`$v` 大小写）。
+
+**② devbot 预检挡住"工作区不干净"**
+
+第一次跑 devbot 时 `exit=2`：`FIX 先提交或 stash`。
+
+原因：我刚跑完 L7 的 `git apply` + `prune-closed`，`SKILL.md` 有改动没提交。
+
+**这个是设计对的**——devbot 要在干净工作区上改，否则它的提交会混进别人的改动。但**验证时容易忘**：跑 devbot 之前先 `git status`。

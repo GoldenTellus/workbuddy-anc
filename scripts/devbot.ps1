@@ -44,6 +44,10 @@ $Db = Join-Path $Root 'data\anc.db'
 $Cli = Join-Path $Root 'service\cli.ts'
 $StateFile = Join-Path $Root 'data\devbot.state.json'
 
+# 记下起始分支：devbot 会把仓库切到 devbot/issue-<N> 去提交，跑完必须切回来，
+# 否则下一次 deploy 会拿错分支的技能去部署（2026-11-04 在 e2e-loop 上踩过，devbot 也一样）。
+$startBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+
 # ── 恢复 ────────────────────────────────────────────────
 if ($Restore -or -not $Apply) {
     if ($Restore) {
@@ -199,6 +203,15 @@ devbot 任务：issue #$Issue
     if (Test-Path $backup) {
         Copy-Item $backup $LivePersona -Force
         Step "persona 已恢复（备份留在 $(Split-Path $backup -Leaf)）"
+    }
+
+    # 切回起始分支：不切回去的话，下一次 deploy 会拿 devbot 分支的技能去部署
+    $curBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+    if ($startBranch -and $curBranch -ne $startBranch) {
+        & git -C $Repo checkout $startBranch 2>&1 | Out-Null
+        $nowBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+        if ($nowBranch -eq $startBranch) { Step "已切回 $startBranch" }
+        else { Write-Host "  WARN 切回 $startBranch 失败，现在在 $nowBranch" }
     }
     Remove-Item $StateFile -Force -ErrorAction SilentlyContinue
 }
