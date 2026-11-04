@@ -348,7 +348,18 @@ if (group === 'summary') {
       const ok = issues.setStatus(db, id, st as never, typeof args.note === 'string' ? args.note : undefined);
       out({ ok, id, status: st });
       if (!ok) process.exit(1);
-    } else fail('未知 issue 子命令（draft/list/triage）');
+    } else if (cmd === 'close') {
+      // 语义化的 set-status closed：人把 devbot 的分支合入之后调它。
+      // 为什么要单独一个命令：`close --merged` 比 `set-status --to closed` 更不容易记错，
+      // 而且可以要求必须给 --branch 留个痕（哪个分支解决的）。
+      const id = typeof args.id === 'string' ? Number(args.id) : NaN;
+      if (!Number.isInteger(id) || id <= 0) fail('缺少 --id');
+      const branch = typeof args.branch === 'string' ? args.branch : '';
+      const note = branch ? '合入分支: ' + branch : '人工关闭';
+      const ok = issues.setStatus(db, id, 'closed', note);
+      out({ ok, id, status: 'closed' }) ;
+      if (!ok) process.exit(1);
+    } else fail('未知 issue 子命令（draft/list/triage/set-status/close）');
   } else if (group === 'patch') {
     // 迭代闭环第三步（L3，模板版）：issue → 定位段落 → 插入已知问题 → 输出 diff。
     // 只读仓库不改文件：diff 给人看，合不合由人定。

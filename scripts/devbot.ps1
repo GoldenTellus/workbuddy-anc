@@ -179,6 +179,15 @@ devbot 任务：issue #$Issue
     Write-Host ""
     if ($bad -eq 0) {
         Step "产出有效：分支 $branch 上有 $($commits.Count) 个提交，改了 $($changed.Count) 个文件，全在允许范围内"
+
+        # 把 issue 标成 drafted：分支已经有了，等早上人 review。
+        # 不标的话 issue 永远停在 open，而 `prune-closed` 只扫 closed——
+        # 那样"清理已修好问题的技能提醒"就永远触发不了（2026-11-04 发现）。
+        try {
+            $mark = & node --no-warnings $Cli --db $Db --json issue set-status --id $Issue --to drafted --note "devbot 产出分支 $branch" 2>&1 | Out-String
+            if ($LASTEXITCODE -eq 0) { Write-Host "  issue #$Issue → drafted" }
+            else { Write-Host "  WARN 标 drafted 失败（不影响分支）: $(('' + $mark).Trim().Substring(0, [Math]::Min(120, $mark.Trim().Length)))" }
+        } catch { Write-Host "  WARN 标 drafted 失败（不影响分支）: $($_.Exception.Message)" }
         Step "早上看这个就够了：git -C $Repo log --oneline $baseBranch..$branch"
         exit 0
     } else {
