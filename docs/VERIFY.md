@@ -5150,8 +5150,8 @@ note: 研发部负责产品与交付，能读写主动作与公司共享区
 ```yaml
 ---
 name: 管理员            # staff-a 是「员工A」
-userid: wokc…TsUTw
-chat_id: wrkcDlGwAAca…  # staff-a 是 wrkcDlGwAAlp…
+userid: <userid>
+chat_id: <chatId-老群>…  # staff-a 是 <chatId-test1>…
 dept: engineering
 ---
 ```
@@ -5240,8 +5240,8 @@ node src\service\cli.ts --db …\anc.db --json bind import --from D:\anc\render\
 
 | 群 | `bind resolve` | exit |
 |---|---|---|
-| 老群 `wrkcDlGwAAca…` | `found:true` → **管理员** | 0 |
-| test2 `wrkcDlGwAAlp…` | `found:true` → **员工A** | 0 |
+| 老群 `<chatId-老群>…` | `found:true` → **管理员** | 0 |
+| test2 `<chatId-test1>…` | `found:true` → **员工A** | 0 |
 | **未知群** `wrkcDlGwAAlp-UNKNOWN-…` | **`found:false`** | **1** |
 
 **这就是「一人一群」的数据面**：
@@ -5402,7 +5402,7 @@ if ($patched) { exit 0 }        # 只看状态文件的时间窗，不验证 hoo
 ### 51.6 会话里出现的第三个群
 
 ```
-会话 bdef553d： [anc:chat=wrkcDlGwAAZwSGGGyy2XArRQILNyQqIQ from=wokc…]
+会话 bdef553d： [anc:chat=<chatId-群C> from=wokc…]
 ```
 
 **这个 chatId 不在 `chat_bindings` 里**（bindings 只有 test1 的 `…AAlp` 和老群的 `…AAca`）。
