@@ -656,13 +656,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 
 ```
 database       PASS  库存在: C:\ProgramData\anc\data\anc.db
-doctor         PASS  FAIL=0 WARN=2（30 项）
+doctor         PASS  FAIL=0 WARN=3（30 项）
 task-write     PASS  task #68 写进去了，查得回来
-bot-reply      PASS  注入成功（len=75），但 60 秒内没等到回复
-tasks          PASS  9 个任务全部 Ready/Running
+bot-reply      SKIP  还没有实例引用（需先在群里收到一条真实消息）
+tasks          PASS  10 个任务全部 Ready/Running
 
-结果  PASS=5  FAIL=0  SKIP=0
-NEXT  全部通过。
+结果  PASS=4  FAIL=0  SKIP=1
+NEXT  有 1 项没验（bot-reply），原因见 detail。
+
+# 说明（2026-11-05 实测校正，见 VERIFY §62）：
+#  · WARN 是 3 不是 2：secrets-in-git（未指定 -Repo）、canary（需先收到真实群消息）、
+#    vault-ingest-audit（3 个未跟踪文件，1 小时内无入库记录）。三个都是设计内的，不是缺陷。
+#  · bot-reply 在「干净的机器上」通常是 SKIP 而不是 PASS —— 409 表示还没有实例引用，
+#    即 bot 还没收到过任何真实群消息。这不是故障（VERIFY §62.5）。
+#  · 任务数是 10 不是 9。
 ```
 
 **每一项什么意思**：
@@ -672,12 +679,17 @@ NEXT  全部通过。
 | `database` | 库在 | 部署没做完 |
 | `doctor` | 30 项体检全过 | 有具体项坏了，看 detail |
 | `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
-| `bot-reply` | 注入一条消息 | 端口没监听（SKIP）或注入失败（FAIL）；**"没等到回复"仍是 PASS**（回复慢是模型行为，不是故障） |
+| `bot-reply` | 注入一条消息 | 409（还没有实例引用）是 SKIP 不是 FAIL；端口没监听也是 SKIP；只有真正注入失败才 FAIL。**「没等到回复」仍是 PASS**（回复慢是模型行为） |
 | `tasks` | 10 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
 
 **`SKIP` 不是通过**——它是"没验"。常见 SKIP：
 
-- `bot-reply` SKIP → `test-emit` 没开（正常默认就是关的）。**要验的话**：建 `%ProgramData%\anc\data\test-emit.flag`，重启 WorkBuddy，等 8–30 秒，再跑。
+- `bot-reply` SKIP → 看 `detail` 字段，**两种原因**：
+  - **「还没有实例引用」**（后端是 409）→ 正常。`test-emit` 依赖一个活的 `WecomAiBotClient` 实例，
+    而它只在 bot 收到过**真实群消息**之后才有值。**先去群里 @ 一次 bot，再重跑本脚本。**
+    只建 `test-emit.flag` 解决不了这个。
+  - **「test-emit 关闭」** → 建 `%ProgramData%\anc\data\test-emit.flag`，重启 WorkBuddy，等 8–30 秒。
+    注意 flag 是**启动时读一次**，建完必须重启。，再跑。
 - 有 SKIP 时告诉用户"这几项没验，原因是 X"。
 
 **失败了怎么办**：按每项的 `fix` 处理。改完**只重跑那一项也行**（`-SkipBot` 可以跳过 bot 那项）。
