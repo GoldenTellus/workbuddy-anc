@@ -190,7 +190,19 @@ CREATE INDEX IF NOT EXISTS idx_eval_runs_case ON eval_runs(case_id, id);
 
 export function openDb(path: string = DEFAULT_DB): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
+  // 2026-11-05 加（VERIFY §71 A4-1）：库文件被独占（另一个进程持有句柄）时，
+  // new DatabaseSync 会抛原始错误 —— 直接冒出去就是一段 Node 裸堆栈，
+  // 运维和 agent 都读不出「是文件被占用了」。这里转成一句人话再抛。
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(path);
+  } catch (e) {
+    const msg = (e as Error).message || String(e);
+    const hint = /unable to open|EBUSY|EPERM|EACCES/i.test(msg)
+      ? '（常见原因：另一个进程正独占这个文件、目录不可写、或磁盘已满）'
+      : '';
+    throw new Error(`打不开数据库: ${path} —— ${msg}${hint}`);
+  }
   // 计划任务每分钟一次，bot 侧 CLI 随时写：撞锁时等最多 5 秒，而不是直接报 database is locked
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec(SCHEMA);

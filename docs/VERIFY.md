@@ -7750,3 +7750,116 @@ deploy.ps1
 
 
 **下一步可以进 C 阶段（清空重装）。**
+
+## 71. A4 错误路径测试：5 个场景，修掉一个裸堆栈（2026-11-05）
+
+`RELEASE-CHECKLIST` 的 A4 要求测五类错误路径。这一节是实测结果 —— **全部在临时目录，
+生产库 `%ProgramData%\anc\data\anc.db` 的 mtime 跑前跑后都是 `09:12:27`，一次都没被碰过。**
+
+### 71.1 五个场景与结果
+
+| # | 场景 | 怎么造 | 结果 |
+|---|---|---|---|
+| A4-1 | 库文件被占用 | PowerShell `[System.IO.File]::Open(...,"None")` 独占句柄 | **❌ → 已修**（见 §71.2） |
+| A4-2 | 并发写 20 个 | 20 个 `task add` 同时打同一个临时库 | **✅ 20/20 成功，库里 20 条，丢写 0** |
+| A4-3 | 库路径不可写 | 指向不存在的盘符 | **测试设计错了**（见 §71.3） |
+| A4-4 | 库文件 0 字节 | `writeFileSync(db, "")` 造一个空文件 | **✅ 不产生裸堆栈，自动重建到 143360 B** |
+| A4-5 | 库文件被删 | 删 `.db` / `-wal` / `-shm` | **✅ 自动重建，`{"ok":true,"tasks":[]}`** |
+
+**最值得记的是 A4-2**：20 个进程同时写同一个 SQLite 库，**零丢写**。
+这靠 `db.ts` 的 `PRAGMA busy_timeout = 5000`（撞锁等 5 秒而不是直接报错）。
+
+### 71.2 A4-1 的缺陷与修复：两层
+
+**现象**：库文件被另一个进程独占时，输出是一段 Node 裸堆栈：
+
+```
+file:///C:/ProgramData/anc/service/db.ts:193
+  const db = new DatabaseSync(path);
+             ^
+Error: unable to open database file
+    at openDb (file:///C:/ProgramData/anc/service/db.ts:193:14)
+    ...
+```
+
+**运维和 agent 都读不出「是文件被占用了」。** 而这个场景**在真实环境里一定会遇到** ——
+`anc-backup` 用 `VACUUM INTO` 时、两个人同时跑 CLI 时、杀软扫描时。
+
+**第一层修在 `db.ts`** —— 把原始错误转成人话：
+
+```typescript
+let db: DatabaseSync;
+try {
+  db = new DatabaseSync(path);
+} catch (e) {
+  const msg = (e as Error).message || String(e);
+  const hint = /unable to open|EBUSY|EPERM|EACCES/i.test(msg)
+    ? '（常见原因：另一个进程正独占这个文件、目录不可写、或磁盘已满）'
+    : '';
+  throw new Error(`打不开数据库: ${path} —— ${msg}${hint}`);
+}
+```
+
+**但只修这一层不够** —— Node 的未捕获异常**永远会打堆栈**，消息再好人话也埋在中间。
+
+**第二层修在 `cli.ts`** —— 发现问题根本不在 `db.ts`，而在**调用位置**：
+
+```typescript
+// 原来：L90 的 openDb 在末尾那个大 try/catch（L607）之外，所以接不住
+const db = openDb(dbPath);
+
+// 现在：单独接一下，走统一的 ERROR/FIX 格式
+let db: ReturnType<typeof openDb>;
+try {
+  db = openDb(dbPath);
+} catch (e) {
+  fail((e as Error).message, 1);      // fail 返回 never，所以下面 db 一定已赋值
+}
+```
+
+**修完实测**：
+
+```
+$ task add --db <被独占的库> ...
+exit=1
+ERROR 打不开数据库: <path> —— unable to open database file（常见原因：另一个进程正独占这个文件、目录不可写、或磁盘已满）
+FIX   看 docs/LOCAL-SERVICE.md
+
+统一 ERROR/FIX 格式=true    无裸堆栈=true
+```
+
+**这条的普遍教训**：**`try/catch` 有没有用，取决于被保护的代码在不在它的作用域里。**
+`cli.ts` 末尾那个 catch 写得很完整（连 `OUTBOUND_SECRET_BLOCKED` 都有专门 FIX），
+但 **`openDb` 在它前面 500 行**，等于没有保护。
+**验证方式不是读代码，是造一次错看输出。**
+
+### 71.3 A4-3 是我测试设计错了，不是代码问题
+
+我用 `Z:\no-such-volume\anc.db` 想造「路径不可写」，结果 **`exit=0` 且真建出了 task（id=1）**。
+说明**这台机器上 `Z:` 是存在的**（某个映射盘），`mkdirSync(dir)` 成功了。
+
+**所以这一项没有结论**，要重做的话得用一个确认不存在的路径（比如 `\\?\Volume{...}` 或
+先确认 `Test-Path` 为 false 的盘符）。**不把它记成 PASS 也不记成 FAIL。**
+
+### 71.4 两个测试脚本本身的坑（写脚本时踩的）
+
+| 坑 | 表现 | 正确做法 |
+|---|---|---|
+| `task add` 少传 `--requester-userid` | 4 个场景全部 `exit=2`，看起来像"全都失败了" | 先读 `cli.ts:178` 的必填校验 |
+| 测的是部署后的那份代码 | 改了仓库的 `db.ts` 但测 `C:\\ProgramData\\anc\\service\\db.ts`，结果毫无变化 | **改完必须 `deploy.ps1 -Apply` 再测** |
+
+**第二条尤其值得记**：这个项目里「源码」和「线上」是两份文件
+（`src/service/db.ts` vs `%ProgramData%\\anc\\service\\db.ts`），
+**改源码不部署 = 测的是旧代码**。这次为此多花了一轮。
+
+### 71.5 A4 的结论
+
+| 判据 | 结果 |
+|---|---|
+| 并发写不丢数据 | **✅ 20/20** |
+| 库损坏（0 字节）能自愈 | **✅ 自动重建** |
+| 库被删能自愈 | **✅ 自动重建** |
+| 库被占用时给出可读错误 | **✅ 修完是统一 ERROR/FIX 格式，零堆栈** |
+| 路径不可写 | **⚠️ 测试没造成（Z: 盘存在），无结论** |
+
+**A4 可以标「完成」，但那条「路径不可写」要标成「未造成」而不是「通过」。**

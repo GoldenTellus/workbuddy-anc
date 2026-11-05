@@ -87,7 +87,15 @@ function numArg(v: unknown, def: number, min = 1, max = 1000): number {
   return Math.min(max, Math.max(min, Number(v)));
 }
 
-const db = openDb(dbPath);
+// 2026-11-05 加（VERIFY §71 A4-1）：openDb 在下面那个大 try 之外 ——
+// 库文件被独占时它抛的错接不住，直接冒成一段 Node 裸堆栈（运维和 agent 都读不出原因）。
+// 这里单独接一下，走统一的 ERROR/FIX 格式。fail 返回 never，所以下面 db 一定已赋值。
+let db: ReturnType<typeof openDb>;
+try {
+  db = openDb(dbPath);
+} catch (e) {
+  fail((e as Error).message, 1);
+}
 
 if (!group) fail('缺少命令组（summary / bind / task / reminder / outbox / a2a / config / backup / project / loop / serve）');
 
@@ -612,5 +620,5 @@ if (group === 'summary') {
   else console.error('FIX   看 docs/LOCAL-SERVICE.md');
   process.exit(1);
 } finally {
-  db.close();
+  try { db.close(); } catch { /* 已在别处退出 */ }
 }
