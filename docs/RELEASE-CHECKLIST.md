@@ -59,7 +59,14 @@ foreach ($f in 'loop.log','http.log','patch-in.log','patch-out.log','selfheal.lo
 **为什么不能用替代身份**：`anc-service` / `anc-http` / `anc-backup` **全部跑在 `LOCAL SERVICE`**。
 判据里如果允许 `SYSTEM` 顶替，就会在「删掉 `LOCAL SERVICE`」时照样 PASS（这个错犯过一次，见 `VERIFY §63`）。
 
-### A2 生成 lockfile + 跑依赖审计
+### A2 生成 lockfile + 跑依赖审计  ← **✅ 2026-11-05 已完成**（`VERIFY §67.1`）
+
+> **结果**：`package-lock.json` 13 行 / 254 B，`npm audit` 0 漏洞。
+> **口径**：`package.json` 里**根本没有** `dependencies` / `devDependencies` 字段 ——
+> `src` 与 `scripts` 里 122+37 处 import 全是 `node:*` 内置或相对路径。
+> 所以「0 漏洞」= 「**零第三方依赖**」，不是「依赖都干净」。
+> **以后加任何 dep，A2 必须重跑** —— 现在的 0 是真空，不是通过。
+
 
 ```powershell
 npm i --package-lock-only          # 仓库现在没有 lockfile，npm audit 直接用不了（ENOLOCK）
@@ -69,7 +76,54 @@ npm audit                          # 有 high/critical 就处理
 
 **判据**：`npm audit` 能跑通（不再 ENOLOCK），且 high/critical 为 0 或已记录处置理由。
 
-### A3 加覆盖率
+### A3 加覆盖率  ← **✅ 2026-11-05 已完成**（`VERIFY §67.2`/`§67.3`）
+
+> **结果**：行 **93.14%** / 分支 **78.75%** / 函数 **95.79%**（只统计被加载的 23 个文件）。
+> `package.json` 加了一行 `coverage` 脚本，别的没动。
+>
+> **但这个数字会骗人** —— 见下面的 A5：有 1555 行代码从来没被加载过，不在那张表里。
+
+### A5 补 service CLI 的测试盲区 —— **发布前唯一必须补的测试**
+
+**问题**（`VERIFY §67.3`）：**7 个产品文件、1555 行、占 `src` 非测试 .ts 的 35.7%，从未被执行过**：
+
+```
+src/service/cli.ts            588 行
+src/service/patch-drafts.ts   260
+src/service/eval.ts           216
+src/service/issues.ts         179
+src/service/submissions.ts    111
+src/ingest/cli.ts             109
+src/service/dayend.ts          92
+```
+
+**原因**：这些只被 `src/service/cli.ts` import，而**没有任何测试 spawn 过 service CLI**
+（`cli.smoke.test.ts` 只 spawn `src/render/cli.ts`）。
+
+**这 1555 行是什么**：L 阶段迭代闭环的执行体（`dayend` / `eval` / `issues` / `patch-drafts` / `submissions`）。
+它们只靠 `e2e-loop.ps1` 与 `fault-inject.mjs` 验过（`§21`–`§27`）——
+**功能是通的，但改一行就可能坏而没人知道**。这是回归风险，不是功能缺失。
+
+**要做的**：照 `src/render/cli.smoke.test.ts` 的写法，加一个 `src/service/cli.smoke.test.ts`：
+用 spawn / execFile 跑一次真实子进程，只碰**只读**子命令（list / show / status），不要写库。
+目的是让那 7 个文件被 Node 加载进覆盖率统计。
+
+**判据**：
+
+```powershell
+npm run coverage     # 那 7 个文件从「不在表里」变成「在表里且有行覆盖」
+npm test             # 仍然是 127 项 0 fail（不能把原有测试弄坏）
+```
+
+**同时修两个分测脚本的漏**（`VERIFY §67.4`）：
+
+| 脚本 | 补什么 |
+|---|---|
+| `test:service` | `deploy-state` / `http` / `project` 三个 test |
+| `test:render` | `dept.test.ts` |
+
+因为主 `test` 跑的是 15 个文件全集（127 项是全的），但**分开跑会漏**。
+
 
 ```json
 // package.json scripts 里加

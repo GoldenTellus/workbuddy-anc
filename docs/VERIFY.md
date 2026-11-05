@@ -7165,3 +7165,102 @@ $j.checks | Where-Object { $_.check -in @('secrets-acl','data-acl') }
   这是预期的：文件原来靠目录继承，现在自己也有了显式 ACE，更稳。
 - `deploy.ps1` 的 dry-run **不显示 ACL 计划**（dry-run 在 L99-102 就 exit 了，跑不到 L113）。
   想知道会改什么权限，单独跑 `set-acl.ps1`（默认就是 dry-run）。
+
+## 67. 发布前审计第二轮：零依赖，但 35.7% 的代码从未被执行（2026-11-05）
+
+`§65.3`/`§65.4` 说「没 lockfile、没 coverage」是空白。这一节是把这两样补上之后的结果。
+**结论比预期严重**：覆盖率数字很好看，但它藏着一块 1555 行的空洞。
+
+### 67.1 零第三方依赖 —— 这是真的，但要知道它意味着什么
+
+```
+$ npm i --package-lock-only
+up to date, audited 1 package in 1s
+found 0 vulnerabilities
+
+package-lock.json: 13 行 / 254 B / lockfileVersion 3
+  packages 里只有根条目 ""，零第三方包
+```
+
+**`package.json` 里根本没有 `dependencies` 与 `devDependencies` 字段。**
+`src/` 与 `scripts/` 里 122+37 处 import 全是 `node:*` 内置或相对路径。
+
+`npm audit` 恒为 0 —— 但**这答案是「没有第三方依赖」，不是「依赖都干净」**。两个推论：
+
+- **供应链攻击面为零**（这是好事）
+- **以后加了任何 dep，`npm audit` 必须重跑** —— 现在的 0 是真空，不是通过
+
+### 67.2 覆盖率：行 93.14% / 分支 78.75% / 函数 95.79%
+
+`package.json` 加了一行 `coverage` 脚本（`git diff` 确认只有 `+1`），127 项 0 fail。
+**但这三个数字只统计「本次被加载的 23 个文件」。**
+
+覆盖最低的 5 个：
+
+| 文件 | 行 | 分支 | 函数 |
+|---|---|---|---|
+| `src/render/cli.ts` | **43.56%** | 21.43% | 100% |
+| `src/service/loop.ts` | **77.59%** | **62.50%** | **62.50%** |
+| `src/service/backup.ts` | 88.46% | 75.00% | 100% |
+| `src/service/bindings.ts` | 90.00% | 81.48% | 87.50% |
+| `src/render/render.ts` | 91.15% | 73.33% | 100% |
+
+`render/cli.ts` 的 43.56% 是冒烟测试的天花板（只测 USAGE 与未知命令）。
+`loop.ts` 是**唯一「真的没测够」的核心调度模块** —— 行/分支/函数三低。
+
+### 67.3 真正的问题：7 个文件 1555 行从未被加载，占 src 的 35.7%
+
+```
+src/service/cli.ts            588 行
+src/service/patch-drafts.ts   260
+src/service/eval.ts           216
+src/service/issues.ts         179
+src/service/submissions.ts    111
+src/ingest/cli.ts             109
+src/service/dayend.ts          92
+────────────────────────────────
+合计                         1555 行 = src 全部非测试 .ts（4353 行）的 35.7%
+```
+
+**为什么它们不在覆盖率表里**：这些模块只被 `src/service/cli.ts` import，
+而**没有任何测试 spawn 过 service CLI**（`cli.smoke.test.ts` 只 spawn `src/render/cli.ts`）。
+
+**为什么「没出现」等于「没执行过」、不是统计口径问题**：
+`render/cli.ts` 有 43.56% 且未覆盖行集中在参数分支 —— 证明**子进程覆盖率是会合并的**。
+
+**这 1555 行是什么**：**L 阶段迭代闭环的执行体**（`dayend` / `eval` / `issues` / `patch-drafts` / `submissions`）。
+它们目前只靠 `e2e-loop.ps1` 与 `fault-inject.mjs` 这类外部脚本验（`§21`–`§27`）。
+
+**所以**：功能是通的（端到端跑过），但**改一行就可能坏而没人知道** —— 这是回归风险，不是功能缺失。
+
+**93.14% 会给发布评审一个虚假的安全感。** 这一条必须写进 `RELEASE-CHECKLIST`。
+
+### 67.4 顺带查到的两个小缺陷：分测脚本的并集小于主 `test`
+
+| 脚本 | 现在跑什么 | 漏了什么 |
+|---|---|---|
+| `test:service` | `src/shared/{audit,summarize}` + `src/service/service` | **`deploy-state` / `http` / `project` 三个 test** |
+| `test:render` | `cli.smoke` / `deploy` / `offboard` / `render` / `onboard` | **`dept.test.ts`** |
+
+主 `test` 跑的是 15 个文件的**全集**，所以 127 项是全的；
+但**分开跑的时候会漏** —— 有人只想跑 service 那一块，就会以为全过了。
+
+### 67.5 另有 6 个运维脚本从未被 npm test 加载（不算缺陷，但要知道）
+
+`doctor-fault-matrix.mjs`(489) / `fault-inject.mjs`(320) / `verify-doctor.mjs`(140) /
+`scan-catch.mjs`(122) / `inspect.mjs`(66) / `check-public.mjs`(58)。
+
+这些走 doctor / fault-inject 流程验，按设计不进 `npm test`。
+但它们同样没有单测 —— 改它们只能靠跑一遍流程来验。
+
+### 67.6 结论与后续动作
+
+| 优先级 | 动作 | 理由 |
+|---|---|---|
+| **高** | **给 service CLI 加一个 smoke test**（照 `cli.smoke.test.ts` 的写法，spawn 一次，只碰只读子命令） | 一次能把 1555 行的 0% 消掉大半。**发布前唯一必须补的测试** |
+| 中 | `test:service` 补 `deploy-state`/`http`/`project`；`test:render` 补 `dept` | 让分测脚本的并集 = 主 `test`，否则分开跑会漏 |
+| 中 | 给 `loop.ts` 补分支测试（62.50% 是核心调度里最低的） | 它每分钟都在跑 |
+| 低 | `render/cli.ts` 的参数分支 | 冒烟够用；补的成本不低 |
+
+**一句话**：这个仓库**没有第三方依赖风险**，**但有一块 35.7% 的代码从未被执行过**。
+发布前该补的是那一块，不是继续追 93.14% 的小数点。
