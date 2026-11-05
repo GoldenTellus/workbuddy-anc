@@ -6833,3 +6833,151 @@ ok=True  fails=0  warns=3  checks=31
 **这条进 `AGENT-VERIFY-HANDOFF §4` 的候选**：改 `.ps1` 的函数体别用整段字符串替换，用行号 + `splice`。尤其是 `@{ state = 'X'; detail = '...' }` 这种带单引号嵌套的结构，字符串替换的引号转义几乎必然出错。
 
 **回滚很干净**：`git checkout -- scripts/doctor.ps1` → 452 行、0 错误、`doctor ok=True fails=0`。**这也是为什么每次改之前先确认工作区干净有用。**
+
+## 64. 故障矩阵的三处修正，和一个关于「测试入口污染」的发现（2026-11-05）
+
+### 64.1 加 `acl-tight` 组：把「判据只测一个方向」这个错补上
+
+`§63` 修了 `doctor` 的两条判据（`secrets-acl` 补服务身份、新增 `data-acl`），但**判据改了不等于它会报**。原来的故障矩阵里 `acl` 组只测「太宽」（给 `BUILTIN\Users` 权限 → 期望 FAIL），**没测「太窄」**。
+
+补一组反方向的：
+
+```js
+'acl-tight': {
+  title: '服务身份读不到 secrets / 写不了 data（权限收得太紧）',
+  items: { 'secrets-acl': 'FAIL', 'data-acl': 'FAIL' },
+  inject() {
+    icacls secrets /remove:g "NT AUTHORITY\LOCAL SERVICE" /T
+    icacls data    /remove:g "NT AUTHORITY\LOCAL SERVICE" /T
+    // 已有日志文件是独立 ACL，也要一起摘
+    for (const f of ['loop.log','http.log',...) icacls <file> /remove:g ...
+  },
+  recover() { 反向补回 }
+}
+```
+
+跑通：
+
+```
+[acl-tight] 服务身份读不到 secrets / 写不了 data
+  注入 → ✓ 该红的红了
+  恢复 → ✓ 该恢复的恢复了
+```
+
+### 64.2 `runGroup` 加 `afterOk`：组的基线不一定是 PASS
+
+`staleness` 组一直报错：
+
+```
+✗ 恢复后应转回 PASS
+    canary: 期望 PASS，实际 WARN
+```
+
+**但 `canary` 的基线本来就是 WARN** —— `doctor` 的判据里它的「上限即 WARN」（`§39`）：收不到群消息不是故障，只是没消息可验。**`runGroup` 原来一刀切要求「恢复后全部 PASS」，这个假设对 `canary` 是错的。**
+
+改法：给组加可选的 `afterOk`，不写就默认 PASS：
+
+```js
+// staleness 组
+items:   { heartbeat: ['FAIL','WARN'], canary: ['FAIL','WARN'], 'backup-freshness': 'FAIL' },
+afterOk: { heartbeat: 'PASS', canary: ['WARN','PASS'], 'backup-freshness': 'PASS' },
+
+// runGroup
+const wantAfter = g.afterOk ?? Object.fromEntries(Object.keys(g.items).map(k => [k, 'PASS']));
+fails = fails.concat(expectState(after, null, wantAfter, '恢复后应转回基线'));
+```
+
+### 64.3 `http` 组：`Get-Process` 在 PowerShell 5.1 里没有 `CommandLine`
+
+**这是今天最有价值的一个发现。**
+
+`http` 组一直是红的：
+
+```
+注入: 停 anc-http 并杀 serve 进程
+✗ 注入后应报出问题
+    http-health: 期望 FAIL，实际 PASS
+```
+
+它的注入里有一条：
+
+```js
+ps("Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'cli.ts.*serve' } | Stop-Process -Force")
+```
+
+**这条永远匹配不到任何进程**，因为：
+
+```
+PowerShell 版本: 5.1.19041.6456
+Get-Process node 的属性里有 CommandLine 吗: False
+```
+
+**`Get-Process` 的 `CommandLine` 属性是 PowerShell 7+ 才有的**，5.1 里根本没有这个属性。`$_.CommandLine` 恒为 `$null`，`-match` 恒为 false，于是 `serve` 进程从来没被杀掉，`17891` 一直监听，`http-health` 一直 PASS。
+
+改成 `Get-CimInstance`（5.1 下能拿到命令行）：
+
+```js
+ps("Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'cli\\.ts.*serve' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }")
+```
+
+**通用教训**：「用 `Get-Process` 按命令行筛进程」这个写法在 5.1 上是**静默失效**的 —— 不报错、不匹配、什么都不做。凡是按 `CommandLine` 过滤，一律用 `Get-CimInstance Win32_Process`。
+
+### 64.4 还有一层：`anc-watchdog` 会在注入后自愈
+
+即使杀掉了 `serve`，`anc-watchdog` 也会在一分钟内把 `anc-http` 拉起来 —— **那是它该干的事**。所以验证 `http-health` 真的会红，注入时必须**连 watchdog 一起停**，恢复时再启回。
+
+```js
+inject()  { Stop/Disable anc-watchdog;  Stop/Disable anc-http; kill serve }
+recover() { Enable/Start anc-http;      Enable/Start anc-watchdog }
+```
+
+**这条的普适意义**：**故障注入要考虑「系统里有没有自愈机制」**。这台机器上有三层会自愈的东西（`watchdog` 拉 `anc-http`、`patch-guard` 拉补丁、`anc-service` 每分钟 tick 刷 `loop.log` 的 mtime）。不把它们一起停掉，注入会被立刻抹平，测试等于没做。
+
+### 64.5 `doctor` 的 WARN 数是 2 还是 3，取决于传不传 `-Repo`
+
+我一直按「不带 `-Repo`」跑，看到 `warns=3`，于是把 `AGENTS.md` 里的 `WARN=2` 改成了 3。**这是错的。**
+
+```
+doctor -Repo E:\workbuddy-anc   →  ok=True  fails=0  warns=2
+doctor（不带 -Repo）            →  ok=True  fails=0  warns=3
+```
+
+差的那一个是 `secrets-in-git` —— 它需要仓库才能扫，不带 `-Repo` 时它自己报 WARN。**原来的 `WARN=2` 是对的**（那是标准调用方式）。已改回，并在文档里注明差异原因。
+
+**教训**：**判据数字要连同「怎么调用」一起记**。只记 `WARN=2` 而不记「必须带 `-Repo`」，下一个人还会踩一遍。
+
+### 64.6 一个必须记的副作用：`test-emit` 会污染 `settings.json`
+
+用户在这一轮指出「我没在 WorkBuddy 连接企业微信 bot」。查的时候发现：
+
+```
+settings.json 的 automation.wecomPushChatId = "probe"
+```
+
+**这是我用 `test-emit` 注入 `{"chatId":"probe",...}` 时被写进去的。** 也就是说：
+
+**`POST /emit` 除了走一遍补丁链路，还会把 `chatId` 持久化到 WorkBuddy 的 `settings.json` 里。**
+
+**后果**：如果之后真连上企微群，`automationPushBot` 会往一个叫 `probe` 的不存在会话发消息。
+
+**已清空**（备份 `settings.json.bak-*`）。**这条要进 `AGENT-VERIFY-HANDOFF §4`**：用 `test-emit` 之后必须清 `automation.wecomPushChatId`。
+
+### 64.7 顺便确认的事实：企微那边只连了「推送」
+
+```
+automation.wecomPushConfig = { mode: "websocket", botId: "aibrj…", botSecret: 已设置 }
+
+日志: [WecomAiBotClient] Connected successfully
+      [WecomAiBotClient] Authenticated successfully
+      [ClawService] automationPushBot: connected successfully
+```
+
+**推送通道是通的。** 但：
+
+- `patch-in.log` 里**只有我注入的 `probe`**，没有任何真实 `chat=`
+- `secrets\` 里**没有 `corpid.txt` / `corpsecret.txt`**（`§11.2` 要求）
+- `OPS.md L334` 记过：「企微群机器人 webhook 发消息 → bot 作为**应用**根本收不到」
+
+**所以「群身份注入」这个核心功能，至今只被 `test-emit` 这种人造消息验证过，从未被真实群消息验证。** `canary` 永远是 WARN、`bot-reply` 永远是 SKIP，根子在这里。
+
+**这不是我能在本机修好的** —— 要么在企微后台把现有智能机器人（`aibrj…`）的「接收消息」打通，要么按 `§11.1` 建自建应用 + `corpid`/`corpsecret`。两条都要人在后台操作。

@@ -214,10 +214,44 @@ const GROUPS = {
     },
   },
 
+  // 4b) ACL 类（反方向）：服务身份被剥夺 → 判据必须报 FAIL
+  //
+  // 2026-11-05 补（VERIFY §63）：原来的 acl 组只测「太宽」（给 Users 权限）。
+  // 但同一个 ACL 还有另一个方向的错 —— 收得太紧。我按旧判据把 LOCAL SERVICE 删掉，
+  // 服务读不到 token / 写不了日志，而 doctor 当时只有「太宽」这一个判据，照样报 PASS。
+  // 所以这一组专门测：把服务身份拿掉，secrets-acl 和 data-acl 必须都变红。
+  'acl-tight': {
+    title: '服务身份读不到 secrets / 写不了 data（权限收得太紧）',
+    items: { 'secrets-acl': 'FAIL', 'data-acl': 'FAIL' },
+    inject() {
+      ps(`icacls "${join(ROOT, 'secrets')}" /remove:g "NT AUTHORITY\\LOCAL SERVICE" /T | Out-Null`);
+      ps(`icacls "${join(ROOT, 'data')}" /remove:g "NT AUTHORITY\\LOCAL SERVICE" /T | Out-Null`);
+      // 已存在的日志文件是独立 ACL，也要一起摘
+      for (const f of ['loop.log', 'http.log', 'patch-in.log', 'patch-out.log', 'selfheal.log', 'audit.log']) {
+        const p = join(ROOT, 'data', f);
+        if (existsSync(p)) ps(`icacls "${p}" /remove:g "NT AUTHORITY\\LOCAL SERVICE" | Out-Null`);
+      }
+      log('  注入: 摘掉 LOCAL SERVICE 对 secrets 的读、对 data 的写');
+    },
+    recover() {
+      ps(`icacls "${join(ROOT, 'secrets')}" /grant "NT AUTHORITY\\LOCAL SERVICE:(OI)(CI)RX" /T | Out-Null`);
+      ps(`icacls "${join(ROOT, 'data')}" /grant "NT AUTHORITY\\LOCAL SERVICE:(OI)(CI)M" /T | Out-Null`);
+      for (const f of ['loop.log', 'http.log', 'patch-in.log', 'patch-out.log', 'selfheal.log', 'audit.log']) {
+        const p = join(ROOT, 'data', f);
+        if (existsSync(p)) ps(`icacls "${p}" /grant "NT AUTHORITY\\LOCAL SERVICE:(M)" | Out-Null`);
+      }
+      log('  恢复: LOCAL SERVICE 对 secrets 有 RX、对 data 有 M（含日志文件）');
+    },
+  },
+
   // 5) 时间戳类：heartbeat + canary + backup-freshness
   staleness: {
     title: '心跳 / canary / 备份都变旧',
+    // canary 的基线就是 WARN —— doctor 的判据里 canary 上限即 WARN（见 VERIFY §39），
+    // 因为「收不到群消息」本身不是故障。所以恢复后应回到 WARN，不是 PASS。
     items: { heartbeat: ['FAIL', 'WARN'], canary: ['FAIL', 'WARN'], 'backup-freshness': 'FAIL' },
+    // 恢复后该转回的期望态（不写这行就默认 PASS，canary 会永远报不通过）
+    afterOk: { heartbeat: 'PASS', canary: ['WARN', 'PASS'], 'backup-freshness': 'PASS' },
     store: {},
     inject() {
       // 必须先把 anc-service 停掉：它每分钟跑一次 tick、写 loop.log，
@@ -273,16 +307,28 @@ const GROUPS = {
     title: '本地服务（anc-http）停止',
     items: { 'http-health': 'FAIL', 'task-anc-http': 'FAIL' },
     inject() {
+      // 2026-11-05：anc-watchdog 会在一分钟内把 anc-http 拉起来 —— 那是它该干的事。
+      // 所以要验证 http-health 真的会红，必须连 watchdog 一起停；否则注入立刻被自愈，
+      // 矩阵会误报「注入后应报出问题」失败。
+      ps("Stop-ScheduledTask -TaskName 'anc-watchdog' -ErrorAction SilentlyContinue | Out-Null");
+      ps("Disable-ScheduledTask -TaskName 'anc-watchdog' -ErrorAction SilentlyContinue | Out-Null");
       // 只 Stop 的话 State 会从 Running 变回 Ready，doctor 仍判 PASS；
       // 要 Disable + Stop 才是"确实停掉了服务"。
       ps("Stop-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue | Out-Null");
       ps("Disable-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue | Out-Null");
-      ps("Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'cli.ts.*serve' } | Stop-Process -Force -ErrorAction SilentlyContinue");
+      // PowerShell 5.1 的 Get-Process 没有 CommandLine 属性（那是 PS 7+ 才有），
+      // 原来的 Where-Object { $_.CommandLine -match ... } 永远匹配不到，serve 进程根本杀不掉，
+      // 于是注入后 17891 还在监听、http-health 照样 PASS —— 这一组等于没测。
+      // 用 CimInstance 才拿得到命令行。
+      ps("Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'cli\.ts.*serve' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }");
       log('  注入: 停 anc-http 并杀 serve 进程');
     },
     recover() {
       ps("Enable-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue | Out-Null");
       ps("Start-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue");
+      // watchdog 也要启回来 —— 注入时停了它，不启回就会一直停着（矩阵自己会因此报 task-anc-watchdog FAIL）
+      ps("Enable-ScheduledTask -TaskName 'anc-watchdog' -ErrorAction SilentlyContinue | Out-Null");
+      ps("Start-ScheduledTask -TaskName 'anc-watchdog' -ErrorAction SilentlyContinue");
       log('  恢复: 启用并启动 anc-http');
     },
   },
@@ -434,7 +480,10 @@ async function runGroup(name, g) {
   }
   // 恢复后用**默认参数**验：identity 组的"注入"就是改参数，带着它验等于没恢复
   const after = doctor([]);
-  fails = fails.concat(expectState(after, 'PASS', Object.fromEntries(Object.keys(g.items).map((k) => [k, 'PASS'])), '恢复后应转回 PASS'));
+  // 每组可以用 afterOk 覆盖「恢复后的期望态」；没写就默认 PASS。
+  // 有些项的基线本身不是 PASS（canary 是 WARN），一刀切写 PASS 会让矩阵永久报错。
+  const wantAfter = g.afterOk ?? Object.fromEntries(Object.keys(g.items).map((k) => [k, 'PASS']));
+  fails = fails.concat(expectState(after, null, wantAfter, '恢复后应转回基线'));
   return fails;
 }
 
