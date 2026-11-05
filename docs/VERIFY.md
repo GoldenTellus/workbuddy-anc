@@ -7863,3 +7863,94 @@ FIX   看 docs/LOCAL-SERVICE.md
 | 路径不可写 | **⚠️ 测试没造成（Z: 盘存在），无结论** |
 
 **A4 可以标「完成」，但那条「路径不可写」要标成「未造成」而不是「通过」。**
+
+## 72. C 阶段第 1–2 步完成：预清空备份 + 回程票（2026-11-05 12:03）
+
+`RELEASE-CHECKLIST` 的 C 阶段前两步是「备份」和「把 5.9.3 缓存包复制到 `E:\` 当回程票」。
+这一节记录实际做了什么、怎么验的。
+
+**备份目录**：`E:\anc-backup-20261104\C-pre-wipe-120317\`（33.95 MB / 60 个文件）
+
+### 72.1 备份了什么
+
+| 项 | 来源 | 备份方式 | 结果 |
+|---|---|---|---|
+| SQLite 库 | `%ProgramData%\anc\data\anc.db` | **`VACUUM INTO`**（WAL 模式不能直接拷） | 260 KB，`integrity_check=ok` |
+| secrets | `%ProgramData%\anc\secrets\` | `robocopy /E` | 6 个文件，文件名逐个对得上 |
+| vault-shared | `D:\anc\vault-shared\` | `robocopy /E`（**含 `.git` 与未提交工作区**） | 28 个文件，39 个 git 对象 |
+| vault-internal | `D:\anc\vault-internal\` | 同上 | 19 个文件，28 个 git 对象 |
+| org | `D:\anc\org\` | `robocopy /E` | 4 个文件 |
+| **双保险** | 两个 vault | `git bundle create --all` | 29.4 KB / 1.6 KB，`records a complete history` |
+
+**为什么 `robocopy` 是主备份、`git bundle` 只是双保险**：
+两个 vault 仓库当时**都有未提交改动**（`vault-shared` 4 项、`vault-internal` 1 项），
+**`git bundle` 只含 commit，不含工作区** —— 只靠它备份会丢掉那 5 个文件。
+
+### 72.2 备份时的未提交改动（证物，清空后要能核对）
+
+`vault-shared`（HEAD `11e8941`，4 项）：
+
+```
+M  company/problem-model.md
+?? collab/手绘小熊简笔画.md
+?? company/名创装饰报价单-2025-11-15.md
+?? company/金豪庭698套餐报价单.md
+```
+
+`vault-internal`（HEAD `e1ca6ec`，1 项）：
+
+```
+M .gitignore
+```
+
+**这 5 个文件已在备份里逐个确认存在**（`problem-model.md` / 手绘小熊简笔画 / 名创装饰报价单 /
+金豪庭698套餐报价单 / `.gitignore`）。**清空后如果它们不在，就是备份没恢复对。**
+
+### 72.3 备份验证了六项
+
+| # | 验什么 | 结果 |
+|---|---|---|
+| 1 | 目录清单 | `org` 4 / `secrets` 6 / `vault-internal` 19 / `vault-shared` 28 / `anc.db` 260 KB / 2 个 bundle |
+| 2 | **`anc.db` 能打开且数据在** | 36 tasks / 2 bindings / 8 submissions / 5 issues / 8 patch_drafts / 1 dayend / 15 outbox / 60 reminders |
+| 3 | `secrets` 文件名 | 6 个，与原始**逐个一致** |
+| 4 | `git bundle verify` | 两个都 `exit=0` + `records a complete history` |
+| 5 | 工作区含未提交文件 | 5 个都在 |
+| 6 | `.git` 完整性 | 39 / 28 个对象 |
+
+**note**：第 2 项是这次备份最重要的验证 —— **「文件存在」不等于「库能用」**。
+`VACUUM INTO` 之后立刻用只读连接打开、跑 `PRAGMA integrity_check`、再数一遍 8 张表的行数，
+三件事都做了才算备份成功。
+
+### 72.4 回程票：5.9.3 装包
+
+```
+E:\Downloads\WorkBuddy-Setup-5.9.3.42398134.exe
+  429.3 MB
+  sha256  B5EDB52BD6C5B6C7296CF2FFF697B019C86D11992A8A814C3010D611896852F9
+          与 %TEMP% 里那份**完全一致**
+          与 §68.1 记录的更新 feed 返回值**完全一致**
+  Authenticode  Valid（Tencent）
+```
+
+**为什么要复制这一份**：`%TEMP%` 会被清理工具洗掉，而这是 **R7 唯一免下载的离线升级包**。
+复制到 `E:\Downloads\` 之后，即使 `%TEMP%` 被清空，只要把它放回
+`%TEMP%\workbuddy-update-x64\`，5.8.3 启动几秒内就会认领它静默升回 5.9.3。
+
+### 72.5 现在的状态：C 阶段 11 步里完成了 2 步
+
+| # | 步骤 | 状态 |
+|---|---|---|
+| 1 | 备份 | **✅ 完成，六项验证通过** |
+| 2 | 回程票 | **✅ 完成，sha256 一致 + 签名 Valid** |
+| 3 | 断网 | ⬜ 等维护者 |
+| 4 | 卸载 5.9.3 | ⬜ 等第 3 步 |
+| 5 | 装 5.8.3 | ⬜ |
+| 6 | 冻结自升级 | ⬜（窗口 3 秒，需人盯着） |
+| 7 | REBUILD + 计时 | ⬜ |
+| 8 | 记 5.8.3 基线 | ⬜ |
+| 9 | 恢复网络 | ⬜ 等维护者 |
+| 10 | 恢复升级 → R7 | ⬜ |
+| 11 | 验 R7 + 修红 | ⬜ |
+
+**清空那一步（原清单的 ③）还没做，也不在我这里自动做** —— `prepare-wipe.ps1 -Apply` 不可逆，
+要维护者明确授权。现在备份已就绪，随时可以。

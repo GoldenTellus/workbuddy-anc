@@ -196,8 +196,8 @@ powershell -File scripts\deploy.ps1 -Side company
 **前置**：阶段 A 全绿 + 阶段 B 通过。
 
 ```
-① 备份 secrets / D:\anc 的两个 git 仓库 / org
-② ★ 把 5.9.3 缓存包复制一份到 E:\ 当「回程票」（VERIFY §68.1，429 MB）
+① 备份 secrets / D:\anc 的两个 git 仓库 / org                    ✅ 2026-11-05 12:03（`VERIFY §72`）
+② ★ 把 5.9.3 缓存包复制一份到 E:\ 当「回程票」                  ✅ 2026-11-05（sha256 一致）
 ③ 清空（prepare-wipe.ps1 -Apply）
 ④ ★★ 断网  ← 不这么做，5.8.3 装完 3 秒就开始自我升级，REBUILD 做不完
 ⑤ 装 5.8.3
