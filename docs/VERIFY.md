@@ -8199,3 +8199,156 @@ WorkBuddy             5.8.3，未启动，三道防线全在
 **结论：超过 20 行的文档内容，一律用 `write` 工具写到独立文件，再用两行脚本 append。**
 不要用 PowerShell 内联数组拼长文本 —— 逗号、引号、反引号任何一个出问题都是全盘失败，
 而且报错信息指向的位置和真正出错的位置往往不在一行。
+
+## 74. C 阶段第 7 步：REBUILD 从零装完 + 4 个真卡点（2026-11-05 12:43–13:49）
+
+这一节是 **O-5 判据的核心证据**：干净机按 `AGENT-DEPLOY-COMPANY.md` 从零装公司侧，
+逐节计时，记录每个卡点。
+
+### 74.1 计时表（这是 O-5 要的数字）
+
+| # | 步骤 | 脚本/命令 | 耗时 | 结果 |
+|---|---|---|---|---|
+| 0 | WorkBuddy 5.8.3 | 人手动双击启动登录 | — | ✅ |
+| 1 | `preflight` | `preflight.ps1 -Side company` | **9 秒** | ✅ `ok=true` 零 blocker |
+| 2 | `dirs` | 建 15 + 5 个目录 | **0.46 秒** | ✅ |
+| 3 | `files` | `deploy.ps1 -Apply`（73 文件） | **10 秒** | ✅ 逐一校验通过 |
+| 4 | `skills` | `deploy-skills.ps1 -Apply`（8 文件） | **3.6 秒** | ✅ 7 技能 + 1 backup |
+| 5 | `patch` | `patch\launch-patched.ps1` | **156.5 秒** | ❌ **预期失败**（见 §74.3） |
+| 6 | `tasks` | `register-tasks.ps1 -Apply`（10 个） | **6.8 秒** | ✅ 全 Ready |
+| 7 | `vault` | 两个区 `git init` + 首次提交 | **13.16 秒** | ✅ 两个 HEAD |
+| 8 | `org` | 恢复 org + `render` + `deploy-persona` | **3.8 秒** | ✅ persona 4216 B |
+| 9 | `wecom` | — | **跳过** | ⏸ 等企微凭据 |
+| 10 | `verify` | `deploy-verify.ps1 -Repo …` | **28.6 秒** | ✅ 3 PASS / 1 FAIL / 1 SKIP |
+
+**不含 patch 那 156 秒的等待，全部实际工作约 4 分钟。**
+
+**这个数字的意义**：`O-5` 问的是「干净机装一次要多久」。答案是 **~4 分钟自动部分 + 人登录 WorkBuddy 的时间**。
+`patch` 的 156 秒是**它自己在等 150 秒超时**，不是真在干活。
+
+### 74.2 最终状态（REBUILD 收尾）
+
+```
+doctor   ok=False  fails=1  warns=3  checks=31
+         唯一 FAIL：workbuddy  版本 5.8.3 != 登记 5.9.3    ← 这是预期的 R7 起点
+         3 个 WARN：work-hours 未配 / bindings 无绑定 / canary 无记录
+
+10 个计划任务全部 Ready
+17891 在监听（anc-http 的 HTTP 面）
+anc.db 4 KB
+persona C:\Users\<user>\WorkBuddy\Claw\CODEBUDDY.md  4216 B
+vault-shared / vault-internal 两个独立 git 仓库
+WorkBuddy 5.8.3，app.asar 92.07 MB（全程没被升级）
+```
+
+**`deploy-state` 9/11**：`patch` 与 `wecom` 未完成 —— 两者都是**预期内**的。
+
+### 74.3 `patch` 失败的确切方式（R7 的对照数据）
+
+```
+04:52:01 [inject] env set: "OK:15004"          ← 注入本身成功
+（之后没有 APPLIED 行）                         ← daemon 没继承 NODE_OPTIONS
+[anc] 警告：150 秒内没等到 patch-state applied
+```
+
+**`launch-patched.ps1` 自己的判据就是这个**：
+「若日志也只有 `env set` 没有 `APPLIED`，才说明 daemon 没继承 `NODE_OPTIONS`」—— **确认是 daemon 不继承，不是注入失败**。
+
+**`§58` 说「5.8.3 上 `--inspect-brk` 注入失败」，更准确的说法是**：
+**注入成功（`env set OK`），但 daemon 没继承 `NODE_OPTIONS`，所以 `preload.cjs` 没加载。**
+
+**这个失败是有价值的** —— 它是 R7 的起点：5.8.3 装不上补丁 → 升级到 5.9.3 后能装上。
+
+### 74.4 ★ 撞到 4 个真卡点（陌生 agent 会全部撞上）
+
+#### 卡点 1：`deploy-skills.ps1` 没有 `-Side` 参数
+
+文档写法与实际不符。它会报 `A parameter cannot be found that matches parameter name 'Side'`。
+
+**实际参数**：`-Repo` / `-Target` / `-Apply` / `-Rollback` / `-RemoveExtra`。
+
+```powershell
+powershell -File scripts\deploy-skills.ps1 -Repo <仓库根> -Apply
+```
+
+#### 卡点 2：`register-tasks.ps1` 默认 `-BotUser anc-bot`，与 D25 直接冲突
+
+```
+ERROR 交互类任务要求 anc-bot 已登录过（当前没有用户配置目录）
+FIX   先按 REBUILD §4 切到专用用户跑一次，再加 -ForceInteractive
+```
+
+**但 `REBUILD.md` L173 明说「按 D25：直接用管理员账号部署，不建专用用户」。**
+
+**脚本默认值没跟上 D25。** 必须显式传：
+
+```powershell
+powershell -File register-tasks.ps1 -Root $Root -BotUser Administrator -Repo <仓库根> -Apply
+```
+
+传了之后 10 个任务全注册成功，principal 正确（`LOCAL SERVICE` / `SYSTEM` / `Administrator`）。
+
+#### 卡点 3：`vault-shared` 的 ACL 继承了 `Authenticated Users: Modify`
+
+`§9 vault` 只做 `git init`，**没设 ACL** → 继承 `D:\anc` 父目录的宽权限 → `doctor` 的 `vault-acl` FAIL：
+
+```
+[FAIL] vault-acl  共享区对广泛组有写权限: NT AUTHORITY\Authenticated Users
+```
+
+**而且 `/grant:r` 改不动它** —— 因为那条是 `Inherited=True` 的，`/grant:r` 只管显式 ACE。
+**必须先 `/inheritance:r` 断继承**：
+
+```powershell
+icacls "D:\anc\vault-shared" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "NT AUTHORITY\Authenticated Users:(OI)(CI)RX" "BUILTIN\Users:(OI)(CI)RX"
+```
+
+**注意**：断继承会砍掉 `Administrators` / `SYSTEM`，**必须一起授予**（这个坑在 `§66` 的 `data` 目录踩过一次，这里是同一个坑的第二处）。
+
+#### 卡点 4：`deploy-verify.ps1` 不传 `-Repo` 会误报 2 个 FAIL
+
+```powershell
+# 不传 -Repo（错的）
+$doctorScript = Join-Path $Repo 'scripts\doctor.ps1'   # $Repo 落到 $Root 里 → 找不到
+→ doctor FAIL「找不到 C:\ProgramData\anc\scripts\doctor.ps1」
+→ task-write FAIL（连带失败）
+
+# 传 -Repo（对的）
+deploy-verify.ps1 -Repo <仓库根>
+→ 3 PASS / 1 FAIL（workbuddy 版本，预期）/ 1 SKIP（bot-reply，无群）
+```
+
+**这两条 FAIL 全是假警报** —— `task-write` 我手动验证过，带 `--requester-userid` 就能写进去。
+
+**建议**：`deploy-verify.ps1` 的 `-Repo` 应该有默认值（像 `deploy.ps1` 那样），或者从脚本位置两级上溯。
+
+### 74.5 另外两个操作细节
+
+**① PS 5.1 的 `ConvertFrom-Json` 读 UTF-8 文件会乱码**
+
+`groups.json` 是 Node 生成的合法 UTF-8，但 `Get-Content -Raw | ConvertFrom-Json` 报
+`传入的对象无效，应为":"或"}"`，里面中文全变成 `绠＄悊鍛?`。
+
+**不是文件坏了，是 PS 5.1 按 ANSI 读。** 验证 JSON 用 `node`：
+
+```powershell
+node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).members.length)" groups.json
+```
+
+**② `anc-http` 监听的是 `17891`，不是 `17999`**
+
+`17999` 是**补丁的 test-emit 入口**。补丁没生效 → `17999` 不存在 → 这是正确的。
+
+**`17891` 才是 HTTP 面**。而且它启动时如果 `service-token.txt` 还没就位，会打
+`WARN 未配置 token：业务路由会全部 503`。**重启一次 `anc-http` 就恢复了**（`token_configured: true`）。
+
+### 74.6 结论：O-5 的答案
+
+| 问题 | 答案 |
+|---|---|
+| 干净机装得成吗 | **装得成** —— 9/11 完成，剩两项都是预期（patch 在 5.8.3 上必然失败、wecom 等凭据） |
+| 要多久 | **~4 分钟自动部分** + 人登录 WorkBuddy + 156 秒的 patch 超时等待 |
+| 会卡在哪 | **4 个卡点**（§74.4），全部可以按本文档手动绕过 |
+| 卡点算不算「装不成」 | **不算** —— 但它们说明**文档与脚本有 4 处不一致**，陌生 agent 会逐个撞上 |
+
+**这 4 个卡点应该直接改进 `AGENT-DEPLOY-COMPANY.md`，而不是留给下一个 agent 去踩。**
