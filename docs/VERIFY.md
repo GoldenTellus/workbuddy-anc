@@ -6707,3 +6707,129 @@ deploy-verify  ok=True  pass=4  fail=0  skip=1
 **而 `heartbeat` 那条尤其阴**：任务记录显示每分钟成功运行、退出码 0，唯一的异常是「日志文件不动」。**要不是造了个同权限的探针任务去实地跑一次，光看任务状态永远发现不了。**
 
 **探针任务这个手法值得记住**：不确定「某个身份能不能跑某个命令」时，造一个只跑一次的临时任务、用目标身份跑、看退出码和副作用，比读 ACL 猜要快得多。
+
+## 63. `doctor` 的两个判据漏洞：只查「太宽」不查「够不够」（2026-11-05）
+
+### 63.1 这两个漏洞是我自己撞出来的
+
+`§62.2` 和 `§62.3` 里，我修好服务之后发现了一件事：**`doctor` 当时是 PASS 的，但它漏掉了两次真实故障。**
+
+**漏判一（`§62.2`）**：我按旧判据把 `secrets` 的 `LOCAL SERVICE` 删掉，服务读不到 token，`doctor` 仍报：
+
+```
+[PASS] secrets-acl   secrets 只对服务身份与管理员可读
+```
+
+**这句 `detail` 是谎话** —— 代码只检查了「有没有 Everyone/Users/Authenticated 可读」，**从没验证过「服务身份」真的在列表里**。
+
+**漏判二（`§62.3`）**：`data\` 目录的写权限**完全没有检查项**。而那是 `heartbeat` FAIL 的真因 —— `anc-loop.cmd` 的 `>> "%LOGF%" 2>&1` 重定向失败会让 `cmd` 提前退出，**任务计划那侧仍然报「成功运行、退出码 0」**。
+
+### 63.2 修法
+
+**① `Test-SecretsAcl` 补第二个方向**（scripts/doctor.ps1）
+
+原来只判 ①：
+
+```powershell
+# ① 太宽？
+if ($hits.Count -gt 0 -or $fileHits.Count -gt 0) { return @{ FAIL } }
+return @{ PASS 'secrets 只对服务身份与管理员可读' }   # ← 没验过"服务身份"
+```
+
+补上 ②：
+
+```powershell
+# ② 够不够？
+$dirRead = @((Get-Acl -LiteralPath $Path).Access | Where-Object {
+    $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $svcPattern -and
+    ((([int64]$_.FileSystemRights) -band $readBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericRead) -ne 0)
+})
+if ($dirRead.Count -eq 0) { return @{ FAIL 'secrets 没给服务身份读权限...' } }
+```
+
+**文件级也要查**（目录有 ACE 但文件 ACL 可能被单独改过）。
+
+**② 新增 `Test-DataAcl`**
+
+```powershell
+$writeBits = [int64](WriteData -bor Modify -bor FullControl)
+$dirWrite = @((Get-Acl $Path).Access | Where-Object { 服务身份 且有写位 })
+if ($dirWrite.Count -eq 0) { return @{ FAIL 'data 目录没给服务身份写权限...' } }
+# 逐个查 loop.log / http.log / patch-in.log / patch-out.log / selfheal.log / audit.log
+```
+
+**注册成第 31 项**：`Add-Result 'data-acl' ...`（紧接 `secrets-acl` 之后）。
+
+### 63.3 第一版判据是错的：`SYSTEM` 不能替代 `LOCAL SERVICE`
+
+**这是这轮最值得记的一条。**
+
+第一版我把服务身份写成：
+
+```powershell
+$svcPattern = '^(NT AUTHORITY\\(LOCAL SERVICE|SYSTEM|NETWORK SERVICE)|LOCAL SERVICE|SYSTEM)$'
+```
+
+**理由看起来很合理**：「SYSTEM 也是服务身份，能读就行」。
+
+**双向验证立刻打脸**：
+
+```
+基线                        secrets=[PASS] data=[PASS]
+删掉 LOCAL SERVICE 之后      secrets=[PASS] data=[PASS]   ← 应该 FAIL，却是 PASS
+```
+
+**为什么**：删掉 `LOCAL SERVICE` 后，`SYSTEM` 的 `FullControl` 还在，正则命中 `SYSTEM` → 判据认为「服务能读」→ PASS。
+
+**但 `anc-service` / `anc-http` / `anc-backup` 全都跑在 `LOCAL SERVICE` 下**（`doctor` 自己的 `$expectedPrincipals` 表里写着）。**`SYSTEM` 能读不代表服务能读。**
+
+改成只认一个身份：
+
+```powershell
+$svcPattern = '^(NT AUTHORITY\\)?LOCAL SERVICE$'
+```
+
+**这条的普适教训**：**「判据里允许替代项」看起来宽容，实际是把判据作废了。**
+只要有一个常见的高权限身份能满足条件，这个检查就永远 PASS，等于没写。
+**验证判据的唯一方法是造故障** —— 不造故障，你永远不知道它是不是在空转。
+
+### 63.4 双向验证结果
+
+```
+基线                    secrets=[PASS] data=[PASS] fails=0
+删 secrets 的 LOCAL SERVICE → secrets=[FAIL] data=[PASS] fails=1
+补回                     → secrets=[PASS] data=[PASS] fails=0
+删 data 的 LOCAL SERVICE    → secrets=[PASS] data=[FAIL] fails=1
+补回                     → secrets=[PASS] data=[PASS] fails=0
+```
+
+**两个方向都灵，而且互不影响**（删 `secrets` 时 `data` 仍 PASS，反之亦然）。
+
+每次实验后都恢复了原始 ACL 并核对：
+
+```
+secrets:  SYSTEM FullControl / LOCAL SERVICE ReadAndExecute / Administrators FullControl
+data:     LOCAL SERVICE Modify
+```
+
+### 63.5 doctor 从 30 项变成 31 项
+
+```
+ok=True  fails=0  warns=3  checks=31
+```
+
+新增的 `data-acl` 是第 31 项。**故障矩阵的覆盖率数字也要跟着变**（原来写 29/30）。
+
+### 63.6 一个操作教训：字符串替换把 452 行的文件搞成 2089 行
+
+第一次改 `doctor.ps1` 用的是「整段字符串替换」（`s.replace(from, to)`），结果：
+
+- 语法错误 **38 个**
+- 文件从 **452 行变成 2089 行**
+- 原因：`from` 里包含 `return @{ state = 'PASS' ... }` 这一行，而文件里它只出现一次 —— 但我的 `to` 把整个函数体又拼了一遍，加上嵌套引号处理不当，PowerShell 解析直接崩
+
+**改用行号定位**（读成数组 → `findIndex` 找函数边界 → `splice` 替换）之后一次成功。
+
+**这条进 `AGENT-VERIFY-HANDOFF §4` 的候选**：改 `.ps1` 的函数体别用整段字符串替换，用行号 + `splice`。尤其是 `@{ state = 'X'; detail = '...' }` 这种带单引号嵌套的结构，字符串替换的引号转义几乎必然出错。
+
+**回滚很干净**：`git checkout -- scripts/doctor.ps1` → 452 行、0 错误、`doctor ok=True fails=0`。**这也是为什么每次改之前先确认工作区干净有用。**

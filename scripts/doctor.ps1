@@ -53,17 +53,91 @@ function Test-SecretsAcl([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
         return @{ state = 'WARN'; detail = "secrets 目录不存在: $Path"; fix = '按 OPS.md 建 %ProgramData%\anc\secrets 并放入 webhook 文件' }
     }
+    # 这两个位是本函数自己算的，别指望从 Get-BroadRead 借（那是另一个作用域）
+    $readBits = [int]([Security.AccessControl.FileSystemRights]::ReadData -bor [Security.AccessControl.FileSystemRights]::ReadAndExecute)
+    $genericRead = 0x80000000L
+    # 只认 LOCAL SERVICE —— 不能拿 SYSTEM 凑数。
+    # 2026-11-05 实测：第一版写成 (LOCAL SERVICE|SYSTEM)，于是删掉 LOCAL SERVICE 后
+    # SYSTEM 的 FullControl 仍然满足判据，检查照样 PASS，等于没修。
+    # 而 anc-service / anc-http / anc-backup 等都是 LOCAL SERVICE，SYSTEM 能读不代表它们能读。
+    $svcPattern = '^(NT AUTHORITY\\)?LOCAL SERVICE$'
+
     $hits = @(Get-BroadRead $Path)
     $fileHits = @()
     foreach ($f in @(Get-ChildItem -LiteralPath $Path -File -ErrorAction SilentlyContinue)) {
         if (@(Get-BroadRead $f.FullName).Count -gt 0) { $fileHits += $f.Name }
     }
+
+    # ① 太宽？
     if ($hits.Count -gt 0 -or $fileHits.Count -gt 0) {
         $who = @($hits | ForEach-Object { $_.IdentityReference.Value }) + $fileHits
         $who = @($who | Select-Object -Unique)
-        return @{ state = 'FAIL'; detail = ('secrets 对广泛组可读: ' + ($who -join ', ')); fix = 'icacls %ProgramData%\anc\secrets /inheritance:r; icacls %ProgramData%\anc\secrets /remove:g "BUILTIN\Users" "Everyone" "Authenticated Users" /T; icacls %ProgramData%\anc\secrets /grant "NT AUTHORITY\SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" "<bot用户>:(OI)(CI)RX" /T（注意：只做 /inheritance:r + /grant 不会移除 Users，必须 /remove:g）' }
+        return @{ state = 'FAIL'; detail = ('secrets 对广泛组可读: ' + ($who -join ', ')); fix = 'icacls %ProgramData%\anc\secrets /inheritance:r; icacls %ProgramData%\anc\secrets /remove:g "BUILTIN\Users" "Everyone" "Authenticated Users" /T; icacls %ProgramData%\anc\secrets /grant "NT AUTHORITY\SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" /T（注意：只做 /inheritance:r + /grant 不会移除 Users，必须 /remove:g）' }
     }
-    return @{ state = 'PASS'; detail = 'secrets 只对服务身份与管理员可读'; fix = '-' }
+
+    # ② 够不够？（2026-11-05 补，VERIFY §62.2）
+    # 旧版本只判了 ①，于是「把 LOCAL SERVICE 删掉、服务读不到 token」这种收得太紧的情况
+    # 照样报 PASS。anc-service 和 anc-http 都以 LOCAL SERVICE 运行，它必须能读。
+    $dirRead = @((Get-Acl -LiteralPath $Path).Access | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $svcPattern -and
+        ((([int64]$_.FileSystemRights) -band $readBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericRead) -ne 0)
+    })
+    if ($dirRead.Count -eq 0) {
+        return @{ state = 'FAIL'; detail = 'secrets 没给服务身份读权限（LOCAL SERVICE / SYSTEM 都不在）'; fix = 'icacls %ProgramData%\anc\secrets /grant "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" /T —— anc-service 与 anc-http 以 LOCAL SERVICE 运行，缺了它服务读不到 token，而任务状态仍显示成功' }
+    }
+    $noSvc = @()
+    foreach ($f in @(Get-ChildItem -LiteralPath $Path -File -ErrorAction SilentlyContinue)) {
+        $ok = @((Get-Acl -LiteralPath $f.FullName).Access | Where-Object {
+            $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $svcPattern -and
+            ((([int64]$_.FileSystemRights) -band $readBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericRead) -ne 0)
+        })
+        if ($ok.Count -eq 0) { $noSvc += $f.Name }
+    }
+    if ($noSvc.Count -gt 0) {
+        return @{ state = 'FAIL'; detail = ('这些 secrets 文件服务身份读不到: ' + (@($noSvc | Select-Object -Unique) -join ', ')); fix = 'icacls "%ProgramData%\anc\secrets\*" /grant "NT AUTHORITY\LOCAL SERVICE:(RX)"' }
+    }
+
+    return @{ state = 'PASS'; detail = 'secrets 只对服务身份与管理员可读，且服务身份确实有读权限'; fix = '-' }
+}
+
+function Test-DataAcl([string]$Path) {
+    # 2026-11-05（VERIFY §62.3）：secrets 是「服务要读」，data 是「服务要写」。
+    # 少了写权限，anc-loop.cmd 的 >> "%LOGF%" 2>&1 重定向失败 → cmd 提前退出，
+    # 而任务计划仍报「成功运行、退出码 0」，loop.log 的 mtime 却不动。
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return @{ state = 'WARN'; detail = "data 目录不存在: $Path"; fix = '先跑一次 deploy.ps1 -Apply' }
+    }
+    $writeBits = [int64]([Security.AccessControl.FileSystemRights]::WriteData -bor [Security.AccessControl.FileSystemRights]::Modify -bor [Security.AccessControl.FileSystemRights]::FullControl)
+    $genericWrite = 0x40000000L
+    # 只认 LOCAL SERVICE —— 不能拿 SYSTEM 凑数。
+    # 2026-11-05 实测：第一版写成 (LOCAL SERVICE|SYSTEM)，于是删掉 LOCAL SERVICE 后
+    # SYSTEM 的 FullControl 仍然满足判据，检查照样 PASS，等于没修。
+    # 而 anc-service / anc-http / anc-backup 等都是 LOCAL SERVICE，SYSTEM 能读不代表它们能读。
+    $svcPattern = '^(NT AUTHORITY\\)?LOCAL SERVICE$'
+
+    $dirWrite = @((Get-Acl -LiteralPath $Path).Access | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $svcPattern -and
+        ((([int64]$_.FileSystemRights) -band $writeBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericWrite) -ne 0)
+    })
+    if ($dirWrite.Count -eq 0) {
+        return @{ state = 'FAIL'; detail = 'data 目录没给服务身份写权限（LOCAL SERVICE / SYSTEM 都不在）'; fix = 'icacls %ProgramData%\anc\data /grant "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M"' }
+    }
+
+    $noWrite = @()
+    foreach ($l in @('loop.log', 'http.log', 'patch-in.log', 'patch-out.log', 'selfheal.log', 'audit.log')) {
+        $fp = Join-Path $Path $l
+        if (-not (Test-Path -LiteralPath $fp)) { continue }
+        $ok = @((Get-Acl -LiteralPath $fp).Access | Where-Object {
+            $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $svcPattern -and
+            ((([int64]$_.FileSystemRights) -band $writeBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericWrite) -ne 0)
+        })
+        if ($ok.Count -eq 0) { $noWrite += $l }
+    }
+    if ($noWrite.Count -gt 0) {
+        return @{ state = 'FAIL'; detail = ('这些日志服务身份写不了: ' + ($noWrite -join ', ')); fix = '逐个补：icacls "<文件路径>" /grant "NT AUTHORITY\LOCAL SERVICE:(M)"' }
+    }
+
+    return @{ state = 'PASS'; detail = 'data 目录与日志对服务身份可写'; fix = '-' }
 }
 
 function Test-DeployLayout([string]$Root, [string]$Src) {
@@ -304,6 +378,10 @@ if (Test-Path $shared) {
 # 12 密钥目录权限（webhook 是 bearer 凭据）
 $sec = Test-SecretsAcl "$env:ProgramData\anc\secrets"
 Add-Result 'secrets-acl' $sec.state $sec.detail $sec.fix
+
+# 12b data 目录写权限（服务要写日志；少了它任务显示成功但日志不动，见 VERIFY §62.3）
+$dacl = Test-DataAcl "$env:ProgramData\anc\data"
+Add-Result 'data-acl' $dacl.state $dacl.detail $dacl.fix
 
 # 13 部署布局（唯一来源：从部署目录跑，不从工作副本跑）
 $dl = Test-DeployLayout $Root $Repo
