@@ -7579,3 +7579,135 @@ no duplicates across split scripts
 **影响面实测**：生产库 `anc.db` 的 mtime 停在 `09:12`，`WAL`/`SHM` 存在但大小正常（53 KB / 32 KB），
 36 tasks / 2 bindings / 8 submissions / 5 issues / 8 patch_drafts / 1 dayend / 15 outbox / 60 reminders ——
 **没有异常数据，没有被意外创建过的痕迹。**
+
+## 70. 阶段 B 实测：ACL 自愈通过；`deploy.ps1 -Apply` 跑不完（2026-11-05）
+
+阶段 B 是发布前唯一没做过的那次验证：**删掉手工补的东西，看代码能不能自己修回来**。
+这一节记录实验设计、结果，以及**这次暴露的新问题**。
+
+### 70.1 实验设计（可复现）
+
+```
+① icacls /save 备份 secrets 与 data 的 ACL（回滚用）
+② icacls <dir> /remove:g "LOCAL SERVICE" /T   ← 模拟「刚部署完、还没人手工修」
+③ 确认 doctor 真的红了（否则起点不成立）
+④ 跑部署路径（set-acl.ps1 或 deploy.ps1）
+⑤ 确认 doctor 回 fails=0
+```
+
+**备份位置**：`E:\anc-backup-20261104\B-acl-backup-<HHmmss>\`（`secrets-acl.txt` / `data-acl.txt`）
+
+### 70.2 起点：删干净了，`doctor` 真的红
+
+```
+secrets                   LOCAL SERVICE 条数=0
+secrets\userid.txt        LOCAL SERVICE 条数=0
+data                      LOCAL SERVICE 条数=0
+data\loop.log             LOCAL SERVICE 条数=0
+
+doctor: ok=False fails=2
+  [FAIL] secrets-acl  secrets 没给服务身份读权限（LOCAL SERVICE / SYSTEM 都不在）
+  [FAIL] data-acl     data 目录没给服务身份写权限
+```
+
+**注意 detail 的措辞「LOCAL SERVICE / SYSTEM 都不在」** —— 说明 `doctor` 查了两个身份，
+但**判据只认 LOCAL SERVICE**（`§63` 的修复）。所以报 FAIL 是对的。
+
+### 70.3 结果一：`set-acl.ps1 -Apply -SkipVerify` **7.6 秒修回来** ✅
+
+```
+$ powershell -File scripts\set-acl.ps1 -Apply -SkipVerify
+exit=0   用时 7.6 秒
+（15 条 icacls 全 OK）
+
+doctor: ok=True fails=0 warns=1
+  [PASS] secrets-acl
+  [PASS] data-acl
+  [PASS] heartbeat
+```
+
+**这是阶段 B 的核心结论**：**`set-acl.ps1` 能把删掉的 ACL 自己修回来，7.6 秒。**
+
+### 70.4 结果二：`deploy.ps1 -Apply` **90 秒跑不完** ❌
+
+```
+$ powershell -File scripts\deploy.ps1 -Repo E:\workbuddy-anc -Apply
+❌ 90 秒未结束（输出 263 行）
+```
+
+**263 行 ≈ 10 次 `set-acl.ps1` 的日志**（每次约 25 行）。而 `deploy.ps1` 只在 L116-125 调它**一次**。
+
+**这个"多次调用"没查清** —— 可能是：
+
+- `deploy.ps1` 自己重复执行了（`bin` 映射会把 `scripts\deploy.ps1` 复制到 `bin\deploy.ps1`，
+  但复制不会执行它）
+- **`anc-*` 计划任务在并发触发**（`anc-patch-guard` 每分钟、`anc-service` 每分钟）
+- 我之前超时"杀父进程"时留下的子进程还在跑（**这一条已被排除**：清理后重测仍是 90 秒超时）
+
+**但 `doctor` 是绿的** —— 说明 ACL 那部分每次都成功了，只是整体流程没走完。
+
+### 70.5 修了一个真 bug：三层嵌套会卡死
+
+**第一轮**（没有 `-SkipVerify` 时）：`deploy.ps1 -Apply` **180 秒卡在同一个位置**，
+日志最后一行永远是：
+
+```
+[INFO] 自检：跑 doctor.ps1 的 secrets-acl / data-acl（约 17 秒）
+```
+
+**根因**：三层进程嵌套
+
+```
+deploy.ps1
+  └─ & powershell -File set-acl.ps1        ← 我新加的（L116-125）
+       └─ & powershell -File doctor.ps1      ← set-acl.ps1 的自检（L101/L109）
+```
+
+**单独跑每一层都正常**（`set-acl.ps1 -Apply` 20.7 秒、`deploy.ps1` dry-run 3.2 秒），
+**嵌起来就死**。
+
+**修法**：`set-acl.ps1` 加 `-SkipVerify`，`deploy.ps1` 调用时传它 ——
+**`set-acl.ps1` 不再 spawn `doctor`**，完整验证交给部署后的那一次 `doctor`。
+
+修完后：`set-acl.ps1 -Apply -SkipVerify` = **7.6 秒**（原来 20.7 秒，省掉 doctor 的 17 秒）。
+
+**教训（值得单独记）**：**不要在 PowerShell 脚本里做三层以上的 `& powershell -File` 嵌套，
+尤其当每一层都要捕获输出时。** 单独能跑的组合，嵌起来会死，而且没有报错，只是不动。
+
+### 70.6 我自己的两次操作失误（必须交代）
+
+**① 杀到了自己**
+
+我用 `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'set-acl' }` 找残留进程，
+**结果匹配到了我自己的命令字符串**（因为我的命令里也含 `set-acl`），`Stop-Process` 把自己杀了 —— 命令
+返回 `[exit code: 4294967295]`。
+
+**正确写法**：`Where-Object { $_.ProcessId -ne $PID -and ... }`，且**优先用 `-like` 而不是 `-match`** 缩小范围。
+
+**② 子进程累积污染了日志**
+
+每次超时我 `Stop-Process -Id $p.Id` 只杀了**父进程**，`deploy.ps1` 用 `& powershell` 起的
+**子进程还活着**。几轮之后日志里出现 **1089 行 / 6 轮完整的 `set-acl` 输出** ——
+那不是"循环"，是**多个进程在交替写同一个日志文件**。
+
+**教训**：`Start-Process` 启动的进程树，杀父不杀子。要么用 `taskkill /T`，
+要么按命令行精确匹配清理（并且排除 `$PID`）。
+
+### 70.7 阶段 B 的结论：一半通过
+
+| 判据 | 结果 |
+|---|---|
+| 删掉 ACL 后 `doctor` 会红 | **✅ 红 2 项，detail 准确** |
+| **代码能把 ACL 自己修回来** | **✅ 7.6 秒，doctor 回 `fails=0`** |
+| `deploy.ps1 -Apply` 能完整跑完 | **❌ 90 秒未结束** |
+| 修完 ACL 后机器状态正常 | **✅ `doctor ok=True fails=0 warns=1`、`deploy-layout` PASS、`patch` PASS** |
+
+**对发布的意义**：
+
+- **「别人装得成」的 ACL 这一环通过了** —— `set-acl.ps1` 是幂等的、自愈的、7.6 秒的
+- **但「一条命令装完」还不成立** —— `deploy.ps1 -Apply` 跑不完，需要单独查
+
+**所以在清空重装之前，还有一件事必须解决**：`deploy.ps1 -Apply` 为什么跑不完。
+否则陌生 agent 执行到那一步会一直等下去。
+
+**下一步不是清空重装，是先把这个查清。**

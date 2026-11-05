@@ -36,7 +36,11 @@ param(
     [ValidateSet('company', 'employee')]
     [string]$Side = 'company',
     [string]$Repo = '',
-    [switch]$Apply
+    [switch]$Apply,
+    # 2026-11-05 加：跳过 doctor 自检。
+    # deploy.ps1 调用时必须传它 —— 否则形成「deploy → set-acl → doctor」三层嵌套，
+    # 实测在 deploy.ps1 里会卡死 180 秒不动（VERIFY §70）。完整验证交给部署后的那一次 doctor。
+    [switch]$SkipVerify
 )
 
 $ErrorActionPreference = 'Stop'
@@ -170,6 +174,10 @@ if (-not $Apply) {
 
 # APPLY 之后必须自检 —— 「设过了」不等于「设对了」（VERIFY §63 的教训）
 Say ""
+if ($SkipVerify) {
+    Say "跳过 doctor 自检（-SkipVerify）—— 部署完请单独跑一次 doctor.ps1" 'OK'
+    exit 0
+}
 $code = Test-ViaDoctor
 if ($code -eq 0) { Say "OK：secrets-acl 与 data-acl 都 PASS" 'OK' }
 else { Say "设完了但自检没过 —— 看上面 doctor 的 detail 与 fix" 'ERR' }

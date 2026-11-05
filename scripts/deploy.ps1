@@ -116,6 +116,9 @@ $setAclPs1 = Join-Path $PSScriptRoot 'set-acl.ps1'
 if (Test-Path $setAclPs1) {
     $aclArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $setAclPs1, '-Root', $Root, '-Side', $Side)
     if ($Apply) { $aclArgs += '-Apply' }
+    # 2026-11-05：必须跳过自检 —— 三层嵌套（deploy → set-acl → doctor）在这里会卡死 180 秒（VERIFY §70）。
+    # 完整验证交给部署完成后的那一次 doctor。
+    $aclArgs += '-SkipVerify'
     & powershell @aclArgs
     if ($LASTEXITCODE -ne 0 -and $Apply) {
         Fail ('设 ACL 失败（exit ' + $LASTEXITCODE + '）') '看上面 set-acl.ps1 的 ERR 行；可能需要管理员权限' 2
