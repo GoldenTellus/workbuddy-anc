@@ -7423,3 +7423,138 @@ src/service/dayend.ts          92
   （feed / URL / 文件名 / NSIS 参数与 5.9.3 完全一致，所以推断可靠但不是直接证据）。
 - 卸载是否保留 `.workbuddy` **未实测**（只有 `§58.2` 的旁证：`%ProgramData%\anc` 没被动）。
 - 5.8.3 的安装器是否同样支持 `/S --updated /UPDATE=1 /D=` **未验证**。
+
+## 69. A5 完成：7 个文件全部进覆盖率表；顺带挖到一个「spawn 就写生产库」的坑（2026-11-05）
+
+`§67.3` 说 7 个文件 1555 行从未被执行。这一节是把它补完之后的结果。
+
+### 69.1 结果：7/7 全进表，但 overall 从 93.14% 掉到 76.61%
+
+| 文件 | 之前 | 现在 |
+|---|---|---|
+| `src/service/cli.ts` | 不在表 | **30.84%** |
+| `src/service/patch-drafts.ts` | 不在表 | **38.13%** |
+| `src/service/eval.ts` | 不在表 | **46.22%** |
+| `src/service/issues.ts` | 不在表 | **56.25%** |
+| `src/service/submissions.ts` | 不在表 | **56.20%** |
+| `src/service/dayend.ts` | 不在表 | **85.34%** |
+| `src/ingest/cli.ts` | 不在表 | **60.00%** |
+
+**overall：行 93.14% → 76.61%，分支 78.75% → 73.69%，函数 95.79% → 82.22%。**
+
+**这不是退步，是原来「看不见的空」变成「看得见的空」。**
+
+那 1555 行本来一行都没跑过，只是因为它不在统计范围里，所以不出现在分母。
+现在它在分母里了，数字当然掉。**发布评审要用 76.61% 这个数，不要再用 93.14%。**
+
+**「覆盖率掉了是好事」这件事本身就是一条教训**：
+只看 overall 数字会得出反的结论。**要看的是「有多少代码在统计范围外」。**
+
+### 69.2 新增 `src/service/cli.smoke.test.ts`（117 行 / 3 个 test）
+
+**只测「接线没断」，不测业务**：
+
+1. 无命令 / `--help` / `nope` → 全部 `exit 2`，stderr 含 `缺少命令组` 或 `未知命令组`
+2. 12 个**只读**子命令连跑（`bind list` / `task list` / `outbox list` / `a2a list` / `config list` /
+   `submission list` / `issue list` / `patch list` / `dayend list` / `dayend all-off` /
+   `eval list` / `eval history`）→ 全部 `exit 0` + stdout 含 `"ok": true`
+3. `src/ingest/cli.ts`：无命令 → `exit 2`；**非服务身份 `apply` → `exit 2` 撞 D24 护栏**（走不到 `applyBatch`，零副作用）
+
+**写了库的子命令一个都没碰**（`task add` / `submission add` / `issue draft` / `patch draft` /
+`dayend add` / `eval run` / `backup` / `config set` / `project` / `serve` / `loop`）。
+
+**还加了一条防 import 断链的断言**：`assert.doesNotMatch(out, /is not defined|Cannot find module/)` ——
+这个范式来自 `render/cli.smoke.test.ts`，2026-11-02 真炸过一次（加了 `src/audit.ts` 但部署映射没跟上）。
+
+### 69.3 ★ 挖到一个坑：`service --help` 也会写库
+
+**`src/service/cli.ts:90` 的 `openDb(dbPath)` 在「命令组是否为空」校验（第 92 行）之前。**
+
+而 `openDb` 会 `mkdirSync` + 建表。所以：
+
+> **任何测试或脚本 spawn 这个 CLI 而没带 `--db`，就是在写生产库。**
+> 连 `service --help` 都会。
+
+**这条要进 `LOCAL-SERVICE.md`**，因为它不只是测试问题 —— 任何外部脚本（含 devbot、e2e-loop、
+以及以后别人写的运维脚本）都会踩。
+
+**正确写法**（本次测试用的三层隔离）：
+
+```ts
+const dir = mkdtempSync(join(tmpdir(), 'anc-svc-cli-'));
+const env = { ...process.env, ProgramData: dir };
+delete env.ANC_DB;                    // 防外部变量把子进程带去别的库
+delete env.ANC_ALLOW_LOCAL_INGEST;    // 防外部变量拆掉 ingest 护栏
+env.USERNAME = 'anc-cli-smoke';       // 钉死身份：护栏按 USERNAME 判服务身份
+// 每个调用都带 --db join(dir,'anc.db')；cwd 也指沙箱
+```
+
+**为什么要三层**（不是二选一）：
+
+| 层 | 管什么 | 为什么不够 |
+|---|---|---|
+| `--db <临时>` | `cli.ts:46` 的 `args.db ?? DEFAULT_DB` | 只管 service CLI |
+| `env.ProgramData = 临时` | `ingest/cli.ts:47` 的 `dataDir` **硬编码** `process.env.ProgramData` | `--db` 和 `ANC_DB` 都管不到它 |
+| 删掉外来 `ANC_DB` / `ANC_ALLOW_LOCAL_INGEST` | 防外部环境变量把子进程带偏 | 少这一层就"看起来隔离了其实没有" |
+
+**隔离实测证据**：
+
+- 生产库 `%ProgramData%\anc\data\anc.db` 的 **mtime 停在 09:12**（测试窗口是 10:35–10:40）
+- 生产 `audit.log` 里含沙箱路径（`anc-svc-cli-` / `Temp`）的行数 **0**
+- 含 `service nope` / `submission list` / `patch list` / `eval list` 的行数全 **0**
+- 临时目录无残留
+
+### 69.4 两个分测脚本的漏也补了
+
+| 脚本 | 补了什么 | 现在 |
+|---|---|---|
+| `test:service` | `deploy-state` / `http` / `project` 三个 test | 71 pass |
+| `test:render` | `dept.test.ts` | 37 pass |
+
+**并集校验**（脚本判定，非目测）：
+
+```
+main count  = 16
+union count = 16
+test == coverage : True
+union == main    : True
+no duplicates across split scripts
+```
+
+计数自洽：`test:bind` 4 + `test:service` 71 + `test:ingest` 18 + `test:render` 37 = **130**。
+
+### 69.5 数字变化：`npm test` 127 → 130
+
+三处新增测试把它从 127 推到 130。**当前状态文档已全改成 130**：
+
+`AGENTS.md` / `CLAUDE.md` / `README.md` / `PLAN.md §1.2` / `RELEASE-CHECKLIST.md`。
+
+**但 `VERIFY` 里 §65–§68 那 4 处 `127` 故意没改** —— 那是**写作当时的真值**。
+改它就是篡改历史。这里说明一句就够：**§65–§68 写于 2026-11-05 上午，那时是 127 项；
+`§69` 之后是 130 项。**
+
+### 69.6 一条提交归属的说明（我自己的操作失误）
+
+提交 `5ef3026`（消息写的是 `docs(verify): §68`）**把 A5 的代码一起收进去了**
+（`package.json` + `src/service/cli.smoke.test.ts`）—— 因为那次我用了 `git add -A`，
+而 A5 的改动正好在工作区里未提交。
+
+内容没丢，代码也在，但**提交信息与内容不符**。按阶段划分发布流程时要知道这件事。
+`§69` 这次提交会把差异说清楚。
+
+**教训**：`git add -A` 在多个 agent 并行改同一个工作区时是危险的 ——
+它会把你不知道的改动一起收进去。**要么 `git add <具体文件>`，要么先 `git status` 确认。**
+
+### 69.7 遗留：只测接线，不测业务
+
+| 文件 | 行覆盖 | 分母是什么 |
+|---|---|---|
+| `cli.ts` | 30.84% | 未覆盖的是所有**写库**子命令（按要求全跳过） |
+| `patch-drafts.ts` | 38.13% | 同上 |
+| `eval.ts` | 46.22% | 同上 |
+
+**仍未被执行的分支**：`service/cli.ts` 的 `loop` / `serve` / `project`（长驻或需要真 vault）、
+`summary --find`（需要 config 里有 vault 根）。`loop.ts` 本体不受影响，它由 `service.test.ts` 覆盖（77.59%）。
+
+**这条要写进 `RELEASE-CHECKLIST` 的 A5 结论里**：那 1555 行现在「在表里」了，
+但**大部分仍是空的**。补 smoke test 只是让空地方可见，不是把它填满。

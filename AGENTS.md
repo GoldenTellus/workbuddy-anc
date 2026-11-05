@@ -1,4 +1,4 @@
-# workbuddy-anc — 项目指引(Codex 版,与 CLAUDE.md 内容一致)
+﻿# workbuddy-anc — 项目指引(Codex 版,与 CLAUDE.md 内容一致)
 
 GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`(MIT)。目标:小团队用一台 7×24 的 Windows 主机跑一个**公司 bot**,每个员工电脑跑一个**个人 bot**,执行引擎是腾讯 **WorkBuddy(Enterprise 版)**,IM 是**企业微信**,公司知识放在主机上的 markdown vault 里。结构照搬上游的制造企业试点。
 
@@ -20,8 +20,8 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 - **2026-11-04 单机封顶后的剩余**：ACCEPTANCE 还有 5 个 🟡（E-1/E-2/P-3/O-5 各一项 + P-7 的席位回收），全部卡企微后台或第二台真机；1.0 第 2 条（真升级回归）等厂商发版；第 4 条（第二个人能装）要真人和干净机。**这些不是本机能解决的**，`VERIFY §28`/`§33` 逐个定过性。
 - **本轮新增的坑**：任何会改 `git` 当前分支的脚本必须自己切回去（`e2e-loop.ps1` 漏了，`§27`）；`patch-out.log` 的换行被转义成字面 `\n` 且只记前 400 字符（`§25`）；表定义必须和代码一起进 git，否则新建库缺表、老库缺列两种报错都会出现（`§21`/`§22`）。
 - **主机时间**：`W32Time` 原本 Stopped，2026-11-04 修复；**03:00 之前的绝对时间戳可能不准**，影响面见 `VERIFY §19`，验证提醒时用新数据。
-- `npm test` **127 项**；`doctor -Repo` FAIL=0 WARN=2（不带 `-Repo` 时会多报一个 `secrets-in-git` WARN，因为无仓库可扫）；故障矩阵 **30/31** 项已注入验证（2026-11-05 补上 `task-anc-devbot` 的注入，见 `§48`；剩 1 项是 `vault-ingest-audit` 上限即 WARN）（`database` 2026-11-04 补，原来判"不做"是错的；`vault-ingest-audit` 的上限是 WARN 不是 FAIL，基线即 WARN，见 `§39`）。
-- **发布前审计（2026-11-05，`VERIFY §65`）**：SQL 层 6 处可疑拼接**全部安全**（参数绑定写对了）；**真正的风险是 `deploy.ps1` 里 `icacls` 一处都没有** —— 今天 `doctor` 从 `fails=3` 到 `fails=0` 有 **5 处靠手工敲**，清空重装必红。另：仓库**没有 lockfile**（`npm audit` 直接 `ENOLOCK`）、**没有 coverage 脚本**（127 项测试覆盖多少行未知）。**发布前按 `docs/RELEASE-CHECKLIST.md` 四阶段走，顺序不能换：先补代码缺口 → 再证明代码能自愈 → 才清空重装 → 最后让陌生 agent 装。**
+- `npm test` **130 项**；`doctor -Repo` FAIL=0 WARN=2（不带 `-Repo` 时会多报一个 `secrets-in-git` WARN，因为无仓库可扫）；故障矩阵 **30/31** 项已注入验证（2026-11-05 补上 `task-anc-devbot` 的注入，见 `§48`；剩 1 项是 `vault-ingest-audit` 上限即 WARN）（`database` 2026-11-04 补，原来判"不做"是错的；`vault-ingest-audit` 的上限是 WARN 不是 FAIL，基线即 WARN，见 `§39`）。
+- **发布前审计（2026-11-05，`VERIFY §65`–`§69`）**：SQL 层 6 处可疑拼接**全部安全**（参数绑定写对了）；真正的风险是**手工修补没固化**。已补三样：① `deploy.ps1` 的 ACL → 新脚本 `scripts/set-acl.ps1`（`§66`，幂等已验）② lockfile + `coverage` 脚本（`§67`）③ **7 个文件 1555 行（占 src 的 35.7%）从未被执行** → 已加 smoke test 让 7/7 全进表（`§69`）。**当前 `npm test` 130 项、`coverage` 行 76.61%** —— 这个数比之前的 93.14% 低，**不是退步**，是原来「藏起来的空地方」被照亮了。**发布前按 `docs/RELEASE-CHECKLIST.md` 四阶段走，顺序不能换：先补代码缺口 → 再证明代码能自愈 → 才清空重装 → 最后让陌生 agent 装。**
 - **1.0 发布路线（2026-11-05 维护者决策）**：**不用虚拟机**，5 个 🟡 全部降级到本机做（O-5 真机清空 10 成 / P-3 造 member 9 成 / E-2 后台点一下 9 成 / P-7 后台删席位 8 成 / **E-1 本机双实例 7 成，只能标「降级完成」**）；做不了的标「未做」，**不卡 1.0**。降级表见 `ACCEPTANCE.md`。
 - **部署约定（D25）**：直接用管理员账号，不建专用用户；D6 的「不开自动登录、本机不存密码」仍有效。
 - WorkBuddy 只有补丁一条路（D18）：企业版与个人版实测一样，群身份靠 D17 补丁。凡上主机的版本都先过 FORK-DIRECTION §11 的升级回归。

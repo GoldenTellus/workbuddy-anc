@@ -131,7 +131,7 @@ Windows 主机（7×24）
 - **补丁自愈三条路径验通**：锚点缺失 → 不重启并告警；hash 不符 → 降级锚点模式仍生效；进程崩塌 → 91 秒内拉起（`VERIFY §37`）。
 - **单机封顶**：2026-11-04 把本机能验的 8 项全做完（`VERIFY §34`–`§41`）。
 - **当前目标是 PLAN 1.0**（阶段 S 稳 / O 观 / L 环 / D 交），见 [docs/PLAN.md](./docs/PLAN.md)。**阶段 S/O/L 已全绿**（3/3 · 3/3 · 7/7），阶段 D 是 1/3。
-- `npm test` **127 项**全绿（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）；`doctor` **30 项**检查。
+- `npm test` **130 项**全绿（Node 24 直接跑 `.ts`；Node 22 需加 `--experimental-sqlite --experimental-strip-types`）；`doctor` **30 项**检查。
 
 ## 从哪里开始读
 
