@@ -77,7 +77,14 @@ function Invoke-Icacls([string]$Command, [string]$What) {
 function Set-SecretsAcl([string]$dir) {
     Say ("secrets: " + $dir)
     # /inheritance:r 只在这里用 —— 这是敏感目录，必须切断上游继承
-    Invoke-Icacls ('icacls "{0}" /inheritance:r /grant:r "{1}:F" "{2}:F" "{3}:(OI)(CI)RX"' -f $dir, $SYS, $ADM, $SVC) `
+    #
+    # 2026-11-05 修（VERIFY §81.8）：三个主体都必须带 (OI)(CI)。
+    # 早先写成 "{1}:F" "{2}:F"（SYSTEM / Administrators 不带继承标志），
+    # 结果它们只作用于目录本身、不继承给子项 —— 新建在 secrets 里的文件
+    # 只能继承到 LOCAL SERVICE:(OI)(CI)RX 那一条，管理员写不进去。
+    # §11 那次部署就卡在这：Copy-Item / icacls / SetAccessControl / takeown /
+    # Remove-Item 五种方法全被拒，最后靠一次性 SYSTEM 计划任务重置 DACL 才解决。
+    Invoke-Icacls ('icacls "{0}" /inheritance:r /grant:r "{1}:(OI)(CI)F" "{2}:(OI)(CI)F" "{3}:(OI)(CI)RX"' -f $dir, $SYS, $ADM, $SVC) `
         'secrets 目录：断继承，SYSTEM:F + Administrators:F + LOCAL SERVICE:RX'
 
     # 每个文件是独立 ACL（本机实测：文件的 ACE 都是 Inherited=True，但那是继承自目录之后的状态；

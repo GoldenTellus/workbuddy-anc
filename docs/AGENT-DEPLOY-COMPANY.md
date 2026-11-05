@@ -322,6 +322,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\patch\launch-patched.
 Get-Content "$Root\data\patch-state.json" | ConvertFrom-Json
 ```
 
+> **⚠ 这一步可能失败 1–2 次，属正常，不要急着找根因。**
+>
+> `--inspect-brk` 注入的**单次成功率约 66%**（`VERIFY §59` 实测：210 次 `env set` 对应 140 次 `APPLIED`）。
+> 失败的表现：日志里有 `env set: "OK:<某pid>"` 但**没有本轮的 `APPLIED`**，
+> 常伴 `inspector close skipped: Cannot find context with specified id`，
+> 且 `patch-state.json` 不出现、`9229` 不监听。
+>
+> **这不是脚本有 bug，是注入本身的时序竞争。** 系统靠 `anc-selfheal` 重试 4 次兜住
+> （3 次全败概率 `(1/3)³ ≈ 3.7%`）。所以直跑失败后**不要反复跑同一个启动器**，改走自愈：
+>
+> ```powershell
+> powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\anc-selfheal.ps1" -DryRun   # 先确认锚点可用
+> powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\anc-selfheal.ps1" -Apply    # 真跑（bot 会短暂离线）
+> ```
+>
+> 自愈会「停全部 WorkBuddy → 用补丁启动器重启 → 最多重试 4 次」。
+> 2026-11-05 一次真机从零装：`§7` 直跑两次都失败（各 156 秒），改走自愈后**第 3 次成功**，
+> `§7` 共耗 523 秒 = 全流程 40% 的执行时间。**那份台账当时的归因是错的**（猜成"单实例锁"），
+> 真因就是这 66%（`VERIFY §81.5`）。
+>
+> **教训**：一个正确但只解释 66% 的假设，和一个人错但解释 100% 的假设摆在一起，人会选后者。
+> 文档没给"这是随机"的锚点时，读者就会去构造确定性解释。
+
 **成功判据**：`patch-state.json` 里 `"applied": true`，**并且那个 `pid` 还活着**：
 
 ```powershell
@@ -655,19 +678,47 @@ powershell -File scripts\deploy-state.ps1 -Side company -Mark org -AsDone
 ### 11.2 你做的（写配置）
 
 ```powershell
-# 企微凭据（secret 放 secrets 目录，不进 git）
-Set-Content "$Root\secrets\corpid.txt" -Value '<corpId>' -Encoding UTF8 -NoNewline
-Set-Content "$Root\secrets\corpsecret.txt" -Value '<应用 secret>' -Encoding UTF8 -NoNewline
+# 群机器人 webhook（这是唯一的必需凭据，放 secrets 目录，不进 git）
+Set-Content "$Root\secrets\wecom-webhook.txt" -Value '<群机器人 webhook>' -Encoding UTF8 -NoNewline
+#
+# 出站还要两份同样的地址（脚本按名字找）：
+Copy-Item "$Root\secrets\wecom-webhook.txt" "$Root\secrets\webhook.txt" -Force
+Copy-Item "$Root\secrets\wecom-webhook.txt" "$Root\secrets\ops-webhook.txt" -Force
 ```
+
+> **`corpid.txt` / `corpsecret.txt` 不用建** —— `§11.1` 已说明当前架构不用自建应用（`VERIFY §77`）。
+> 早先这一节的代码块还在教人写这两个文件、成功判据也要求它们存在且 ≥8 字节，
+> 结果会逼人编一个假的 corpId 出来。**2026-11-05 已删（`VERIFY §81.8`）。**
+
+> **⚠ 建完 `secrets` 目录后必须再跑一次 `set-acl.ps1`** —— 这是 §11 最容易漏的一步。
+>
+> `deploy.ps1` 里调 `set-acl.ps1` 的那一刻，`secrets` 目录还不存在（仓库里没有 `secrets/` 源目录），
+> 所以它会打印 `secrets 不存在，跳过（建完 secrets 要再跑一次本脚本）` 然后继续。
+> **你在这里手动 `New-Item` / `Set-Content` 建出来的目录和文件，继承的是父目录的 ACE，**
+> **不是 `secrets` 该有的那三条。** 症状：`Copy-Item` / `icacls` / `SetAccessControl` /
+> `takeown` / `Remove-Item` 全被拒（管理员连 WRITE_DAC 都拿不到），`doctor` 的 `secrets-acl` 会红。
+>
+> ```powershell
+> powershell -NoProfile -ExecutionPolicy Bypass -File scripts\set-acl.ps1 -Root $Root -Apply
+> ```
+>
+> 2026-11-05 一次真机上从零装就卡在这：那位 agent 试了五种方法全被拒，
+> 最后靠一次性 SYSTEM 计划任务重置 DACL 才解决（`VERIFY §81.4` #5）。
 
 **成功判据**：
 
 ```powershell
-# 凭据文件存在且非空
-@('corpid.txt','corpsecret.txt') | ForEach-Object {
+# 三个 webhook 文件存在且非空（wecom 是主，webhook/ops 是脚本按名字找的副本）
+@('wecom-webhook.txt','webhook.txt','ops-webhook.txt') | ForEach-Object {
     $f = Join-Path $Root "secrets\$_"
     if (-not (Test-Path $f)) { throw "缺 $_" }
-    if ((Get-Item $f).Length -lt 8) { throw "$_ 太短，可能是占位符" }
+    if ((Get-Item $f).Length -lt 40) { throw "$_ 太短，webhook 应该 80+ 字符" }
+    if ((Get-Content $f -Raw) -notmatch 'qyapi\.weixin\.qq\.com/cgi-bin/webhook/send\?key=') { throw "$_ 不是群机器人 webhook 形态" }
+}
+# 新建的文件必须继承到三条 ACE（管理员可读）—— 这一条能抓到"忘了重跑 set-acl"
+Get-ChildItem "$Root\secrets" -File | Where-Object { $_.Name -like '*webhook*' } | ForEach-Object {
+    $adm = @((Get-Acl $_.FullName).Access | Where-Object { $_.IdentityReference.Value -match 'Administrators' -and $_.AccessControlType -eq 'Allow' })
+    if ($adm.Count -eq 0) { throw "$($_.Name) 没给管理员权限 —— 重跑 scripts\set-acl.ps1 -Apply" }
 }
 # ACL：secrets 不能对广泛组可读（Everyone / BUILTIN\Users / Authenticated Users）
 #
@@ -730,6 +781,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 ```
 
 **成功判据**：`"ok": true`（`fail` 为 0）。
+
+> **`backup-freshness` 需要"本地"备份存在。** `doctor` 查的是 `%ProgramData%\anc\backup\anc-*.db`
+> （部署目录里的本地备份），**不是** `E:\anc-backup` 那个离机副本。
+> 新装的机器还没跑过备份，所以第一次 `deploy-verify` 会在这里 FAIL。
+> 按 fix 跑一次 `anc-backup`（或等 02:00 的定时任务），再重跑本脚本即可：
+>
+> ```powershell
+> powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\backup-anc.ps1" -Root $Root
+> ```
+>
+> **不要为了让它变绿去改判据** —— 2026-11-05 那次就是先诊断出"`E:\anc-backup` 不算数"，
+> 跑了一次备份后自然转绿（`VERIFY §81.4` #6）。
 
 **输出长这样**：
 
