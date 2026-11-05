@@ -86,7 +86,7 @@ else { Write-Host ('      ' + $renderOut.Trim()) }
 # 2) 转交任务
 if ($ToUserid -or $ToName) {
     Write-Host '[2/4] 转交任务 ...'
-    $cliArgs = @('--no-warnings', 'C:\ProgramData\anc\service\cli.ts', 'task', 'reassign', '--from', $FromUserid)
+    $cliArgs = @('--no-warnings', 'C:\ProgramData\anc\service\cli.ts', '--db', "$env:ProgramData\anc\data\anc.db", 'task', 'reassign', '--from', $FromUserid)
     if ($ToUserid) { $cliArgs += @('--to', $ToUserid) }
     if ($ToName) { $cliArgs += @('--to-name', $ToName) }
     $cliArgs += @('--actor', 'offboard')
@@ -97,7 +97,7 @@ if ($ToUserid -or $ToName) {
 # 3) 解绑群
 if ($ChatId) {
     Write-Host '[3/4] 解绑群 ...'
-    $ub = & $node --no-warnings 'C:\ProgramData\anc\service\cli.ts' bind unbind --chat-id $ChatId 2>&1 | Out-String
+    $ub = & $node --no-warnings 'C:\ProgramData\anc\service\cli.ts' --db "$env:ProgramData\anc\data\anc.db" bind unbind --chat-id $ChatId 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { $failed += ('unbind: ' + $ub.Trim()) } else { Write-Host ('      ' + $ub.Trim()) }
 }
 

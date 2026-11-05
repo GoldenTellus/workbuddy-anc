@@ -7558,3 +7558,24 @@ no duplicates across split scripts
 
 **这条要写进 `RELEASE-CHECKLIST` 的 A5 结论里**：那 1555 行现在「在表里」了，
 但**大部分仍是空的**。补 smoke test 只是让空地方可见，不是把它填满。
+### 69.8 顺带查了现有脚本的影响面：两处漏了 `--db`
+
+那个 `openDb` 坑不只影响测试。把 `scripts/` 里所有调 service CLI 的地方过了一遍：
+
+| 脚本 | 带 `--db` 吗 | 判定 |
+|---|---|---|
+| `devbot.ps1` / `e2e-loop.ps1` / `devbot-scheduler.ps1` | **✓ 都带** | 安全 |
+| `doctor.ps1`（两处调用）/ `watchdog.ps1` / `backup-anc.ps1` / `deploy-verify.ps1` | **✓ 都带** | 安全 |
+| **`offboard-member.ps1`（`task reassign` 与 `bind unbind`）** | **✗ 没带** | **已补**（`--db "$env:ProgramData\anc\data\anc.db"`） |
+
+**它原来靠 `DEFAULT_DB` 兜底** —— 在生产机上恰好指向生产库，所以「功能是对的」；
+但**演练或测试时跑它就会写生产库**，而这一点从代码上看不出来。**显式写出来比靠默认值好。**
+
+**另一件事**：`deploy-verify.ps1:66` 的注释里早就写着「库由 `cli.ts --db $db` 顺带创建（openDb 在检查命令组之前）」——
+说明**这个行为团队是知道的，甚至在依赖它**（`deploy.ps1` 只放源码不建库，库靠第一条 CLI 命令创建）。
+所以它**不是缺陷，是隐式约定**；问题只在于**这个约定没写在最容易踩的地方**。
+现在写在 `§69.3` 了。
+
+**影响面实测**：生产库 `anc.db` 的 mtime 停在 `09:12`，`WAL`/`SHM` 存在但大小正常（53 KB / 32 KB），
+36 tasks / 2 bindings / 8 submissions / 5 issues / 8 patch_drafts / 1 dayend / 15 outbox / 60 reminders ——
+**没有异常数据，没有被意外创建过的痕迹。**
