@@ -8520,3 +8520,142 @@ C 阶段前期我用 `Start-Process -FilePath WorkBuddy.exe` 启动，**进程�
 
 **1.0 判据第 2 条（补丁在升级后能自愈）现在有完整证据链了** ——
 而且证据里包含一个**发现的缺陷和它的修复**，不是一次就顺。
+
+## 76. 修掉 REBUILD 的 4 个卡点（2026-11-05 13:52–14:06）
+
+`§74.4` 记下 4 个卡点后，维护者选了「先修掉再让陌生 agent 试」（不是「留着看他能不能自己绕过」）。
+这一节记每个卡点的性质、改法、以及修完的实测。
+
+### 76.1 卡点 1：`deploy-skills.ps1` 没有 `-Side` —— **文档本来是对的，是我错了**
+
+**这个要单独说清楚，因为它不是文档缺陷。**
+
+`AGENT-DEPLOY-COMPANY.md §6` 原文写的就是：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1 -Apply
+```
+
+**没有 `-Side`。** 我在 `§74` 里报的「文档写法与实际不符」，其实是**我照着别的小节
+（`preflight -Side company` / `deploy.ps1 -Side company`）的习惯，顺手加了个 `-Side company`**，
+然后被脚本的参数校验拒绝。
+
+**为什么这个脚本没有 `-Side`**：它只往 `%USERPROFILE%\.workbuddy\skills` 写，
+**两种 side 的目标目录完全一样**，加 side 参数没有意义。
+
+**仍然改了**：`§6` 加了一句显式提醒。因为**陌生 agent 很可能犯和我一样的错** ——
+在「十个小节里九个都传 `-Side`」的上下文里，第十个不传就是反直觉的。
+**文档的正确性不够，还要对抗读者的合理猜测。**
+
+### 76.2 卡点 2：`register-tasks.ps1` 的 `-BotUser` 默认值与 D25 直接矛盾
+
+**原来的默认值**：`[string]$BotUser = 'anc-bot'`
+
+**而两条指引都说不用专用用户**：
+
+- `AGENTS.md` / `CLAUDE.md`：**D25「直接用管理员账号，不建专用用户」**
+- `REBUILD.md L173`：「按 D25：直接用管理员账号部署，不建专用用户」
+
+**照默认值跑的后果**（`§74.4` 实测）：
+
+```
+ERROR 交互类任务要求 anc-bot 已登录过（当前没有用户配置目录），否则守卫与启动器不会运行
+FIX   先按 REBUILD §4 切到专用用户跑一次，再加 -ForceInteractive
+```
+
+**这条 FIX 是在教人做 D25 明确否决的事。**
+
+**改法**：默认值改成 `Administrator`，并保留 `-BotUser` 可传（想回专用用户方案仍可以）。
+
+**为什么改默认值而不是只改文档**：文档已经写对了，错的是代码。
+**改文档等于留着这个矛盾，指望每个读者都记住「要显式传 -BotUser」。**
+默认值应该反映当前决策。
+
+### 76.3 卡点 3：`vault-shared` 的 ACL 没人设
+
+`§9 vault` 只做 `git init` + 建目录，**没设 ACL** → 继承 `D:\anc` 父目录的权限
+→ 一般是 `Authenticated Users: Modify` → `doctor` 的 `vault-acl` FAIL。
+
+**两个坑叠在这一处**：
+
+1. **`/grant:r` 改不动它** —— 因为那条 ACE 是 `Inherited=True` 的，`/grant:r` 只管**显式** ACE。
+   我在 `§74` 试过一次，加了一条显式的 `ReadAndExecute`，**继承的 `Modify` 还在**，`doctor` 照旧红。
+2. **`/inheritance:r` 会一起砍掉 `Administrators` 和 `SYSTEM`** —— 这是 `§66` 在 `data` 目录
+   踩过的同一个坑（那次是砍掉后只剩 `takeown` 能救）。
+
+**所以正确做法只有一条命令**：
+
+```powershell
+icacls "$VaultRoot\vault-shared" /inheritance:r `
+    /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" `
+            "NT AUTHORITY\Authenticated Users:(OI)(CI)RX" "BUILTIN\Users:(OI)(CI)RX"
+```
+
+**断继承 + 重新授予全部三个主体**，一步到位。
+
+**已写进 `§9`**，并注明了「不做会红什么」和「为什么 `/grant:r` 不够」。
+
+### 76.4 卡点 4：`deploy-verify.ps1` 的 `-Repo` 默认值在部署目录里算错
+
+**原逻辑**：
+
+```powershell
+if (-not $Repo) { $Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+```
+
+**`$PSScriptRoot\..` 其实是对的** —— 两种布局都指到根：
+
+| 布局 | `$PSScriptRoot` | `..` |
+|---|---|---|
+| 仓库 | `<repo>\scripts` | `<repo>` ✅ |
+| 部署 | `<Root>\bin` | `<Root>`（= `%ProgramData%\anc`）✅ |
+
+**真正错的是探测条件**（我这次加的那层保护）：
+
+```powershell
+if ((Test-Path $cliProbe) -and (Test-Path (Join-Path $c 'scripts\doctor.ps1')))
+                                                          ↑ 写死了 scripts\
+```
+
+**部署布局里 `doctor.ps1` 在 `bin\`，不在 `scripts\`** → 永远匹配不上 → 猜不出根。
+
+**改法**：`cli` 和 `doctor` **两个都探测**，四个组合逐个试；猜不出来就 `exit 2` 并给 FIX，
+**不再带着错的路径跑出一堆假 FAIL**。
+
+**修完实测（两种布局，都不传 `-Repo`）**：
+
+```
+部署布局 C:\ProgramData\anc\bin\deploy-verify.ps1  → exit=0  PASS=4 FAIL=0 SKIP=1
+仓库布局 E:\workbuddy-anc\scripts\deploy-verify.ps1 → exit=0  PASS=4 FAIL=0 SKIP=1
+```
+
+（SKIP 是 `bot-reply`，因为还没有群 —— 那是「没验」，不是「通过」，脚本自己也是这么说的）
+
+### 76.5 修完的整体验证
+
+| 验什么 | 结果 |
+|---|---|
+| `register-tasks.ps1` 不传 `-BotUser` | **✅ `BotUser=Administrator`，10 个任务全 Ready，6.1 秒** |
+| 10 个任务的 principal | **✅ `LOCAL SERVICE` ×6 / `SYSTEM` ×1 / `Administrator` ×3** |
+| `deploy.ps1 -Apply` | **✅ 19.7 秒，73 文件全过** |
+| `deploy-verify.ps1` 不带 `-Repo`（两种布局） | **✅ 都 PASS=4 FAIL=0 SKIP=1** |
+| 补丁没被影响 | **✅ `applied=true` `pid=19536` 活着** |
+| 服务没被影响 | **✅ 17891 在监听** |
+| `doctor` | **✅ `ok=True fails=0 warns=3`** |
+
+### 76.6 一个可以推广的判断
+
+这 4 个卡点里有 **3 个是「代码的默认值与文档的决策不一致」**，只有 1 个是「文档没写」：
+
+| # | 性质 |
+|---|---|
+| 1 | 文档对，**读者按上下文猜错了**（我） |
+| 2 | 代码默认值 vs D25 决策矛盾 |
+| 3 | 文档漏了一步，**而且这一步有两个反直觉的坑** |
+| 4 | 代码的探测逻辑有 bug（写死了一个目录名） |
+
+**所以「陌生 agent 会撞墙」的原因不主要是文档不全，而是文档和代码在细节上不一致。**
+这类不一致**只有真跑一遍才会暴露** —— 这也是 `§74` 那次 REBUILD 的主要产出。
+
+**推论**：`§77`（陌生 agent 实测）**不应该期待 0 卡点**。它的价值在于
+**发现我们还没撞到的第 5、第 6 个卡点**，而不是证明「已经没问题了」。
