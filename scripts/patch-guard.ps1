@@ -72,9 +72,16 @@ if (Test-Path $canaryFile) {
     } catch { }
 }
 
-# 自愈已判定「修不了」（锚点缺失/inspect 失败）时别每分钟再拉一次进程
+# 自愈已判定「修不了」时别每分钟再拉一次进程。
+#
+# 2026-11-05（VERIFY §75）：inspect-failed 是**瞬态**的 —— 升级窗口里 app.asar 正被替换，
+# inspect 必然失败一次。原来把它和 anchors-missing 一起封 60 分钟，结果「升级后补丁自愈」
+# 被自己锁死（R7 实测：13:21:33 一次失败 → 锁到 14:21，补丁再也没回来）。
+#
+# 现在只对**永久性**失败封锁。anchors-missing 要人工改锚点，restart-failed 说明反复起不来；
+# 而 inspect-failed 交给 selfheal 自己的 10 分钟冷却兜底 —— 最坏是每 10 分钟试一次，不会每分钟拉进程。
 if ($hs) {
-    $blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'inspect-failed' -or $hs.status -eq 'restart-failed')
+    $blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'restart-failed')
     if ($blocked -and ((Get-Date) - [datetime]$hs.at).TotalMinutes -lt 60) { exit 0 }
 }
 

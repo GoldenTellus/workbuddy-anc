@@ -8352,3 +8352,171 @@ node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8
 | 卡点算不算「装不成」 | **不算** —— 但它们说明**文档与脚本有 4 处不一致**，陌生 agent 会逐个撞上 |
 
 **这 4 个卡点应该直接改进 `AGENT-DEPLOY-COMPANY.md`，而不是留给下一个 agent 去踩。**
+
+## 75. C 阶段第 8–11 步：5.8.3 基线 → 升级 → R7 验证（2026-11-05 13:07–13:31）
+
+这一节是 **1.0 判据第 2 条（补丁在升级后能自愈）的实测记录**，也是本轮 C 阶段最有价值的部分：
+**R7 一开始没通过，查出的原因是一个真缺陷，修掉之后才通过。**
+
+### 75.1 第 8 步：5.8.3 基线
+
+`E:\anc-backup-20261104\BASELINE-583-REBUILD-130732.txt`（2024 B），记了：
+
+```
+WorkBuddy 5.8.3 / app.asar 92.07 MB / patch-state.json 不存在（补丁没生效）
+doctor ok=False fails=1 warns=3  —— 唯一 FAIL 是 workbuddy 版本 5.8.3 != 登记 5.9.3
+deploy-state 9/11（patch 与 wecom 未完成）
+CODEBUDDY.md C47E083BA8B9A1CB / groups.json 5452B2CBC0879E15 / company.md 4CA610859E682B9D
+```
+
+### 75.2 第 9–10 步：恢复更新 → 升级（106 秒）
+
+| 做什么 | 结果 |
+|---|---|
+| 删 hosts 两行 | `www.workbuddy.cn → 101.72.227.201`（真实 IP） |
+| 放回缓存包 | 429.3 MB，`sha256 B5EDB52B…` 与下载源一致（跨盘复制 15.1 秒） |
+| `startupForceAutoUpdate` 改 `true`（保留 `locale`） | ✅ |
+| 重启 WorkBuddy | **用 `explorer.exe` 启动**（见 §75.5） |
+| 升级 | **106 秒**：`app.asar` 92.07 → 173.56 MB，版本 5.8.3 → 5.9.3 |
+
+**日志证据**（`update-20261105.log`）：
+
+```
+[win32][spawn] wscript spawned pid=14912
+[win32] Using NSIS silent mode (/S --updated /UPDATE=1 /D=C:\Users\...\WorkBuddy)
+[win32] Calling app.quit() now
+```
+
+**完全符合 `§68` 描述的机制**：认领缓存包 → wscript 转场窗 → NSIS 静默装 → `app.quit()` → 重启。
+
+### 75.3 ★ R7 第一次没通过：自愈被自己锁死
+
+升级完等了 **184 秒**，`patch-state.json` 一直不出现，`workbuddy-patch.log` 也没有新的 `APPLIED`。
+查 `selfheal.log` 才看到：
+
+```
+12:57:40 inspect: version=5.8.3 hashMatches=False anchorsOk=False  → 锚点缺失：需要人工  (5.8.3，正确)
+13:21:32 no WorkBuddy process: bypass cooldown                      ← 我手动跑 patch-guard 那次
+13:21:33 ERROR inspect 返回失败                                     ← 那一秒 app.asar 正在被替换
+```
+
+**根因**：`patch-guard.ps1` L75-79
+
+```powershell
+$blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'inspect-failed' -or $hs.status -eq 'restart-failed')
+if ($blocked -and ((Get-Date) - [datetime]$hs.at).TotalMinutes -lt 60) { exit 0 }
+```
+
+`inspect-failed` 被当成**永久性**失败，一次就封锁 **60 分钟**。
+
+**而升级窗口里 `inspect` 必然失败一次** —— `app.asar` 正从 92 MB 换成 173 MB，中间会短暂为 0 字节
+（我在监控里看到 `asar=0MB` 持续了约 50 秒）。**于是「升级后补丁自愈」这条路径被自己锁死**：
+13:21:33 失败一次 → 锁到 14:21 → 60 分钟内什么都不做。
+
+**这是 1.0 判据第 2 条的直接障碍** —— 如果不修，R7 就是「不会自愈」，
+只能人工清状态文件才恢复。
+
+### 75.4 修复：只对永久性失败封锁
+
+**改动**（`scripts/patch-guard.ps1`，1 行 + 注释）：
+
+```powershell
+# 旧
+$blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'inspect-failed' -or $hs.status -eq 'restart-failed')
+# 新
+$blocked = ($hs.status -eq 'anchors-missing' -or $hs.status -eq 'restart-failed')
+```
+
+**为什么敢拿掉**：
+
+| status | 性质 | 处理 |
+|---|---|---|
+| `anchors-missing` | **永久**（厂商改了代码，锚点对不上） | 封锁 60 分钟，等人工改 `manifest.json` |
+| `restart-failed` | **准永久**（反复起不来） | 封锁 60 分钟，避免把机器搞成每分钟重启 |
+| `inspect-failed` | **瞬态**（文件正在被替换） | **交给 `selfheal` 自己的 10 分钟冷却兜底** |
+
+**为什么不会变成每分钟拉进程**：`selfheal` 自己有冷却。日志有证据：
+
+```
+13:28:58 cooldown: 上次自愈在 7 分钟前，跳过
+```
+
+**最坏情况是每 10 分钟试一次**，而不是每分钟。
+
+**逻辑级对照**（三个状态在两种条件下的行为）：
+
+```
+status            旧行为      新行为
+anchors-missing   锁60分钟    锁60分钟
+inspect-failed    锁60分钟    自愈        ← 只有这一格变了
+restart-failed    锁60分钟    锁60分钟
+```
+
+### 75.5 修复后：R7 通过（自动路径 55 秒）
+
+清掉两个封锁状态文件（`selfheal.state.json` / `patch-guard.state.json`，各留 `.before-r7` 备份），
+让**自动路径**真正跑一次 —— 这才是诚实验证：
+
+```
+13:29:35 inspect: version=5.9.3 hashMatches=True anchorsOk=True bootstrapOk=True
+13:29:35 hash 匹配；若仍无前缀，检查是否用 launch-patched.ps1 启动
+13:29:35 安排自愈重启（约 5 秒后 bot 短暂离线）
+13:29:39 worker: 4 秒后重启 WorkBuddy
+13:29:45 worker: WorkBuddy 已全部退出
+13:29:49 worker: 第 1 次启动 C:\ProgramData\anc\patch\launch-patched.ps1
+13:30:03 worker: 重启成功（补丁已生效）
+```
+
+**`patch-state.json` 在 55 秒时出现**：
+
+```json
+{"pid":19536,"version":"5.9.3","at":"2026-11-05T05:30:01.975Z","mode":"hash","applied":true}
+```
+
+`applied=true`、`mode=hash`、`pid=19536` 活着 ✅
+
+**补丁日志同步出现**：
+
+```
+05:30:01.970Z [pid 19536] INJECTED mode=hash target=...\WorkBuddy\resources\app.asar
+05:30:01.976Z [pid 19536] APPLIED mode=hash
+```
+
+### 75.6 R7 的四项判据
+
+| # | 判据 | 结果 |
+|---|---|---|
+| 1 | 升级后数据完整 | **✅ 4/4 hash 一致**（`CODEBUDDY.md`×2 / `groups.json` / `company.md`） |
+| 2 | 补丁自动重新注入 | **✅ `applied=true` `mode=hash` `pid` 活着**（清掉瞬态封锁后 55 秒完成） |
+| 3 | 注入方式正确 | **✅ `mode=hash`**（不是降级的 `anchor`）—— 5.9.3 的 hash 在 `manifest.json` 里登记着 |
+| 4 | 升级后 `doctor` | **✅ `ok=True fails=0 warns=3`** —— 比升级前还好（`workbuddy` 那项自动从 FAIL 转 PASS） |
+
+3 个 WARN 都是预期：`work-hours` 未配 / `bindings` 无群 / `canary` 无记录（要有群消息才有）。
+
+### 75.7 一个操作细节：`Start-Process` 起不来 WorkBuddy，`explorer.exe` 可以
+
+C 阶段前期我用 `Start-Process -FilePath WorkBuddy.exe` 启动，**进程立刻退出、无日志、无事件**。
+换成 `Start-Process explorer.exe -ArgumentList '"<exe 路径>"'` 就正常了 —— 因为 Electron 应用
+需要**交互式桌面会话**的环境（我的 pwsh 是从 DSH 的进程树里起的，不在 explorer 的会话下）。
+
+**这个细节值得写进部署手册**：agent 装完要重启 WorkBuddy 时，
+**不要用 `Start-Process` 直接拉 exe**，用 `explorer.exe` 转一手，或者用 `anc-workbuddy-launch` 任务。
+
+### 75.8 C 阶段总账：11/11
+
+| # | 步骤 | 结果 |
+|---|---|---|
+| 1 | 备份 | ✅ 六项验证（`§72`） |
+| 2 | 回程票 | ✅ sha256 一致（`§72`） |
+| 3 | hosts 阻断更新（替代断网） | ✅ 只掐两个域名（`§72.6`） |
+| 4 | 卸载 5.9.3 | ✅ 29.8 秒 |
+| 5 | 装 5.8.3 | ✅ 93 秒，`app.asar` 92.07 MB 指纹对（`§73`） |
+| 6 | 冻结自升级 | ✅ 三道防线，日志双重验证（`§73`） |
+| 7 | REBUILD + 计时 | ✅ 9/11，~4 分钟 + 4 个卡点（`§74`） |
+| 8 | 5.8.3 基线 | ✅ `BASELINE-583-REBUILD-130732.txt` |
+| 9 | 恢复更新 | ✅ 删 hosts 两行 |
+| 10 | 升级 → R7 | ✅ 106 秒，`app.asar` 173.56 MB |
+| 11 | 验 R7 + 修红 | ✅ **先失败 → 定位瞬态封锁缺陷 → 修复 → 通过** |
+
+**1.0 判据第 2 条（补丁在升级后能自愈）现在有完整证据链了** ——
+而且证据里包含一个**发现的缺陷和它的修复**，不是一次就顺。
