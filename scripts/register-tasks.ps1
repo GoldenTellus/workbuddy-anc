@@ -9,7 +9,11 @@
 # 退出码：0 成功（含 dry-run）/ 1 校验失败 / 2 用法或环境错误
 [CmdletBinding()]
 param(
-    [string]$BotUser = 'anc-bot',
+    # 2026-11-05 改（VERIFY §76）：默认值从 anc-bot 改成 Administrator。
+    # 原因是 D25 已经改成「直接用管理员账号部署，不建专用用户」，但这个默认值没跟上 ——
+    # 照旧默认值跑会直接报「交互类任务要求 anc-bot 已登录过」，而 REBUILD §4 又写着不建专用用户。
+    # 两条指引互相矛盾，陌生 agent 会在这里卡死。仍可显式传 -BotUser anc-bot 回到旧行为。
+    [string]$BotUser = 'Administrator',
     [string]$Root = '',
     [string]$ServiceAccount = 'LOCAL SERVICE',
     [string]$CleanupMediaDir = '',

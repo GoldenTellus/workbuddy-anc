@@ -44,10 +44,33 @@ $ErrorActionPreference = 'Stop'
 if (-not $Root) {
     $Root = if ($Side -eq 'company') { Join-Path $env:ProgramData 'anc' } else { Join-Path $env:LOCALAPPDATA 'anc' }
 }
-if (-not $Repo) { $Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+# 2026-11-05 改（VERIFY §76）：原来直接取 $PSScriptRoot\..，但那在**部署目录**里是错的。
+# 仓库布局：  <repo>\scripts\deploy-verify.ps1 + <repo>\scripts\doctor.ps1 + <repo>\src\service\cli.ts
+# 部署布局：  <Root>\bin\deploy-verify.ps1    + <Root>\bin\doctor.ps1    + <Root>\service\cli.ts
+# 两者目录名不同，所以必须探测，不能猜。找不到就明确报错，别让它带着错的 $Repo 跑出一堆假 FAIL。
+if (-not $Repo) {
+    # $PSScriptRoot 的上一级在两种布局里都是「根」：
+    #   仓库: <repo>\scripts\..  = <repo>
+    #   部署: <Root>\bin\..     = <Root>（就是 %ProgramData%\anc）
+    $root2 = (Resolve-Path (Join-Path $PSScriptRoot '..') -ErrorAction SilentlyContinue).Path
+    # 但根下面的子目录名不同（scripts vs bin、src\service vs service），所以要逐个试。
+    foreach ($c in @($root2, $PSScriptRoot)) {
+        if (-not $c) { continue }
+        $cliProbe = if (Test-Path (Join-Path $c 'src\service\cli.ts')) { Join-Path $c 'src\service\cli.ts' } else { Join-Path $c 'service\cli.ts' }
+        $docProbe = if (Test-Path (Join-Path $c 'scripts\doctor.ps1')) { Join-Path $c 'scripts\doctor.ps1' } else { Join-Path $c 'bin\doctor.ps1' }
+        if ((Test-Path $cliProbe) -and (Test-Path $docProbe)) { $Repo = $c; break }
+    }
+    if (-not $Repo) {
+        Write-Host 'ERROR 猜不出仓库/部署根 —— 请显式传 -Repo'
+        Write-Host 'FIX   仓库里跑：-Repo <repo>；部署目录里跑：-Repo %ProgramData%\\anc'
+        exit 2
+    }
+}
 
 $db = Join-Path $Root 'data\anc.db'
-$cli = Join-Path $Repo 'src\service\cli.ts'
+# 两种布局：仓库里是 src\service\cli.ts，部署目录里是 service\cli.ts（VERIFY §76）
+$cli = if (Test-Path (Join-Path $Repo 'src\service\cli.ts')) { Join-Path $Repo 'src\service\cli.ts' } else { Join-Path $Repo 'service\cli.ts' }
+if (-not (Test-Path $cli)) { Write-Host ('ERROR 找不到 cli.ts：' + $cli); exit 2 }
 $results = @()
 
 function Add-Check([string]$name, [string]$state, [string]$detail, [string]$fix) {
@@ -88,7 +111,9 @@ Add-Check 'database' 'PASS' "库存在: $db" ''
 if ($Side -eq 'company') {
 
     # ① doctor：整体健康
-    $doctorScript = Join-Path $Repo 'scripts\doctor.ps1'
+    # 两种布局：仓库里是 <repo>\scripts\doctor.ps1，部署目录里是 <Root>\bin\doctor.ps1（VERIFY §76）
+$doctorScript = if (Test-Path (Join-Path $Repo 'scripts\doctor.ps1')) { Join-Path $Repo 'scripts\doctor.ps1' } else { Join-Path $Repo 'bin\doctor.ps1' }
+if (-not (Test-Path $doctorScript)) { Write-Host ('ERROR 找不到 doctor.ps1：' + $doctorScript); exit 2 }
     if (Test-Path $doctorScript) {
         try {
             $dOut = & powershell -NoProfile -ExecutionPolicy Bypass -File $doctorScript -Root $Root -Json 2>&1 | Out-String

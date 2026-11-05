@@ -273,6 +273,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1
 # 落盘
 #   默认目标 %USERPROFILE%\.workbuddy\skills（WorkBuddy 只读这里）
 #   -Target 可指到别处（演练 / 多用户机）
+#
+# ⚠ 这个脚本**没有 -Side 参数**（VERIFY §76）。它不是按 side 分的，因为它只往用户目录写。
+#   照别的小节的习惯顺手加 -Side company 会直接报 'A parameter cannot be found'。
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-skills.ps1 -Apply
 ```
 
@@ -357,6 +360,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root -Apply
 ```
 
+> **交互类任务的运行身份（2026-11-05 校正，`VERIFY §76`）**：
+> 三个交互类任务（`anc-workbuddy-launch` / `anc-patch-guard` / `anc-devbot`）的 principal 是
+> `-BotUser` 指定的那个用户，而且**要求该用户已登录过**（要有 `C:\Users\<user>` 目录）。
+>
+> **按 D25，`-BotUser` 的默认值已经是 `Administrator`** —— 直接用管理员账号部署时不用再传。
+> 早先默认值是 `anc-bot`，与 D25 矛盾：照默认值跑会报
+> 「交互类任务要求 anc-bot 已登录过（当前没有用户配置目录）」，而 `REBUILD §4` 又写着不建专用用户。
+> **如果确实要回到专用用户方案**：先切到那个用户跑一次（让它有配置目录），再
+> `-BotUser <那个用户> -ForceInteractive`。
+
 > **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\bin\`），不是仓库里的。
 > 部署目录那份运行时路径正确（§5 已经把它复制过去了）。
 
@@ -421,7 +434,19 @@ foreach ($v in 'vault-shared','vault-internal') {
 # 内部区的协作目录（任务投影落这里）
 New-Item -ItemType Directory -Path (Join-Path $VaultRoot 'vault-internal\collab') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $VaultRoot 'vault-shared\_originals') -Force | Out-Null
+
+# ★ 共享区必须是「全员只读」。它默认继承父目录的权限，而父目录一般给了
+#   Authenticated Users: Modify —— 那等于谁都能改共享区（doctor 的 vault-acl 会 FAIL）。
+#   ⚠ 必须 /inheritance:r 断继承：/grant:r 只管显式 ACE，改不动继承来的那条。
+#   ⚠ 断继承会一起砍掉 Administrators / SYSTEM，所以要在同一条命令里重新授予。
+icacls "$VaultRoot\vault-shared" /inheritance:r `
+    /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" `
+            "NT AUTHORITY\Authenticated Users:(OI)(CI)RX" "BUILTIN\Users:(OI)(CI)RX"
 ```
+
+> **这一步不做会怎样**（`VERIFY §74.4` 实测）：`doctor` 的 `vault-acl` 报
+> 「共享区对广泛组有写权限: NT AUTHORITY\Authenticated Users」，`deploy-verify` 连带 FAIL。
+> **而且用 `/grant:r` 修不好** —— 继承来的那条不受它影响，必须先 `/inheritance:r`。
 
 **成功判据**：
 
