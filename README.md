@@ -6,6 +6,8 @@
 
 ## 想装一套？把仓库链接发给你的 agent
 
+> **先读这份**：[`docs/WHAT-IT-DOES.md`](./docs/WHAT-IT-DOES.md) —— 部署完能干什么、每项能力怎么用。
+
 **不用照文档一步步做。** 把这个链接发给本机的 agent（**首选这台机器上的 WorkBuddy 自己**，
 也可以用 Claude Code / Codex），让它读完仓库自己装：
 

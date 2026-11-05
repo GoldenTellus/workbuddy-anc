@@ -31,6 +31,32 @@ function Add-Result([string]$name, [string]$state, [string]$detail, [string]$fix
     }
     $script:results += [pscustomobject]@{ check = $name; state = $state; detail = $detail; fix = $fix }
 }
+
+# 2026-11-06 修（VERIFY §84.3）：PS 5.1 的 [Console]::OutputEncoding 默认是 GBK，
+# `& node ... | Out-String` 会按 GBK 去解码 node 打出的 UTF-8 字节 —— 中文员工名变
+# mojibake，且乱码里被吃掉的引号会破坏 JSON，ConvertFrom-Json 抛错后 bindings 报
+# 「读绑定失败」WARN（库里明明有绑定）。实测：同一条 '张三丰' 解析失败。
+# 只在调用 node 期间临时切 UTF-8，finally 里恢复，不影响其它检查的输出编码。
+# cli.ts / db 一律从 $Root 取：-Root 是校验其它部署根的唯一入口，写死 ProgramData
+# 会让这些检查在演练根上查到生产库（与 #16 database 同一类缺陷）。
+function Invoke-ServiceJson([string[]]$Sub, [string]$Db) {
+    $prev = $null
+    $switched = $false
+    try {
+        $prev = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [Text.Encoding]::UTF8
+        $switched = $true
+    } catch { $switched = $false }
+    try {
+        $cli = Join-Path $Root 'service\cli.ts'
+        $raw = & node $cli --db $Db --json @Sub 2>$null | Out-String
+        if (-not $raw -or -not $raw.Trim()) { throw 'cli.ts 没有输出' }
+        return ($raw.TrimStart([char]0xFEFF) | ConvertFrom-Json)
+    } finally {
+        if ($switched) { try { [Console]::OutputEncoding = $prev } catch { } }
+    }
+}
+
 # PS 5.1 的 Get-LocalGroupMember 遇到孤立 SID 会报错返回空，会误报「非管理员」。
 # 失败时用 net localgroup 兜底；两者都拿不到结果就按「是管理员」处理（fail-closed）。
 function Test-AdminMember([string]$name) {
@@ -331,8 +357,7 @@ Add-Result 'bot-process-owner' $po.state $po.detail $po.fix
 # 3 工作时段与配置
 $start = $null; $end = $null
 try {
-    $cfgRaw = & node "$env:ProgramData\anc\service\cli.ts" --db "$env:ProgramData\anc\data\anc.db" --json config list 2>$null | Out-String
-    $cfg = $cfgRaw | ConvertFrom-Json
+    $cfg = Invoke-ServiceJson -Sub @('config', 'list') -Db (Join-Path $Root 'data\anc.db')
     $start = $cfg.config.work_start; $end = $cfg.config.work_end
     $cfgProblems = @($cfg.problems)
 } catch { $cfgProblems = @() }
@@ -479,19 +504,26 @@ else { Add-Result 'database' 'FAIL' '数据库不存在' '跑一次 service cli 
 
 # 17 绑定：提醒按群的 webhook_file 选文件，没登记就发不出去
 try {
-    $braw = & node "$env:ProgramData\anc\service\cli.ts" --db "$env:ProgramData\anc\data\anc.db" --json bind list 2>$null | Out-String
-    $b = ($braw | ConvertFrom-Json).bindings
-    if (-not $b -or $b.Count -eq 0) {
+    $b = @((Invoke-ServiceJson -Sub @('bind', 'list') -Db (Join-Path $Root 'data\anc.db')).bindings)
+    if ($b.Count -eq 0) {
         Add-Result 'bindings' 'WARN' '没有任何群绑定' 'bind import --from groups.json 或 bind set'
     } else {
         $missing = @($b | Where-Object { -not $_.webhook_file })
         if ($missing.Count -gt 0) {
             Add-Result 'bindings' 'FAIL' ("$($missing.Count)/$($b.Count) 个群没登记 webhook_file，提醒会发不出去") 'bind set --chat-id <chatid> --employee <名> --webhook-file wecom-webhook.txt'
         } else {
-            Add-Result 'bindings' 'PASS' ("$($b.Count) 个绑定都登记了 webhook") '-'
+            # 把员工名带进 detail：#6 的判据不只要不误报，还要 PS 5.1 下中文名能正确显示。
+            $names = @($b | ForEach-Object { $_.employee } | Where-Object { $_ })
+            $who = ''
+            if ($names.Count -gt 0) {
+                $shown = @($names | Select-Object -First 5) -join '、'
+                if ($names.Count -gt 5) { $shown += '…' }
+                $who = '（' + $shown + '）'
+            }
+            Add-Result 'bindings' 'PASS' ("$($b.Count) 个绑定都登记了 webhook" + $who) '-'
         }
     }
-} catch { Add-Result 'bindings' 'WARN' '读绑定失败' '检查数据库与 cli.ts' }
+} catch { Add-Result 'bindings' 'WARN' ('读绑定失败：' + $_.Exception.Message) '检查数据库与 cli.ts；PS 5.1 下确认输出按 UTF-8 解码' }
 
 # 18 canary：补丁生效后真实收到的消息里有没有 chatId
 $canary = "$env:ProgramData\anc\data\patch-canary.json"

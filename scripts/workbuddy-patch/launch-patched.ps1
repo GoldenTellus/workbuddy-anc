@@ -22,7 +22,10 @@ param(
     [int]$Port = 9229,
     [switch]$NoPatch,
     # 默认按结构锚点打补丁（版本变化也继续）；-Strict 时版本不符则拒绝启动
-    [switch]$Strict
+    [switch]$Strict,
+    # 状态目录做成参数：便于在临时目录验证注入判定，不碰在跑的部署
+    [string]$StateDir = "$env:ProgramData\anc\data",
+    [int]$WaitTimeoutSec = 150
 )
 
 $ErrorActionPreference = 'Stop'
@@ -133,6 +136,19 @@ if ($env:ANC_WB_METHOD -eq 'env') {
 
 # 默认路径：--inspect-brk（唯一可行，见文件头）
 
+# 2026-11-06 修（VERIFY §58.7 / §61）：给本次启动一个唯一 runId。
+# 旧 poll 只看 applied + pid，而 patch-state.json 在注入失败时**根本不会被改写**，
+# 上一次成功留下的 applied=true 会让启动器立刻宣布成功（实测 2 小时前的陈旧状态
+# 被判成功）。preload.cjs 的 writeState 会把这个 runId 写进 state，等待脚本据此判别。
+$runId = [guid]::NewGuid().ToString('N')
+$startedAt = Get-Date
+$runFile = Join-Path $StateDir 'patch-run.json'
+try {
+    if (-not (Test-Path $StateDir)) { New-Item -ItemType Directory -Force -Path $StateDir | Out-Null }
+    $runObj = [ordered]@{ runId = $runId; startedAt = $startedAt.ToUniversalTime().ToString('o'); launcherPid = $PID }
+    [IO.File]::WriteAllText($runFile, ($runObj | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+} catch { Write-Host "[anc] 写 patch-run.json 失败：$($_.Exception.Message)（本次将无法用 runId 区分陈旧状态）" }
+
 # 默认路径：以 --inspect-brk 启动，进程会暂停等待调试器
 Start-WorkBuddy $exe $InstallDir @("--inspect-brk=$Port")
 
@@ -180,30 +196,32 @@ if ($injectCode -ne 0) {
 Write-Host "[anc] 已注入并放行；daemon 继承 NODE_OPTIONS 后会加载 preload.cjs"
 Write-Host "[anc] 日志：$patchLog"
 
-# 2026-11-05 修正（VERIFY §59）：注入成功后**必须等 patch-state.json**。
-# 实测从放行到 APPLIED 约 60 秒（主进程 → spawn daemon → daemon 载 preload →
-# _compile 命中 → 拼 PATCH_BODY → PATCH_BODY 调 __ancMarkApplied）。
-# 早先脚本在这里直接 exit 0，调用方等 25 秒查不到 state 就判失败 ——
-# §58 记的「连续 5 次注入失败」其实是等得不够，不是注入坏了。
-$stateFile = Join-Path $env:ProgramData 'anc\data\patch-state.json'
-$applied = $false
-for ($i = 0; $i -lt 75; $i++) {
-    Start-Sleep -Seconds 2
-    if (Test-Path $stateFile) {
-        try {
-            $st = Get-Content $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($st.applied -and (Get-Process -Id $st.pid -ErrorAction SilentlyContinue)) { $applied = $true; break }
-        } catch { }
-    }
+# 2026-11-06 修（VERIFY §58.7-2 / §61）：注入后必须等**本次启动**的确认。
+# 保留 §59 的 150 秒等待（从放行到 APPLIED 实测约 60 秒），但换掉判据：
+# 由 wait-patch-state.ps1 校验 runId / 时间窗 / pid，超时明确报「注入没成功」，
+# 不再留「不要直接判失败，去看日志」那种要靠人猜的含糊结论。
+$stateFile = Join-Path $StateDir 'patch-state.json'
+$waiter = Join-Path $here 'wait-patch-state.ps1'
+if (-not (Test-Path $waiter)) { Fail 'wait-patch-state.ps1 不存在' '确认 scripts/workbuddy-patch/ 完整' 2 }
+& powershell -NoProfile -ExecutionPolicy Bypass -File $waiter `
+    -StateFile $stateFile -RunId $runId -StartedAt $startedAt.ToString('o') `
+    -TimeoutSec $WaitTimeoutSec -PatchLog $patchLog
+$waitCode = $LASTEXITCODE
+if ($waitCode -ne 0) {
+    # 失败也要留下可判信号：别让 doctor / patch-guard 继续读到上一次的成功状态。
+    # 与 anc-selfheal.ps1 失败回写 applied=false 是同一条规矩。
+    try {
+        $failObj = [ordered]@{
+            applied = $false
+            mode    = 'launch-timeout'
+            pid     = 0
+            at      = (Get-Date).ToUniversalTime().ToString('o')
+            runId   = $runId
+            error   = '启动器等待 patch-state 超时：本次注入没成功（群身份不可用）'
+        }
+        [IO.File]::WriteAllText($stateFile, ($failObj | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+    } catch { Write-Host "[anc] 回写失败状态出错: $($_.Exception.Message)" }
+    exit 1
 }
-
-if ($applied) {
-    Write-Host "[anc] 补丁已生效（patch-state applied=true）"
-    Write-Host "[anc] 已启动 WorkBuddy（版本 $ver，补丁模式）"
-    exit 0
-}
-
-Write-Host "[anc] 警告：150 秒内没等到 patch-state applied"
-Write-Host "[anc] 不要直接判失败 —— 先看 $patchLog 有没有 APPLIED 行；"
-Write-Host "[anc] 若日志也只有 env set 没有 APPLIED，才说明 daemon 没继承 NODE_OPTIONS"
-exit 1
+Write-Host "[anc] 已启动 WorkBuddy（版本 $ver，补丁模式）"
+exit 0

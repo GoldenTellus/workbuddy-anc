@@ -119,10 +119,21 @@ global.__ancLogOut = function (chatId, text) {
     fs.appendFileSync(OUT_LOG, line, 'utf8');
   } catch (e) {}
 };
+// 启动器每次启动会写 patch-run.json（runId + startedAt）。把 runId 带进 state，
+// 让 wait-patch-state.ps1 能区分「本次启动写的」和「上一次残留的 applied=true」。
+// 旧启动器没有这个文件时不写 runId，等待脚本仍用时间窗兜底（兼容）。
+const RUN_FILE = path.join(path.dirname(STATE), 'patch-run.json');
+function currentRunId() {
+  try { return JSON.parse(fs.readFileSync(RUN_FILE, 'utf8').replace(/^\uFEFF/, '')).runId || null; }
+  catch (_) { return null; }
+}
 function writeState(extra) {
   try {
     fs.mkdirSync(path.dirname(STATE), { recursive: true });
-    fs.writeFileSync(STATE, JSON.stringify(Object.assign({ pid: process.pid, version: mf.workbuddyVersion, at: new Date().toISOString() }, extra || {})));
+    const base = { pid: process.pid, version: mf.workbuddyVersion, at: new Date().toISOString() };
+    const runId = currentRunId();
+    if (runId) base.runId = runId;
+    fs.writeFileSync(STATE, JSON.stringify(Object.assign(base, extra || {})));
   } catch (_) { /* ignore */ }
 }
 function log(line) {
