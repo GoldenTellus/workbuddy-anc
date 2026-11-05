@@ -7732,13 +7732,13 @@ deploy.ps1
 **教训**：`Start-Process` 启动的进程树，杀父不杀子。要么用 `taskkill /T`，
 要么按命令行精确匹配清理（并且排除 `$PID`）。
 
-### 70.7 阶段 B 的结论：一半通过
+### 70.7 阶段 B 的结论：全部通过（先失败 → 定位 → 修复 → 再通过）
 
 | 判据 | 结果 |
 |---|---|
 | 删掉 ACL 后 `doctor` 会红 | **✅ 红 2 项，detail 准确** |
 | **代码能把 ACL 自己修回来** | **✅ 7.6 秒，doctor 回 `fails=0`** |
-| `deploy.ps1 -Apply` 能完整跑完 | **❌ 90 秒未结束** |
+| `deploy.ps1 -Apply` 能完整跑完 | **✅ 8.4 秒，73 个文件部署 + ACL 设好**（修了一个插入位置 bug，见 §70.4） |
 | 修完 ACL 后机器状态正常 | **✅ `doctor ok=True fails=0 warns=1`、`deploy-layout` PASS、`patch` PASS** |
 
 **对发布的意义**：
