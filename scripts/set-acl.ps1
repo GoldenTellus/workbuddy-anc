@@ -83,7 +83,10 @@ function Set-SecretsAcl([string]$dir) {
     # 每个文件是独立 ACL（本机实测：文件的 ACE 都是 Inherited=True，但那是继承自目录之后的状态；
     # 断继承后必须显式给），逐个补。用 :r 保证幂等。
     foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue)) {
-        Invoke-Icacls ('icacls "{0}" /grant:r "{1}:(RX)"' -f $f.FullName, $SVC) ('secrets\' + $f.Name + '：LOCAL SERVICE:RX')
+    # 2026-11-05 修（VERIFY §78.7）：文件级也必须授 SYSTEM:F + Administrators:F。
+    # 原来只授 LOCAL SERVICE:(RX) —— 目录做了 /inheritance:r 之后，文件的继承链已经断了，
+    # 于是文件上永远没有管理员权限，部署写不进 secrets（换 webhook 只能先手动 icacls 抢）。
+    Invoke-Icacls ('icacls "{0}" /grant:r "{1}:F" "{2}:F" "{3}:(RX)"' -f $f.FullName, $SYS, $ADM, $SVC) ('secrets\' + $f.Name + '：SYSTEM:F + Administrators:F + LOCAL SERVICE:RX')
     }
 }
 
