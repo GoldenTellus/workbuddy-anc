@@ -99,12 +99,12 @@ $A = 'C:\ProgramData\anc'
 icacls "$A\secrets" /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'LOCAL SERVICE:(OI)(CI)RX'
 
 # ② data：服务身份要能写日志
-icacls "$A\data" /grant 'LOCAL SERVICE:(OI)(CI)M'
+icacls "$A\data" /grant:r 'LOCAL SERVICE:(OI)(CI)M'
 
 # ③ 已经存在的日志文件不继承新 ACE，要逐个补
 foreach ($f in 'loop.log','http.log','patch-in.log','patch-out.log','selfheal.log','audit.log') {
     $p = Join-Path "$A\data" $f
-    if (Test-Path $p) { icacls $p /grant 'LOCAL SERVICE:(M)' | Out-Null }
+    if (Test-Path $p) { icacls $p /grant:r 'LOCAL SERVICE:(M)' | Out-Null }
 }
 ```
 

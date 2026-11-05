@@ -43,6 +43,17 @@ Step '§1 建 C 盘目录（15 个）' {
         ForEach-Object { New-Item -ItemType Directory -Force (Join-Path $A $_) | Out-Null }
 }
 
+
+Step '§1 设 secrets / data 的 ACL' {
+    # 2026-11-05 加：目录建完必须立刻设 ACL，否则 doctor 的 secrets-acl / data-acl 会红。
+    # 原来这一步是人工敲的，清空重装后会全部丢失（VERIFY §65）。
+    $setAcl = Join-Path $PSScriptRoot 'set-acl.ps1'
+    if (Test-Path $setAcl) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $setAcl -Root $A -Apply
+        if ($LASTEXITCODE -ne 0) { throw ('设 ACL 失败（exit ' + $LASTEXITCODE + '）') }
+    }
+}
+
 Step '§1 建 D 盘目录（5 个）' {
     'vault-shared','vault-internal','inbox','org','build' |
         ForEach-Object { New-Item -ItemType Directory -Force (Join-Path $VaultRoot $_) | Out-Null }

@@ -7061,3 +7061,107 @@ Node 24 自带 `--experimental-test-coverage`，加一行就能算。**127 项�
 | **D. 陌生 agent 装公司侧** | 维护者开新对话，粘 `E:\anc-backup-20261104\AGENT-PROMPT.txt` | 只有 A–C 做完，它验的才是「文档够不够」 |
 
 **一句话**：**清空重装最大的价值不是「验 O-5」，是「把所有隐性手工依赖暴露出来」。**
+
+## 66. 补上 `deploy.ps1` 的 ACL 缺口 —— 新建 `scripts/set-acl.ps1`（2026-11-05）
+
+`§65.2` 查明 `deploy.ps1` 里 `icacls` 一处都没有，`doctor` 的绿有 5 处靠手工敲。
+这一节是补它的过程与实测。
+
+### 66.1 审计先纠正了一个假设：`deploy.ps1` 根本不建 `secrets` / `data`
+
+原以为「ACL 应该插在创建目录之后」，**但 `deploy.ps1` 里没有这个锚点**：
+
+```
+deploy.ps1:32-40  $Root 必须已存在，否则 Fail
+deploy.ps1:125    只建 7 个映射目标目录（service / ingest / render / light\templates / shared / bin / patch）
+```
+
+真正建 `secrets` / `data` 的是 `rebuild-z.ps1:41-44`（15 个目录），**建完直接 `Out-Null` 走人**。
+
+**所以「只补 `deploy.ps1` 的 icacls」在干净机上会先撞「路径不存在」。** 接入点必须是**两个**：
+`rebuild-z.ps1`（建完目录立刻设）+ `deploy.ps1`（部署时再确认一次）。
+
+### 66.2 `icacls /grant` 不带 `:r` 是线性追加 —— 这台机器上已经出现了
+
+```
+loop.log    LOCAL SERVICE:Modify   Inherited=False   ← 显式
+loop.log    LOCAL SERVICE:Modify   Inherited=True    ← 继承自 data 目录
+```
+
+`loop.log` / `http.log` / `selfheal.log` / `audit.log` **四个日志各有 2 条 `LOCAL SERVICE:Modify`**。
+这是「先给文件 `/grant`、后给目录 `/grant`」留下的痕迹 —— 每次执行都追加一条，不替换。
+
+**而文档里三处 `secrets` 的命令用的正是不带 `:r` 的写法**（`REBUILD.md` / `OPS.md` / `HANDOFF`），
+照抄进脚本就是把事故固化。已全部改成 `/grant:r`（共 8 处）。
+
+**幂等实测**：连续跑 3 次 `set-acl.ps1 -Apply`，ACE 数完全不变：
+
+```
+跑前: userid.txt=4  loop.log=5  secrets=3  data=6
+第2次: userid.txt=4  loop.log=5  secrets=3  data=6
+第3次: userid.txt=4  loop.log=5
+```
+
+`/grant:r` 的 `r` 是 replace —— 只替换「同一 SID 的显式 ACE」，继承的那条不动。
+所以「1 显式 + 1 继承」并存是无害的（权限取并集），**关键是它不再增长**。
+
+### 66.3 `data` 不能用 `/inheritance:r` —— 会把管理员从 data 上摘掉
+
+```
+data 目录现有 6 条 ACE，其中 Administrators:FullControl 与 SYSTEM:FullControl 都是继承来的
+```
+
+如果照抄 `secrets` 的写法（`/inheritance:r` + 只授 `LOCAL SERVICE:M`），
+**`Administrators` 和 `SYSTEM` 会一起消失**，之后管理员只能 `takeown` 抢回来。
+
+所以两个目录策略不同，写在脚本头部：
+
+| 目录 | 策略 | 理由 |
+|---|---|---|
+| `secrets` | `/inheritance:r` + `/grant:r` 三条 | 敏感目录，必须切断上游继承 |
+| `data` | **只 `/grant:r`，不断继承** | 保留 `Administrators` / `SYSTEM` 的继承 |
+
+### 66.4 自检不自己写判据 —— 第一版就踩了
+
+`set-acl.ps1` 的第一版自己写了自检（`Get-Acl` + 正则匹配 `LOCAL SERVICE`），
+**dry-run 立刻报了 6 个假 FAIL**（说 6 个 secrets 文件都读不到），而实际 ACL 是对的：
+
+```
+userid.txt  NT AUTHORITY\LOCAL SERVICE  ReadAndExecute, Synchronize  Inherited=True   ← 明明有
+```
+
+单独测那个正则（`'NT AUTHORITY\LOCAL SERVICE' -match '^(NT AUTHORITY\\)?LOCAL\ SERVICE$'`）返回 `True`，
+说明问题不在正则本身，而在函数作用域里某个环节 —— **没查到底，也不必要查**。
+
+**改成直接跑 `doctor.ps1` 的那两项**（`secrets-acl` / `data-acl`）：
+
+```powershell
+$raw = & powershell -NoProfile -File <doctor.ps1> -Json | Out-String
+$j = $raw.Substring($raw.IndexOf('{')) | ConvertFrom-Json
+$j.checks | Where-Object { $_.check -in @('secrets-acl','data-acl') }
+```
+
+**为什么这是对的**：那两项是**双向判据**（太宽 FAIL、太窄也 FAIL）且刚实测过（`§63`）。
+重写一份只会引入不一致 —— **判据应该只有一份**。
+
+### 66.5 接入点（三处）
+
+| 文件 | 位置 | 做什么 |
+|---|---|---|
+| `scripts/set-acl.ps1` | 新增，8.3 KB | 设 ACL + 调 doctor 自检。默认 dry-run，`-Apply` 落盘，`-Side employee` 整段跳过 |
+| `scripts/deploy.ps1` | L113-125（`try {` 之前） | 调 `set-acl.ps1`；dry-run 时也跟着 dry-run；失败则 `Fail ... 2`（**不回滚文件** —— 文件已经铺好了，回滚更糟） |
+| `scripts/rebuild-z.ps1` | L46（建完 15 个目录后） | `Step '§1 设 secrets / data 的 ACL'`，失败则 `throw` |
+
+**为什么放在文件复制之前**（`deploy.ps1` 侧）：ACL 失败时不需要走 L148-156 那段「逐文件回滚」——
+**那段只还原文件，不还原 ACL**（子 agent 明确指出）。放前面可以让两种失败互不干扰。
+
+### 66.6 副作用与遗留
+
+- **ACL 不参与 `deploy.ps1` 的回滚**。所以 `set-acl.ps1 -Apply` 前建议先
+  `icacls <dir> /save <备份> /T`（本次实测前已备份到 `E:\anc-backup-*`）。
+- **已有的重复 ACE 不主动清**：清要 `/remove:g` 再 `/grant:r`，删错就写不了；
+  收益只是 ACL 小一点。**保留，用 `/grant:r` 保证不再增长即可。**
+- **首次 Apply 会让 `secrets` 文件的 `LOCAL SERVICE` 从「继承」变成「显式 + 继承」**（3 条 → 4 条）。
+  这是预期的：文件原来靠目录继承，现在自己也有了显式 ACE，更稳。
+- `deploy.ps1` 的 dry-run **不显示 ACL 计划**（dry-run 在 L99-102 就 exit 了，跑不到 L113）。
+  想知道会改什么权限，单独跑 `set-acl.ps1`（默认就是 dry-run）。

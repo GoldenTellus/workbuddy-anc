@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "test": "node --test scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/ingest/ingest.test.ts src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
+    "coverage": "node --test --experimental-test-coverage scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/ingest/ingest.test.ts src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs",
     "test:service": "node --test src/shared/audit.test.ts src/shared/summarize.test.ts src/service/service.test.ts",
     "test:ingest": "node --test src/ingest/ingest.test.ts",

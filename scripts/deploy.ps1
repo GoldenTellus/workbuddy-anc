@@ -108,6 +108,22 @@ $copied = @()
 
 function Copy-WithRetry([string]$Src, [string]$Dst, [int]$Tries = 3) {
     for ($i = 1; $i -le $Tries; $i++) {
+
+# 权限：secrets 与 data 的 ACL 不随文件复制走，单独设（2026-11-05，VERIFY §65/§66）。
+# 放在文件复制之前 —— 这样 ACL 失败时不需要走下面那段「逐文件回滚」（它不还原 ACL）。
+# 员工侧没有 LOCAL SERVICE 任务，set-acl.ps1 自己会整段跳过。
+$setAclPs1 = Join-Path $PSScriptRoot 'set-acl.ps1'
+if (Test-Path $setAclPs1) {
+    $aclArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $setAclPs1, '-Root', $Root, '-Side', $Side)
+    if ($Apply) { $aclArgs += '-Apply' }
+    & powershell @aclArgs
+    if ($LASTEXITCODE -ne 0 -and $Apply) {
+        Fail ('设 ACL 失败（exit ' + $LASTEXITCODE + '）') '看上面 set-acl.ps1 的 ERR 行；可能需要管理员权限' 2
+    }
+} else {
+    '注意：没找到 scripts\set-acl.ps1 —— secrets / data 的 ACL 要人工设（见 REBUILD §2.5）'
+}
+
         try {
             Copy-Item -LiteralPath $Src -Destination $Dst -Force -ErrorAction Stop
             return

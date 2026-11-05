@@ -11,7 +11,17 @@
 
 ## 阶段 A：补代码缺口（不用清空，本机就能做）
 
-### A1 `deploy.ps1` 补 ACL —— **最高优先**
+### A1 `deploy.ps1` 补 ACL —— **最高优先**  ← **✅ 2026-11-05 已完成**（`VERIFY §66`）
+
+> **做法与下面这段不同**：最终没有把 `icacls` 写进 `deploy.ps1`，而是新建了独立的
+> [`scripts/set-acl.ps1`](../scripts/set-acl.ps1)（默认 dry-run，`-Apply` 落盘，`-Side employee` 跳过），
+> 再由 `deploy.ps1`（L113-125）与 `rebuild-z.ps1`（L46）调用它。原因有两个：
+> ① `deploy.ps1` **根本不建** `secrets`/`data`（建它们的是 `rebuild-z.ps1`），所以接入点必须是两处；
+> ② 自检不该自己写判据 —— `set-acl.ps1` 直接跑 `doctor.ps1` 的 `secrets-acl`/`data-acl` 两项（那两项是双向的、刚实测过）。
+>
+> **下面这几段保留作参考**（手工救急时用），但注意：**已全部改成 `/grant:r`** ——
+> 原来的 `/grant` 会线性追加 ACE，这台机器上已经出现 4 个日志各 2 条 `LOCAL SERVICE:Modify` 的痕迹。
+
 
 **问题**：`scripts/deploy.ps1` 里 `icacls` 一处都没有，而 `doctor` 的绿有 5 处靠手工敲。
 

@@ -71,7 +71,7 @@ powershell -File scripts\verify-vault-accounts.ps1 -Csv C:\ProgramData\anc\accou
   ```powershell
   icacls C:\ProgramData\anc\secrets /inheritance:r
   icacls C:\ProgramData\anc\secrets /remove:g "BUILTIN\Users" "Everyone" "Authenticated Users" /T
-  icacls C:\ProgramData\anc\secrets /grant "NT AUTHORITY\SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" "<bot用户>:(OI)(CI)RX" /T
+  icacls C:\ProgramData\anc\secrets /grant:r "NT AUTHORITY\SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" "<bot用户>:(OI)(CI)RX" /T
   ```
   改完跑 `doctor`，`secrets-acl` 必须转 PASS；再在群里发一条消息确认提醒仍能发出。
 

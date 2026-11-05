@@ -533,11 +533,11 @@ Get-Content "$env:USERPROFILE\anc\workbuddy-patch.log" -Tail 20 | Select-String 
 
 ```powershell
 icacls "$env:ProgramData\anc\secrets" /grant:r 'LOCAL SERVICE:(OI)(CI)RX'   # 读
-icacls "$env:ProgramData\anc\data"    /grant    'LOCAL SERVICE:(OI)(CI)M'    # 写
+icacls "$env:ProgramData\anc\data"    /grant:r    'LOCAL SERVICE:(OI)(CI)M'    # 写
 # 已有日志文件不继承新 ACE，逐个补
 foreach ($f in 'loop.log','http.log','patch-in.log','patch-out.log','selfheal.log','audit.log') {
     $p = Join-Path "$env:ProgramData\anc\data" $f
-    if (Test-Path $p) { icacls $p /grant 'LOCAL SERVICE:(M)' | Out-Null }
+    if (Test-Path $p) { icacls $p /grant:r 'LOCAL SERVICE:(M)' | Out-Null }
 }
 ```
 
@@ -604,14 +604,14 @@ $Root = "$env:ProgramData\anc"
 # ① secrets：服务身份要能读，广泛组不能读
 icacls "$Root\secrets" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "LOCAL SERVICE:(OI)(CI)RX"
 Get-ChildItem "$Root\secrets" -File | ForEach-Object {
-    icacls $_.FullName /grant "LOCAL SERVICE:(RX)"
+    icacls $_.FullName /grant:r "LOCAL SERVICE:(RX)"
 }
 
 # ② data：服务身份要能写（日志都在这）
-icacls "$Root\data" /grant "LOCAL SERVICE:(OI)(CI)M"
+icacls "$Root\data" /grant:r "LOCAL SERVICE:(OI)(CI)M"
 foreach ($f in "loop.log","http.log","patch-in.log","patch-out.log","selfheal.log","audit.log") {
     $p = Join-Path "$Root\data" $f
-    if (Test-Path $p) { icacls $p /grant "LOCAL SERVICE:(M)" }
+    if (Test-Path $p) { icacls $p /grant:r "LOCAL SERVICE:(M)" }
 }
 ```
 
