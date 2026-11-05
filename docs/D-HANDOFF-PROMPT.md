@@ -60,9 +60,9 @@
 
 **最容易踩的三个点**：
 
-1. **只信 `deploy-state` 的 9/11**，不跑 `doctor` 复核 → 结论错
+1. **只信 `deploy-state` 的进度数字**，不跑 `doctor` 复核 → 结论错（`failed` 字段为空 = 没标 done，不是失败）
 2. **`deploy-verify` 的 `bot-reply` 卡住**（有 binding + `17999` 在听但无响应）→ 不知道怎么绕
-3. **把 `patch` 在 `deploy-state` 里的 FAILED 当成"现在还是坏的"** → 没去看 `patch-state.json`
+3. **把 `deploy-state` 里没标 done 的项当成"失败了"** → 没去看 `patch-state.json` 和 `bind list`
 
 ---
 
@@ -94,7 +94,7 @@ WorkBuddy     5.9.3 / app.asar 173.56 MB
 patch         applied=True  mode=hash  pid 活着
 doctor        ok=True  fails=0  warns=1（work-hours）
 deploy-verify PASS=5  FAIL=0  SKIP=0
-deploy-state  9/11（patch 与 wecom 标 FAILED —— 5.8.3 时的历史记录，现在两项实际都好了）
+deploy-state  11/11（补记账后；原为 9/11，`failed` 字段是空的 —— 不是"标了失败"，是"没标 done"）
 绑定          1 条（管理员 → 测试群 wrkc…k2Hfbg）
 任务          10 个 · 17891 在监听
 test-emit     已删，但 17999 可能还在听（WorkBuddy 没重启过）
