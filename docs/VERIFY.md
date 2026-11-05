@@ -8751,3 +8751,141 @@ if ((Test-Path $cliProbe) -and (Test-Path (Join-Path $c 'scripts\doctor.ps1')))
 | C 建群 + 加群机器人 + 确认 WorkBuddy 连着企微 | 保留 |
 
 **少了「建自建应用」这一整块后台操作。**
+
+## 78. 绑群实测 + 三处判据缺陷（2026-11-05 14:19–16:00）
+
+这一节记维护者做企微那几件事之后，vault 绑群一路走下来暴露出来的问题。
+**R7 之后原本以为 C 阶段收尾了，结果绑群又翻出三处缺陷，其中一处是「判据失效但静默通过」。**
+
+### 78.1 绑群这一步实际怎么走的（供下次照做）
+
+| 步骤 | 命令 / 动作 | 结果 |
+|---|---|---|
+| 1 | 维护者在企微建群「测试群」，群里 @ bot 发「在吗」 | `patch-in.log` 出现 `chat=wrkcDlGwAAZZYC-VI2MDMKVHMIk2Hfbg from=wokc…` |
+| 2 | **从 `patch-in.log` 读 chat_id / userid**，不用手抄 | ✅ |
+| 3 | 改 `D:\anc\org\members\owner.md` 的 `chat_id` | ✅ |
+| 4 | `node src\render\cli.ts render --org D:\anc\org --out <Root>\render` | ✅ 6.6 秒 |
+| 5 | **`cli.ts bind import --from <Root>\render\groups.json`** | **✅ `created:2` 一条命令绑所有群** |
+| 6 | `bind resolve --chat-id <新群>` | ✅ `found:true`，`employee=管理员` |
+| 7 | `deploy-verify` | **PASS=5 FAIL=0 SKIP=0** |
+| 8 | `doctor` | **ok=True fails=0 warns=1**（`bindings` WARN 消失） |
+
+**`bind import` 是这一步的关键发现** —— 不用一个个 `bind set`，渲染出 `groups.json` 之后一条命令全绑上。
+
+**`chat_id` / `userid` 也不用手抄** —— 补丁会把 `[anc:chat=… from=…]` 写进 `patch-in.log`，
+**让 bot 在群里 @ 一次就能从日志读出来**。这比让维护者在后台翻 ID 可靠得多。
+
+### 78.2 缺陷一：`secrets` 的 ACL 曾被收成「只有 LOCAL SERVICE」
+
+**现象**（14:19）：`Get-Content secrets\wecom-webhook.txt` 报 `访问被拒绝`，而
+`[WindowsIdentity]::GetCurrent().Name` = `Administrator`、`IsInRole(Administrator)` = `True`。
+
+查 ACL：
+
+```
+NT AUTHORITY\LOCAL SERVICE   ReadAndExecute   Allow
+NT AUTHORITY\LOCAL SERVICE   ReadAndExecute   Allow
+（没有 SYSTEM，没有 Administrators）
+```
+
+**后果**：写不进 webhook —— 换一个群机器人就得先手动 `icacls` 抢权限。
+
+**`set-acl.ps1` 本身没错**（做了决定性实验：现在 ACL 是好的，跑一次 `-Apply`，跑完仍是
+`SYSTEM:F + LOCAL SERVICE:RX + Administrators:F`，`AreAccessRulesProtected: True`，管理员能读写）。
+
+**所以那个坏状态是历史遗留** —— 最可能的成因：`secrets` 目录在 `deploy.ps1` 调 `set-acl.ps1`
+的那一刻还不存在（`deploy.ps1` **不创建** `secrets`），目录级的 `/inheritance:r + /grant:r` 整段被跳过，
+只剩文件级的 `/grant:r LOCAL SERVICE:(RX)` 生效。**这个成因没有百分百证实，记为待查。**
+
+### 78.3 缺陷二：`doctor` 的 `secrets-acl` 不检查「管理员能不能进」
+
+`Test-SecretsAcl` 原本只有两条判据：
+
+| # | 判据 | 抓什么 |
+|---|---|---|
+| ① | 太宽？ | 广泛组（Everyone / Users / Authenticated Users）能读 → FAIL |
+| ② | 够不够？ | `LOCAL SERVICE` 能读 → 缺了 FAIL |
+
+**没有第三条** —— 所以 78.2 那个坏状态它照样 **PASS**（①不成立、②成立）。
+
+**已补 ③**：`Administrators` 必须能读，否则 FAIL，fix 直接给出 `icacls … /grant:r "BUILTIN\Administrators:(OI)(CI)F" /T`。
+
+**播种验证**（用 `Set-Acl` 播「只留 LOCAL SERVICE」，保住原 ACL 对象以便恢复）：
+
+```
+播种 → doctor: ok=False fails=1
+  [FAIL] secrets 没给 Administrators 权限 —— 管理员部署时写不进去
+恢复 → doctor: ok=True fails=0 warns=1
+```
+
+### 78.4 缺陷三（最值得记）：判据失效是静默通过的
+
+**加 ③ 的时候我犯了两个错，第二个错暴露了一个更普遍的问题。**
+
+**第一个错**：把代码插在 ② 的 `return` 行之后，**没注意到下一行还是 `}`**。
+于是 ③ 被关在 `if ($dirRead.Count -eq 0) { … }` 里面，函数末尾的 `return PASS` 全变成
+函数体外的死代码 → **`Test-SecretsAcl` 提前结束、返回 `$null`**。
+
+**`ParseFile` 报 0 错误** —— 因为 `}}` 语法合法。**这类错误语法检查抓不到。**
+
+**第二个错（更严重）**：发现「函数返回 `$null`」之后我去查为什么 doctor 还是 PASS，看到：
+
+```powershell
+function Add-Result([string]$name, [string]$state, [string]$detail, [string]$fix) {
+    $script:results += [pscustomobject]@{ check = $name; state = $state; … }   # 原样存，不校验
+}
+```
+
+**统计 `fails` 用的是 `Where-Object { $_.state -eq 'FAIL' }`** —— `$null -eq 'FAIL'` 是 `false`，
+**于是「判据根本没跑」被算成通过。**
+
+**已修**：`state` 为空就按 `FAIL` 记，并把 detail 改写成
+「判据没有返回结果（$null）—— 对应检查函数可能提前退出，这条实际没验：…」。
+
+**验证**：正常跑 31 项，`state 为空的项 = 0`，只有 `work-hours` WARN —— **没误伤任何检查**。
+
+**这条的普遍意义**：
+
+> **一个检查框架最危险的状态不是「报错」，是「没跑但看起来通过了」。**
+> 加了 `$null → FAIL` 之后，所有「Test-* 函数写错、返回语句被吃掉、if 块嵌套错」的情况
+> 都会变成显式失败，而不是静默通过。
+
+### 78.5 一处还没有结论的现象：私聊「你好」得到 WorkBuddy 的兜底话术
+
+维护者截图：**私聊**「测试机器人」发「你好」，收到
+
+```
+我暂时无法生成可发送内容，请换个问法再试一次。
+内容由AI生成
+```
+
+**这不是 persona 的话术。** 查 `CODEBUDDY.md` 全文，与「补丁没生效」相关的只有 L18：
+
+```
+- 没有这个前缀 = 补丁没生效：只回「身份识别暂不可用，稍后再试」，不登记、不查、不改任何东西
+```
+
+「我暂时无法生成可发送内容 / 内容由AI生成」是 **WorkBuddy 自己的兜底提示**（模型交了空回复）。
+
+**最可能的原因**：**persona 没有定义「打招呼 / 闲聊」怎么回。** 它只定义了 5 类职责
+（任务登记、查询、完成/取消、入库、查库），L26-31 明说「汇总、访谈属于后续里程碑，未启用前不要假装能做」。
+**模型收到「你好」找不到对应职责，就交了空 → WorkBuddy 兜底。**
+
+**这一项还没有修**，记为待办：persona 应加一条明确的「打招呼怎么回」，
+否则任何人第一句发「你好」都会看到兜底话术，会误以为 bot 坏了。
+
+**注意**：`audit.log` 里**没有**任何出站拦截记录，所以**不是出站过滤器拦的**。
+
+### 78.6 现在的状态
+
+```
+doctor         ok=True  fails=0  warns=1（只剩 work-hours，可选）
+deploy-verify  PASS=5  FAIL=0  SKIP=0
+patch          applied=True  mode=hash
+bindings       2 条（管理员 → 测试群 wrkc…k2Hfbg / 员工A → 旧群）
+test-emit.flag 已删（17999 会在下次重启后关闭）
+```
+
+**待办**（都不卡 1.0，但应该修）：
+1. **persona 缺「打招呼」规则**（78.5）
+2. `secrets` 目录在 `deploy.ps1` 之前不存在时 `set-acl.ps1` 会跳过目录级设置（78.2 的成因，待证）

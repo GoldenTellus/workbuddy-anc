@@ -19,6 +19,16 @@ if (-not $BotUser) { $BotUser = $env:USERNAME }
 if (-not $Manifest) { $Manifest = Join-Path $Root 'patch\manifest.json' }
 $results = @()
 function Add-Result([string]$name, [string]$state, [string]$detail, [string]$fix) {
+    # 2026-11-05（VERIFY §78）：state 为空 = 调用方拿到的检查结果是 $null，
+    # 典型原因是 Test-* 函数提前 return、if 块嵌套错、或者返回语句被吃掉。
+    # 这种「判据根本没跑」绝不能算 PASS —— 2026-11-05 实测踩到：
+    # 我给 Test-SecretsAcl 加判据时多写了一个 }，函数提前结束返回 $null，
+    # 于是播种破坏后 doctor 照样 ok=True fails=0，判据失效是静默的。
+    if (-not $state) {
+        $state = 'FAIL'
+        $detail = '判据没有返回结果（$null）—— 对应检查函数可能提前退出，这条实际没验：' + $detail
+        if (-not $fix) { $fix = '看 doctor.ps1 里对应的 Test-* 函数是否每条路径都有 return' }
+    }
     $script:results += [pscustomobject]@{ check = $name; state = $state; detail = $detail; fix = $fix }
 }
 # PS 5.1 的 Get-LocalGroupMember 遇到孤立 SID 会报错返回空，会误报「非管理员」。
@@ -84,6 +94,19 @@ function Test-SecretsAcl([string]$Path) {
     })
     if ($dirRead.Count -eq 0) {
         return @{ state = 'FAIL'; detail = 'secrets 没给服务身份读权限（LOCAL SERVICE / SYSTEM 都不在）'; fix = 'icacls %ProgramData%\anc\secrets /grant "NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX" /T —— anc-service 与 anc-http 以 LOCAL SERVICE 运行，缺了它服务读不到 token，而任务状态仍显示成功' }
+    }
+
+    # ③ 管理员能不能进？（2026-11-05 补，VERIFY §78）
+    # 旧版只判了 ①太宽 和 ②服务能不能读，不判「管理员能不能进」。
+    # 2026-11-05 实测踩到：secrets 被收成「只有 LOCAL SERVICE」，Administrator 连读都读不了，
+    # 而 doctor 照样 PASS（①太宽 不成立、②服务能读 成立）。后果是部署写不进 secrets。
+    $admPattern = '^(BUILTIN\\)?Administrators$'
+    $admRead = @((Get-Acl -LiteralPath $Path).Access | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $admPattern -and
+        ((([int64]$_.FileSystemRights) -band $readBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericRead) -ne 0)
+    })
+    if ($admRead.Count -eq 0) {
+        return @{ state = 'FAIL'; detail = 'secrets 没给 Administrators 权限 —— 管理员部署时写不进去'; fix = 'icacls %ProgramData%\anc\secrets /grant:r "BUILTIN\Administrators:(OI)(CI)F" /T' }
     }
     $noSvc = @()
     foreach ($f in @(Get-ChildItem -LiteralPath $Path -File -ErrorAction SilentlyContinue)) {
