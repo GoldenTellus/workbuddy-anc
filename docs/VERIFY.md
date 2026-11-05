@@ -7628,23 +7628,62 @@ doctor: ok=True fails=0 warns=1
 
 **这是阶段 B 的核心结论**：**`set-acl.ps1` 能把删掉的 ACL 自己修回来，7.6 秒。**
 
-### 70.4 结果二：`deploy.ps1 -Apply` **90 秒跑不完** ❌
+### 70.4 结果二：`deploy.ps1 -Apply` 曾 90 秒跑不完 —— **根因是我的插入位置错了，已修**
+
+**现象**：`deploy.ps1 -Apply` 90 秒不结束，输出 263 行，其中 `root:` 出现 **13 次**
+（= `set-acl.ps1` 被调 13 次），而 `deploy.ps1` 里只写了一次调用。
+
+**排查过程**（三条都被排除）：
+
+| 怀疑 | 怎么排除的 |
+|---|---|
+| `anc-*` 任务在并发调 `deploy.ps1` | 逐个看了 10 个任务的完整命令行，**没有一个调 deploy/set-acl** |
+| `patch-guard` 每分钟触发导致重复部署 | 它每分钟跑（`Repetition: PT1M` 确认），但 `selfheal.log` 最后一条是 08:48 —— **只在补丁坏了才重启**，不调 set-acl |
+| 我自己超时杀父进程留下的子进程 | 清理后重测仍然 90 秒超时，**不是它** |
+
+**真正的根因：ACL 块被插进了 `Copy-WithRetry` 函数体的 `for` 循环里。**
+
+```powershell
+function Copy-WithRetry([string]$Src, [string]$Dst, [int]$Tries = 3) {
+    for ($i = 1; $i -le $Tries; $i++) {
+
+# 权限：secrets 与 data 的 ACL ...        ← 我的块被塞在这里！
+    & powershell @aclArgs                 ← 每次重试都调一次
+        try {
+            Copy-Item ...
+```
+
+**我怎么插错的**：当时用 `findIndex(l => l.trim() === 'try {')` 找插入点，
+**匹配到了函数体里那个 `try {`，不是外层 L140 那个** —— 两个锚点长得一模一样。
+
+**后果的量级**：73 个文件 × 每次最多 3 次重试 ≈ 219 次 `set-acl` 调用 × 7 秒 ≈ **25 分钟**。
+实测 90 秒只跑了 13 次就被我掐了，**如果没掐会跑 25 分钟**。
+
+**修法**：把 ACL 块移到函数定义**之后**、外层 `try {` **之前**（现在是 L122），
+并在注释里写明「必须在 Copy-WithRetry 定义之外」。
+
+**修完实测**：
 
 ```
-$ powershell -File scripts\deploy.ps1 -Repo E:\workbuddy-anc -Apply
-❌ 90 秒未结束（输出 263 行）
+deploy.ps1 -Apply → 8.4 秒  exit=0
+  输出行数     263 → 31
+  set-acl 调用  13 → 1
+  "OK：73 个文件已部署并逐一校验通过。备份: %ProgramData%\anc\backup\deploy-<stamp>"
+
+doctor: ok=True fails=0 warns=1
+  secrets-acl / data-acl / heartbeat / patch / deploy-layout / http-health 全 PASS
 ```
 
-**263 行 ≈ 10 次 `set-acl.ps1` 的日志**（每次约 25 行）。而 `deploy.ps1` 只在 L116-125 调它**一次**。
+**这条的教训（比 bug 本身更值钱）**：
 
-**这个"多次调用"没查清** —— 可能是：
+> **`findIndex` 找一个形如 `'try {'` / `'}'` 的通用锚点在生成代码里是不可靠的** ——
+> 同一个文件里会有一模一样的行。要么带上下文（前一行 + 后一行一起匹配），
+> 要么用行号，要么插完立刻验证结构（本次就是靠「function 在 L109 / ACL 在 L122 / try 在 L140」的
+> 顺序断言才确认修对了）。
 
-- `deploy.ps1` 自己重复执行了（`bin` 映射会把 `scripts\deploy.ps1` 复制到 `bin\deploy.ps1`，
-  但复制不会执行它）
-- **`anc-*` 计划任务在并发触发**（`anc-patch-guard` 每分钟、`anc-service` 每分钟）
-- 我之前超时"杀父进程"时留下的子进程还在跑（**这一条已被排除**：清理后重测仍是 90 秒超时）
-
-**但 `doctor` 是绿的** —— 说明 ACL 那部分每次都成功了，只是整体流程没走完。
+> **而且这个 bug 只有阶段 B 能发现**：dry-run 在 L102 就 `exit` 了、`set-acl.ps1` 单独跑正常、
+> `doctor` 一直绿。**只有「真的走一次 -Apply」才触发那个循环。**
+> 这就是为什么阶段 B 不能省。
 
 ### 70.5 修了一个真 bug：三层嵌套会卡死
 
@@ -7707,7 +7746,7 @@ deploy.ps1
 - **「别人装得成」的 ACL 这一环通过了** —— `set-acl.ps1` 是幂等的、自愈的、7.6 秒的
 - **但「一条命令装完」还不成立** —— `deploy.ps1 -Apply` 跑不完，需要单独查
 
-**所以在清空重装之前，还有一件事必须解决**：`deploy.ps1 -Apply` 为什么跑不完。
-否则陌生 agent 执行到那一步会一直等下去。
+**而且 `deploy.ps1 -Apply` 的 bug 已修完并实测通过（8.4 秒）—— 「一条命令装完」现在成立了。**
+
 
 **下一步不是清空重装，是先把这个查清。**

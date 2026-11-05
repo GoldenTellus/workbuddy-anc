@@ -144,7 +144,7 @@ npm test             # 应该是 130 项 0 fail（原 127 + 新增 3，不能把
 
 ---
 
-## 阶段 B：证明「代码能自己修回来」  ← **◐ 一半通过**（`VERIFY §70`）
+## 阶段 B：证明「代码能自己修回来」  ← **✅ 2026-11-05 通过**（`VERIFY §70`）
 
 **这一步之前从没做过，是发布前最重要的一次验证。**
 
@@ -178,14 +178,16 @@ powershell -File scripts\deploy.ps1 -Side company
 |---|---|
 | 删掉 ACL 后 `doctor` 会红 | **✅ 红 2 项**（`secrets-acl` / `data-acl`） |
 | **`set-acl.ps1 -Apply -SkipVerify` 能修回来** | **✅ 7.6 秒，`doctor` 回 `fails=0`** |
-| `deploy.ps1 -Apply` 能完整跑完 | **❌ 90 秒未结束**（输出 263 行 = `set-acl` 被调约 10 次） |
+| `deploy.ps1 -Apply` 能完整跑完 | **✅ 8.4 秒，73 个文件 + ACL 全部就绪** |
 | 修完后机器状态正常 | **✅ `ok=True fails=0 warns=1`，`deploy-layout`/`patch` 全 PASS** |
 
 **顺带修了一个真 bug**：`deploy → set-acl → doctor` 三层嵌套会卡死 180 秒，
 已加 `-SkipVerify` 打破（`set-acl.ps1` 不再 spawn doctor）。
 
-**⚠️ 所以「清空重装」的前置条件要加一条**：先查清 `deploy.ps1 -Apply` 为什么跑不完。
-否则陌生 agent 执行到那一步会一直等下去。
+**修了一个插入位置 bug**：ACL 块曾被误插进 `Copy-WithRetry` 的 `for` 循环里，
+导致 73 个文件 × 3 次重试 ≈ 219 次 `set-acl`（约 25 分钟）。已移到函数外，实测 8.4 秒。
+
+**所以 C 阶段的前置条件已满足**：A 全绿 + B 通过。
 
 ---
 
