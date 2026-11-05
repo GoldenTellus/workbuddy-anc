@@ -1,4 +1,4 @@
-﻿# workbuddy-anc — 项目指引
+# workbuddy-anc — 项目指引
 
 GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`(MIT)。目标:小团队用一台 7×24 的 Windows 主机跑一个**公司 bot**,每个员工电脑跑一个**个人 bot**,执行引擎是腾讯 **WorkBuddy(Enterprise 版)**,IM 是**企业微信**,公司知识放在主机上的 markdown vault 里。结构照搬上游的制造企业试点。
 
@@ -9,7 +9,7 @@ GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://gith
 ## 当前状态
 
 - 方向 `docs/FORK-DIRECTION.md` **0.6**；已定裁决 D1–**D26**。**里程碑见 `docs/PLAN.md` 1.0**：阶段 S（稳）/ O（观）/ L（环）/ D（交）。
-- **1.0 的定义（四条 + 一条硬要求）**：① 40 条终态 DoD 全绿（现 **35 ✅ / 5 🟡**，O-4 备份离机 2026-11-04 达成）② 补丁在升级后能自愈 ③ 迭代闭环跑通一次 ④ 第二个人能独立装；**⑤ 覆盖上游全部功能模块、零差距**（`UPSTREAM-COVERAGE.md` 21 项逐项有结论）。
+- **1.0 的定义（四条 + 一条硬要求）**：① 40 条终态 DoD 全绿（现 **35 ✅ / 5 🟡**，O-4 备份离机 2026-11-04 达成）② 补丁在升级后能自愈（**✅ 2026-11-05 实测通过，`VERIFY §75`**）③ 迭代闭环跑通一次 ④ 第二个人能独立装；**⑤ 覆盖上游全部功能模块、零差距**（`UPSTREAM-COVERAGE.md` 21 项逐项有结论）。
 - **阶段 S 全绿 3/3**：冷启动 3 次 46/60/29 秒、注入异常告警、逾期提醒（造的数据，`VERIFY §20`）。
 - **阶段 O 全绿 3/3**：O1 出站过滤结案（`§17`）、O2 persona 读盘结案（`§18`）、doctor **31 项**台账（2026-11-04 补 `time-sync`、2026-11-05 补 `task-anc-devbot`，`§15`/`§46`）。
 - **阶段 L 全绿 7/7**：submission（`§21`）→ issue 规则表分诊（`§22`）→ patch draft（`§23`）→ devbot 全自动出分支（`§26`）→ eval 判 pass/fail（`§25`）→ 端到端 12 分钟跑通（`§27`）→ **dayend 自动识别（`§36`）**。最后一项是临时给公司 bot 加 persona 规则验的——**不是个人 bot**，验的是"技能触发链路"。
