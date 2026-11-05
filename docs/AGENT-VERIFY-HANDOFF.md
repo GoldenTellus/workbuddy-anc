@@ -16,7 +16,7 @@
 | [1](#1-先判断这台机器能干什么) | **这台机器能验什么 / 不能验什么**、基础条件、做不了的 | **现在，先读这个** |
 | [2](#2-开工前十分钟) | 装起来、跑通、看进度 | 确认能做之后 |
 | [3](#3-待验证任务清单) | 按优先级排的任务 | 干活时逐条看 |
-| [4](#4-我踩过的坑) | **24 个坑，照抄会错**（含 2026-11-05 新增的 8 条环境类） | **动手前通读一遍** |
+| [4](#4-我踩过的坑) | **25 条坑，照抄会错**（含 2026-11-05 新增的环境类；编号 ㉔→㉙ 有跳号，以实际标题为准） | **动手前通读一遍** |
 | [5](#5-测试方法) | 6 个可复用的思路 | 想不出怎么验时看 |
 | [6](#6-工具速查) | 每个脚本干什么、怎么调 | 随手查 |
 | [7](#7-交回什么) | 你要产出什么 | 收尾 |
@@ -644,7 +644,7 @@ powershell -File scripts\doctor.ps1 -Json   # 期望 ok=True
 
 **判断标准**：`fails` 增加了**且只增加这一项**。如果增加了很多项，说明它跟别的检查耦合了；如果没增加，说明它根本没接上。
 
-**主机做到 29/30**（剩 1 项是 `vault-ingest-audit`，它的上限设计就是 WARN）。
+**主机做到 29/30**（当时 doctor 30 项，剩 1 项是 `vault-ingest-audit`，它的上限设计就是 WARN）。**2026-11-06 现状**：doctor **31 项**、故障矩阵 **30/31** 已注入验证，剩的仍是 `vault-ingest-audit`；`database` 已用 `-Root` 补注入（`VERIFY §39` / `§87`）。
 
 ### 5.2 注入时间，而不是改系统时间
 
@@ -727,8 +727,8 @@ $out += 'actual=' + (Get-Content $target -Raw -ErrorAction SilentlyContinue)
 | `deploy-skills.ps1` | 装技能到 `~/.workbuddy/skills` | `-Apply` `-RemoveExtra` `-Rollback` `-Target` | 逐文件对拍 |
 | `deploy-persona.ps1` | **装** persona（不渲染） | `-Source` `-Target` `-Rollback` `-DryRun` | sha256 对照 |
 | `deploy-state.ps1` | 记进度、断点续装 | `-Side` `-Mark <id>` `-AsDone`/`-AsFailed` `-Reset` `-Json` | `{progress, done[], failed, next, stages[]}` |
-| `deploy-verify.ps1` | **自证**装出来的能不能用 | `-Side` `-ChatId` `-SkipBot` `-KeepData` `-Json` | `{ok, pass, fail, skip, checks[], next}` |
-| `doctor.ps1` | 健康检查（30 项） | `-Root` `-Repo` `-Json` `-SelfTest` | `{ok, fails, warns, checks[]}` |
+| `deploy-verify.ps1` | **自证**装出来的能不能用 | `-Side` `-Root` `-ChatId` `-SkipBot` `-KeepData` `-Json` | `{ok, pass, fail, skip, checks[], next}` |
+| `doctor.ps1` | 健康检查（31 项） | `-Root` `-VaultRoot` `-Repo` `-Json` `-SelfTest` | `{ok, fails, warns, checks[]}` |
 | `register-tasks.ps1` | 注册 10 个计划任务 | `-Apply` `-Only <name>` `-BotUser` `-Repo` | 逐任务列表 |
 | `devbot-scheduler.ps1` | 全员下班 → 跑 devbot | `-Apply` `-Force` `-AsOf "yyyy-MM-dd HH:mm"` `-Json` | `{willRun, reason, issue, facts}` |
 | `devbot.ps1` | 让 agent 改技能 | `-Issue` `-ChatId` `-Apply` `-LivePersona` | 逐步骤日志 |

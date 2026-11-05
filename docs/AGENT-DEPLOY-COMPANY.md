@@ -46,7 +46,7 @@ D:\anc\                    vault + org + build
 
 - **公司 bot 在企微群里能回话**
 - **10 个计划任务在跑**
-- **`doctor` 30 项 FAIL=0**
+- **`doctor` 31 项 FAIL=0**
 - **能登记任务、能到点提醒、能入库**
 
 **你不会做的事**：不装员工侧（那是另一份文档）、不配企微后台（人做，见 §11）。
@@ -849,7 +849,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy-verify.ps1 -S
 
 ```
 database       PASS  库存在: C:\ProgramData\anc\data\anc.db
-doctor         PASS  FAIL=0 WARN=3（30 项）
+doctor         PASS  FAIL=0 WARN=3（31 项）
 task-write     PASS  task #68 写进去了，查得回来
 bot-reply      SKIP  还没有实例引用（需先在群里收到一条真实消息）
 tasks          PASS  10 个任务全部 Ready/Running
@@ -870,7 +870,7 @@ NEXT  有 1 项没验（bot-reply），原因见 detail。
 | 项 | 验什么 | FAIL 说明什么 |
 |---|---|---|
 | `database` | 库在 | 部署没做完 |
-| `doctor` | 30 项体检全过 | 有具体项坏了，看 detail |
+| `doctor` | 31 项体检全过 | 有具体项坏了，看 detail |
 | `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
 | `bot-reply` | 注入一条消息 | 409（还没有实例引用）是 SKIP 不是 FAIL；端口没监听也是 SKIP；只有真正注入失败才 FAIL。**「没等到回复」仍是 PASS**（回复慢是模型行为） |
 | `tasks` | 10 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
@@ -897,7 +897,7 @@ powershell -File scripts\deploy-state.ps1 -Side company -Mark verify -AsDone
 
 ```
 公司侧部署完成。
-  doctor: FAIL=0 WARN=X（30 项）
+  doctor: FAIL=0 WARN=X（31 项）
   群回应: <PASS/SKIP 及原因>
   任务落库: OK
   计划任务: 10/10

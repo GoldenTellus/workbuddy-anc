@@ -82,6 +82,7 @@ npm audit                          # 有 high/critical 就处理
 > `package.json` 加了一行 `coverage` 脚本，别的没动。
 >
 > **但这个数字会骗人** —— 见下面的 A5：有 1555 行代码从来没被加载过，不在那张表里。
+> **2026-11-06 现值**：`npm run coverage` 行 **91.34%** / 分支 81.34% / 函数 93.68%（`VERIFY §87`）；`--test-coverage-exclude` 已排除仓库外 WorkBuddy shim。发布评审用现值，不要用本节的历史读数。
 
 ### A5 补 service CLI 的测试盲区 —— **发布前唯一必须补的测试**  ← **✅ 2026-11-05 已完成**（`VERIFY §69`）
 
@@ -112,7 +113,7 @@ src/service/dayend.ts          92
 
 ```powershell
 npm run coverage     # 那 7 个文件从「不在表里」变成「在表里且有行覆盖」
-npm test             # 应该是 130 项 0 fail（原 127 + 新增 3，不能把原有测试弄坏）
+npm test             # 应该是 155 项 0 fail（§87 补测后；不能把原有测试弄坏）
 ```
 
 **同时修两个分测脚本的漏**（`VERIFY §67.4`）：
@@ -122,7 +123,7 @@ npm test             # 应该是 130 项 0 fail（原 127 + 新增 3，不能把
 | `test:service` | `deploy-state` / `http` / `project` 三个 test |
 | `test:render` | `dept.test.ts` |
 
-因为主 `test` 跑的是 16 个文件全集（130 项是全的），但**分开跑会漏**。
+因为主 `test` 跑的是 17 个文件全集（155 项是全的），但**分开跑会漏**。
 
 
 ```json
@@ -130,7 +131,7 @@ npm test             # 应该是 130 项 0 fail（原 127 + 新增 3，不能把
 "coverage": "node --experimental-test-coverage --test test/"
 ```
 
-**判据**：跑出真实的 line/branch 覆盖率数字，写进本文档。**没有这个数字，就不知道这 130 项测试护住的是核心还是边角。**
+**判据**：跑出真实的 line/branch 覆盖率数字，写进本文档。**没有这个数字，就不知道这 155 项测试护住的是核心还是边角。**
 
 ### A4 错误路径测试  ← **✅ 2026-11-05 完成**（`VERIFY §71`，4/5 通过 + 1 项无结论）
 

@@ -88,6 +88,10 @@ npm run service -- serve
 # token 在 %ProgramData%\anc\secrets\service-token.txt；未配置时业务路由全 503，只有 /__anc_health 可用
 ```
 
+> **`timezone` 是部署一致性断言**：只用于 `doctor` 校验主机系统时区是否等于配置值，
+> **不参与运行时时间计算**（`isWorkTime` / 提醒排期 / `localDay` 一律按主机系统本地时区）。
+> 改它不会改变行为；要让提醒换时区，得改主机系统时区。见 `ACCEPTANCE S-5`、`VERIFY §87 #1`。
+
 所有命令支持 `--db <path>` 与 `--json`。默认库 `%USERPROFILE%\anc\anc.db`。
 
 `loop` 每次 tick 做四件事：

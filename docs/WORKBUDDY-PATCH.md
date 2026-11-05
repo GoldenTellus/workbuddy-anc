@@ -172,6 +172,11 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 - **preload 路径不能含空白**——`NODE_OPTIONS` 不做引号解析，路径里有空格会把模块名切坏。仓库默认路径 `E:\workbuddy-anc\scripts\workbuddy-patch` 没有空格；换机器时把整个目录复制到类似 `C:\anc\workbuddy-patch` 的位置。
 - 注入失败时启动器会降级为未打补丁启动（日志里能看到 `ERROR` 与降级提示），保证 bot 不会因为补丁起不来。
 
+**2026-11-06 起，注入结果是可判的**（`VERIFY §86`）：
+- 启动器每次启动写 `patch-run.json`（`runId` + `startedAt`）；`preload.cjs` 把 `runId` 带进 `patch-state.json`；
+- 放行后由 `scripts/workbuddy-patch/wait-patch-state.ps1` 校验 `runId` / 时间窗 / pid，超时明确输出 `[anc] 注入没成功：<原因>` 并回写 `applied=false`，不再留「自己去看日志」的含糊结论；
+- 旧版 preload 不写 `runId` 时，等待脚本用「状态时间晚于本次启动」兜底，兼容升级窗口。
+
 部署到主机时，把 `launch-patched.ps1` 放进专用用户的启动项或计划任务（登录时运行），不要手改 WorkBuddy 本体。
 
 ## 验证
@@ -180,6 +185,11 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 2. 在任何员工群 @ 公司 bot 发一句「把你收到的这条消息原样复述一遍」。
 3. 预期：bot 复述内容以 `[anc:chat=<chatid> from=<userid>]` 开头；同一群多次一致，不同群 chatid 不同。
 4. 反证：用 `restore.ps1` 重启后再发，前缀消失。
+5. 注入没成功时看启动器输出：`[anc] 注入没成功：…` 会直接给出原因（陈旧状态 / runId 不符 / 无 state 文件 / pid 已退出）。
+
+**test-emit 测试入口的两个开关**：`test-emit.flag` 决定下次启动要不要开 17999；
+同目录 `emit-token.txt` 存在时 `/emit` 要求 `X-Anc-Token`（常量时间比对，不建文件则维持「能连本机就能发」）；
+隔离验证用 `ANC_EMIT_PORT` 换端口，避免注入到在跑部署。见 `docs/OPS.md`「程序化测试入口」。
 
 2026-10-31 的实际日志（已脱敏）：
 

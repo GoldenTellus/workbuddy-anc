@@ -4,7 +4,7 @@
 
 ## 计划任务
 
-共 9 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
+共 10 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
 
 | 任务 | 触发 | 身份 | 执行 | 作用 |
 |---|---|---|---|---|
@@ -17,6 +17,7 @@
 | `anc-patch-guard` | 登录后 10 秒 + 每天 00:00 起每 1 分钟 | bot 用户（Interactive） | `wscript //B <bin>\run-hidden.vbs <bin>\anc-guard.cmd` | 读 `patch-state.json`；只认补丁体包装成功后写的 `applied=true`，否则触发自愈重启（10 分钟冷却；重启中、重启失败、锚点缺失时 60 分钟内不再触发） |
 | `anc-update-watch` | 每天 09:00 | `LOCAL SERVICE` | `check-workbuddy-update.ps1` | 请求厂商更新接口：有新版本就发运维群（只有告警发出去了才记为已见），提示按 skill 走回归 |
 | `anc-http` | 开机 + 每分钟（常驻，已跑不叠跑） | `LOCAL SERVICE` | `cmd /c <bin>\anc-http.cmd` | 只监听 `127.0.0.1:17891`：`/__anc_health` 存活探测（不需 token）、`/__anc_status` 需 Bearer token |
+| `anc-devbot` | 工作日 22:00~06:00 每 30 分钟 | bot 用户（Interactive） | `devbot-scheduler.ps1` | 查「全员下班」，满足三个条件才触发夜间迭代闭环；与另两个交互类任务同一 principal |
 
 PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册用 `scripts\register-tasks.ps1`（默认 dry-run，`-Apply` 才写；两个交互类任务要求 bot 用户已登录过、没有用户配置目录时会拒绝注册）：`-BotUser`、`-BackupDestination`、`-CleanupMediaDir` 都可覆盖。
 
@@ -107,7 +108,7 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor.ps1              # 只读体检（31 项）：专用用户、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor.ps1              # 只读体检（31 项）：部署账号（D25 用管理员账号）、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
 powershell -File scripts\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
 powershell -File scripts\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
 powershell -File scripts\watchdog.ps1            # 手动跑一次看有没有要告警的
@@ -327,7 +328,7 @@ WorkBuddy 自己的日志 `%USERPROFILE%\.workbuddy\logs\workbuddyMainThread*.lo
 
 **3. 只开在 127.0.0.1**
 
-代码里 `__srv.listen(17999, '127.0.0.1', ...)`，body 上限 1 MB。**2026-11-06 起支持可选鉴权**：同目录（`%ProgramData%\anc\data\`）放 `emit-token.txt`，`/emit` 就要求 `X-Anc-Token` 且用常量时间比对；**不放文件则维持「能连本机就能发」的旧行为**，`deploy-verify.ps1` 会自动带上 token。默认仍无认证，所以 flag 用完就删，别长期开着；要防本机伪造就建 token 文件。
+代码里 `__srv.listen(17999, '127.0.0.1', ...)`，body 上限 1 MB。**2026-11-06 起支持可选鉴权**：同目录（`%ProgramData%\anc\data\`）放 `emit-token.txt`，`/emit` 就要求 `X-Anc-Token` 且用常量时间比对；**不放文件则维持「能连本机就能发」的旧行为**，`deploy-verify.ps1` 会自动带上 token。默认仍无认证，所以 flag 用完就删，别长期开着；要防本机伪造就建 token 文件。**隔离验证**：给 WorkBuddy 进程设 `ANC_EMIT_PORT=<其它端口>` 可起独立 test-emit，避免把测试消息注进在跑部署的 17999（`VERIFY §86.4` 踩过）。
 
 ### 走过的弯路（免得重走）
 

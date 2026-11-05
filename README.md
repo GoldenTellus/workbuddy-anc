@@ -36,7 +36,7 @@ https://github.com/GoldenTellus/workbuddy-anc
 
 - **这台机器能验什么、不能验什么**（先确认角色，别白干）
 - **待验证任务清单**（D4.6 / O-5 / E-1 的员工机一半 / devbot 22:00 自动触发 / REBUILD 复验）
-- **16 个踩过的坑**（PowerShell 大小写敏感、CRLF、`if` 解包数组、Interactive 任务静默不执行…）
+- **25 条踩过的坑**（PowerShell 大小写敏感、CRLF、`if` 解包数组、Interactive 任务静默不执行…）
 - **6 个可复用的测试方法**（故障注入、注入时间而不是改系统时间、真关掉而不是伪造 SKIP…）
 
 **装的时候会问你的**：机器是干净机还是员工机、有没有管理员权限。（这两份还没写，见 PLAN D4）。
@@ -146,6 +146,9 @@ Windows 主机（7×24）
 | 主机怎么运维、怎么重建 | [docs/OPS.md](./docs/OPS.md)、[docs/REBUILD.md](./docs/REBUILD.md) |
 | 各组件用法 | [LOCAL-SERVICE](./docs/LOCAL-SERVICE.md)、[INGEST](./docs/INGEST.md)、[RENDERER](./docs/RENDERER.md)、[ONBOARDING](./docs/ONBOARDING.md)、[WORKBUDDY-PATCH](./docs/WORKBUDDY-PATCH.md) |
 | 借了上游什么 | [docs/REUSE-MAP.md](./docs/REUSE-MAP.md) |
+| 陌生 agent 接手 / 交班提示词 | [docs/D-HANDOFF-PROMPT.md](./docs/D-HANDOFF-PROMPT.md)（B 路交接，整段复制到新会话） |
+| 上游 4 份原样文档什么时候才看 | [docs/UPSTREAM-ORIGINALS.md](./docs/UPSTREAM-ORIGINALS.md) |
+| **仓库导航 / 现状数字 / VERIFY 检索** | **[docs/REPO-INDEX.md](./docs/REPO-INDEX.md)**、[docs/VERIFY-INDEX.md](./docs/VERIFY-INDEX.md) |
 
 上游原文（仅作参考）：[SPEC.md](./SPEC.md)、[reference/upstream/originals/M1-DESIGN.md](./reference/upstream/originals/M1-DESIGN.md)、[reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md](./reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md)、[reference/upstream/originals/LIGHT-MVP.md](./reference/upstream/originals/LIGHT-MVP.md)、[reference/upstream/originals/RESEARCH.md](./reference/upstream/originals/RESEARCH.md)。
 
