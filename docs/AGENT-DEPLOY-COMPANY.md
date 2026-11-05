@@ -238,7 +238,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Side com
 # 自己验一遍：部署的 cli 能起来
 node --no-warnings "$Root\service\cli.ts" 2>&1 | Select-Object -First 1
 # 期望看到 "ERROR 缺少命令组（...）" —— 这是正常的用法提示，不是故障
+
 ```
+> **⚠ 如果你的脚本里设了 `$ErrorActionPreference = 'Stop'`，上面这条探针会把它打断。**
+>
+> `cli.ts` 无参数时会往 **stderr** 写用法提示。PowerShell 5.1 把原生命令的 stderr 当成
+> `NativeCommandError` 记录，在 `Stop` 策略下会**终止整个脚本** —— 于是你后面的
+> `-Mark files -AsDone` 不会执行，进度卡在 `files` 这一步，看起来像部署失败。
+>
+> **这不是部署故障**（`deploy.ps1` 的退出码是 0、hash 对拍也过了），是探针写法的问题。三种绕法：
+>
+> ```powershell
+> # ① 最省事：探针时临时放宽策略
+> $ErrorActionPreference = 'Continue'
+> node --no-warnings "$Root\service\cli.ts" 2>&1 | Select-Object -First 1
+> $ErrorActionPreference = 'Stop'
+>
+> # ② 把 stderr 合进 stdout 再判（不在 PowerShell 层报错）
+> $out = & node --no-warnings "$Root\service\cli.ts" 2>&1 | Out-String
+> if ($out -notmatch '缺少命令组|Usage|用法') { throw "探针输出不对: $out" }
+>
+> # ③ 干脆跳过探针 —— deploy.ps1 自己已经逐文件对拍过 hash
+> ```
+>
+> 2026-11-05 一次真机从零装就踩了这个：`deploy.ps1 -Apply` 本身成功（73 文件 hash 全过），
+> 但探针把脚本打断、`-Mark files` 没执行（`VERIFY §81.4` #3）。
 
 **失败了怎么办**：
 
@@ -623,9 +647,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\deploy-persona.ps
 Test-Path "$Root\render\company-bot\CODEBUDDY.md"
 Test-Path "$Root\render\groups.json"
 # groups.json 里的成员数 = 你写的 member 文件数
-(Get-Content "$Root\render\groups.json" -Raw | ConvertFrom-Json).members.Count
+# ⚠ 别用 (Get-Content ... -Raw | ConvertFrom-Json) 验这个文件 —— 见下面的说明
+
+# 用 node 读（纯 ASCII 判定，不受控制台代码页影响）
+node -e "const j=require('fs').readFileSync(process.argv[1],'utf8');const o=JSON.parse(j);console.log('members=',o.members.length,o.members.map(m=>m.name).join(','))" "$Root\render\groups.json"
 # 每条的 dept/skills 都在（没部门的是 null/[]）
 ```
+
+> **⚠ 验证 `groups.json` 时不要用 `Get-Content -Raw | ConvertFrom-Json`。**
+>
+> PowerShell 5.1 的 `Get-Content -Raw` **默认按 ANSI（本机代码页）解码**，而这个文件是 UTF-8。
+> 结果是中文姓名/部门名变成 `绠＄悊鍛?` 这类 mojibake，**mojibake 里的引号会破坏 JSON 结构**，
+> `ConvertFrom-Json` 报「传入的对象无效」—— 看起来像渲染产物坏了，**其实产物是好的**。
+>
+> **判据要放在"读数方式没错"的前提下才有效。** 三种正确读法：
+>
+> ```powershell
+> # ① 用 node（推荐，纯 ASCII 判定）—— 上面那条就是
+> # ② PowerShell 里显式指定编码
+> [IO.File]::ReadAllText("$Root\render\groups.json", [Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
+> # ③ 只验结构不验中文（避开编码）
+> (Get-Content "$Root\render\groups.json" -Raw -Encoding UTF8 | ConvertFrom-Json).members.Count
+> ```
+>
+> **同一个坑还会打到 `bind list` 的 JSON 输出**：`cli.ts` 打 UTF-8 到 stdout，
+> PS 5.1 按 GBK 解码 → 中文变乱码 → `ConvertFrom-Json` 失败 → 你会以为「库里没有绑定」，
+> 从而误判 `bot-reply` 的 SKIP 原因。**判断"库里有没有绑定"要用 `bind list` 的退出码和原始输出，**
+> **或者直接用 node 读库**（`VERIFY §81.4` #4）。
+>
+> 2026-11-05 一次真机从零装：他先报 `bindings` WARN「读绑定失败」，自己查清是编码问题
+> 而不是库坏了 —— **这个区分很重要**，因为前者要改代码、后者只要换读法。
 
 **失败了怎么办**：
 
