@@ -180,17 +180,65 @@ powershell -File scripts\deploy.ps1 -Side company
 
 ```
 ① 备份 secrets / D:\anc 的两个 git 仓库 / org
-② 清空（prepare-wipe.ps1 -Apply）
-③ 装 5.8.3
-④ 只按 AGENT-DEPLOY-COMPANY.md 装，不手工补任何东西 → 记下哪些红  ← 这步的「红」就是 bug 清单
-⑤ 升级到最新版本 → 验：数据完整 + 补丁自动重新注入（R7）
-⑥ 修 ④ 记下的红，再验一次
+② ★ 把 5.9.3 缓存包复制一份到 E:\ 当「回程票」（VERIFY §68.1，429 MB）
+③ 清空（prepare-wipe.ps1 -Apply）
+④ ★★ 断网  ← 不这么做，5.8.3 装完 3 秒就开始自我升级，REBUILD 做不完
+⑤ 装 5.8.3
+⑥ ★★ 立刻落地冻结三件套（VERIFY §68.3，只做一件没用）
+⑦ 在 5.8.3 上跑 REBUILD（断网、全本地、不需要网络）+ 计时
+   ⚠️ 预期补丁注入失败（§58 已证）—— 这是已知异类，记录下来，不算 REBUILD 失败
+⑧ 记录 5.8.3 基线（版本号 / 补丁状态 / doctor 哪些红）
+⑨ 恢复升级：把缓存包放回 %TEMP%\workbuddy-update-x64\ + endpoint + 开关 → 几秒内静默装到 5.9.3（→ R7）
+⑩ 验：数据完整（对 §57 那 8 项）+ 补丁自动重新注入（applied=true / mode=hash / pid 活）
+⑪ 修 ⑦ 记下的红，再验一次
 ```
 
-**为什么装在 5.8.3 上而不是最新版**：`VERIFY §57` 查明 5.8.3 是「异类」（会自我升级、补丁注入失败）。
-在它上面装一次，能拿到「补丁装不上的版本」的对照数据；升级后补丁能自己装上，**这才是 R7 要证的**。
+### C 阶段两个必须知道的机制（`VERIFY §68`）
 
-**判据**：`doctor fails=0 warns≤2` + `deploy-verify ok=true` + `patch-state.json applied=true mode=hash` 且 pid 活着 + `17999` 监听。
+**① 5.9.3 装包就在本机，升级不需要网络**
+
+```
+%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.42398134.exe
+  429.3 MB · FileVersion 5.9.3 · Authenticode Valid (Tencent)
+  sha256 B5EDB52B...852F9 = 更新 feed 返回的 sha256hash，字节级一致
+```
+
+5.9.3 换过缓存目录名（现在是 `workbuddy-update-x64-workbuddy`，为空），扫不到旧目录，
+所以这个包活到今天。**反过来：5.8.3 扫的正是旧目录** —— 装回 5.8.3 后，
+它会在启动几秒内认领这个包**离线**升回 5.9.3。
+
+**这就是「5.8.3 会自己升级」的真正原因，也是 R7 可以完全离线、几秒完成的原因。**
+
+**② 冻结自升级必须三件一起做**
+
+| # | 做什么 | 拦什么 |
+|---|---|---|
+| **a** | `%USERPROFILE%\.workbuddy\app\app-config.json` 加 `"startupForceAutoUpdate": false` | 只拦自动**装** |
+| **b** | 移走 `%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.*.exe` | 断掉「几秒内认领旧包」 |
+| **c** | `%USERPROFILE%\.workbuddy\cache\update-endpoint.json` 指向不可达 | 让 `checkForUpdates` 直接 skip |
+
+**只做 a 不够** —— 拦不住 30 秒/每小时的 `checkForUpdates`，那仍会把 429 MB 下到 `ready`。
+
+**最省事：装之前先断网，装完再落地 a+b+c。** REBUILD 全程不需要网络。
+
+**不要靠补丁的 update-hook 拦升级** —— `§58` 已证 5.8.3 上 `--inspect-brk` 注入不通，钩子根本不生效。
+
+### 为什么装在 5.8.3 上而不是最新版
+
+`VERIFY §57` 查明 5.8.3 是「异类」（会自我升级、补丁注入失败）。
+在它上面装一次，拿到「补丁装不上的版本」的对照数据；**升级后补丁能自己装上，这才是 R7 要证的**。
+
+### 升级对用户数据的影响：§57 已经验过一次
+
+| 项 | 结果 |
+|---|---|
+| persona（1990 B） | `582b557259f3096e` 前后一致 |
+| 员工侧（156 文件 / 1.09 MB） | 一致 |
+| `groups.json` / `company.md` / `anc.db` | 三者 hash 全部一致 |
+| `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md` | **sha256 前后完全相同** |
+| `app.asar` | 92.07 MB → 173.56 MB（**只有它被替换**） |
+
+这次只要复核这几项，不用从头验。
 
 ---
 

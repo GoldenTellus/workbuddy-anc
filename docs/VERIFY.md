@@ -7264,3 +7264,162 @@ src/service/dayend.ts          92
 
 **一句话**：这个仓库**没有第三方依赖风险**，**但有一块 35.7% 的代码从未被执行过**。
 发布前该补的是那一块，不是继续追 93.14% 的小数点。
+
+## 68. WorkBuddy 升级机制摸清 —— 5.9.3 装包就在本机，升级可以完全离线（2026-11-05）
+
+`§57` 只记了「5.8.3 会自我升级回 5.9.3」这个现象，没查机制。这一节是把它查透的结果。
+**结论对 C 阶段（清空重装 + R7）影响很大：升级不需要网络，几秒就能完成。**
+
+### 68.1 ★ 本机有 5.9.3 的官方装包，字节级可验
+
+```
+%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.42398134.exe
+  450,174,440 B (429.3 MB)
+  FileVersion 5.9.3
+  Authenticode  Valid（Tencent）
+  sha256        B5EDB52BD6C5B6C7296CF2FFF697B019C86D11992A8A814C3010D611896852F9
+                = 更新 feed 返回的 sha256hash，完全一致
+```
+
+写入时间 11-04 22:36→23:03（本地），正是那次自升级留下的。
+
+**为什么它没被清掉**：5.9.3 的缓存目录换了名字。
+- 5.9.3 现在扫 `%TEMP%\workbuddy-update-x64-workbuddy\`（当前为空）
+- 旧目录 `%TEMP%\workbuddy-update-x64\` 扫不到
+- 所以这 429 MB 一直躺在那里
+
+**反过来**：**5.8.3 扫的是旧目录名** → 一旦装回 5.8.3，它会在启动几秒内**认领这个包直接静默装回 5.9.3，全程不需要网络**。
+
+**这就是 `§57` 那个「自己升级」最实在的解释，也是唯一免下载的升级回路。**
+
+### 68.2 更新机制：自研 UpdateService，不是 electron-updater
+
+安装目录下没有 `resources\app-update.yml`，走的是自研 `update-service.win32.js`。
+
+**feed**：`{base}/v2/update?platform=workbuddy-<os>-<arch>-<layout>&version=<当前版本>`
+
+- `base` 默认 `https://copilot.tencent.com`，本机 override 成 `https://www.workbuddy.cn`
+- override 落在 `%USERPROFILE%\.workbuddy\cache\update-endpoint.json`
+- `layout` 是 `win32-x64-user`（去掉 `-user` 会 400）
+
+**实测这个公开端点（无凭据）**：
+
+| 传的 version | 返回 |
+|---|---|
+| `5.8.3` | **200** + JSON（说明有新版，`version: 5.9.3.42398134`） |
+| `5.9.3` | **204**（无更新） |
+| `9.9.9` | **204** |
+| 去掉 `-user` | **400** |
+
+**触发时机**（生产构建）：
+
+```
+启动 3 秒   runStartupForceAutoUpdate   （静默下载 + 静默安装）
+启动 10 秒  forceUpgrade
+启动 30 秒  首次 checkForUpdates
+之后        每 1 小时一次
+```
+
+**发现新版无需用户确认**即自动下载（带 sha256 校验）→ `downloaded` → `ready` → 装。
+
+**装包落点**：`%TEMP%\workbuddy-update-x64-<arch>-<app>\`，文件名 `WorkBuddy-Setup-<ver>.exe`
+（5.8.3 用 `workbuddy-update-x64`，5.9.3 用 `workbuddy-update-x64-workbuddy`）
+
+**安装命令**（已确认）：`<cache 包> /S --updated /UPDATE=1 /D=<安装目录>`，配 wscript 过渡窗，然后 `app.quit()`（>4 秒强杀）。
+安装目录可写 → 静默 spawn（无 UAC）；不可写才提权。连败 3 次 → `INSTALL_CIRCUIT_OPEN`。
+
+### 68.3 怎么冻结自升级 —— 三件一起做，只做一件没用
+
+**唯一开关键**是 `startupForceAutoUpdate`（bool），落在 `%USERPROFILE%\.workbuddy\app\app-config.json`
+（优先级：用户设置 > remoteFeature > cachedSystemDefault > productBase > 硬编码 `true`）。
+
+> ⚠️ **但它只拦「自动安装」，拦不住 30 秒 / 每小时的 `checkForUpdates`** ——
+> 那仍然会把 429 MB 下到 `ready`。所以只改配置是不够的。
+
+**三件套**：
+
+| # | 做什么 | 拦什么 |
+|---|---|---|
+| **a** | `app-config.json` 加 `"startupForceAutoUpdate": false` | 拦自动**装** |
+| **b** | 移走 `%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.42398134.exe` | 断掉「启���几秒内认领旧包」这条路 |
+| **c** | `update-endpoint.json` 指向不可达 | 让 `checkForUpdates` 直接 skip |
+
+**最省事的做法**：**装 5.8.3 之前先断网**，装完再落地 a+b+c。REBUILD 全程不需要网络。
+
+**没有**环境变量开关；**没有** `--check-update` 这类 CLI 参数（`--updated` / `UPDATE=1` 是给安装器的）。
+
+### 68.4 要放它升回去（验 R7）有三条路
+
+| 路 | 做法 | 耗时 |
+|---|---|---|
+| **最快** | 把包放回 `%TEMP%\workbuddy-update-x64\` + 恢复 endpoint + 开关设回 `true` | **几秒**（离线静默装） |
+| 中等 | 点应用菜单「检查更新…」→「下载更新」→「安装更新」 | 看网速（429 MB） |
+| 最直接 | `<包> /S --updated /UPDATE=1 /D=<安装目录>` | 几十秒 |
+
+**回检**：`%USERPROFILE%\.workbuddy\logs\update\update-YYYYMMDD.log`
+
+### 68.5 卸载：per-user，数据全在安装目录外
+
+注册表只有 HKCU 一项（`...\Uninstall\BFD312E9-1019-4F57-9F44-F86246833B50`）。
+
+```
+"<安装目录>\Uninstall WorkBuddy.exe" /currentuser        # 交互
+"<安装目录>\Uninstall WorkBuddy.exe" /currentuser /S     # 静默
+```
+
+**用户数据全在安装目录外**，所以卸载不会带走：
+
+- `%USERPROFILE%\.workbuddy\`（含 `app\` = Electron userData）
+- `%USERPROFILE%\WorkBuddy\Claw\`（工作区、`CODEBUDDY.md`）
+- `%LOCALAPPDATA%\anc\`（员工侧）
+
+`§58.2` 旁证：卸 5.9.3 用了 18 秒，`%ProgramData%\anc` 没被动。
+
+**但注意**：卸载**不会**清 `%TEMP%\workbuddy-update-x64\` —— 那个 429 MB 的包会留着（对 C 阶段是好消息）。
+
+### 68.6 §57 已经验过：升级对用户数据零损伤
+
+| 项 | 结果 |
+|---|---|
+| persona（1990 B） | `582b557259f3096e` 前后完全一致 |
+| 员工侧（156 文件 / 1.09 MB） | 一致 |
+| `deploy-state` | 7/7 |
+| `groups.json` | `69ead9095c372b1d` 一致 |
+| `company.md` | `4ca610859e682b9d` 一致 |
+| `anc.db` | `fb291b77151870ba` 一致 |
+| `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md` | **sha256 前后完全相同** |
+| `app.asar` | 92.07 MB → 173.56 MB（**只有它被替换，这是升级本身**） |
+
+**所以 C 阶段「升级后数据完整性」这条判据，`§57` 已经给过答案** —— 这次只要复核关键几项。
+
+### 68.7 C 阶段该按这个顺序走
+
+```
+① 备份 secrets / D:\anc 的两个 git 仓库 / org
+② 把 5.9.3 缓存包复制一份到 E:\ 当「回程票」（429 MB，别只依赖 %TEMP%）
+③ 断网（最稳的冻结手段）
+④ 卸载 5.9.3：Uninstall WorkBuddy.exe /currentuser /S
+⑤ 装 5.8.3：E:\Downloads\WorkBuddy-win32-x64-user-5.8.3.41334564-db0e9b51.exe /S
+   ← 装完**立刻**落地三件套（a 改配置 / b 移走旧包 / c endpoint 不可达），否则 3 秒后它就开始升
+⑥ 在 5.8.3 上跑 REBUILD（**断网状态下**，全本地，不需要网络）+ 计时
+   ⚠️ 预期：补丁注入会失败（§58 已证 5.8.3 上 --inspect-brk 注入不通）。
+      这是**已知异类**，记录下来，不算 REBUILD 失败。
+⑦ 记录 5.8.3 基线（版本号、补丁状态、doctor 哪些红）
+⑧ 恢复升级：放回缓存包 + endpoint + 开关 → 几秒内静默装到 5.9.3
+⑨ 验 R7：数据完整（对 §57 那几项）+ 补丁自动重新注入（applied=true / mode=hash / pid 活）
+⑩ 升级后跑 doctor + deploy-verify，修升级带出的问题
+```
+
+**关键在于 ③ ⑥ 必须断网**：否则 5.8.3 装完 3 秒就开始升级，REBUILD 根本做不完。
+
+### 68.8 两个窄窗口的坑
+
+- **时间窗很窄**：3 秒 / 10 秒 / 30 秒。装完到"它开始升"之间只有几秒。
+- **缓存目录换过名字**：降级时不带 5.8.3 的缓存，但 **5.8.3 一定会捡 5.9.3 的那个包**。
+
+### 68.9 没查到 / 没验的
+
+- 5.8.3 的 `app.asar` **没反编译**。它的开关键名与缓存目录名是**从 5.8.3 运行日志反推**的
+  （feed / URL / 文件名 / NSIS 参数与 5.9.3 完全一致，所以推断可靠但不是直接证据）。
+- 卸载是否保留 `.workbuddy` **未实测**（只有 `§58.2` 的旁证：`%ProgramData%\anc` 没被动）。
+- 5.8.3 的安装器是否同样支持 `/S --updated /UPDATE=1 /D=` **未验证**。
