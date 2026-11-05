@@ -7580,7 +7580,7 @@ no duplicates across split scripts
 36 tasks / 2 bindings / 8 submissions / 5 issues / 8 patch_drafts / 1 dayend / 15 outbox / 60 reminders ——
 **没有异常数据，没有被意外创建过的痕迹。**
 
-## 70. 阶段 B 实测：ACL 自愈通过；`deploy.ps1 -Apply` 跑不完（2026-11-05）
+## 70. 阶段 B 实测：全部通过（ACL 自愈 7.6 秒 / `deploy.ps1 -Apply` 8.4 秒）（2026-11-05）
 
 阶段 B 是发布前唯一没做过的那次验证：**删掉手工补的东西，看代码能不能自己修回来**。
 这一节记录实验设计、结果，以及**这次暴露的新问题**。
