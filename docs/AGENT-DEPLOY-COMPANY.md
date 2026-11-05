@@ -62,7 +62,7 @@ D:\anc\                    vault + org + build
 | # | 要什么 | 用在哪 | 怎么来的 | 填这里 |
 |---|---|---|---|---|
 | 1 | **这台机器能当 7×24 主机吗**（不会关机/睡眠） | 整个方案的前提 | 问人 | ☐ 能 / ☐ 不能 |
-| 2 | **企业微信 corpId** | 企微应用配置 | 企微管理后台 → 我的企业 | `ww________________` |
+| 2 | ~~企业微信 corpId~~ **（不需要）** | — | 见 `§11.1` 的说明：出站走 webhook、入站走 WorkBuddy，都不用 corpId | — |
 | 3 | **公司 bot 的企微机器人 webhook** 或 **应用 secret** | bot 发消息 | 企微群 → 群机器人 → 复制 webhook；或自建应用拿 secret | `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=______` |
 | 4 | **公司名** | persona、备份目录名 | 问人 | `________________` |
 | 5 | **公司 bot 叫什么** | persona、群映射 | 问人 | `________________` |
@@ -630,11 +630,27 @@ powershell -File scripts\deploy-state.ps1 -Side company -Mark org -AsDone
 
 | 做什么 | 在哪 | 为什么 |
 |---|---|---|
-| 建**自建应用**，拿 `corpId` + `secret` | 管理后台 → 应用管理 | bot 要用它发消息 |
+| ~~建自建应用，拿 `corpId` + `secret`~~ | 管理后台 → 应用管理 | **⚠ 不需要，见下面的说明** |
 | 建**每个员工的群**（本人 + 公司 bot + 个人 bot + 群机器人） | 企微客户端 | 一人一群 = 身份边界 |
 | 群里加**群机器人**，拿 webhook | 群设置 → 群机器人 | 提醒从这个 webhook 发 |
 | 设**私聊限管理员** | 管理后台 → 应用 → 可见范围 | 否则谁都能私聊公司 bot |
 | 通讯录里查每个员工的 **userid** | 管理后台 → 通讯录 | §10.4 要用 |
+
+> **⚠ `corpId` / `corpSecret` 其实不需要（2026-11-05 查证，`VERIFY §77`）**
+>
+> §11.1 原来写着「建自建应用，拿 corpId + secret —— bot 要用它发消息」。**这句是错的。**
+> 实际两条路都不用它：
+>
+> | 方向 | 走什么 | 凭据在哪 |
+> |---|---|---|
+> | **出站**（机器人发消息） | **群机器人 webhook** | `secrets\webhook.txt` / `ops-webhook.txt` |
+> | **入站**（bot 收群消息） | **WorkBuddy 自带的企微机器人** | WorkBuddy 自己的 `settings.json`（`automation.wecomPushConfig`） |
+>
+> 全仓库代码里 `corpid.txt` / `corpsecret.txt` 的引用数是 **0**（`outbound-scan.ts` 只是扫描出站内容里
+> 出现 `corpsecret` 字样**防泄密**，`doctor.ps1` 只是 `git grep` 查它**有没有进 git** —— 都不是在用）。
+>
+> **什么时候才需要**：要用**自建应用 API** 主动给某个人发私信、或查通讯录时。当前架构不走这条路。
+> 真要用再建，建完写进 `secrets\corpid.txt` / `corpsecret.txt` 即可（ACL 已经覆盖这个目录）。
 
 ### 11.2 你做的（写配置）
 
