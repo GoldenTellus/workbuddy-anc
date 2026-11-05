@@ -1,6 +1,6 @@
 # 上游复用清单
 
-版本:0.4(2026-11-03，§3 按零差距口径重判)。0.3 补录 6 条原表漏判(`tools/harness-proxy/tool-turn-filter.mjs`、`light/vault-service/README.md`、`tsconfig.json` 的误判、`docs/RESEARCH.md` 等),并新增 §6「按阶段取用」把本表与 PLAN 2.0 的 A/R/H/C/V 对齐。0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
+版本:0.4(2026-11-03，§3 按零差距口径重判)。0.3 补录 6 条原表漏判(`tools/harness-proxy/tool-turn-filter.mjs`、`light/vault-service/README.md`、`tsconfig.json` 的误判、`reference/upstream/originals/RESEARCH.md` 等),并新增 §6「按阶段取用」把本表与 PLAN 2.0 的 A/R/H/C/V 对齐。0.2(2026-11-01)。范围:上游 main(`90e4fb2`)全部内容 + [`reference/upstream/unmerged/`](../reference/upstream/unmerged/README.md) 里三个未合并分支。对照的设计是 [FORK-DIRECTION.md](./FORK-DIRECTION.md)。
 
 > **0.2:上游文件已按本表整理**(2026-11-01)。下文的「来源」列仍写上游原路径(便于对照上游),现在的位置是:
 >
@@ -9,7 +9,7 @@
 > - 挪进本库模板目录:`vault-templates/company/`、`vault-templates/collab/` → `light/templates/vault/`。
 > - 上游设计文档(SPEC、LESSONS、LIGHT-MVP、RESEARCH、M1-DESIGN)留在原位,开头标了「上游原文」。
 
-文中「M1-DESIGN §n」指上游的 M1 设计 [`docs/M1-DESIGN.md`](./M1-DESIGN.md)(main 版),和本库 1.1 的 M1 无关（1.1 已归档：`git show 52e816a:docs/PLAN.md`）;写明「该分支」的指 `reference/upstream/unmerged/feat-m1-w1/docs/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
+文中「M1-DESIGN §n」指上游的 M1 设计 [`reference/upstream/originals/M1-DESIGN.md`](../reference/upstream/originals/M1-DESIGN.md)(main 版),和本库 1.1 的 M1 无关（1.1 已归档：`git show 52e816a:docs/PLAN.md`）;写明「该分支」的指 `reference/upstream/unmerged/feat-m1-w1/reference/upstream/originals/M1-DESIGN.md`。两版的差异见 M1-DESIGN 开头的本库说明。
 
 判定分五档:**直接用**(基本原样)/ **改写**(结构保留、内容要改)/ **借鉴**(只取思路)/ **仅参考** / **不适用**。
 
@@ -45,7 +45,7 @@
 | `validateRoundTrip` | 借鉴 | 落盘后读回,对拍 hash | 去掉 TOML 解析 |
 | `src/cli.ts` | 仅参考 | 退出码 0/1/2/3、`--json`、错误固定两行 `ERROR` + `FIX` | 命令全是桩 |
 
-**要新写的**:落盘流程(设计见该分支 `docs/M1-DESIGN.md` §4.4)。Windows 上目标文件可能正被 WorkBuddy 打开,`rename` 会报 EPERM / EBUSY,要加重试。
+**要新写的**:落盘流程(设计见该分支 `reference/upstream/originals/M1-DESIGN.md` §4.4)。Windows 上目标文件可能正被 WorkBuddy 打开,`rename` 会报 EPERM / EBUSY,要加重试。
 
 ### 2.2 个人 bot 接入脚本与技能名片(FORK §5.3)
 
@@ -53,7 +53,7 @@
 |---|---|---|---|
 | `light/skills/anc-join/SKILL.md` 铁律三条 | 直接用 | 个人 bot 的 `CODEBUDDY.md` | — |
 | `anc-join` 名片生成规则、名片模板、三槽位校验(单行、非空、≤200 字) | 改写 | 接入脚本第 3 步,**这批里价值最高** | 读取路径改成 `\\主机\vault\skills\<name>\SKILL.md`,读不到就去群里问公司 bot;删 `vault_read` / `claude mcp add` / `~/.claude/skills/`;两份名片由同一个模板生成,不手写 |
-| `docs/LIGHT-MVP.md` 的名片安全底座五条 | 直接用 | 每张技能名片 | — |
+| `reference/upstream/originals/LIGHT-MVP.md` 的名片安全底座五条 | 直接用 | 每张技能名片 | — |
 | v1 / v2 `vault-service/src/index.ts` 的 `INSTRUCTIONS`(先读路由、查不到说尚未入库、搜索结果只是样本、改前先读) | 直接用 | 两份 `CODEBUDDY.md` | — |
 | `validateDiff` 的 `--adopt` 闸门 | 改写 | 已有 `CODEBUDDY.md` 时先备份、提示确认 | 见 2.1 |
 | M1-DESIGN §8 用第二个系统用户当干净机测试 | 借鉴 | 接入脚本用第二个 Windows 用户实测 | — |
@@ -149,7 +149,7 @@
 | `light/vault-service/README.md` | 改写 | **C1**(接口契约)、**C2**(投影/搜索) | 取 MCP 五工具(`vault_list/read/search/write/history`)的字段与错误语义、etag CAS 的"窄窗口竞争"说明、搜索资源上限(≤400 文件 / 15MB 每次)、二进制 ≤6MB、`_history/` 只读;Worker / R2 / wrangler / `claude mcp add` 全不取 |
 | `light/vault-service/tsconfig.json` | **改写**(修正原判"直接用") | 若引入 strict 编译 | 原文是 Worker 配置(`types:["@cloudflare/workers-types"]`、`moduleResolution:"bundler"`、`noEmit`);本库是 Node + `node:sqlite`,换 `types:["node"]`、`module:"nodenext"`、`target:"es2023"`。`strict` / `noUncheckedIndexedAccess` 这两条理念直接用 |
 | `light/vault-service/.dev.vars.example` | 仅参考 | C1 的 token 设计 | 上游是"单 token 一家公司";本库是"按群一个 webhook + 服务 token",键名与粒度都不能照搬 |
-| `docs/RESEARCH.md` | 仅参考(原表未判) | 对外材料、选型答辩 | §5 IM 平台矩阵可作"为什么是企微"的旁证;§6「文件系统当数据库」的行业背书可引用;§2/§3/§4(cc-connect 选型、OpenClaw、Harness 双后端)与本库无关 |
+| `reference/upstream/originals/RESEARCH.md` | 仅参考(原表未判) | 对外材料、选型答辩 | §5 IM 平台矩阵可作"为什么是企微"的旁证;§6「文件系统当数据库」的行业背书可引用;§2/§3/§4(cc-connect 选型、OpenClaw、Harness 双后端)与本库无关 |
 | 根 `.gitignore`、上游 `AGENTS.md` / `CLAUDE.md` | 仅参考 | 措辞对照 | `.gitignore` 的 `_research/` 本库已同源采用;`.dev.vars` / `.wrangler/` 不需要。上游指引只作"铁律怎么写、诚实条款怎么落到 persona"的措辞对照,避免两套指引漂移 |
 
 ## 3. 之前标"不适用"的，按功能等价重判
@@ -240,7 +240,7 @@
 
 | 阶段 / 任务 | 取哪份 | 取什么 | 明确不取 |
 |---|---|---|---|
-| R 收尾(R0–R8) | 基本不取 | — | 上游没有"运行身份迁移""注销后无人登录""干净机计时"这类东西(它的形态是 Mac + launchd)。R3 的告警冷却写法可参照 `docs/M1-DESIGN.md` §5.2 |
+| R 收尾(R0–R8) | 基本不取 | — | 上游没有"运行身份迁移""注销后无人登录""干净机计时"这类东西(它的形态是 Mac + launchd)。R3 的告警冷却写法可参照 `reference/upstream/originals/M1-DESIGN.md` §5.2 |
 | H7 出站扫描 | LESSONS §2.7 | 扫描哪些凭据类型 + "WorkBuddy 自己的回复扫不到"这个盲区 | `rg` 实现 |
 | H8 check-public | 上游 `scripts/check-public.sh`、§2.7 | 规则清单:企微 webhook、corpid `ww[0-9a-f]{16}`、`C:\Users\<真名>`、内网段、key/secret 明文赋值 | 它的扫描范围(缺 `.mjs` / `.ps1`)与 bash 实现 |
 | H10 frontmatter | `feat-m1-w1/src/org/frontmatter.ts` | 解析逻辑 + BOM 教训(首行必须精确 `---`) | 它的字段集 |

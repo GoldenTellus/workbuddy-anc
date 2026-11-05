@@ -55,6 +55,87 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
 - 前缀由代码每轮拼接，**不依赖模型记忆**。
 
+## 群绑定表（chat_bindings）
+
+> 这一节原先是独立的 `docs/CHAT-BINDINGS.md`，2026-11-05 并进来 —— 它和「群身份注入」是同一件事的两半：
+> 补丁负责**把 chatid 塞进消息**，这张表负责**把 chatid 翻成人**。拆两份会让人来回跳。
+
+### 为什么要有这张表
+
+agent 在消息开头能看到 `[anc:chat=<chatid> from=<userid>]`（D17 的注入），但**它不该自己记住谁是谁** —— 名单是易变事实，模型记不住也不该记。
+
+所以把「chatid → 员工」放进本地 SQLite 当真相；agent 只负责把前缀里的 chatid 拿来查，不在上下文里存名单。
+
+### 表结构
+
+```sql
+-- 真实定义见 src/service/bindings.ts; 默认库 %ProgramData%\anc\data\anc.db
+CREATE TABLE IF NOT EXISTS chat_bindings (
+  chat_id      TEXT PRIMARY KEY,
+  employee     TEXT NOT NULL,
+  userid       TEXT,              -- 企微 userid（wokc… 形态）；一人一群时可空
+  webhook_file TEXT,              -- secrets 目录下的文件名，如 test2-webhook.txt
+  note         TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+```
+
+**这两列容易被文档漏掉**（2026-11-05 前的 `CHAT-BINDINGS.md` 就漏了 `userid` / `webhook_file`）：
+
+- `userid`：企微的员工 userid。`resolveByUserid()` 靠它做「交办人的通知发到交办人的群」。
+- `webhook_file`：每群一个 webhook 文件。`loop.ts` 按它选文件发提醒，**没登记就发不出去**（`doctor` 的 `bindings` 那一项查的就是这个）。
+
+约束：
+
+- 一个人一个群（D7），正常情况下 `employee` 唯一；表本身不强制，方便临时一人多群。
+- `webhook_file` 只接受 `secrets` 目录下的文件名（字母数字 `._-`，以 `.txt` 结尾），防止路径穿越。
+- schema 由 `scripts/anc-bind/bind.mjs` 或本地小服务建，重复执行安全（`CREATE TABLE IF NOT EXISTS`）。
+
+### 用法
+
+```powershell
+# 建群时绑定（管理员执行）
+node scripts\anc-bind\bind.mjs bind --chat-id <chatid> --employee <姓名>
+
+# 带 userid 和 webhook（实际部署都需要）
+node scripts\anc-bind\bind.mjs bind --chat-id <chatid> --employee <姓名> --userid <wokc…> --webhook-file test2-webhook.txt
+
+# 查
+node scripts\anc-bind\bind.mjs resolve --chat-id <chatid> --json
+
+# 改绑（员工换群 / 离职交接）
+node scripts\anc-bind\bind.mjs bind --chat-id <chatid> --employee <姓名> --note "2026-11 换人"
+
+# 解绑 / 列表
+node scripts\anc-bind\bind.mjs unbind --chat-id <chatid>
+node scripts\anc-bind\bind.mjs list
+```
+
+退出码：0 成功 / 1 查不到（`resolve`）/ 2 参数或环境错误。支持 `--json`。
+
+测试：`node --test scripts/anc-bind/bind.test.mjs`。
+
+### 谁写、什么时候写
+
+- **只允许管理员写**：绑定发生在建群那一步（一人一群），或离职交接时由管理员改。
+- 员工和 agent 都不能改这张表；agent 只读。
+- 绑定口令方案（管理员在群里发一句、bot 记住）**不再使用** —— 那是 T16 不通过时的退路，现在有 chatid 就不需要了。
+
+### agent 侧怎么用
+
+1. 每轮消息开头有 `[anc:chat=<chatid> from=<userid>]`；
+2. persona 规则：**先拿 chatid 查绑定表，查到再按员工走**；查不到就按「未绑定的人」处理，不猜；
+3. 具体查法在本地工具/技能里实现（读这张表或调本地小服务的接口），不在 prompt 里塞名单。
+
+### 隐私与边界
+
+- chatid、userid 都是标识符，不是凭据；库只在本机，`*.db` 不入 git。
+- 日志里不写 chatid：`workbuddy-patch.log` 只记 `INJECTED`/`APPLIED`/`SKIP`。
+- 与 D13/D14 一致：原件与敏感数据不进 git；绑定表属于内部区数据，转公开前确认不在仓库里。
+
+---
+
 ## 目标版本
 
 | 项 | 值 |

@@ -10,7 +10,7 @@
 
 ## 2. 和上游的关系
 
-结构照搬上游第二个 reference deployment(制造企业试点,见 [LESSONS-MANUFACTURING-PILOT.md](./LESSONS-MANUFACTURING-PILOT.md)):服务器上的常驻公司 bot + 员工电脑上的个人 agent + 两者经 IM 协作。替换的组件:
+结构照搬上游第二个 reference deployment(制造企业试点,见 [LESSONS-MANUFACTURING-PILOT.md](../reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md)):服务器上的常驻公司 bot + 员工电脑上的个人 agent + 两者经 IM 协作。替换的组件:
 
 | 试点 | 本库 |
 |---|---|
@@ -99,7 +99,7 @@ Windows 主机(7×24)
 - 群就是身份边界:公司 bot 和本地小服务靠「哪个群」认人。
 - 群标识由 D17 的注入提供:agent 在消息正文开头读 `[anc:chat=<chatid> from=<userid>]`;本地小服务用同一个 chatid 做映射。不依赖 IM 读取 API(那个仍被企业授权挡着,见 §6/§11)。
 - 关掉 patch(`ANC_WB_PATCH=0`)时降级为:agent 看不到群,只能靠 persona 里的绑定口令认群——脆弱,依赖会话不被压缩/重置(T20/T22)。这是降级路径,不是默认。
-- chatid 到员工的对应关系放本地 SQLite(`chat_bindings` 表),管理员建群时写入,agent 只读;表结构与用法见 [CHAT-BINDINGS.md](./CHAT-BINDINGS.md)。
+- chatid 到员工的对应关系放本地 SQLite(`chat_bindings` 表),管理员建群时写入,agent 只读;表结构与用法见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md)。
 - 入职顺序:分配 WorkBuddy 席位 → 员工电脑装 WorkBuddy 并接企业微信 → 运行接入脚本(§5.3)→ 建三方群 → 加群机器人。
 - 员工电脑关机时群照常工作,只是个人 bot 暂时不回话。
 
@@ -211,7 +211,7 @@ TypeScript + Node 22 实现(D11)。
 - **防假绿**:所有定时任务写「输出新鲜度 + 成功标记」,watchdog 按它判断,不以「没消息」当「没事」。
 - **离机备份**:两区 vault 的 git、`_originals/`、SQLite,定期复制到主机以外。上游的教训:版本历史不是备份,vault 不能是唯一副本。
 - **重建 runbook**:主机坏了,按文档在新机器上从备份重建。
-- **脚本约定**(沿用上游 [M1-DESIGN.md](./M1-DESIGN.md) §6,main 版与分支版一致):退出码 0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已自动回滚;改配置的命令默认 dry-run,`--apply` 才落盘;错误固定两行 `ERROR` + `FIX`;支持 `--json`;改配置的命令都有 `rollback`。
+- **脚本约定**(沿用上游 [M1-DESIGN.md](../reference/upstream/originals/M1-DESIGN.md) §6,main 版与分支版一致):退出码 0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已自动回滚;改配置的命令默认 dry-run,`--apply` 才落盘;错误固定两行 `ERROR` + `FIX`;支持 `--json`;改配置的命令都有 `rollback`。
 
 ## 6. WorkBuddy 的已观察行为
 

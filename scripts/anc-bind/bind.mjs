@@ -39,7 +39,7 @@ function parseArgs(argv) {
 
 function fail(msg, code = 2) {
   console.error('ERROR ' + msg);
-  console.error('FIX   看 docs/CHAT-BINDINGS.md 的用法');
+  console.error('FIX   看 docs/WORKBUDDY-PATCH.md 的用法');
   process.exit(code);
 }
 

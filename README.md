@@ -141,10 +141,10 @@ Windows 主机（7×24）
 | 做到哪了、下一步做什么 | [docs/PLAN.md](./docs/PLAN.md) |
 | 实测记录 | [docs/VERIFY.md](./docs/VERIFY.md) |
 | 主机怎么运维、怎么重建 | [docs/OPS.md](./docs/OPS.md)、[docs/REBUILD.md](./docs/REBUILD.md) |
-| 各组件用法 | [LOCAL-SERVICE](./docs/LOCAL-SERVICE.md)、[INGEST](./docs/INGEST.md)、[RENDERER](./docs/RENDERER.md)、[ONBOARDING](./docs/ONBOARDING.md)、[WORKBUDDY-PATCH](./docs/WORKBUDDY-PATCH.md)、[CHAT-BINDINGS](./docs/CHAT-BINDINGS.md) |
+| 各组件用法 | [LOCAL-SERVICE](./docs/LOCAL-SERVICE.md)、[INGEST](./docs/INGEST.md)、[RENDERER](./docs/RENDERER.md)、[ONBOARDING](./docs/ONBOARDING.md)、[WORKBUDDY-PATCH](./docs/WORKBUDDY-PATCH.md) |
 | 借了上游什么 | [docs/REUSE-MAP.md](./docs/REUSE-MAP.md) |
 
-上游原文（仅作参考）：[SPEC.md](./SPEC.md)、[docs/M1-DESIGN.md](./docs/M1-DESIGN.md)、[docs/LESSONS-MANUFACTURING-PILOT.md](./docs/LESSONS-MANUFACTURING-PILOT.md)、[docs/LIGHT-MVP.md](./docs/LIGHT-MVP.md)、[docs/RESEARCH.md](./docs/RESEARCH.md)。
+上游原文（仅作参考）：[SPEC.md](./SPEC.md)、[reference/upstream/originals/M1-DESIGN.md](./reference/upstream/originals/M1-DESIGN.md)、[reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md](./reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md)、[reference/upstream/originals/LIGHT-MVP.md](./reference/upstream/originals/LIGHT-MVP.md)、[reference/upstream/originals/RESEARCH.md](./reference/upstream/originals/RESEARCH.md)。
 
 ## 开发约定
 
