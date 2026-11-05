@@ -16,6 +16,18 @@
 | [RESEARCH.md](../reference/upstream/originals/RESEARCH.md) | `docs/RESEARCH.md` | 对外材料/选型答辩时引用：§5 IM 平台矩阵可作「为什么是企微」的旁证；§6「文件系统当数据库」的行业背书 |
 | [LIGHT-MVP.md](../reference/upstream/originals/LIGHT-MVP.md) | `docs/LIGHT-MVP.md` | **只有一处**：名片安全底座五条（`REUSE-MAP` 判定「直接用」），用在每张技能名片上 |
 
+## 注意：`SPEC.md` 里有两处旧链接会指向空
+
+`SPEC.md` 是上游原文（没改过），它正文里引用了两个已经被移走的文件：
+
+| SPEC.md 里的旧链接 | 现在实际位置 |
+|---|---|
+| `docs/LESSONS-MANUFACTURING-PILOT.md` | [`reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md`](../reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md) |
+| `docs/RESEARCH.md` | [`reference/upstream/originals/RESEARCH.md`](../reference/upstream/originals/RESEARCH.md) |
+
+**为什么不用改 `SPEC.md`**：它是上游原文，改了就不再是原文。按 `REUSE-MAP` 的口径，
+上游文档「原位保留、标了就行」。读到时按下表换算即可。
+
 ## 怎么取上游的其他原文
 
 不必依赖这 4 份副本：

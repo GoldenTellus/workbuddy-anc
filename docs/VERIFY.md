@@ -6981,3 +6981,83 @@ automation.wecomPushConfig = { mode: "websocket", botId: "aibrj…", botSecret: 
 **所以「群身份注入」这个核心功能，至今只被 `test-emit` 这种人造消息验证过，从未被真实群消息验证。** `canary` 永远是 WARN、`bot-reply` 永远是 SKIP，根子在这里。
 
 **这不是我能在本机修好的** —— 要么在企微后台把现有智能机器人（`aibrj…`）的「接收消息」打通，要么按 `§11.1` 建自建应用 + `corpid`/`corpsecret`。两条都要人在后台操作。
+
+## 65. 发布前审计：真正的风险是「手工修补没固化」（2026-11-05）
+
+维护者定了 1.0 的发布路线（不用虚拟机、全部降级到本机、做不了标未做不卡 1.0），并明确要求
+**正式推之前先把 bug / 漏洞过一遍**。这一节是第一次系统性审计的结果。
+
+### 65.1 SQL 层：6 处可疑全部安全（这是正面结论，值得记）
+
+第一轮按「模板字符串里带 `${}`」筛出 6 处，逐个人工验过：
+
+| 位置 | 写法 | 判定 |
+|---|---|---|
+| `db.ts:204` | `PRAGMA table_info(...)` —— 表名用模板串拼 | **安全**。`addCol` 是 `migrate()` 内部的 `const` 闭包，外部调不到；实参全是硬编码字面量（`chat_bindings`, `userid`, `TEXT`） |
+| `db.ts:205` | `ALTER TABLE ... ADD COLUMN ...` —— 表名/列名/类型三个变量全拼进去 | **安全**。同上（闭包 + 字面量实参） |
+| `tasks.ts:94` | `WHERE ` + `where.join(' AND ')` | **安全**。`where` 里只 push 字面量 `'status = ?'` / `'chat_id = ?'`，值走 `args` 参数绑定 |
+| `outbox.ts:49` | `SELECT * FROM outbox ${where}` | **安全**。`where` 是三元表达式的两个字面量 |
+| `backup.ts:8-9` | `VACUUM INTO '${safe}'`，`safe = target.replace(/'/g, "''")` | **安全**。按 SQLite 规则把单引号转义成两对 |
+
+**结论**：参数绑定这块写对了。**这一层不需要改。**
+
+### 65.2 真正的风险排第一的是这个：`deploy.ps1` 里 `icacls` 一处都没有
+
+```
+scripts/deploy.ps1 里 `icacls|Set-Acl|/grant|/inheritance` 的命中数：0
+```
+
+而 2026-11-05 这一整天，`doctor` 从 `fails=3` 走到 `fails=0`，其中**至少 5 处是我手工敲的**：
+
+| # | 手工做了什么 | 现在由谁保证 | 清空重装后会怎样 |
+|---|---|---|---|
+| 1 | `icacls secrets /grant 'LOCAL SERVICE:(OI)(CI)RX'` | **无人** | `secrets-acl` 报「服务身份读不到」 |
+| 2 | 逐个 `secrets` 文件补 `LOCAL SERVICE:(RX)` | **无人** | 同上（`secrets-acl` 的第二方向） |
+| 3 | `icacls data /grant 'LOCAL SERVICE:(OI)(CI)M'` | **无人** | `data-acl` FAIL |
+| 4 | 6 个日志文件（`loop.log`/`http.log`/`patch-in.log`/`patch-out.log`/`selfheal.log`/`audit.log`）逐个补 `(M)` | **无人** | `data-acl` FAIL + `heartbeat` FAIL（`>> loop.log` 写不进去，任务却显示「退出码 0」） |
+| 5 | `patch-state.json` 的内容、`settings.json` 的 `wecomPushChatId` 清空 | **无人** | `patch` 判据骗人 / 推送发到不存在的 `probe` |
+
+**这条的严重性**：`doctor` 的判据是好的（`§63` 刚补成双向），**但「红了怎么修」这一步只写在 `fix` 字符串里等人手工敲**。`doctor` 现有 **19 条 `fix` 提示，其中 5 条是「让人敲 icacls」**。
+
+**后果链条**：
+
+```
+deploy.ps1 缺 ACL
+  → 清空重装后 doctor 必红 5 项
+  → 陌生 agent 装完看到一片红，会以为是文档不够清楚
+  → 它实际撞到的是「代码缺一块」
+  → 1.0 判据 4（agent 拿到链接能自己装）验出来的结论不可信
+```
+
+**所以顺序必须是：先补 `deploy.ps1`，再清空，最后才让陌生 agent 装。**
+
+### 65.3 依赖漏洞：至今是空白
+
+```
+$ npm audit
+npm error code ENOLOCK
+npm error audit This command requires an existing lockfile.
+```
+
+仓库没有 `package-lock.json`（`package.json` 是 `"private": true`，不发布，所以从来没生成过）。
+`npm audit` 依赖 lockfile 才能算，**所以「依赖有没有已知漏洞」这个问题从来没被回答过**。
+
+发布前至少要：`npm i --package-lock-only` 生成 lockfile → 跑 `npm audit` → 有洞就处理。
+
+### 65.4 测试覆盖率：127 项测试覆盖多少行，不知道
+
+`package.json` 的 scripts 只有 `test / test:bind / test:service / test:ingest / test:render / ingest / render / service / scan`，
+**没有 `coverage`**。
+
+Node 24 自带 `--experimental-test-coverage`，加一行就能算。**127 项测试听起来多，但没有覆盖率的数字，就不知道它护住的是核心路径还是边角。**
+
+### 65.5 结论：发布前的路是四段，顺序不能换
+
+| 阶段 | 做什么 | 为什么这个顺序 |
+|---|---|---|
+| **A. 补代码缺口** | ① `deploy.ps1` 补 ACL（5 处）② 生成 lockfile + `npm audit` ③ 加 `coverage` 脚本 ④ 错误路径测试（磁盘满 / 文件被占 / SQLite 锁 / 并发写） | 补不上，后面每一步都是在「手工修过的环境」上验，结论不可信 |
+| **B. 证明代码能自己修回来** | 把机器上手工补的东西**删掉**（ACL 恢复成「刚部署完」的状态）→ 跑 `deploy.ps1` → 看能不能自己回 `fails=0` | 这一步才证明「别人装得成」。**之前从没做过** |
+| **C. 清空重装** | 清空 → 装 5.8.3 → 只按文档装、不手工补 → 记下哪些红 → 升级到最新（→ R7） | 把所有隐性手工依赖暴露出来 |
+| **D. 陌生 agent 装公司侧** | 维护者开新对话，粘 `E:\anc-backup-20261104\AGENT-PROMPT.txt` | 只有 A–C 做完，它验的才是「文档够不够」 |
+
+**一句话**：**清空重装最大的价值不是「验 O-5」，是「把所有隐性手工依赖暴露出来」。**

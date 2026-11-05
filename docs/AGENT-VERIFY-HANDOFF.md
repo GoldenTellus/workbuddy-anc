@@ -578,6 +578,54 @@ Select-String -Path docs\*.md -Pattern '[\w\\\.\-]+\.(ps1|mjs)' -AllMatches |
 
 ---
 
+#### ㉙ **装完 `doctor` 红 5 项不是你的错 —— `deploy.ps1` 缺 ACL（已知缺口）**
+
+**这一条最重要，先读它再动手。**
+
+**症状**：你严格按 `AGENT-DEPLOY-COMPANY.md` 装完，`doctor` 却报这几个 FAIL：
+
+```
+[FAIL] secrets-acl   secrets 没给服务身份读权限（LOCAL SERVICE / SYSTEM 都不在）
+[FAIL] data-acl      data 目录没给服务身份写权限
+[FAIL] heartbeat     loop.log 很久没更新
+```
+
+**根因**：`scripts/deploy.ps1` 里 **`icacls` 一处都没有**（2026-11-05 审计实测：`icacls|Set-Acl|/grant|/inheritance` 命中数 = 0）。
+原来这些权限是**人工在部署后手工敲的**，没写进脚本。所以「按文档装」装不出 `doctor` 全绿。
+
+**为什么 `heartbeat` 也会红**：`anc-loop.cmd` 里有 `>> "%LOGF%"` 重定向，而 `loop.log` 对 `LOCAL SERVICE` 不可写。
+症状很阴 —— 计划任务显示「每分钟成功、退出码 0」，但 `loop.log` 的 mtime 不动。
+
+**你该做什么**（在报告「装完了」之前）：
+
+```powershell
+$Root = "$env:ProgramData\anc"
+
+# ① secrets：服务身份要能读，广泛组不能读
+icacls "$Root\secrets" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "LOCAL SERVICE:(OI)(CI)RX"
+Get-ChildItem "$Root\secrets" -File | ForEach-Object {
+    icacls $_.FullName /grant "LOCAL SERVICE:(RX)"
+}
+
+# ② data：服务身份要能写（日志都在这）
+icacls "$Root\data" /grant "LOCAL SERVICE:(OI)(CI)M"
+foreach ($f in "loop.log","http.log","patch-in.log","patch-out.log","selfheal.log","audit.log") {
+    $p = Join-Path "$Root\data" $f
+    if (Test-Path $p) { icacls $p /grant "LOCAL SERVICE:(M)" }
+}
+```
+
+**做完再跑一次 `doctor`**，应该回到 `fails=0`。
+
+**注意**：判据里**不能**用 `SYSTEM` 顶替 `LOCAL SERVICE` —— `anc-service` / `anc-http` / `anc-backup` **全跑在 `LOCAL SERVICE`**。
+允许替代身份会让判据在「删掉 LOCAL SERVICE」时照样 PASS（这个错犯过一次，见 `VERIFY §63`）。
+
+**这个缺口正在修**（`docs/RELEASE-CHECKLIST.md` 阶段 A1）。修好之后这一条就作废 —— 但你要先确认：
+
+```powershell
+Select-String -Path scripts\deploy.ps1 -Pattern "icacls"    # 有输出 = 已修，不用手工补
+```
+
 ## 5. 测试方法
 
 主机验证 `VERIFY §42`–`§48` 时用的思路，你可以直接复用。
