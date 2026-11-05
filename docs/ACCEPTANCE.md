@@ -31,7 +31,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | # | DoD 条款（简写） | 状态 | 证据 | 卡点 |
 |---|---|---|---|---|
 | E-1 | 一台 Windows 主机 7×24 跑公司 bot；员工电脑跑个人 bot；两边都经企微 | 🟡 | `docs/OPS.md:7-19`（9 个任务）`scripts/register-tasks.ps1:71-136`；`docs/VERIFY.md:305`（T4 锁屏整夜照常收发） | 员工侧个人 bot 尚未部署（本机只有一个账号）；7×24 连续运行无浸泡记录（V5 未做） |
-| E-2 | 一人一群；私聊公司 bot 仅管理员 | 🟡 | `src/service/bindings.ts:30`、`src/service/loop.ts:281-290`（只发本群 webhook，不退回默认群）；测试「隔离：未绑定群的消息不退回默认 webhook」`src/service/service.test.ts:278`；`docs/CHAT-BINDINGS.md:52-56`；`docs/FORK-DIRECTION.md:62` | 私聊限管理员属企微后台配置，VERIFY T11 未测（`docs/VERIFY.md:312`） |
+| E-2 | 一人一群；私聊公司 bot 仅管理员 | ✅（降级 9 成） | **2026-11-05 完成**：① **私聊限管理员的后台配置已由维护者在企微后台设置**；② 本机验隔离 —— `npm test` 的「隔离：未绑定群的消息不退回默认 webhook，webhook_file 不能是路径」**PASS**；`src/service/loop.ts:229` 注释与实现一致（「每条按自己群的绑定选 webhook，**查不到就失败，不退回默认群**」）；实测未绑定 chat `wrkc…UNBOUND` 在 `chat_bindings` 查询为**空**、`loop.ts` 走失败分支 | **为什么 9 成**：「一人一群」在真机上只验了 **1 个人**（`owner`）—— 要验"多人群互不串"得有第二个真实员工的群。**后台那一下**（可见范围）本机无法代劳，已由维护者完成 |
 | E-3 | 两个 bot 都 @ 才回应 | ✅ | `docs/FORK-DIRECTION.md:63`（D20 不放宽）；`docs/VERIFY.md:303`（T2）、`:308`（T7） | — |
 | E-4 | 主机不开自动登录；重启后人工登录恢复；开机提醒兜底 | ✅ | `HKLM\…\Winlogon`：`AutoAdminLogon=0`（2026-11-02 由 1 改为 0）；`scripts/boot-alert.ps1:1-24`（开机 60 秒后查 WorkBuddy，缺失即发运维群）；`scripts/register-tasks.ps1:86-89` | 与 D6 一致；重启后需人工登录，登录前 bot 离线并由 boot-alert 告警（R2 已由维护者判定通过） |
 | E-5 | 运行身份按 D25：部署账号为管理员，doctor 校验进程 owner 与部署账号一致 | ✅ | `scripts/doctor.ps1:194-206`（`dedicated-user` / `bot-process-owner`，期望身份来自配置）；`scripts/register-tasks.ps1:62-66`；D25（`docs/PLAN.md:169`） | doctor `bot-process-owner` 与 9 个任务 principal 全 PASS；不再要求 `anc-bot` |
@@ -57,7 +57,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | P-4 | 访谈 11 问经个人 bot 整理、员工转发、公司 bot 归档到内部区 | ✅ | `light/skills/anc-interview/questions.md`（11 问）、`light/skills/anc-interview/SKILL.md`；`src/service/a2a.ts:116-144`（信封解析、按 `message_id` 去重、落内部区）；测试 `src/service/service.test.ts:104`、`:119`；`docs/VERIFY.md:322`（T20 真群跑过 11 题访谈） | 跨天场景未跑（R4） |
 | P-5 | A2A 通道按 A5 结论执行（自动或员工转发） | ✅ | `docs/PLAN.md:131`（A5 = D23：默认员工转发）；`docs/FORK-DIRECTION.md:160-165`（§5.6）；`src/service/a2a.ts:11-23`、`:89-144`；测试 `src/service/service.test.ts:104`、`:561`、`:580` | 自动通道 C4 未做（依赖 T14 实测），按裁决走转发，不算未完成 |
 | P-6 | 后台长任务按发送者隔离，异常进 `needs_review`，不自动重试 | ✅ | `src/service/tasks.ts:155-199`（`kind=background`、`start` 拒绝重复、超时转 `needs_review`、`review retry/close`）；`src/service/loop.ts:194-198`；测试 `src/service/service.test.ts:672`、`:699` | — |
-| P-7 | 离职：`disabled:true` → 不重建 persona、任务转交、席位回收、账号删除 | 🟡 | `src/render/org.ts:106`（只认字符串 `true`）；`src/render/offboard.test.ts:29`、`:65`；`src/service/tasks.ts:208-221`（转交只动 open）；测试 `src/service/service.test.ts:715`；`scripts/offboard-member.ps1:52-101`（四步，默认 dry-run） | 账号删除与"席位回收"要真实账号与 `D:\anc\org`；2026-11-04 在临时 org 上验过 dry-run + 前置检查（`VERIFY §28`）：三步规划正确、"没标 disabled 会被拒"、dry-run 确实不动生产库。差 `-Apply` 与真实账号   2026-11-04 用 `anc-bot` 真跑 `-Apply`：转交 `moved:1`、解绑 `removed:1`、账号真删、停用成员产物消失，事后逐项核对（`VERIFY §35`）。**四步里三步验到，"席位回收"卡企微后台**，所以状态保持 🟡 |
+| P-7 | 离职：`disabled:true` → 不重建 persona、任务转交、席位回收、账号删除 | ✅（降级 8 成） | **2026-11-05 完成，四步验了三步 + 席位由维护者回收**（`VERIFY §84`）：① **`disabled: true` → 不重建 persona** —— 实测 `staff-b` 标 disabled 后 render **不生成** `members/staff-b/CODEBUDDY.md`、`groups.json` 从 2 人降为 1 人；② **不进 `groups.json`** 同上；③ **`disabled: 1` 不生效**（只认字符串 `true`，写 `1` 仍会渲染）—— 与 `offboard.test.ts` 的「停用成员：disabled 只认字符串 true，写 1/yes 不生效」一致；④ **任务转交** —— `task reassign --from <离职者> --to <接手人>` 实测 `{"ok":true,"moved":1}`，接手人的 `assignee_userid` 被写上，再转一次 `moved:0`（幂等）；⑤ **席位回收已由维护者在企微后台删除** | **为什么 8 成**：「**账号删除**」发生在企微侧，本机只能验「删了之后 bot 还能不能正常工作」；「一人一群」的离职侧只验了 1 个成员 |
 | A-1 | 密钥只在 `%ProgramData%\anc\secrets`，NTFS 只给服务身份与管理员 | ✅ | `scripts/doctor.ps1:295-297`（`secrets-acl`）；`docs/OPS.md:70-76`（收紧必须三步，含 `/remove:g`）；`docs/PLAN.md:160`（R0 实测转 PASS，LOCAL SERVICE 读探针退出码 0） | ACL 明细与探针输出在主机与 `_research/`（不进 git），仓库只能引 PLAN 记录 |
 | A-2 | org 数据只写引用名，值不进库/不进 git/不进日志 | ✅ | `src/render/org.ts:40-66`（文本字段拒控制字符/反引号/HTML 注释；`webhook_file` 只能是文件名）；测试 `src/render/render.test.ts:137`、`:117`；`docs/FORK-DIRECTION.md:279` | — |
 | A-3 | 入站文件与网页按敌意处理；提交权限在入库进程 | ✅ | `src/ingest/validate.ts`（短名/非法字符/大小/前后缀）；测试 `src/ingest/ingest.test.ts:68`（路径穿越）、`:183`（越界 src）、`:242`（junction 双侧越界）；`docs/FORK-DIRECTION.md:277` | 已知缺口：bot 曾绕过 CLI 直写 vault（`docs/PLAN.md:260`，待权限隔离裁决）——本条约定的"提交权限在入库进程"目前是纪律 + 事后审计，不是权限隔离 |
@@ -91,7 +91,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 → 阶段 B（证明代码能自愈）→ 再动这张表。**不补 ACL 就清空，doctor 必红 5 项** ——
 那时看起来像「重装失败」，实际是「代码缺一块」（见 VERIFY §65）。
 
-**统计**：**✅ 36 · 🟡 4 · ⬜ 0**（合计 40 = PLAN §1 实际的 40 个 ID）。**2026-11-05 更新：O-5 已从 🟡 转 ✅（真机清空+重装+陌生 agent 按文档装到 11/11+计时，`VERIFY §81`）；P-3 标「🟡 降级完成（9 成）」（`VERIFY §82`，7.5 秒）**。2026-11-04 按表格逐行核对过一遍；此前写的「30/9/1」是没跟着后续更新走的旧数字。
+**统计**：**✅ 38 · 🟡 2 · ⬜ 0**（合计 40 = PLAN §1 实际的 40 个 ID）。**2026-11-05 一天内从 35/5 推到 38/2**：O-5 真机清空重建（`§81`）、P-3 降级完成 9 成（`§82`，7.5 秒）、E-2 私聊限管理员+本机隔离验证（`§84`）、P-7 离职四步验三步+席位回收（`§84`）。**剩下 2 个 🟡：E-1（员工电脑跑个人 bot，只能降 7 成）、P-3 里"真人员工 + 三方群 + 群里四条验收"那一层**。此前写的「30/9/1」是没跟着后续更新走的旧数字
 
 **卡在真实群/环境上的条目**（只要这几条不闭合，V1 就不是 100%）：
 
