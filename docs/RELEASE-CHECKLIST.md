@@ -199,10 +199,10 @@ powershell -File scripts\deploy.ps1 -Side company
 ① 备份 secrets / D:\anc 的两个 git 仓库 / org                    ✅ 2026-11-05 12:03（`VERIFY §72`）
 ② ★ 把 5.9.3 缓存包复制一份到 E:\ 当「回程票」                  ✅ 2026-11-05（sha256 一致）
 ③ 清空（prepare-wipe.ps1 -Apply）
-④ ★★ 断网  ← 不这么做，5.8.3 装完 3 秒就开始自我升级，REBUILD 做不完
+④ ★★ 确认 hosts 已阻断更新域名（**不要断网** —— 断了 agent 自己没法工作，见 §72.6）
 ⑤ 装 5.8.3
 ⑥ ★★ 立刻落地冻结三件套（VERIFY §68.3，只做一件没用）
-⑦ 在 5.8.3 上跑 REBUILD（断网、全本地、不需要网络）+ 计时
+⑦ 在 5.8.3 上跑 REBUILD（hosts 已阻断更新，网络正常）+ 计时
    ⚠️ 预期补丁注入失败（§58 已证）—— 这是已知异类，记录下来，不算 REBUILD 失败
 ⑧ 记录 5.8.3 基线（版本号 / 补丁状态 / doctor 哪些红）
 ⑨ 恢复升级：把缓存包放回 %TEMP%\workbuddy-update-x64\ + endpoint + 开关 → 几秒内静默装到 5.9.3（→ R7）
@@ -232,11 +232,11 @@ powershell -File scripts\deploy.ps1 -Side company
 |---|---|---|
 | **a** | `%USERPROFILE%\.workbuddy\app\app-config.json` 加 `"startupForceAutoUpdate": false` | 只拦自动**装** |
 | **b** | 移走 `%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.*.exe` | 断掉「几秒内认领旧包」 |
-| **c** | `%USERPROFILE%\.workbuddy\cache\update-endpoint.json` 指向不可达 | 让 `checkForUpdates` 直接 skip |
+| **c** | hosts 加 `127.0.0.1 www.workbuddy.cn` + `copilot.tencent.com`（或 `update-endpoint.json` 指空） | 让 `checkForUpdates` 连不上 → 不下载 |
 
 **只做 a 不够** —— 拦不住 30 秒/每小时的 `checkForUpdates`，那仍会把 429 MB 下到 `ready`。
 
-**最省事：装之前先断网，装完再落地 a+b+c。** REBUILD 全程不需要网络。
+**最省事：装之前先做 hosts 阻断（两行）+ 移走缓存包** —— **不要断网**，见 `VERIFY §72.6`。
 
 **不要靠补丁的 update-hook 拦升级** —— `§58` 已证 5.8.3 上 `--inspect-brk` 注入不通，钩子根本不生效。
 

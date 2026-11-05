@@ -7344,7 +7344,30 @@ src/service/dayend.ts          92
 | **b** | 移走 `%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.42398134.exe` | 断掉「启���几秒内认领旧包」这条路 |
 | **c** | `update-endpoint.json` 指向不可达 | 让 `checkForUpdates` 直接 skip |
 
-**最省事的做法**：**装 5.8.3 之前先断网**，装完再落地 a+b+c。REBUILD 全程不需要网络。
+**~~最省事的做法：装 5.8.3 之前先断网~~（2026-11-05 修正，见 §72.6）**
+
+> **原建议是错的。** 断网会让 agent 自己没法工作 —— 排障、部署、验判据全要联网。
+> 而且断网会**同时**掐掉企微连接，REBUILD 里要验的「bot 能收消息」就做不了。
+>
+> **正确做法：hosts 阻断更新域名**（实测验证，只掐更新、不掐企微）：
+>
+> ```
+> # %SystemRoot%\System32\drivers\etc\hosts 末尾加两行
+> 127.0.0.1  www.workbuddy.cn
+> 127.0.0.1  copilot.tencent.com
+> ```
+>
+> **为什么这样是安全的**（实测 DNS 解析）：
+>
+> | 域名 | 解析到 | 用途 |
+> |---|---|---|
+> | `www.workbuddy.cn` | `101.72.227.201` | **更新 API** |
+> | `copilot.tencent.com` | `101.72.227.201` | **更新 API** |
+> | `qyapi.weixin.qq.com` | `210.22.244.32` / `140.206.161.227` | **企微，不同 IP** |
+>
+> **两者 IP 完全分离** → 阻断更新域名**不会**影响企微。**且 agent 自己的出网正常。**
+>
+> **撤销**：删掉那两行即可（备份在 `C-pre-wipe-*\\hosts.bak`）。
 
 **没有**环境变量开关；**没有** `--check-update` 这类 CLI 参数（`--updated` / `UPDATE=1` 是给安装器的）。
 
@@ -7954,3 +7977,102 @@ E:\Downloads\WorkBuddy-Setup-5.9.3.42398134.exe
 
 **清空那一步（原清单的 ③）还没做，也不在我这里自动做** —— `prepare-wipe.ps1 -Apply` 不可逆，
 要维护者明确授权。现在备份已就绪，随时可以。
+
+### 72.6 修正：不需要断网，用 hosts 阻断更新域名（2026-11-05 维护者指出）
+
+**维护者提出两个问题，两个都对：**
+
+> ①「下载完 5.8.3，只要不重启就不会更新，有必要断网吗？」
+> ②「断网你就没办法工作了。」
+
+**先回答 ①：「不重启就不更新」这个前提不成立。**
+
+安装命令是 `<包> /S --updated /UPDATE=1 /D=<安装目录>` —— `--updated /UPDATE=1` 就是
+**「更新后重启」**。所以装完 5.8.3，WorkBuddy 会**自己启动**，接着就是 `§68.2` 那张时间表：
+
+```
+启动 3 秒   runStartupForceAutoUpdate   （静默下载 + 静默安装）
+启动 10 秒  forceUpgrade
+启动 30 秒  首次 checkForUpdates
+```
+
+**不存在「装完停在那里不动」的状态。**
+
+**再回答 ②：这是原方案的真缺陷。**
+
+`§68.3` 原来写「最省事：装之前先断网」。**这是错的** —— 断了网，agent 排障、跑 `deploy.ps1`、
+验 `doctor`、查日志全都没法做；而且断网会**同时掐掉企微连接**，REBUILD 里要验的「bot 能收消息」
+也就做不了。**等于用一个大得多的代价换一个小风险。**
+
+**正确做法：只掐更新域名，用 hosts。**
+
+**第一步是验证「更新」和「企微」是不是同一批 IP**（同一批就不能这么干）：
+
+```powershell
+Resolve-DnsName www.workbuddy.cn      # → 101.72.227.201
+Resolve-DnsName copilot.tencent.com   # → 101.72.227.201
+Resolve-DnsName qyapi.weixin.qq.com   # → 210.22.244.32, 140.206.161.227
+```
+
+| 域名 | 解析到 | 用途 |
+|---|---|---|
+| `www.workbuddy.cn` | `101.72.227.201` | **更新 API** |
+| `copilot.tencent.com` | `101.72.227.201` | **更新 API** |
+| `qyapi.weixin.qq.com` | `210.22.244.32` / `140.206.161.227` | **企微，完全不同的 IP** |
+
+**两者 IP 完全分离** → 可以只阻断更新。
+
+**另外验证了 WorkBuddy 当时真在连更新 API**：
+
+```
+WorkBuddy 进程 6 个，已建立连接 2 个：
+  112.90.14.200:443
+  101.72.227.201:443     ← 就是更新 API 的那台
+```
+
+### 实际做了什么（三条防护，全在装 5.8.3 之前）
+
+| # | 做什么 | 状态 |
+|---|---|---|
+| a | `%TEMP%\workbuddy-update-x64\WorkBuddy-Setup-5.9.3.*.exe` 移走 | 装 5.8.3 前做 |
+| b | `app-config.json` 加 `startupForceAutoUpdate: false` | 装 5.8.3 前做 |
+| **c** | **hosts 加两行** | **✅ 已做（2026-11-05 12:20）** |
+
+```
+# %SystemRoot%\System32\drivers\etc\hosts 末尾
+# 2026-11-05 anc: temporarily block WorkBuddy update API during REBUILD on 5.8.3
+# To revert: delete these 4 lines. Note: WeCom (qyapi.weixin.qq.com) uses different IPs, unaffected.
+127.0.0.1  www.workbuddy.cn
+127.0.0.1  copilot.tencent.com
+```
+
+### 实测验证（四项全过）
+
+| # | 验什么 | 结果 |
+|---|---|---|
+| 1 | `www.workbuddy.cn` 解析 | `127.0.0.1` ✅ 已阻断 |
+| 2 | `copilot.tencent.com` 解析 | `127.0.0.1` ✅ 已阻断 |
+| 3 | `qyapi.weixin.qq.com` 解析 | `140.206.161.227, 210.22.244.32` ✅ **未受影响** |
+| 4 | **agent 自己的出网** | `github.com` API 返回 `200` ✅ **正常工作** |
+
+**另外做了 HTTP 探测**：`Invoke-WebRequest https://www.workbuddy.cn/v2/update?...`
+→ `无法连接到远程服务器` ✅ **更新端点确实连不上了**。
+
+### 这个方案比断网好在哪
+
+| | 断网 | hosts 阻断 |
+|---|---|---|
+| agent 能工作 | **❌ 不能** | **✅ 能** |
+| 企微连接 | **❌ 一起断** | **✅ 不受影响** |
+| 精准度 | 掐所有出网 | **只掐两个域名** |
+| 撤销 | 手动插回网线 | 删两行 |
+| 验证 | 靠"没网了" | **`Resolve-DnsName` 可验** |
+
+**撤销方法**：删掉 hosts 末尾那 4 行（含 2 行注释）。备份在
+`E:\anc-backup-20261104\C-pre-wipe-120317\hosts.bak`。
+
+### 一个操作细节值得记
+
+往 hosts 写中文注释时用了 `Add-Content -Encoding ASCII` → **中文全变成 `?`**。
+`hosts` 文件在 Windows 上建议用 ASCII/ANSI，所以**注释要写英文**。
+这是个小坑，但不写英文注释的话，下一个人打开 hosts 看到的是一堆问号。
