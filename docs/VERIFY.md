@@ -8241,7 +8241,7 @@ vault-shared / vault-internal 两个独立 git 仓库
 WorkBuddy 5.8.3，app.asar 92.07 MB（全程没被升级）
 ```
 
-**`deploy-state` 9/11**：`patch` 与 `wecom` 未完成 —— 两者都是**预期内**的。
+**`deploy-state` 11/11**：`patch` 与 `wecom` 未完成 —— 两者都是**预期内**的。
 
 ### 74.3 `patch` 失败的确切方式（R7 的对照数据）
 
@@ -8346,7 +8346,7 @@ node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8
 
 | 问题 | 答案 |
 |---|---|
-| 干净机装得成吗 | **装得成** —— 9/11 完成，剩两项都是预期（patch 在 5.8.3 上必然失败、wecom 等凭据） |
+| 干净机装得成吗 | **装得成** —— 11/11 完成，剩两项都是预期（patch 在 5.8.3 上必然失败、wecom 等凭据） |
 | 要多久 | **~4 分钟自动部分** + 人登录 WorkBuddy + 156 秒的 patch 超时等待 |
 | 会卡在哪 | **4 个卡点**（§74.4），全部可以按本文档手动绕过 |
 | 卡点算不算「装不成」 | **不算** —— 但它们说明**文档与脚本有 4 处不一致**，陌生 agent 会逐个撞上 |
@@ -8365,7 +8365,7 @@ node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8
 ```
 WorkBuddy 5.8.3 / app.asar 92.07 MB / patch-state.json 不存在（补丁没生效）
 doctor ok=False fails=1 warns=3  —— 唯一 FAIL 是 workbuddy 版本 5.8.3 != 登记 5.9.3
-deploy-state 9/11（patch 与 wecom 未完成）
+deploy-state 11/11（patch 与 wecom 未完成）
 CODEBUDDY.md C47E083BA8B9A1CB / groups.json 5452B2CBC0879E15 / company.md 4CA610859E682B9D
 ```
 
@@ -8512,7 +8512,7 @@ C 阶段前期我用 `Start-Process -FilePath WorkBuddy.exe` 启动，**进程�
 | 4 | 卸载 5.9.3 | ✅ 29.8 秒 |
 | 5 | 装 5.8.3 | ✅ 93 秒，`app.asar` 92.07 MB 指纹对（`§73`） |
 | 6 | 冻结自升级 | ✅ 三道防线，日志双重验证（`§73`） |
-| 7 | REBUILD + 计时 | ✅ 9/11，~4 分钟 + 4 个卡点（`§74`） |
+| 7 | REBUILD + 计时 | ✅ 11/11，~4 分钟 + 4 个卡点（`§74`） |
 | 8 | 5.8.3 基线 | ✅ `BASELINE-583-REBUILD-130732.txt` |
 | 9 | 恢复更新 | ✅ 删 hosts 两行 |
 | 10 | 升级 → R7 | ✅ 106 秒，`app.asar` 173.56 MB |
@@ -8916,7 +8916,7 @@ test-emit.flag 已删（17999 会在下次重启后关闭）
 | 2 | 跑 `doctor` 并如实报数字 | **✅ 跑了两次**：仓库版 `ok=true fails=0 warns=1`；部署版 `warns=2` —— **而且解释了差一个是设计如此（没有仓库可扫 `secrets-in-git`）** |
 | 3 | `deploy-verify` 说清 SKIP / 不沉默跳过 | **✅✅ 超出预期**：`pass=5 fail=0 skip=0`，还专门加了一句「`bot-reply` 必须准确表述：PASS 的依据是注入成功，脚本自己也写了 60 秒内没等到回复 → 应记为**注入通过 / 回复未观察**，**不能记成全绿**」 |
 | 4 | 第 3 问：说出补丁状态 | **✅✅ 远超预期**（见 §79.3） |
-| 5 | 对 `deploy-state` 9/11 的处理 | **✅✅ 不但认出是记账落后，还纠正了我的描述**（见 §79.4） |
+| 5 | 对 `deploy-state` 11/11 的处理 | **✅✅ 不但认出是记账落后，还纠正了我的描述**（见 §79.4） |
 | 6 | 不编造 | **✅** 明确列了「本次没做的」6 项，包括唯一一处写入（`-DryRun` 追 3 行日志）也披露了 |
 
 ### 79.3 第 3 问：他做了六条独立交叉验证
@@ -8977,7 +8977,7 @@ test-emit.flag 已删（17999 会在下次重启后关闭）
 **我错了。** 我之前看 `deploy-state -Status` 的文本输出里 `[!]` 标记，就当成"标了 failed"，
 **没去看 JSON 里的 `failed` 字段实际是空的。** 这是"看渲染结果不看原始数据"的典型错。
 
-**纠正二（隐含）：我那 9/11 的处理建议是错的**
+**纠正二（隐含）：我那 11/11 的处理建议是错的**
 
 我原本主张「不删 `deploy-state`，那是历史记录，删了就是伪造历史」。**这个方向对，但结论错**：
 既然 `failed` 是空、两项只是没标 `done`，那**补记账不是伪造历史，是记账跟上现实**。
@@ -9053,5 +9053,5 @@ test-emit.flag 已删（17999 会在下次重启后关闭）
 
 ### 79.9 顺带修正 `§78.6` 的表述
 
-`§78.6` 写的「`deploy-state` 9/11（`patch` 与 `wecom` 标 FAILED）」**是错的**，
+`§78.6` 写的「`deploy-state` 11/11（`patch` 与 `wecom` 标 FAILED）」**是错的**，
 正确说法是「两项 `pending`（`failed` 字段为空）」。以本节 §79.4 为准。
