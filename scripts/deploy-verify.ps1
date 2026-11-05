@@ -219,6 +219,8 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
                     $emitDetail = 'len=' + $probe.len
                 } catch {
                     $emitDetail = $_.Exception.Message
+                    # 2026-11-05 加（VERIFY §80）：17999 在听但没人处理时（flag 删了、进程没重启）
+                    # POST 会挂到超时。超时不是"注入失败"，是"端口通但没有 handler"，判 SKIP 更准。
                 }
 
                 if (-not $emitOk) {
@@ -226,7 +228,9 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
                     # preload.cjs 的 /emit 会检查 global.__ancLastClient（一个活的 WecomAiBotClient 实例），
                     # 它只在 bot 收到过真实群消息之后才有值。所以 409 的含义是「先让群里 @ 一次」。
                     # 早先这里一律判 FAIL，导致干净的机器上 deploy-verify 永远 ok=false。
-                    if ($emitDetail -match '409') {
+                    if ($emitDetail -match 'timed out|操作已超时|超时|Timeout') {
+                        Add-Check 'bot-reply' 'SKIP' '17999 在监听但 POST 超时（端口通、没有 handler）' '典型原因：test-emit.flag 已删但 WorkBuddy 没重启过（flag 是启动时读一次）。重启 WorkBuddy 后 17999 会关闭；要验群回应则重建 flag 再重启'
+                    } elseif ($emitDetail -match '409') {
                         Add-Check 'bot-reply' 'SKIP' '还没有实例引用（需先在群里收到一条真实消息）' '这是设计：test-emit 依赖一个活的 WecomAiBotClient 实例。让群里有人 @ 一次 bot，再重跑本脚本'
                     } else {
                         Add-Check 'bot-reply' 'FAIL' ('注入失败: ' + $emitDetail.Substring(0, [Math]::Min(80, $emitDetail.Length))) '17999 在监听但 POST 失败；看 WorkBuddy 的 daemon.log'

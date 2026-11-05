@@ -9055,3 +9055,100 @@ test-emit.flag 已删（17999 会在下次重启后关闭）?
 ?
 `§78.6` 写的「`deploy-state` 9/11（`patch` 与 `wecom` 标 FAILED）」**是错的**，?
 正确说法是「两项 `pending`（`failed` 字段为空）」。以本节 §79.4 为准。?
+
+## 80. 修两处判据缺口 + 纠正我自己一个误判（2026-11-05 16:14–16:40）
+
+`§79.6` 留了 4 条待办，这一节做掉其中两条（3 号和 4 号），顺带纠正我自己的一个误判。
+
+### 80.1 #3：`doctor` 的 `secrets-acl` 补文件级 Administrators 检查
+
+**问题**：`Test-SecretsAcl` 的第三条判据（`§78.3` 加的）只看**目录**：
+
+```powershell
+$admRead = @((Get-Acl -LiteralPath $Path).Access | Where-Object { ... })
+```
+
+**而 `§78.7` 那次故障是文件级的** —— 目录有 Administrators、文件没有。
+所以「文件读不到」这件事，判据本身抓不到，是靠"实际读不出文件"发现的。
+
+**改法**：在服务身份的 `$noSvc` 循环之后，加一个同构的 `$noAdm` 循环：
+
+```powershell
+$noAdm = @()
+foreach ($f in @(Get-ChildItem -LiteralPath $Path -File ...)) {
+    $adm = @((Get-Acl -LiteralPath $f.FullName).Access | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $admPattern -and
+        ((([int64]$_.FileSystemRights) -band $readBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericRead) -ne 0)
+    })
+    if ($adm.Count -eq 0) { $noAdm += $f.Name }
+}
+if ($noAdm.Count -gt 0) {
+    return @{ state='FAIL'; detail=('这些 secrets 文件管理员读不到（部署会写不进去）: ' + ...); fix='icacls ... /grant:r "BUILTIN\Administrators:F" /T —— 注意文件要用 :F，不能带 (OI)(CI)' }
+}
+```
+
+**PASS 的 detail 也改了**，从「只对服务身份与管理员可读，且服务身份确实有读权限」
+改成「…；服务身份可读、管理员可读（目录与文件都查过）」——
+**让判据自己说明它查了两层，免得下一个人以为它只查目录。**
+
+**播种验证**（`Set-Acl` 把 `ops-webhook.txt` 的 Administrators 摘掉，保住原 ACL 对象）：
+
+```
+播完 → doctor: ok=False fails=1
+  [FAIL] 这些 secrets 文件管理员读不到（部署会写不进去）: ops-webhook.txt
+  fix: icacls %ProgramData%\anc\secrets /grant:r "BUILTIN\Administrators:F" /T —— 注意文件要用 :F，不能带 (OI)(CI)
+恢复 → doctor: ok=True fails=0 warns=1
+```
+
+**这条现在能自己抓到 §78.7 那种故障了。**
+
+### 80.2 #4：「17999 在听但没人处理」应判 SKIP 而不是 FAIL
+
+**改法**：`deploy-verify.ps1` 的 `bot-reply`，在原有的 409 判断之前加一支：
+
+```powershell
+if ($emitDetail -match 'timed out|操作已超时|超时|Timeout') {
+    Add-Check 'bot-reply' 'SKIP' '17999 在监听但 POST 超时（端口通、没有 handler）' `
+        '典型原因：test-emit.flag 已删但 WorkBuddy 没重启过（flag 是启动时读一次）。重启 WorkBuddy 后 17999 会关闭；要验群回应则重建 flag 再重启'
+} elseif ($emitDetail -match '409') {
+    ...（原有逻辑不动）
+} else {
+    Add-Check 'bot-reply' 'FAIL' ...
+}
+```
+
+**为什么该判 SKIP 而不是 FAIL**：`17999` 在监听但 `/emit` 没有 handler，
+**既不是"链路断了"（那会连接被拒），也不是"没开 test-emit"（那会端口不监听）** ——
+它是第三种状态：**`flag` 已删、但进程还没重启**。判 FAIL 会让人以为补丁坏了。
+
+### 80.3 ⚠️ 纠正我自己的一个误判：`deploy-verify` 从来没有卡 600 秒
+
+`§79` 我写过「`deploy-verify` 在有 binding 但 `test-emit` 关闭时会卡到超时」。**这个是错的。**
+
+**实际情况**：那次卡 600 秒的命令是**备份命令**（含 `robocopy` + `VACUUM INTO` + `doctor` + `deploy-verify`），
+**卡在 `robocopy` 上**（它复制到 `E:` 的新目录后没返回）。我把它归因给了 `deploy-verify`。
+
+**实测数据**：
+
+| 场景 | 耗时 |
+|---|---|
+| `deploy-verify`（`17999` 没监听，`bot-reply` SKIP） | **25.2 秒** |
+| `deploy-verify -ChatId`（`17999` 在听、flag 在，注入成功 + 等 60 秒回复） | 82.9–121 秒 |
+| 我那次"卡住"的命令 | 600 秒+，**是 `robocopy`** |
+
+**所以 #4 那个"卡住"的问题不存在。** 加「超时→SKIP」这一支仍然有价值（把第三种状态说准），
+但**不是因为"会卡"**。
+
+**这条要记的原因**：**把 A 的卡顿归因给 B，然后去修 B** —— 这类误判会造出不必要的改动。
+`§79` 里我预测"三个最容易踩的点"时，第 2 条就是这个误判。
+
+### 80.4 #4 的新分支没有被触发（诚实记录）
+
+改完部署后实测：`deploy-verify` 25.2 秒，`bot-reply SKIP  test-emit 关闭（默认状态），17999 没监听`。
+
+**走的是"没监听"那条老路径** —— 因为 15:40 那次重启（`§79.6③`）已经把 `17999` 关掉了。
+要触发新分支，得先建 `test-emit.flag` 再**不重启**地让端口起来（做不到，flag 是启动时读），
+或者手工占一个 `17999` 监听但不应答的端口。
+
+**所以这支代码：语法对、逻辑对、路径已核，但没有端到端实测。** 按项目的规矩，
+这应该标 **「已修，未实测」**，不能算验过。

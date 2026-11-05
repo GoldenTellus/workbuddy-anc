@@ -120,7 +120,24 @@ function Test-SecretsAcl([string]$Path) {
         return @{ state = 'FAIL'; detail = ('这些 secrets 文件服务身份读不到: ' + (@($noSvc | Select-Object -Unique) -join ', ')); fix = 'icacls "%ProgramData%\anc\secrets\*" /grant "NT AUTHORITY\LOCAL SERVICE:(RX)"' }
     }
 
-    return @{ state = 'PASS'; detail = 'secrets 只对服务身份与管理员可读，且服务身份确实有读权限'; fix = '-' }
+    # 2026-11-05 加（VERIFY §80）：文件级也要检查管理员能不能读。
+    # 目录级 ③ 只管目录；而 set-acl.ps1 早先只给文件授 LOCAL SERVICE:(RX)，
+    # 目录 /inheritance:r 之后文件的继承链已断 → 文件上永远没有 Administrators。
+    # 症状：目录能读写、里面文件读不了，换 webhook 只能先手动 icacls 抢。
+    # 这条是靠"实际读不出文件"发现的，判据不补就抓不到。
+    $noAdm = @()
+    foreach ($f in @(Get-ChildItem -LiteralPath $Path -File -ErrorAction SilentlyContinue)) {
+        $adm = @((Get-Acl -LiteralPath $f.FullName).Access | Where-Object {
+            $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match $admPattern -and
+            ((([int64]$_.FileSystemRights) -band $readBits) -ne 0 -or (([int64]$_.FileSystemRights) -band $genericRead) -ne 0)
+        })
+        if ($adm.Count -eq 0) { $noAdm += $f.Name }
+    }
+    if ($noAdm.Count -gt 0) {
+        return @{ state = 'FAIL'; detail = ('这些 secrets 文件管理员读不到（部署会写不进去）: ' + (@($noAdm | Select-Object -Unique) -join ', ')); fix = 'icacls %ProgramData%\anc\secrets /grant:r "BUILTIN\Administrators:F" /T —— 注意文件要用 :F，不能带 (OI)(CI)' }
+    }
+
+    return @{ state = 'PASS'; detail = 'secrets 只对服务身份与管理员可读；服务身份可读、管理员可读（目录与文件都查过）'; fix = '-' }
 }
 
 function Test-DataAcl([string]$Path) {
