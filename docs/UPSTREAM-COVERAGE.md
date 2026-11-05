@@ -34,7 +34,7 @@
 | 9 | Persona 系统（七段式模板） | SPEC §4.1 | ✅ | `light/templates/company-bot.md`、`light/personas/` |
 | 10 | persona-as-code 管线 | SPEC §4.2 | ✅ | `src/render/`（git 变更 → 渲染 → 部署，D15） |
 | 11 | 对话层与任务层 | SPEC §4.3 | ✅ | 任务登记/完成/提醒（`src/service/`） |
-| 12 | Skill 系统（格式 + 部署） | SPEC §5 | ✅ | `light/skills/`（8 个技能）+ 渲染器同步 |
+| 12 | Skill 系统（格式 + 部署） | SPEC §5 | ✅ | `light/skills/`（7 个技能；第 8 个文件是 .anc-backup）+ 渲染器同步 |
 | 13 | **技能迭代闭环**（聊天挖掘→问题池→devbot→eval） | SPEC §5 | ✅ | **2026-11-04 做完并端到端跑通**：`submissions`（L1）→ `issues` 规则表分诊（L2）→ `patch_drafts`（L3）→ `devbot.ps1` 自动出分支（L4）→ `eval` 判 pass/fail（L6）→ `e2e-loop.ps1` 串起来（L7）。见 `VERIFY §21`–`§27` |
 | 14 | Onboarding：对话式冷启动 | SPEC §6 | 🔄 | **目的**是"新公司/新员工不用看文档就能把知识装进系统"，**入口不同**：员工侧有 `anc-interview`（对话式逐题访谈）；**公司级建库是管理员一次性操作**（建 `D:\anc\org` + 投文档给 `anc-ingest`），不做对话式。**差异与理由**：公司级建库只在开张时做一次，对话式带来的上手成本优势抵不上多写一个技能的成本；如果将来要开第二家公司，这一项要补 |
 | 15 | 安全模型（Identity / Scope / Model 三层） | SPEC §7 | ✅ | D19–D25 裁决 + ACL + 出站扫描 + 审计 |

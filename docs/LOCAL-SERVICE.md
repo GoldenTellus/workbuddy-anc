@@ -107,7 +107,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11）。`node:sqlite` 在 Node 22 上要带 `--experimental-sqlite`；类型剥离在 Node 22.6+ 要带 `--experimental-strip-types`。Node 24 两者都默认可用，直接 `node src/service/cli.ts`。
+- Node 22 LTS（D11）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

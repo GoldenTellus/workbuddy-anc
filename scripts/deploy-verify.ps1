@@ -214,7 +214,20 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
                 $emitOk = $false
                 $emitDetail = ''
                 try {
-                    $probe = Invoke-RestMethod -Uri 'http://127.0.0.1:17999/emit' -Method POST -Body (@{ chatId = $targetChat; user = 'deploy-verify'; content = '自证测试：请回一个「在」' } | ConvertTo-Json) -ContentType 'application/json' -TimeoutSec 10
+                    # 2026-11-06 修（VERIFY §25 / §85.2）：PS 5.1 的 Invoke-RestMethod 传字符串
+                    # body 时可能按 GBK 编码，中文到 bot 已成乱码。显式给 UTF-8 字节才稳。
+                    $emitJson = @{ chatId = $targetChat; user = 'deploy-verify'; content = '自证测试：请回一个「在」' } | ConvertTo-Json
+                    $emitParams = @{
+                        Uri = 'http://127.0.0.1:17999/emit'; Method = 'POST'
+                        Body = [Text.Encoding]::UTF8.GetBytes($emitJson)
+                        ContentType = 'application/json; charset=utf-8'; TimeoutSec = 10
+                    }
+                    # /emit 启用 emit-token.txt 时必须带 X-Anc-Token，否则自证会拿到 401
+                    $emitTokFile = Join-Path $env:ProgramData 'anc\data\emit-token.txt'
+                    if (Test-Path $emitTokFile) {
+                        $emitParams['Headers'] = @{ 'X-Anc-Token' = (Get-Content $emitTokFile -Raw -Encoding UTF8).Trim() }
+                    }
+                    $probe = Invoke-RestMethod @emitParams
                     $emitOk = $true
                     $emitDetail = 'len=' + $probe.len
                 } catch {
@@ -309,7 +322,18 @@ if ($Side -eq 'employee') {
                 Add-Check 'bot-reply' 'SKIP' 'test-emit 关闭（默认）' ('要验：建 ' + $flag + ' 然后重启 WorkBuddy')
             } else {
                 try {
-                    Invoke-RestMethod -Uri 'http://127.0.0.1:17999/emit' -Method POST -Body (@{ chatId = $targetChat; user = 'deploy-verify'; content = '自证测试：请回一个「在」' } | ConvertTo-Json) -ContentType 'application/json' -TimeoutSec 10 | Out-Null
+                    $emitJson = @{ chatId = $targetChat; user = 'deploy-verify'; content = '自证测试：请回一个「在」' } | ConvertTo-Json
+                    $emitParams = @{
+                        Uri = 'http://127.0.0.1:17999/emit'; Method = 'POST'
+                        Body = [Text.Encoding]::UTF8.GetBytes($emitJson)
+                        ContentType = 'application/json; charset=utf-8'; TimeoutSec = 10
+                    }
+                    # /emit 启用 emit-token.txt 时必须带 X-Anc-Token，否则自证会拿到 401
+                    $emitTokFile = Join-Path $env:ProgramData 'anc\data\emit-token.txt'
+                    if (Test-Path $emitTokFile) {
+                        $emitParams['Headers'] = @{ 'X-Anc-Token' = (Get-Content $emitTokFile -Raw -Encoding UTF8).Trim() }
+                    }
+                    Invoke-RestMethod @emitParams | Out-Null
                     Add-Check 'bot-reply' 'PASS' '注入成功（回复要看群里）' ''
                 } catch {
                     Add-Check 'bot-reply' 'FAIL' '注入失败' '重启 WorkBuddy 后等 8–30 秒再试'

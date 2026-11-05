@@ -36,6 +36,19 @@ test('原子写：备份旧文件、写后无临时文件', () => {
   }
 });
 
+test('原子写：备份只保留最近 10 份，不无限累积（VERIFY §36 ②）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-bak-'));
+  try {
+    const f = join(dir, 'a.md');
+    for (let i = 0; i < 14; i++) writeAtomic(f, 'v' + i);
+    const baks = readdirSync(dir).filter((x) => x.startsWith('.a.md.bak-'));
+    assert.equal(baks.length, 10, 'BAK_KEEP=10 之后不能再涨');
+    assert.equal(readFileSync(f, 'utf8'), 'v13');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function makeOrg(dir: string) {
   mkdirSync(join(dir, 'roles'), { recursive: true });
   mkdirSync(join(dir, 'members'), { recursive: true });

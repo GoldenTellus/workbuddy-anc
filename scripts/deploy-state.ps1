@@ -168,7 +168,14 @@ function Show-View($v) {
 }
 
 function Emit($v, [int]$code) {
-    if ($Json) { $v | ConvertTo-Json -Depth 5 } else { Show-View $v }
+    if ($Json) {
+        # PS 5.1 默认按 GBK 往 stdout 写；调用方（node execFileSync encoding:'utf8'、
+        # agent 的 2>&1）按 UTF-8 读会把中文 reason / next 读成 mojibake。
+        # 2026-11-05 全量测试有 3 条因此红（deploy-state.test.ts），与 doctor 的
+        # bindings 误报是同一个根因。只在 -Json 分支切，finally 不必恢复（进程即将退出）。
+        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+        $v | ConvertTo-Json -Depth 5
+    } else { Show-View $v }
     exit $code
 }
 

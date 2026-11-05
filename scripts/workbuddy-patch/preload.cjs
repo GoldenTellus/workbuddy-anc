@@ -89,6 +89,12 @@ global.__ancHookHit = function (name) {
 
 global.__ancLogIn = function (chatId, user, content) {
   try {
+    // 计数只用于 /emit/status 的观测：入站消息经过补丁包装 = bot 侧确实收到了它。
+    // 注意它含真实群消息，不能当"注入已被处理"的精确计数（见 status 的 note）。
+    if (global.__ancEmitState) {
+      global.__ancEmitState.observed += 1;
+      global.__ancEmitState.lastObservedAt = Date.now();
+    }
     const s = String(content == null ? '' : content);
     const t = s.length > 300 ? s.slice(0, 300) + '...' : s;
     const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 64) +
@@ -167,6 +173,25 @@ const STAT_LOG = __ancPath.join(__ancPath.dirname(STATE), 'narration-filter.log'
 // 开关：%ProgramData%\anc\data\test-emit.flag 存在才开。默认不存在 = 不开口。
 // 前提：__ancLastClient 要有值，也就是 bot 至少收到过一条真实消息（拿实例引用）。
 const TEST_FLAG = __ancPath.join(__ancPath.dirname(STATE), 'test-emit.flag');
+// #9 审计修复：/emit 默认只有 loopback + flag 两道门，本机任意进程都能伪造群消息。
+// 同目录放 emit-token.txt 即启用 X-Anc-Token 校验；不放则维持旧行为（向后兼容）。
+const EMIT_TOKEN_FILE = __ancPath.join(__ancPath.dirname(STATE), 'emit-token.txt');
+// 端口可用 ANC_EMIT_PORT 覆盖：隔离验证时避开在跑部署占用的 17999，
+// 否则复现请求会打到真实 bot 并真的登记任务（2026-11-05 实测踩到）。
+const EMIT_PORT = (function () {
+  const n = parseInt(String(process.env.ANC_EMIT_PORT || ''), 10);
+  return n > 0 && n < 65536 ? n : 17999;
+})();
+// 排队状态（VERIFY §40 / §85.3）：80ms 内注两条，emitMessage 都接受，
+// 但只有第一条被处理，后一条延迟 7–9 分钟。accepted 只代表「已投递」。
+const EMIT_QUEUE_WINDOW_MS = 60000;
+const __ancEmitState = {
+  accepted: 0, observed: 0, seq: 0,
+  lastAcceptedAt: 0, lastObservedAt: 0,
+  queueWindowMs: EMIT_QUEUE_WINDOW_MS,
+};
+global.__ancEmitState = __ancEmitState;
+
 if (fs.existsSync(TEST_FLAG)) {
   try {
     const __http = require('http');
@@ -174,14 +199,55 @@ if (fs.existsSync(TEST_FLAG)) {
       const reply = (code, obj) => {
         try { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); } catch (_) {}
       };
+      if (req.method === 'GET' && (req.url === '/emit/status' || req.url === '/status')) {
+        return reply(200, {
+          ok: true,
+          accepted: __ancEmitState.accepted,
+          observed: __ancEmitState.observed,
+          lastAcceptedAt: __ancEmitState.lastAcceptedAt,
+          lastObservedAt: __ancEmitState.lastObservedAt,
+          note: 'accepted=已投递到 emitMessage；observed=经过补丁包装的入站消息数（含真实群消息）。两者都不是「处理完成」的证据。'
+        });
+      }
       if (req.method !== 'POST') return reply(405, { ok: false, error: 'POST only' });
-      let body = '';
-      req.on('data', (c) => { body += c; if (body.length > 1048576) req.destroy(); });
+      const __emitToken = (() => {
+        try { return fs.readFileSync(EMIT_TOKEN_FILE, 'utf8').trim(); } catch (_) { return ''; }
+      })();
+      if (__emitToken) {
+        const __a = Buffer.from(String(req.headers['x-anc-token'] || ''));
+        const __b = Buffer.from(__emitToken);
+        if (__a.length !== __b.length || !crypto.timingSafeEqual(__a, __b)) {
+          return reply(401, { ok: false, error: 'X-Anc-Token 不匹配（emit-token.txt 已启用鉴权）' });
+        }
+      }
+      // 显式按 UTF-8 解码并当场拒掉坏字节。PS 5.1 的 Invoke-RestMethod 传字符串
+      // body 时可能按 GBK 编码，Node 解出来是替换字符；以前会静默注入，
+      // patch-in.log 留一行读不懂的乱码（VERIFY §25 / §85.2）。
+      const chunks = [];
+      let size = 0;
+      req.on('data', (c) => {
+        size += c.length;
+        if (size > 1048576) { req.destroy(); return; }
+        chunks.push(c);
+      });
       req.on('end', () => {
         try {
+          const body = Buffer.concat(chunks).toString('utf8');
+          if (body.indexOf('\uFFFD') !== -1) {
+            log('test-emit REJECT bad-utf8 prefix=' + body.slice(0, 120));
+            return reply(400, { ok: false, error: '请求体不是有效 UTF-8（含替换字符）；发送端要显式发 UTF-8 字节，PS 5.1 用 -Body ([Text.Encoding]::UTF8.GetBytes($json))' });
+          }
           const p = JSON.parse(body || '{}');
           if (!p.chatId) return reply(400, { ok: false, error: '缺少 chatId' });
           if (!p.content) return reply(400, { ok: false, error: '缺少 content' });
+          // 另一种坏法：发送端把 UTF-8 字节按 GBK 读成字符串后再发（§85.2 的
+          // 「鐧昏浠讳换鍔…」）。这类产物几乎全是 U+9000 以上的高位 CJK，
+          // 正常中文常用字在 U+4E00–U+8FFF；连续 3 个以上即可判为 mojibake。
+          const highCjk = (String(p.content).match(/[\u9000-\u9FFF]/g) || []).length;
+          if (highCjk >= 3) {
+            log('test-emit REJECT mojibake prefix=' + String(p.content).slice(0, 120));
+            return reply(400, { ok: false, error: 'content 疑似 GBK mojibake（UTF-8 曾被按 GBK 解码）；源文本用 Get-Content -Encoding UTF8 读，并用 UTF-8 字节发送' });
+          }
           if (!global.__ancLastClient) return reply(409, { ok: false, error: '还没有实例引用：先让 bot 收到一条真实消息' });
           // 模仿真实入站消息的形状：chatId / user / content 是必需的，
           // 但 dispatchId 还要 msgId 才不是 undefined——所以把调用方给的字段全部透传。
@@ -190,16 +256,33 @@ if (fs.existsSync(TEST_FLAG)) {
             user: String(p.user || ''),
             content: String(p.content),
           });
+          const now = Date.now();
+          const gapMs = __ancEmitState.lastAcceptedAt ? now - __ancEmitState.lastAcceptedAt : Infinity;
+          const seq = ++__ancEmitState.seq;
+          const queued = gapMs < EMIT_QUEUE_WINDOW_MS;
           global.__ancLastClient.emitMessage(msg);
-          log('test-emit chat=' + msg.chatId.slice(0, 12) + ' user=' + msg.user.slice(0, 8) + ' len=' + msg.content.length);
-          reply(200, { ok: true, chatId: msg.chatId, len: msg.content.length });
+          __ancEmitState.accepted += 1;
+          __ancEmitState.lastAcceptedAt = now;
+          log('test-emit seq=' + seq + ' queued=' + queued + ' chat=' + msg.chatId.slice(0, 12) + ' user=' + msg.user.slice(0, 8) + ' len=' + msg.content.length);
+          reply(200, {
+            ok: true,
+            accepted: true,
+            seq: seq,
+            queued: queued,
+            gapMs: Number.isFinite(gapMs) ? gapMs : null,
+            chatId: msg.chatId,
+            len: msg.content.length,
+            note: queued
+              ? '已排队：距上一条注入仅 ' + gapMs + ' ms。bot 内部串行处理，后一条可能延迟数分钟（VERIFY §40/§85.3）；本次只代表已投递，不代表已处理。一次只注一条，等回复后再注。'
+              : '已投递到 emitMessage；是否处理完要看回复，不能用这个返回值判定成功。'
+          });
         } catch (e) {
           reply(500, { ok: false, error: e && e.message ? e.message : String(e) });
         }
       });
     });
     __srv.on('error', (e) => log('test-emit listen failed: ' + (e && e.message)));
-    __srv.listen(17999, '127.0.0.1', () => log('test-emit listening on 127.0.0.1:17999'));
+    __srv.listen(EMIT_PORT, '127.0.0.1', () => log('test-emit listening on 127.0.0.1:' + EMIT_PORT));
   } catch (e) {
     log('test-emit disabled: ' + (e && e.message));
   }

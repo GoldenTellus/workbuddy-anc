@@ -107,7 +107,7 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor.ps1              # 只读体检（30 项）：专用用户、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor.ps1              # 只读体检（31 项）：专用用户、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
 powershell -File scripts\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
 powershell -File scripts\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
 powershell -File scripts\watchdog.ps1            # 手动跑一次看有没有要告警的
@@ -289,6 +289,8 @@ $body = @{
 Invoke-RestMethod -Uri 'http://127.0.0.1:17999/emit' -Method POST `
   -ContentType 'application/json; charset=utf-8' `
   -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+# 若下面启用了 emit-token.txt，再加一行：
+#   -Headers @{ 'X-Anc-Token' = (Get-Content 'C:\ProgramData\anc\data\emit-token.txt' -Raw -Encoding UTF8).Trim() }
 ```
 
 返回 `{"ok":true,"chatId":"...","len":N}`。`len` 是**加上身份前缀之后**的长度（`[anc:chat=… from=…]`），比原始内容长十几到几十字符是正常的。
@@ -325,7 +327,7 @@ WorkBuddy 自己的日志 `%USERPROFILE%\.workbuddy\logs\workbuddyMainThread*.lo
 
 **3. 只开在 127.0.0.1**
 
-代码里 `__srv.listen(17999, '127.0.0.1', ...)`，body 上限 1 MB。不做认证——**能连本机就能发**。所以 flag 用完就删，别长期开着。
+代码里 `__srv.listen(17999, '127.0.0.1', ...)`，body 上限 1 MB。**2026-11-06 起支持可选鉴权**：同目录（`%ProgramData%\anc\data\`）放 `emit-token.txt`，`/emit` 就要求 `X-Anc-Token` 且用常量时间比对；**不放文件则维持「能连本机就能发」的旧行为**，`deploy-verify.ps1` 会自动带上 token。默认仍无认证，所以 flag 用完就删，别长期开着；要防本机伪造就建 token 文件。
 
 ### 走过的弯路（免得重走）
 

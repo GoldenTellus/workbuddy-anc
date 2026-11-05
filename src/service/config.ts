@@ -61,6 +61,8 @@ export function validateConfig(key: string, value: string): void {
   } else if (key === 'weekdays') {
     if (!v.split(',').every((p) => /^\s*[1-7](\s*-\s*[1-7])?\s*$/.test(p))) throw new Error('weekdays 只能是 1–7 的列表或区间，如 1-5 或 1,2,3');
   } else if (key === 'timezone') {
+    // 部署一致性断言：只用于 doctor 校验「主机系统时区 == 配置值」，**不参与运行时时间计算**
+    // （isWorkTime / localDay / 提醒排期一律按主机系统本地时区）。写入它不改变任何行为。
     // 存 Windows 时区 Id：doctor 用 Get-TimeZone 可直接比，IANA 名在 PowerShell 5.1 下没有内建映射
     if (!/^[A-Za-z][A-Za-z0-9 _+\-]{2,63}$/.test(v) || v.indexOf('/') !== -1) throw new Error('timezone 必须是 Windows 时区 Id，如 China Standard Time；IANA 名（Asia/Shanghai）doctor 比不上，先换成对应的 Windows Id');
   } else if (key === 'vault_internal' || key === 'vault_shared') {

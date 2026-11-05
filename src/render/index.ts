@@ -245,6 +245,30 @@ function restoreOutDir(outDir: string, snap: Snapshot): void {
 
 export interface DeployResult extends RenderResult {
   verified: number;
+  /** 从 org 里删掉（而非 disabled）的成员，其残留产物目录被清掉的 id */
+  pruned: string[];
+}
+
+/**
+ * 清理「已经不在 org 里」的成员产物（VERIFY §36 ①）。
+ * renderOrg 只遍历当前 org.members：disabled 的会删，但从 members/ 目录里直接
+ * 删掉的人它根本看不见，那个人的 persona 会一直留在 build/ 并被部署出去。
+ * 只在 deployOrg 对拍通过之后跑；渲染失败时快照会把文件写回来。
+ */
+function pruneOrphanMembers(outDir: string, activeIds: Set<string>): string[] {
+  const membersDir = join(outDir, 'members');
+  if (!existsSync(membersDir)) return [];
+  const pruned: string[] = [];
+  for (const entry of readdirSync(membersDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || activeIds.has(entry.name)) continue;
+    const dir = join(membersDir, entry.name);
+    // 只删渲染器自己产出的成员目录：认 CODEBUDDY.md 或空目录；陌生目录一律不动。
+    const names = readdirSync(dir);
+    if (names.length > 0 && !names.includes('CODEBUDDY.md')) continue;
+    rmSync(dir, { recursive: true, force: true });
+    pruned.push(entry.name);
+  }
+  return pruned;
 }
 
 /**
@@ -263,9 +287,10 @@ export function deployOrg(orgDir: string, outDir: string, templateDir?: string):
       verified += 1;
     }
     // groups.json / manifest.json 不在 outputs 里，单独核一次可解析
-    JSON.parse(readFileSync(join(outDir, 'groups.json'), 'utf8'));
+    const groups = JSON.parse(readFileSync(join(outDir, 'groups.json'), 'utf8')) as { members: Array<{ id: string }> };
     JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'));
-    return { ...r, verified };
+    const pruned = pruneOrphanMembers(outDir, new Set((groups.members || []).map((m) => m.id)));
+    return { ...r, verified, pruned };
   } catch (e) {
     restoreOutDir(outDir, snap);
     throw new Error('渲染失败，已回滚到部署前状态：' + (e as Error).message);

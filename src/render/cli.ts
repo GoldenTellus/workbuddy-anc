@@ -66,10 +66,11 @@ try {
     const outDir = arg('--out');
     if (!orgDir || !outDir) fail('缺少 --org 与 --out', 'USAGE', 2);
     const r = deployOrg(orgDir, outDir, arg('--templates') || undefined);
-    if (json) console.log(JSON.stringify({ ok: true, inputSha: r.inputSha, verified: r.verified, outputs: r.outputs.length, members: r.members, warn: r.warn, tampered: r.tampered, warnings: r.warnings }));
+    if (json) console.log(JSON.stringify({ ok: true, inputSha: r.inputSha, verified: r.verified, outputs: r.outputs.length, members: r.members, warn: r.warn, tampered: r.tampered, warnings: r.warnings, pruned: r.pruned }));
     else {
       console.log('deploy : ' + r.outputs.length + ' 个产物，对拍通过 ' + r.verified + ' 个');
       console.log('input  : ' + r.inputSha);
+      if (r.pruned.length) console.log('prune  : ' + r.pruned.join(', ') + '（不在 org 里的成员产物已清理）');
       for (const w of r.warnings) console.log('warn   : ' + w);
       for (const t of r.tampered) console.log('手改   : ' + t + '（本次已按 org 重写）');
     }

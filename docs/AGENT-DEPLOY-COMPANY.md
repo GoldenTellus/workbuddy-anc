@@ -20,7 +20,7 @@
 | [3](#3-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
 | [4](#4-dirs建目录) | `dirs` | 建 20 个目录 | 5 秒 |
 | [5](#5-files部署运行件) | `files` | 部署运行件 + 渲染 | 30 秒 |
-| [6](#6-skills装技能) | `skills` | 装 8 个技能 | 10 秒 |
+| [6](#6-skills装技能) | `skills` | 装 7 个技能（8 个文件，第 8 个是 .anc-backup） | 10 秒 |
 | [7](#7-patch装补丁) | `patch` | 打 WorkBuddy 补丁 | 1–3 分钟 |
 | [8](#8-tasks注册计划任务) | `tasks` | 注册 10 个任务 | 10 秒 |
 | [9](#9-vault建两区) | `vault` | 建两区 vault | 30 秒 |

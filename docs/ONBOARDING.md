@@ -82,7 +82,7 @@ node <仓库>\src\render\cli.ts verify  --home %USERPROFILE%
 ## 离职
 
 1. **停权**：`Disable-LocalUser -Name anc-read-<id>`（只读共享账号）；
-2. **解绑**：`node src\service\cli.ts --db … unbind --chat-id <chatid>`；
+2. **解绑**：`node src\service\cli.ts --db … bind unbind --chat-id <chatid>`；
 3. **org 数据**：成员文件标 `status: inactive`（或移入 `org/archive/`），重渲染；
 4. **群里**：把个人 bot 移出三方群；公司 bot 保留；
 5. **webhook**：该群 webhook 停用/重置（密钥只在主机，不在 git）；

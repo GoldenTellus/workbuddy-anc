@@ -74,9 +74,12 @@ Step '§1 vault 建 git（模拟有历史）' {
     foreach ($v in 'vault-shared','vault-internal') {
         $p = Join-Path $VaultRoot $v
         & git -C $p init -q 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git init 失败: $p (exit=$LASTEXITCODE)" }
         'placeholder' | Set-Content (Join-Path $p 'README.md') -Encoding UTF8
         & git -C $p add -A 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git add 失败: $p (exit=$LASTEXITCODE)" }
         & git -C $p -c user.name=t -c user.email=t@t commit -q -m init 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git commit 失败: $p (exit=$LASTEXITCODE)" }
     }
 }
 

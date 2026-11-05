@@ -9,11 +9,16 @@ param(
     # D25：默认取"当前部署账号"，不再硬编码专用用户；换部署形态时用 -BotUser 覆盖。
     [string]$BotUser = '',
     [switch]$Json,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    # vault 原件根：和 -Root（ProgramData 部署根）是两个不同的根（REBUILD §1）。
+    # 换盘符 / 演练根时用 -VaultRoot 指过去，否则 #11/#20 查的还是生产 D:\anc\vault-shared
+    # —— VERIFY §34 在 Z:\anc-root 上实测到「演练根的 doctor 报了生产 vault 的未跟踪文件」。
+    [string]$VaultRoot = 'D:\anc'
 )
 
 $ErrorActionPreference = 'Continue'
 if (-not $Root) { $Root = Join-Path $env:ProgramData 'anc' }
+$vaultShared = Join-Path $VaultRoot 'vault-shared'
 if (-not $BotUser) { $BotUser = $env:USERNAME }
 # 线上以部署目录为准：manifest 默认取 %ProgramData%\anc\patch 的那份，不再从 git 工作副本读
 if (-not $Manifest) { $Manifest = Join-Path $Root 'patch\manifest.json' }
@@ -371,7 +376,7 @@ foreach ($r in @(Get-TaskCoverage $ExpectedPrincipal)) {
 }
 
 # 5 心跳新鲜度
-$log = "$env:ProgramData\anc\data\loop.log"
+$log = Join-Path $Root 'data\loop.log'
 if (Test-Path $log) {
     $age = [int]((Get-Date) - (Get-Item $log).LastWriteTime).TotalMinutes
     if ($age -le 5) { Add-Result 'heartbeat' 'PASS' "$age 分钟内有 tick" '-' }
@@ -379,7 +384,7 @@ if (Test-Path $log) {
 } else { Add-Result 'heartbeat' 'FAIL' '没有 loop.log' '先跑一次 anc-service' }
 
 # 6 WorkBuddy 版本：路径优先取补丁写下的 workbuddy-path.txt（LOCAL SERVICE 也能定位）
-$wbPathFile = "$env:ProgramData\anc\data\workbuddy-path.txt"
+$wbPathFile = Join-Path $Root 'data\workbuddy-path.txt'
 $exe = $null
 if (Test-Path $wbPathFile) { $exe = (Get-Content $wbPathFile -Raw).Trim() }
 if (-not $exe -or -not (Test-Path $exe)) { $exe = "$env:LOCALAPPDATA\Programs\WorkBuddy\WorkBuddy.exe" }
@@ -406,7 +411,23 @@ $plog = $null
 foreach ($c in @("C:\Users\$BotUser\anc\workbuddy-patch.log", "$env:USERPROFILE\anc\workbuddy-patch.log")) {
     if ($c -and (Test-Path $c)) { $plog = $c; break }
 }
-if ($plog) {
+# 2026-11-06 修（VERIFY §61 / §58.7-1）：状态文件说失败时，日志里上一次的
+# APPLIED 不能盖过它。旧检查是「取最后一条 APPLIED」，不看时间戳 —— 本次注入
+# 失败而日志还留着上次的 APPLIED 时，doctor 照样 PASS（状态骗人）。
+# 只做这一层交叉验证，不引入进程启动时间判定，避免在跑部署被误报。
+$psFile = Join-Path $Root 'data\patch-state.json'
+$psFail = $null
+if (Test-Path $psFile) {
+    try {
+        $ps = [IO.File]::ReadAllText($psFile, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+        if (-not [bool]$ps.applied) {
+            $psFail = 'patch-state applied=false'
+            if ($ps.error) { $psFail += '：' + $ps.error }
+        }
+    } catch { $psFail = 'patch-state.json 无法解析' }
+}
+if ($psFail) { Add-Result 'patch' 'FAIL' ('补丁状态文件判失败：' + $psFail) '按 docs/WORKBUDDY-PATCH.md 重放补丁；或跑 launch-patched.ps1 重新注入' }
+elseif ($plog) {
     $last = Get-Content $plog -Tail 200
     $lastApply = $last | Select-String -Pattern 'APPLIED mode=|ANCHOR-MISS' | Select-Object -Last 1
     $hook = [bool]($last | Select-String -Pattern 'update-hook installed' -Quiet)
@@ -418,7 +439,7 @@ if ($plog) {
 
 # 10 SMB 共享权限
 $share = Get-SmbShare -Name 'anc-vault-shared' -ErrorAction SilentlyContinue
-if (-not $share) { Add-Result 'smb' 'FAIL' '共享不存在' 'New-SmbShare -Name anc-vault-shared -Path D:\anc\vault-shared' }
+if (-not $share) { Add-Result 'smb' 'FAIL' '共享不存在' ('New-SmbShare -Name anc-vault-shared -Path ' + $vaultShared + '（或改 -VaultRoot）') }
 else {
     $access = Get-SmbShareAccess -Name 'anc-vault-shared'
     $bad = $access | Where-Object { $_.AccountName -match 'Everyone|Authenticated Users|\\Users$' -and $_.AccessControlType -eq 'Allow' -and $_.AccessRight -ne 'Read' }
@@ -427,7 +448,7 @@ else {
 }
 
 # 11 vault 目录 NTFS
-$shared = 'D:\anc\vault-shared'
+$shared = $vaultShared
 if (Test-Path $shared) {
     $writeBits = [int]([Security.AccessControl.FileSystemRights]::WriteData -bor [Security.AccessControl.FileSystemRights]::AppendData -bor [Security.AccessControl.FileSystemRights]::Delete -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership)
     $genericWrite = 0x40000000L -bor 0x10000000L
@@ -438,14 +459,14 @@ if (Test-Path $shared) {
     }
     if ($users) { Add-Result 'vault-acl' 'FAIL' ('共享区对广泛组有写权限: ' + (($users | ForEach-Object { $_.IdentityReference.Value }) -join ', ')) 'icacls 收成 ReadAndExecute' }
     else { Add-Result 'vault-acl' 'PASS' '共享区对 Users/Everyone/Authenticated Users 只读' '-' }
-} else { Add-Result 'vault-acl' 'WARN' '共享区目录不存在' '按 docs/OPS.md 建 D:\anc\vault-shared' }
+} else { Add-Result 'vault-acl' 'WARN' '共享区目录不存在' ('按 docs/OPS.md 建 ' + $vaultShared + '（或改 -VaultRoot）') }
 
 # 12 密钥目录权限（webhook 是 bearer 凭据）
-$sec = Test-SecretsAcl "$env:ProgramData\anc\secrets"
+$sec = Test-SecretsAcl (Join-Path $Root 'secrets')
 Add-Result 'secrets-acl' $sec.state $sec.detail $sec.fix
 
 # 12b data 目录写权限（服务要写日志；少了它任务显示成功但日志不动，见 VERIFY §62.3）
-$dacl = Test-DataAcl "$env:ProgramData\anc\data"
+$dacl = Test-DataAcl (Join-Path $Root 'data')
 Add-Result 'data-acl' $dacl.state $dacl.detail $dacl.fix
 
 # 13 部署布局（唯一来源：从部署目录跑，不从工作副本跑）
@@ -465,7 +486,7 @@ $tz = (Get-TimeZone).Id
 $wantTz = $null
 if ($cfg -and $cfg.config -and ($cfg.config.PSObject.Properties.Name -contains 'timezone')) { $wantTz = [string]$cfg.config.timezone }
 if ($wantTz -and $tz -ne $wantTz) {
-    Add-Result 'timezone' 'FAIL' ("系统 $tz，配置要求 $wantTz（提醒时间会整体偏移）") 'config set timezone 改成实际时区，或修正系统时区'
+    Add-Result 'timezone' 'FAIL' ("系统 $tz，配置要求 $wantTz（提醒按主机系统时区计算，与配置不符会整体偏移）") '修正主机系统时区为配置值；timezone 是部署断言，不参与运行时计算'
 } elseif ($tz -eq 'China Standard Time') {
     Add-Result 'timezone' 'PASS' $tz '-'
 } else {
@@ -526,7 +547,7 @@ try {
 } catch { Add-Result 'bindings' 'WARN' ('读绑定失败：' + $_.Exception.Message) '检查数据库与 cli.ts；PS 5.1 下确认输出按 UTF-8 解码' }
 
 # 18 canary：补丁生效后真实收到的消息里有没有 chatId
-$canary = "$env:ProgramData\anc\data\patch-canary.json"
+$canary = Join-Path $Root 'data\patch-canary.json'
 if (-not (Test-Path $canary)) {
     Add-Result 'canary' 'WARN' '还没有 canary 记录（补丁生效后需收到一条群消息）' '在群里发一条消息后再看'
 } else {
@@ -553,7 +574,7 @@ try {
 }
 
 # 20 vault 改动有没有入库记录（绕过检测）
-$vault = 'D:\anc\vault-shared'
+$vault = $vaultShared
 $untracked = @()
 if (Test-Path (Join-Path $vault '.git')) {
     $untracked = @(& git -C $vault status --porcelain 2>$null | Where-Object { $_ -match '^\?\?' })

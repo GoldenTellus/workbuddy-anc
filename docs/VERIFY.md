@@ -6161,6 +6161,7 @@ at:                 16:46:28                    ← 那是 5.9.3 时代?
 ### 58.7 下一步（按优先级）?
 ?
 1. **修 `patch-guard`：自愈失败必须回写 `patch-state.json`（`applied=false` + 原因）** —— 否则"状态骗人"这条永远在?
+> 2026-11-06 回指：第 1 条已由 `§61` 修掉（`anc-selfheal.ps1` 失败回写 `applied=false`）；第 2 条已由 `§86` 修掉（`wait-patch-state.ps1` + runId）。本节是当时的待办清单，闭环结论看 `§86`。
 2. **给补丁注入加可判信号** —— `launch-patched.ps1` 在 resume 之后应该主动 poll 一下 `patch-state.json`，超时就明确报「注入没成功」，而不是留给下一个看日志的人去猜?
 3. **R7 换路径**：不再用降级。改为**在 5.9.3 上装好补丁后，等厂商真发版**；或者**用两个 asar 做对照**（把 5.8.3 的 `wecomaibot-client.js` 结构当作"新版本"喂给 `inspect.mjs`，验锚点判断逻辑 —— 但那只验工具，不验自愈）?
 4. **修 `REBUILD.md` 的数据恢复一节**：`robocopy /E` 不带 ACL，恢复后 `secrets-acl` 会 FAIL?
@@ -8900,6 +8901,7 @@ test-emit.flag 已删（17999 会在下次重启后关闭）?
 |---|---|---|?
 | **能接手一台已经在跑的机器、自己判断现状** | 保持现状，给陌生 agent 只给仓库 URL + 一句任务 | **✅ 本次验这一半** |?
 | **能从零装** | 清空机器，让他照 `AGENT-DEPLOY-COMPANY.md` 装 | **⬜ 未验**（维护者选了 B 路） |?
+> 2026-11-06 回指：`§81` 已补验「从零装」11/11（59 分钟），判据第 4 条两半均已通过；本表与 `§79.8` 的「◐ 一半」是 §79 当时的结论，以 `§81` / `AGENTS.md` 当前状态为准。
 ?
 **所以判据第 4 条现在只能标 ◐（一半），不能标 ✅。** 这个必须写清楚，否则等于把?
 「接手」偷换成「独立装」。?
@@ -9039,6 +9041,7 @@ test-emit.flag 已删（17999 会在下次重启后关闭）?
 |---|---|?
 | **陌生 agent 能自己判断现状** | **✅ 通过，且远超预期**（6 条交叉验证 / 四层自愈链 / 纠正我两处 / 发现我没查的两个假警报） |?
 | **陌生 agent 能从零装** | **⬜ 未验**（B 路的固有限制） |?
+> 2026-11-06 回指：已由 `§81` 补验通过（11/11）。
 | 1.0 判据第 4 条 | **◐ 一半** —— 不能标 ✅ |?
 ?
 **这次的真正价值不在"他过了"，在他找出的东西**：?
@@ -9713,3 +9716,93 @@ WorkBuddy.exe --user-data-dir="E:\temp\wb-second"
 
 `test-emit.flag` 已删（`17999` 会在下次重启后关闭）。
 验证期间它开着的窗口是**主动开的、有记录的、用完即关**，符合 `OPS.md` 的「默认关闭，用完删 flag」。
+
+## 86. 「记录在案但没修」的缺陷闭环（2026-11-06）
+
+查全口径：`Select-String -Path docs\VERIFY.md -Pattern '待修|未修|没修|留给下|下次再|先不修|暂不修'`
+命中 13 行（12 处），其中 6 处是历史叙述。**§34 / §36 / §48 / §58.7 里的「未修 / 没修」原文保留作来由，闭环结论以本节为准。**
+
+> §79 的原始接手记录已归档到 `docs/archive/VERIFY-HOST-TAKEOVER-20261105.md`（头部有归档说明），其**附录 B「复现清单」**完整保留在归档件中。
+
+### 86.1 基线（改代码之前，本机实测）
+
+- `git status -sb`: `main...origin/main [ahead 53]`，工作区干净。全程未 push / reset / stash。
+- **`npm test` 是 127 pass / 3 fail / 130（exit 1），不是 130/130。** 三条全在 `src/service/deploy-state.test.ts`，
+  症状是中文 `目标文件被锁` / `全部阶段完成` / `未知阶段` 变 `Ŀ...` / `ȫ...` / `δ֪...`。
+  PS 5.1（codepage 936）与 Bash 下都复现，是稳定缺陷，不是 shell 差异。
+- 在跑部署 `%ProgramData%\anc` 只读查看：`patch-state.json` = `{pid:9000, at:2026-11-05T10:39:55Z, applied:true}`。
+
+### 86.2 处置表
+
+| # | 缺陷 | 复现（改前） | 修法 | 修后实测 | 结论 |
+|---|---|---|---|---|---|
+| 6 | doctor bindings 在 PS 5.1 下误报 | `ConsoleEncoding=gb2312`；`employee="寮犱笁涓?,` → `PARSE FAILED: 传入的对象无效，应为":"或"}"` | `doctor.ps1` 加 `Invoke-ServiceJson`：调用 node 期间临时把 `Console.OutputEncoding` 切 UTF-8，finally 恢复；cli/db 改从 `$Root` 取；PASS detail 带员工名 | 隔离根跑完整 doctor：`bindings => PASS | 1 个绑定都登记了 webhook（张三丰）`，checks=31 | **已修** |
+| 4 | patch-state 陈旧状态 | 复刻旧 poll 判据喂 2 小时前的 `applied=true`：`OLD POLL RESULT: applied=True` | 启动器写 `patch-run.json`(runId)；`preload.writeState` 带 runId；新增 `wait-patch-state.ps1` 校验 runId/时间窗/pid；超时回写 `applied=false` | 6 分支：陈旧→`exit 1 注入没成功：陈旧记录`；旧 runId→exit 1；本次→exit 0；`applied=false`/无文件→exit 1 带原因；旧 preload 兼容→exit 0。preload 写入 `runId:"testrun123"` 已验 | **已修**（未真机重启 WorkBuddy，用隔离状态夹具验全部分支） |
+| 5 | 注入无可判信号 | 旧脚本超时只说「警告：150 秒内没等到」+「不要直接判失败，去看日志」 | 超时统一输出 `[anc] 注入没成功：<具体原因>` + 判据 + 状态原文 + 日志路径，exit 1 | 同上 6 分支，每条失败都有可读原因 | **已修** |
+| 7 | patch-in.log 中文乱码 | 真实 17999 注入对照：UTF-8 字节 → `text=登记任务：明天 10:00 提醒我交周报`；GBK 字节 → `text=╪Ǽ...`。**preload 写日志本身是好的，坏在发送端** | `/emit` 显式 `Buffer.concat(...).toString('utf8')`；含 U+FFFD 或高位 CJK≥3（GBK mojibake）当场 400，不注入也不写乱码；`deploy-verify.ps1` 两处改 `-Body ([Text.Encoding]::UTF8.GetBytes(...))`；新增 `ANC_EMIT_PORT` 供隔离测试 | 17998 沙箱：正确中文→200 且 `patch-in.log` 正确；GBK→400；纯 mojibake(`hasReplacement=false, highCjk=4`)→400；正常中文 `highCjk=1` 不误杀 | **已修** |
+| 8 | test-emit 连续注入排队 | §40/§85.3：80ms 内两条只有一条被处理，延迟 7–9 分钟 | `/emit` 返回 `seq / queued / gapMs / note`，连注明确回「已排队…只代表已投递，不代表已处理」；新增 `GET /emit/status` 给 accepted/observed | 80ms 连注：`queued:true, gapMs:21 / 90`，note 完整；status `accepted=3 observed=3` | **已修**（按判据选「返回里明确告知」，未改 bot 内部队列） |
+| 1 / 3 | doctor vault 路径硬编码 | §34：`Z:/anc-root` 上跑 doctor 报的是生产 `D:/anc/vault-shared` 的 3 个未跟踪文件 | 新增 `-VaultRoot`（默认 `D:/anc`），`$vaultShared` 统一供 #10 fix / #11 / #20 使用；doctor 的 `patch` 检查加「state 说失败不能被旧日志盖过」的交叉验证 | 夹具 `-VaultRoot` → `vault-ingest-audit WARN | 1 个未跟踪文件`（夹具 orphan.md）、`vault-acl FAIL`；不带参数 → `PASS`（生产）；两者不同证明硬编码消除；`patch => FAIL | applied=false：夹具：自愈失败` | **已修** |
+| 2 | 两个渲染缺陷 | ① §36：`test-receiver` 成员文件删了，6 个产物还在 ② `.bak-*` 累积 | ① `deployOrg` 对拍通过后按 `groups.json.members` 清 `outDir/members/` 孤儿目录，返回 `pruned`，只删认得出 `CODEBUDDY.md` 的目录 ② **查代码发现 `render.ts` 已有 `BAK_KEEP=10` + `pruneBackups`（§36 记的 10 个正是上限生效）**，补测试锁住 | `npm run test:render` **39/39 pass**：新增「删成员文件→`pruned:['zhangsan']`、陌生目录不误删」+「14 次写后 .bak 恰好 10 份」 | **已修**（① 本轮修；② 代码先前已修，本轮补回归测试） |
+| 9 | set-acl.ps1 L80 是否无效改动 | 临时目录对照实验：`:F` 目录 ACE 是 `(F)` 不继承，子文件只有 `LOCAL SERVICE:(I)(RX)`；`(OI)(CI)F` 子文件有 `Administrators:(I)(F)`+`SYSTEM:(I)(F)` | **不改代码**：实验否定「无效改动」的猜测，保留 L80，并写明播种没复现的原因（已有文件被 L96 单独授权，差异只在新建文件暴露） | 见左，icacls 输出逐行可复现 | **验证后保留**（不是「已修」） |
+| 10 | REUSE-MAP §5 死内容 | L207 自述「已全部并入 FORK-DIRECTION 0.2」 | 删 30 行副本，留 4 行指向唯一真相源 | `grep` 确认 §5 只剩说明、§6 完好 | **已修** |
+| 11 | REUSE-MAP §6 用废弃 R/H/C/T/V | 标题「按任务取用」+ 表头「阶段/任务」会误导 | 改「上游资源索引（按历史任务编号）」，明确「已废弃、不是当前任务清单、当前看 PLAN 1.0 的 S/O/L/D」；**不硬翻译编号**（颗粒度不同，硬映射=编造） | 文档回读 | **已修（诚实标注）** |
+| 12 | 接管验证文档归档 | 25KB，核心结论已进 §79；附录 B「复现清单」独一无二 | `git mv` 到 `docs/archive/`，头部加归档说明；归档指针写在本节开头（不动 §79 正文，避免破坏混合换行） | `grep '^## 附录 B'` → L404，附录 C L439，全文保留 | **已修** |
+| 附 | 基线 3 条红（清单外） | 见 86.1 | `deploy-state.ps1` 的 `-Json` 分支临时切 UTF-8 输出编码（与 #6 同根因） | `node --test src/service/deploy-state.test.ts` **8/8 pass** | **已修（清单外）** |
+
+### 86.3 三条查明/推翻的机制
+
+1. **#4「patch-state 陈旧状态」不是 guard 误判**（§48.5 已推翻过那个假设）。准确机制是：
+   `writeState` 只在补丁体包装成功 / ANCHOR-MISS 时覆盖写；**注入失败时文件根本不变**，
+   于是留着上次的 `applied=true`。`patch-guard.ps1` L58 有 15 秒时间窗、`anc-selfheal.ps1` L133
+   失败时会回写 `applied=false`，这两条早先已修；**没修的是 `launch-patched.ps1` 的 poll（只看 applied+pid）
+   和 doctor 的 patch 检查（只取日志最后一条 APPLIED，不看时间）**。本轮分别用 runId 和 state 交叉验证补上。
+   doctor 侧**故意不加进程启动时间判定**：本机存在多个 WorkBuddy 进程（18:39 / 18:46 / 20:34），
+   取哪个当「本次」会误伤在跑部署；代价是 doctor 只能识别「state 明确说失败」，不能识别「state 说成功但是旧的」，
+   后者由启动器的 runId 兜住。
+2. **#6 与基线 3 条红是同一个根因**：PS 5.1 的 `[Console]::OutputEncoding` 默认 GBK(codepage 936)。
+   读的一方（doctor 的 `& node ... | Out-String`）和写的一方（`deploy-state.ps1` 的 `-Json`）都踩了。
+   只切 node 调用期间 / 只切 `-Json` 分支，不改全局输出行为。
+3. **#9 的「无效改动」猜测被实验否定**：icacls 在**目录**上用 `:F` 得到的是 `(F)`，不带 `(OI)(CI)`，
+   新建子文件继承不到管理员/SYSTEM 权限。`(OI)(CI)F` 才是正确写法。播种试验没复现，是因为
+   `set-acl.ps1` L96 对**已有文件**逐个单独授权，把差异遮住了。
+
+### 86.4 诚实记录：一次越界的复现（未隐瞒）
+
+复现 #7 时未先查端口，`17999` 实际由**在跑的真实 WorkBuddy（pid 9000）**监听，两条复现请求打到了在跑部署：
+真实 `patch-in.log` 多了两行，且 bot 把第①条当成真实指令，**在在跑库里登记了任务 #7**
+（`title=交周报`, `chat_id=chatcn001`, `requester=tester`, `created_at=2026-11-05T13:16:27.099Z`）。
+**没有删改该任务、没有改任何部署文件/配置**；是否清理由维护者决定。
+随后给 `preload.cjs` 加 `ANC_EMIT_PORT`（默认仍 17999），本轮后续所有 test-emit 实测一律走 17998 沙箱端口。
+
+### 86.5 回归
+
+- `npm test`：见交付表（本轮新增 2 条 render 测试，总数 130 → 132）。
+- `node scripts/check-public.mjs`：零输出、exit 0；改动的 5 个 `.ps1` 全部带 UTF-8 BOM。
+- `doctor.ps1`：验收全部用隔离 `-Root` / `-VaultRoot` 夹具跑完整 31 项；**按红线没有对在跑部署执行 doctor**（`bindings` 的中文名判据同样在夹具里验的）。
+- 在跑 WorkBuddy **没有重启**；#4/#5/#7/#8 的端到端判定用隔离状态夹具与沙箱端口完成，不拿在跑部署冒险。
+
+## 87. 全量审计发现闭环（2026-11-06）
+
+审计方法、逐条证据与「不改会怎样」见本轮对话中的发现清单；本节只记处置结果。
+
+| # | 处置 | 实测 |
+|---|---|---|
+| 1 | `timezone` 只存不用：**不改时间计算代码**（要让运行时生效需重写 isWorkTime/localDay/loop 并验 DST，风险远大于收益）。改 `ACCEPTANCE S-5` 措辞 + doctor 的 FAIL/fix 文案，明确它是「部署一致性断言」 | `npm test` 132/132；doctor timezone 文案回读 |
+| 2 | doctor 5 处硬编码部署根改回 `$Root` | 改前两个不同 `-Root` 的 heartbeat/secrets-acl/data-acl/canary/workbuddy 全 PASS 且相同；改后不同 |
+| 3 | 当前状态数字 30→31 项、130→132 项；PLAN 历史章节（107/127/30）保留作当时实测值 | `npm test` 132/132、隔离夹具 doctor `checks=31` |
+| 4 | `PLAN §S1.2` 去掉不存在的 `scripts/verify-coldstart.ps1`，改指向 `VERIFY §17` 实测数据 | 46 个脚本引用逐个 Test-Path，唯一 MISS 已消除 |
+| 5 | `ONBOARDING` 离职解绑命令补 `bind` 组 | 隔离库实跑返回 `ok:true, removed` |
+| 6 | `REUSE-MAP §2.8` 加注：本库无 tsconfig / 无 tsc，不承诺静态类型检查 | `npx --no-install tsc --noEmit` 仍失败（零依赖），文档不再承诺 |
+| 7 | `npm run coverage` 加 `--test-coverage-exclude`，排除仓库外 WorkBuddy shim | 全量重跑：overall 行 **73.22% → 84.62%**、分支 74.15% → 78.58%、函数 76.22% → 88.70%；coverage 表里已无 `app.asar.unpacked`（只剩 npm 回显命令串里那一处字样） |
+| 8 | **已补**（维护者 2026-11-06 决定）：新增 `src/service/closure.test.ts`（23 个测试 / 160+ 断言），覆盖 L1 submissions / L2 issues / L3 patch-drafts / L6 eval 的真实分支。隔离手段是临时 SQLite 库、临时技能仓库（`opts.repo`）、随机端口本地 HTTP server，**不用 mock 绕过业务逻辑**；还含一次真实 EISDIR 故障注入，验「批量清理单条失败不中断整批」 | 四个文件行覆盖率 eval 46.22%→**100%**、issues 56.25%→**100%**、patch-drafts 38.13%→**100%**、submissions 56.20%→**100%**；overall 84.62%→**91.34%**；`npm test` 132→**155/155** |
+| 9 | `/emit` 加可选 token：同目录 `emit-token.txt` 存在才校验 `X-Anc-Token`（常量时间比对），不放则维持旧行为；`deploy-verify.ps1` 两处注入与 `OPS.md` 同步支持 | 隔离端口 17998 四场景：无 token→401、错 token→401、正确 token→200、删文件→恢复 200；deploy-verify 语法 0 错 |
+| 10 | README / LOCAL-SERVICE 的 Node 22 实验标志说明改成实测结论 | `node -v` v22.22.2、`process.features.typescript=strip`、无标志跑 cli.ts exit 0 |
+| 11 | **更正发现**：grep 实际命中 6 处 `git ... Out-Null`，其中 `devbot.ps1:116` 已查 `$LASTEXITCODE`、`devbot.ps1:251` 与 `e2e-loop.ps1:204` 用 `rev-parse` 复核实际分支（比 exit code 更可靠）；真缺陷只有 `rebuild-z.ps1:76/78/79` 三处，已补退出码检查 | 语法解析 0 错；空仓库 commit 实测 `exit=1`，新增 if 会 throw |
+| 12 | 计划任务 9→10 的说法统一（ACCEPTANCE O-1、PLAN 分工表） | `grep -c "Name = '" register-tasks.ps1` → 10 |
+| 13 | 技能数 8→7（AGENT-DEPLOY-COMPANY、UPSTREAM-COVERAGE） | `ls -d light/skills/*/` → 7 |
+| 14 | `§79` / `§58.7` 的过时结论加回指 `§81` / `§86` | 巨型混合换行文件用字节级插入，diff 纯新增 |
+| 15 | **跳过**：`_research/r7-downgrade.ps1` 无 BOM，但 `_research/` 被 gitignore 排除，不进仓库也不进公开扫描 | — |
+
+补测后最终回归：`npm test` **155/155**；`npm run coverage` 行 **91.34%** / 分支 81.34% / 函数 93.68%，coverage 表内 `app.asar.unpacked` 命中 **0**。四个闭环文件分支覆盖率 90.00%–93.24%（剩下的是不可能触发的兜底路径）。
+
+红线：全程未碰 `%ProgramData%\anc`（在跑部署）、未 commit / push、未改 DoD 38✅/2🟡 的判断。
