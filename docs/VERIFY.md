@@ -9302,3 +9302,99 @@ deploy-state     不存在
 | 4 | **`§12` 说明 `backup-freshness` 需要本地备份存在** | 中 |
 | 5 | `§10` 提醒 `Get-Content -Raw` 在 PS 5.1 下的编码问题 | 低 |
 | 6 | `§78.7` 那条修复要补上"目录 ACE 必须带 `(OI)(CI)`"这一半 | 高（与 #1 同一处） |
+
+## 82. P-3 降级验证：新员工上线 7.5 秒（2026-11-05 18:01）
+
+### 82.1 判据与降级做法
+
+**原要求**：新员工**一小时内**拿到个人 bot 与三方群；渲染器是唯一上线路径。
+
+**原缺项**（`ACCEPTANCE.md` L56 原文）：
+> 「一小时」无计时记录（R5 未做）；`D:\anc\org` 尚未建，端到端只在临时 org 上跑过
+
+**降级做法**（维护者 2026-11-05 决策，`ACCEPTANCE.md` L85）：`org/members/` 加一个 member
+→ render → deploy-persona → 验证，**全程计时**，能到 **9 成**。
+
+### 82.2 实测：7.5 秒
+
+按 `docs/ONBOARDING.md` 的步骤走，逐步计时：
+
+| 步骤 | 对应 ONBOARDING | 耗时 | 产物 |
+|---|---|---|---|
+| 写成员记录 | §2 | **0.1 秒** | `D:\anc\org\members\staff-b.md`（173 B，无 BOM） |
+| 渲染 | §3 | **5.6 秒** | `build\members\staff-b\CODEBUDDY.md`（1975 B）+ `build\groups.json`（2 members）+ 公司侧 persona（4216 B） |
+| `bind import` | §4 | **0.8 秒** | `created:1 updated:1` |
+| `onboard` | §7 | **0.3 秒** | 临时 home 的 `CODEBUDDY.md` + 2 张技能卡（`anc-handoff` / `anc-vault-read`）+ `.anc-install.json` |
+| `verify` | §7 | **0.3 秒** | **`verify: OK`** |
+| **合计** | | **7.5 秒** | |
+
+**对照「一小时内」：7.5 秒 = 3600 秒的 0.2%。**
+
+**关键**：**渲染器确实是唯一上线路径** —— 全程没有任何手工改线上文件，
+`build\` 里所有产物都是 `src\render` 生成的（`input_sha256: 0bfd3f7c…`）。
+
+### 82.3 产物留档（这是证据，不是垃圾）
+
+| 路径 | 大小 | 说明 |
+|---|---|---|
+| `D:\anc\org\members\staff-b.md` | 173 B | 成员记录（`userid`/`chat_id` 是占位符） |
+| `D:\anc\build\members\staff-b\CODEBUDDY.md` | 1975 B | 个人 bot 的 persona |
+| `D:\anc\build\groups.json` | — | `2 members: owner,staff-b` |
+| `E:\temp\staff-b-home\WorkBuddy\Claw\CODEBUDDY.md` | — | 模拟员工机装好的 persona |
+| `E:\temp\staff-b-home\WorkBuddy\Claw\.anc-install.json` | — | 安装记录（含 `persona_sha256`） |
+
+**`staff-b` 的假 `chat_id` 已从绑定表解绑** —— 假 ID 留在库里没意义，而且会让 `§12` 的
+`bot-reply` 选错目标。**成员记录和 build 产物留着**，因为它们是 P-3 的验收样本。
+
+### 82.4 为什么只能到 9 成
+
+`ACCEPTANCE.md` 写的降级上限是 9 成，理由「「员工」是造的，不是真人」。实测之后，**这个理由成立，而且还差更多**：
+
+| 缺什么 | 后果 |
+|---|---|
+| **`staff-b` 的 `userid` / `chat_id` 是占位符** | 这个"员工"在企微里不存在，`bind` 里那条记录是死的 |
+| **三方群没建**（本人 + 公司 bot + 个人 bot） | 一人一群这个核心机制没在这个员工身上验过 |
+| **员工机没装 WorkBuddy、没登录** | `onboard` 是往一个临时目录装的，**不是真员工机** |
+| **ONBOARDING §7 的「群里四条验收动作」全没跑** | 登记任务 / 到点提醒 / 查任务 / 入库，**这四条一个都没验** |
+
+**所以「7.5 秒」这个数字的真实含义是**：
+**"从写好成员记录到员工机能 `verify: OK` 的自动化部分只要 7.5 秒"** ——
+**不含**企微侧建群、员工机装 WorkBuddy 并登录、以及群里那四条人工验收。
+
+**这就是为什么它标「降级完成（9 成）」而不是 ✅。**
+
+### 82.5 顺带又撞到 `§10` 那个坑（同一个坑，第二次）
+
+验证绑定表时我写了：
+
+```powershell
+node -e "const b=JSON.parse(process.argv[1]).bindings; ..." $o3
+```
+
+其中 `$o3` 是 `cli.ts bind list` 的 **PowerShell `Out-String` 输出**。报错：
+
+```
+SyntaxError: Expected property name or '}' in JSON at position 1
+```
+
+**因为 PowerShell 5.1 把 JSON 输出成了非标准形态**：
+`{ok:true,bindings:[{chat_id:TEST-...,employee:员工B,...}]}` —— **key 没有引号**。
+
+**这跟 `§10` 记的编码坑是同一类**：**判据的输入不是你以为的那个格式**。
+`cli.ts` 打的是标准 JSON，但经过 `Out-String` 之后**被 PowerShell 重新格式化了**。
+
+**正确做法**：直接让 node 读库，或者把 `cli.ts` 的输出**不经 PowerShell 管道**地写到文件再读。
+**`bind unbind` 本身不受影响**（它不解析自己的输出），所以这次没造成损失。
+
+### 82.6 结论
+
+| 项 | 结果 |
+|---|---|
+| 端到端自动化耗时 | **7.5 秒**（判据上限 3600 秒，用了 0.2%） |
+| 渲染器是唯一上线路径 | **✅ 全程零手工改线上文件** |
+| `verify` | **`verify: OK`** |
+| 产物 | **全部留档**（5 处） |
+| 能到几成 | **9 成**（`ACCEPTANCE.md` 的原判，实测成立） |
+| 未验 | 三方群、员工机、群里四条验收动作 |
+
+**`ACCEPTANCE.md` 的 P-3 已从「🟡」改成「🟡 降级完成（9 成）」并写入实测数据。**

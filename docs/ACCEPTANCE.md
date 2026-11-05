@@ -53,7 +53,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 | S-6 | 出站前凭据扫描，行为与 §8 一致（二选一写死） | ✅ | `src/service/outbound-scan.ts:24-48`（命中即 `OUTBOUND_SECRET_BLOCKED`）；`src/service/outbox.ts:31`（入队前统一过扫描）；测试 `src/service/service.test.ts:72`、`:242`；`docs/FORK-DIRECTION.md:278`（终态=阻断）；`docs/PLAN.md:216`（H7 定为阻断） | 盲区已文档化：WorkBuddy 自己在群里的回复不经过本地小服务 |
 | P-1 | 群里登记任务 → 到点 @ → 不回继续 → 回「完成」即停 | ✅ | `light/skills/anc-task/SKILL.md:21-39`（登记/完成/取消的 CLI 用法）；`src/service/loop.ts:147-190`（@ 绑定人、连续提醒、升级）；测试 `src/service/service.test.ts:252`、`:352`、`:331`；`docs/VERIFY.md:292`（T6 真实群触发成功）、`:322`（T20 数十轮后仍按流程） | — |
 | P-2 | 发文件说「入库」→ 复核 → 入库摘要 → 按路由定位并给本地生成的摘要/路径；查不到说「尚未入库」 | ✅ | 入库响应直接带 `summaries`（`src/service/cli.ts` 的 ingest 回调调用本地 `summarizeMarkdown`）；`cli summary --find <关键词>` 按标题/正文命中并给出路径+摘要（实测「报价单」命中 2 篇）；「尚未入库」条款在 `light/skills/anc-vault-read/SKILL.md`；契约测试「ingest 响应把 summaries 原样透传」 | 摘要为本地规则生成，无模型、无网络；7 条 summarize 单测 + 1 条透传测试 |
-| P-3 | 新员工一小时内拿到个人 bot 与三方群；渲染器是唯一上线路径 | 🟡 | `src/render/onboard.ts:29-72`（installPackage / verifyInstall）；`src/render/index.ts:230-251`（deployOrg 整组事务 + rollback）；测试 `src/render/onboard.test.ts:23`、`:40`、`:54`、`src/render/deploy.test.ts:35`、`:52`；`docs/ONBOARDING.md` | "一小时"无计时记录（R5 未做）；`D:\anc\org` 尚未建（`docs/OPS.md:166`），端到端只在临时 org 上跑过 |
+| P-3 | 新员工一小时内拿到个人 bot 与三方群；渲染器是唯一上线路径 | **🟡 降级完成（9 成）** | **2026-11-05 实测计时（`VERIFY §82`）**：写 member 0.1s / render 5.6s / bind import 0.8s / onboard 0.3s / verify 0.3s = **7.5 秒**（对照「一小时」用了 0.2%）。产物留档：`members/staff-b.md`、`build/members/staff-b/CODEBUDDY.md`（1975 B）、`groups.json`（2 members）、临时 home 的 `CODEBUDDY.md` + `.anc-install.json`，`verify: OK`。代码位置：`src/render/onboard.ts:29-72`、`src/render/index.ts:230-251`、`docs/ONBOARDING.md` | **为什么不满分**：①「员工」是造的（`staff-b` 的 `userid`/`chat_id` 是占位符）；②**三方群没建**、员工机没装 WorkBuddy 并登录，所以 ONBOARDING §7 的「群里四条验收动作」没跑 —— 那要真企微账号和真人。原缺项「`D:\anc\org` 尚未建」已于 2026-11-05 消除（`D:\anc\org` 有 `company.md` / `depts/engineering.md` / `members/owner.md` + `staff-b.md`） |
 | P-4 | 访谈 11 问经个人 bot 整理、员工转发、公司 bot 归档到内部区 | ✅ | `light/skills/anc-interview/questions.md`（11 问）、`light/skills/anc-interview/SKILL.md`；`src/service/a2a.ts:116-144`（信封解析、按 `message_id` 去重、落内部区）；测试 `src/service/service.test.ts:104`、`:119`；`docs/VERIFY.md:322`（T20 真群跑过 11 题访谈） | 跨天场景未跑（R4） |
 | P-5 | A2A 通道按 A5 结论执行（自动或员工转发） | ✅ | `docs/PLAN.md:131`（A5 = D23：默认员工转发）；`docs/FORK-DIRECTION.md:160-165`（§5.6）；`src/service/a2a.ts:11-23`、`:89-144`；测试 `src/service/service.test.ts:104`、`:561`、`:580` | 自动通道 C4 未做（依赖 T14 实测），按裁决走转发，不算未完成 |
 | P-6 | 后台长任务按发送者隔离，异常进 `needs_review`，不自动重试 | ✅ | `src/service/tasks.ts:155-199`（`kind=background`、`start` 拒绝重复、超时转 `needs_review`、`review retry/close`）；`src/service/loop.ts:194-198`；测试 `src/service/service.test.ts:672`、`:699` | — |
@@ -91,7 +91,7 @@ E 5 + W 4 + K 6 + S 6 + P 7 + A 6 + O 6 = 40（A 组只到 A-6、O 组只到 O-6
 → 阶段 B（证明代码能自愈）→ 再动这张表。**不补 ACL 就清空，doctor 必红 5 项** ——
 那时看起来像「重装失败」，实际是「代码缺一块」（见 VERIFY §65）。
 
-**统计**：✅ 35 · 🟡 5 · ⬜ 0（合计 40 = PLAN §1 实际的 40 个 ID）。2026-11-04 按表格逐行核对；此前写的「30/9/1」是没跟着后续更新走的旧数字。
+**统计**：**其中 P-3 已降级完成（`VERIFY §82`，9 成）**；✅ 35 · 🟡 5 · ⬜ 0（合计 40 = PLAN §1 实际的 40 个 ID）。2026-11-04 按表格逐行核对；此前写的「30/9/1」是没跟着后续更新走的旧数字。
 
 **卡在真实群/环境上的条目**（只要这几条不闭合，V1 就不是 100%）：
 
