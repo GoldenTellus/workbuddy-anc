@@ -30,7 +30,7 @@ function Step($name, $sb) {
 Write-Host '=== 干净机重建 @ Z: ==='
 Write-Host "  仓库: $Repo"
 Write-Host "  模拟 C 盘: $A"
-Write-Host "  模拟 D 盘: $V"
+Write-Host "  模拟 D 盘: $VaultRoot"
 Write-Host ''
 
 # 清场
@@ -49,7 +49,10 @@ Step '§1 设 secrets / data 的 ACL' {
     # 原来这一步是人工敲的，清空重装后会全部丢失（VERIFY §65）。
     $setAcl = Join-Path $PSScriptRoot 'set-acl.ps1'
     if (Test-Path $setAcl) {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $setAcl -Root $A -Apply
+        # -SkipVerify 必须带：§3 的 deploy.ps1 才会把 bin\doctor.ps1 铺过去，
+        # 这里自检找不到 doctor 就会 exit 2，把整场演练判成失败（ACL 其实已经设好）。
+        # deploy.ps1 自己会再设一次 ACL，部署完单独跑 doctor 才是完整验证。
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $setAcl -Root $A -Apply -SkipVerify
         if ($LASTEXITCODE -ne 0) { throw ('设 ACL 失败（exit ' + $LASTEXITCODE + '）') }
     }
 }
@@ -130,7 +133,8 @@ Step '验证 渲染器能读 org' {
 
 # ── doctor（这里会暴露硬编码问题）─────────
 Step 'doctor -Root Z:\anc-root' {
-    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repo 'scripts\doctor.ps1') -Repo $Repo -Root $A 2>&1 | Out-String
+    # -VaultRoot 必须传：doctor 默认查生产 D:\anc，演练根的 #11/#20 会被生产 vault 污染（VERIFY §34）
+    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repo 'scripts\doctor.ps1') -Repo $Repo -Root $A -VaultRoot $VaultRoot 2>&1 | Out-String
     $summary = ($out -split "`r?`n" | Where-Object { $_ -match 'FAIL=' }) -join ''
     $fails = @($out -split "`r?`n" | Where-Object { $_ -match '^FAIL' })
     $warns = @($out -split "`r?`n" | Where-Object { $_ -match '^WARN' })

@@ -19,7 +19,7 @@
 | 层 | 谁 | 在哪用 | 能力来源 |
 |---|---|---|---|
 | **① 群里的对话能力** | 员工 | 企微群里 @ bot | **7 个技能**（`light/skills/`） |
-| **② 命令行能力** | 管理员 / 脚本 | 主机上 `node service\cli.ts` | **15 个命令组** |
+| **② 命令行能力** | 管理员 / 脚本 | 主机上 `node service\cli.ts` | **16 个命令组** |
 | **③ 自动运行能力** | 没人 | 主机后台 | **10 个计划任务** |
 
 **三层是叠加的**：技能内部调 CLI，CLI 写 SQLite，计划任务读 SQLite 并做时间驱动的事。
@@ -105,7 +105,7 @@
 
 ---
 
-## 3. ② 命令行能力 —— 15 个命令组
+## 3. ② 命令行能力 —— 16 个命令组
 
 **入口**：`node C:\ProgramData\anc\service\cli.ts --db <db> <组> <子命令> [参数]`
 
@@ -115,6 +115,7 @@
 | **`reminder`** | `add` `due` `sent` | 计时提醒的入队与发送记录 |
 | **`outbox`** | `list` `flush` `create` `submit` `status` | 出站消息队列。**真正的发送通道**，所有提醒都经它 |
 | **`submission`** | `add` `list` `set-status` | 员工报的问题（原始记录） |
+| **`a2a`** | `create` `status` `submit` `list` | 结构访谈的 A2A 信封：建调查、逐题提交到内部区、查进度、列答卷。规则版本冻结后不可改 |
 | **`issue`** | `draft` `list` `triage` `set-status` `close` | 问题分诊成 issue（规则表，不调模型） |
 | **`patch`** | `draft` `list` `show` `prune-closed` `prune` | 补丁草稿管理 |
 | **`eval`** | `run` `list` `history` | 判 devbot 产出 pass/fail |

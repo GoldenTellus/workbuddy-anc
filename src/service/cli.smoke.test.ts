@@ -144,3 +144,26 @@ test('ingest CLI 冒烟：未知命令与非服务身份的 apply 都在写 vaul
     assert.match(guard.stderr, /HTTP 端点/, '护栏应指路到服务的 HTTP 端点');
   });
 });
+
+test('service CLI 冒烟：用法列全 16 组、布尔 flag 不被后续 token 吞掉、limit 有界', async () => {
+  await inSandbox(async (sb) => {
+    const usage = await runCli(serviceCli, ['--db', sb.db], sb);
+    for (const g of ['summary', 'bind', 'task', 'reminder', 'outbox', 'a2a', 'config', 'backup',
+                     'project', 'loop', 'serve', 'submission', 'issue', 'patch', 'dayend', 'eval']) {
+      assert.match(usage.stderr, new RegExp('\\b' + g + '\\b'), '用法里不该漏掉命令组 ' + g);
+    }
+
+    const repo = resolve(join(import.meta.dirname, '..', '..'));
+    // --apply 后面故意跟一个普通 token：没登记成布尔 flag 时会被当成它的值，
+    // `args.apply === true` 静默变假，prune-closed 就退化成只预览（空库不写任何文件）。
+    const p = await runCli(serviceCli, ['patch', 'prune-closed', '--apply', 'extra', '--repo', repo, '--json', '--db', sb.db], sb);
+    assert.equal(p.code, 0, 'prune-closed 应成功，实际 stderr=' + p.stderr);
+    assert.match(p.stdout, /"applied": true/, '--apply 必须真的生效');
+
+    for (const bad of ['-1', 'abc', '999999999']) {
+      const h = await runCli(serviceCli, ['eval', 'history', '--limit', bad, '--json', '--db', sb.db], sb);
+      assert.equal(h.code, 0, '--limit ' + bad + ' 不该让 CLI 崩');
+      assert.match(h.stdout, /"ok": true/);
+    }
+  });
+});

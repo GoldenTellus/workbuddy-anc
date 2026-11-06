@@ -59,6 +59,25 @@ Write-Host "devbot: $(if ($WithDevbot) { '含（多 7 分钟）' } else { '跳�
 # 否则下一次 deploy 会拿错分支的技能去部署（2026-11-04 踩到）。
 $startBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
 
+# 复位单独成函数：正常收尾要调，异常终止时 trap 也要调。
+# $ErrorActionPreference='Stop' 下任意未捕获的终止错误会直接跳出脚本，
+# 原来放在文件末尾的复位代码执行不到，仓库会停在 devbot/issue-<N>（2026-11-06 修）。
+function Restore-StartBranch {
+    if (-not $startBranch) { return }
+    $cur = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+    if ($cur -eq $startBranch) { return }
+    & git -C $Repo checkout $startBranch 2>&1 | Out-Null
+    $nowBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
+    Write-Host ""
+    if ($nowBranch -eq $startBranch) { Write-Host "  已切回 $startBranch" }
+    else { Bad "切回 $startBranch 失败，现在在 $nowBranch" }
+}
+trap {
+    Restore-StartBranch
+    Write-Host "  ERROR 脚本异常终止：$($_.Exception.Message)"
+    break
+}
+
 if (-not $Apply) {
     Write-Host ""
     Write-Host "[e2e] 预检模式。加 -Apply 才真跑。"
@@ -200,12 +219,7 @@ Write-Host ""
 if ($Failures -eq 0) { Write-Host "  全绿" } else { Write-Host "  $Failures 个环节失败" }
 
 # ── 复位：切回起始分支（devbot 会把 HEAD 挪走）────────
-if ($startBranch -and $startBranch -ne (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()) {
-    & git -C $Repo checkout $startBranch 2>&1 | Out-Null
-    $nowBranch = (& git -C $Repo rev-parse --abbrev-ref HEAD 2>&1 | Out-String).Trim()
-    Write-Host ""
-    if ($nowBranch -eq $startBranch) { Write-Host "  已切回 $startBranch" } else { Bad "切回 $startBranch 失败，现在在 $nowBranch" }
-}
+Restore-StartBranch
 
 # 报告落盘（_research 不进 git）
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'

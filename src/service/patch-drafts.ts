@@ -13,9 +13,10 @@
 //   3. 定位不到段落就报错，不猜位置（插错地方比不插更糟）
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { assertSkillId } from './issues.ts';
 import type { Issue } from './issues.ts';
 
 export interface PatchDraft {
@@ -105,6 +106,43 @@ export interface DraftResult {
   insertedLines: number;
 }
 
+/**
+ * 线上技能名 → 仓库目录名。
+ * deploy-skills.ps1 按 SKILL.md 的 `name:` 落盘（persona 引用线上名），所以
+ * `anc-ingest` 的仓库目录是 `anc-ingest-company` —— 两套命名空间。分诊规则产出线上名，
+ * patch draft 要改的是仓库里的文件，必须反查一次，否则 L3 必然「技能文件不存在」。
+ * 优先按目录名找；找不到再扫 frontmatter；都不命中保留原名，让「技能文件不存在」照常报错。
+ */
+function skillDir(repo: string, skill: string): string {
+  const root = join(repo, 'light', 'skills');
+  if (existsSync(join(root, skill, 'SKILL.md'))) return skill;
+  if (!existsSync(root)) return skill;
+  let entries: string[];
+  try { entries = readdirSync(root); } catch { return skill; }
+  for (const name of entries) {
+    const f = join(root, name, 'SKILL.md');
+    if (!existsSync(f)) continue;
+    const m = readFileSync(f, 'utf8').match(/^name:\s*(\S+)\s*$/m);
+    if (m && m[1] === skill) return name;
+  }
+  return skill;
+}
+
+/**
+ * skill 会直接拼进路径，prune --apply 还会写回这个文件。
+ * 白名单挡 `../` 与绝对路径；realpath 再挡「技能目录被换成 junction 指向仓库外」。
+ */
+function skillPath(repo: string, skill: string): { relPath: string; absPath: string } {
+  assertSkillId(skill);
+  const relPath = join('light', 'skills', skillDir(repo, skill), 'SKILL.md').replace(/\\/g, '/');
+  const absPath = join(repo, relPath);
+  if (existsSync(absPath)) {
+    const r = relative(realpathSync(repo), realpathSync(absPath));
+    if (r.startsWith('..') || isAbsolute(r)) throw new Error('技能文件在仓库之外: ' + absPath);
+  }
+  return { relPath, absPath };
+}
+
 export function draftFromIssue(db: DatabaseSync, issueId: number, opts: DraftOptions = {}): DraftResult {
   const issue = db.prepare('SELECT * FROM issues WHERE id = ?').get(issueId) as Issue | undefined;
   if (!issue) throw new Error('没有这个 issue: #' + issueId);
@@ -113,8 +151,7 @@ export function draftFromIssue(db: DatabaseSync, issueId: number, opts: DraftOpt
   }
 
   const repo = opts.repo || process.cwd();
-  const relPath = join('light', 'skills', issue.skill, 'SKILL.md').replace(/\\/g, '/');
-  const absPath = join(repo, relPath);
+  const { relPath, absPath } = skillPath(repo, issue.skill);
   if (!existsSync(absPath)) throw new Error('技能文件不存在: ' + absPath);
 
   const original = readFileSync(absPath, 'utf8');
@@ -218,8 +255,7 @@ export function prune(
     };
   }
 
-  const relPath = join('light', 'skills', issue.skill, 'SKILL.md').replace(/\\/g, '/');
-  const absPath = join(repo, relPath);
+  const { relPath, absPath } = skillPath(repo, issue.skill);
   if (!existsSync(absPath)) {
     return { removed: false, removedLines: 0, file: relPath, preview: '', reason: '技能文件不存在: ' + absPath };
   }

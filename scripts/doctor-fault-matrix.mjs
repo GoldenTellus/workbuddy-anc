@@ -102,6 +102,8 @@ const GROUPS = {
       'task-anc-backup': 'FAIL', 'task-anc-boot-alert': 'FAIL', 'task-anc-cleanup': 'FAIL',
       'task-anc-patch-guard': 'FAIL', 'task-anc-service': 'FAIL',
       'task-anc-update-watch': 'FAIL', 'task-anc-watchdog': 'FAIL', 'task-anc-workbuddy-launch': 'FAIL',
+      // 2026-11-05 新增的检查项，原来没有任何组注入过它（doctor 有 10 项、这里只有 8 项）
+      'task-anc-devbot': 'FAIL',
     },
     // 注意：items 的 key 是 doctor 的**检查项名**（task-anc-backup），
     // 实际计划任务名没有 task- 前缀（anc-backup）。这里必须转换，否则
@@ -434,12 +436,14 @@ const RISKY = {
       // anc-service 每分钟 tick 会打开 anc.db，直接 rename 会 EBUSY —— 先停服务
       // anc-service 和 anc-http 都持有库连接，两个都要停，否则 rename 会 EBUSY
       for (const t of ['anc-service', 'anc-http']) {
-        ps("Stop-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
-        ps("Disable-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
+        // 任务名必须插值：写死 '\' 被 JS 解析成空串，操作的是根本不存在的任务
+        ps(`Stop-ScheduledTask -TaskName '${t}' -ErrorAction SilentlyContinue | Out-Null`);
+        ps(`Disable-ScheduledTask -TaskName '${t}' -ErrorAction SilentlyContinue | Out-Null`);
       }
       // 停任务不会杀掉已经在跑的进程，必须显式 kill，否则文件仍被占用
-      ps("Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'cli.ts.*serve' } | Stop-Process -Force -ErrorAction SilentlyContinue");
-      ps("Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'cli.ts.*loop' } | Stop-Process -Force -ErrorAction SilentlyContinue");
+      // PS 5.1 的 Get-Process 没有 CommandLine 属性，必须用 CimInstance（与 http 组一致）
+      ps("Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'cli\.ts.*serve' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }");
+      ps("Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'cli\.ts.*loop' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }");
       log('  注入前：停掉 anc-service + anc-http 并杀掉它们的 node 进程（两者都持有库连接）');
       renameSync(DB, DB + '.o2-moved');
       log('  注入: anc.db 改名为 anc.db.o2-moved');
@@ -447,8 +451,8 @@ const RISKY = {
     recover() {
       if (existsSync(DB + '.o2-moved')) renameSync(DB + '.o2-moved', DB);
       for (const t of ['anc-service', 'anc-http']) {
-        ps("Enable-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
-        ps("Start-ScheduledTask -TaskName '\' -ErrorAction SilentlyContinue | Out-Null");
+        ps(`Enable-ScheduledTask -TaskName '${t}' -ErrorAction SilentlyContinue | Out-Null`);
+        ps(`Start-ScheduledTask -TaskName '${t}' -ErrorAction SilentlyContinue | Out-Null`);
       }
       log('  恢复: 改回 anc.db、两个服务重新启用');
     },

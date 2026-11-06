@@ -273,8 +273,7 @@ export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Pro
   const now = opts.now ?? nowIso();
   const fixedUrl = opts.webhookFile ? readFileSync(opts.webhookFile, 'utf8').trim() : '';
   const secretsDir = opts.secretsDir ?? join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'secrets');
-  const pending = listPendingDue(db, now, opts.limit ?? 20)
-    .filter((m) => !opts.chatId || m.chat_id === opts.chatId);
+  const pending = listPendingDue(db, now, opts.limit ?? 20, opts.chatId);
 
   const nowStr = toIso(now);
   for (const m of pending) {
@@ -316,7 +315,18 @@ export async function sendPending(db: DatabaseSync, opts: TickOptions = {}): Pro
       failed += 1;
       continue;
     }
-    const payload = JSON.parse(m.payload) as { text: string; mentions?: string[] };
+    let payload: { text: string; mentions?: string[] };
+    try {
+      payload = JSON.parse(m.payload) as { text: string; mentions?: string[] };
+      if (!payload || typeof payload.text !== 'string') throw new Error('BAD_PAYLOAD_JSON');
+    } catch {
+      // 脏 payload（手改库 / 残缺备份 / 旧版本数据）重试永远不会变好：直接判死。
+      // parse 原本在 try 外面，一条坏数据会把整个 tick 抛出去，而这条消息已被 claim
+      // 成 sending —— 之后每 10 分钟被当 stale 重新领取再抛一次，永久卡死。
+      markFailed(db, m.id, 'BAD_PAYLOAD_JSON');
+      failed += 1;
+      continue;
+    }
     try {
       await send(url, payload.text, payload.mentions ?? []);
       markSent(db, m.id);

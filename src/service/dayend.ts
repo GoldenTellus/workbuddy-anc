@@ -62,9 +62,14 @@ export function add(db: DatabaseSync, input: AddInput): AddResult {
 
   const at = new Date().toISOString();
   const r = db
-    .prepare('INSERT INTO dayend (employee, userid, chat_id, note, day, at) VALUES (?, ?, ?, ?, ?, ?)')
+    .prepare('INSERT INTO dayend (employee, userid, chat_id, note, day, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(employee, day) DO NOTHING')
     .run(employee, input.userid?.trim() || null, input.chatId?.trim() || null, input.note?.trim() || null, day, at);
 
+  // 并发：两个人同时说下班时，第二个不该撞 idx_dayend_uniq 抛错，应回「已记过」
+  if (Number(r.changes ?? 0) === 0) {
+    const dup = db.prepare('SELECT * FROM dayend WHERE employee = ? AND day = ?').get(employee, day) as DayEnd;
+    return { record: dup, created: false };
+  }
   const record = db.prepare('SELECT * FROM dayend WHERE id = ?').get(Number(r.lastInsertRowid)) as DayEnd;
   return { record, created: true };
 }

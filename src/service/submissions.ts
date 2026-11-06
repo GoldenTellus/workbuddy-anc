@@ -92,7 +92,8 @@ export function add(db: DatabaseSync, input: AddInput): AddResult {
   const r = db
     .prepare(
       `INSERT INTO submissions (dedupe_key, chat_id, employee, userid, text, file_path, file_hash, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)
+       ON CONFLICT(dedupe_key) DO NOTHING`,
     )
     .run(
       key,
@@ -105,6 +106,11 @@ export function add(db: DatabaseSync, input: AddInput): AddResult {
       now,
     );
 
+  // 并发：两个写方都过了前面的查重时，第二个不再撞 UNIQUE 抛裸 SQLite 错
+  if (Number(r.changes ?? 0) === 0) {
+    const dup = db.prepare('SELECT id, employee FROM submissions WHERE dedupe_key = ?').get(key) as { id: number; employee: string | null } | undefined;
+    return { id: Number(dup?.id ?? 0), created: false, employee: dup?.employee ?? null };
+  }
   return { id: Number(r.lastInsertRowid), created: true, employee };
 }
 

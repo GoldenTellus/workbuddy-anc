@@ -94,6 +94,13 @@ if (Test-Path $WebhookFile) {
 if (-not $alerted) { Write-Log "not marking $new as seen (alert not delivered)"; exit 2 }
 
 $seen += $new
-[pscustomobject]@{ seen = $seen; at = (Get-Date).ToString('o') } | ConvertTo-Json |
-    Set-Content $StateFile -Encoding utf8 -ErrorAction SilentlyContinue
+# 告警已经投递成功才走到这里。状态写失败不能静默吞掉并 exit 0：
+# 否则明天同一版本会再告警一遍，运维群天天被刷屏且无线索（2026-11-06 修）。
+try {
+    [pscustomobject]@{ seen = $seen; at = (Get-Date).ToString('o') } | ConvertTo-Json |
+        Set-Content $StateFile -Encoding utf8 -ErrorAction Stop
+} catch {
+    Write-Log "state write failed: $($_.Exception.Message)"
+    exit 2
+}
 exit 0

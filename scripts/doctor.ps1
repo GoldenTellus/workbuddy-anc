@@ -311,9 +311,16 @@ if ($SelfTest) {
         & icacls $sec /grant 'BUILTIN\Users:(OI)(CI)RX' 2>&1 | Out-Null
         $r = Test-SecretsAcl $sec
         Say ($r.state -eq 'FAIL') 'secrets-acl 能识别广泛组可读' $r.state
-        & icacls $sec /inheritance:r 2>&1 | Out-Null
+        # /inheritance:r 要带 /T：hook.txt 上残留的继承 ACE 也会让判据 ① 命中
+        & icacls $sec /inheritance:r /T 2>&1 | Out-Null
         & icacls $sec /remove:g 'BUILTIN\Users' 'Everyone' 'Authenticated Users' /T 2>&1 | Out-Null
-        & icacls $sec /grant 'BUILTIN\Administrators:(OI)(CI)F' 'NT AUTHORITY\SYSTEM:(OI)(CI)F' /T 2>&1 | Out-Null
+        # Test-SecretsAcl 是双向判据：既要「广泛组不可读」，也要「LOCAL SERVICE 可读」+「管理员可读」。
+        # 夹具只授 Admins/SYSTEM 时收紧后必然 FAIL（2026-11-06 实测），必须把服务身份一起授上。
+        & icacls $sec /grant 'BUILTIN\Administrators:(OI)(CI)F' 'NT AUTHORITY\SYSTEM:(OI)(CI)F' 'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX' /T 2>&1 | Out-Null
+        # /inheritance:r /T 会把 hook.txt 的继承 ACE 清成空 ACL，而带 (OI)(CI) 的 /grant
+        # 不会给文件补回条目 —— 文件级判据会失效，下面的 Remove-Item 也会「访问被拒绝」。
+        # 显式给文件授一次（不带继承标志），让它和真实部署一样三方 ACE 齐全。
+        & icacls (Join-Path $sec 'hook.txt') /grant:r 'BUILTIN\Administrators:F' 'NT AUTHORITY\SYSTEM:F' 'NT AUTHORITY\LOCAL SERVICE:RX' 2>&1 | Out-Null
         $r2 = Test-SecretsAcl $sec
         Say ($r2.state -eq 'PASS') 'secrets-acl 收紧后放行' $r2.state
 
@@ -335,6 +342,8 @@ if ($SelfTest) {
         # 5 secrets-in-git 的判定函数在真实仓库上应为 PASS（有 .git 时）
         Say ($true) 'secrets-in-git 走 git grep（在下面的正式检查里）' 'skip'
     } finally {
+        # 夹具改过 ACL：先恢复继承再删，否则空 ACL 的子文件会让 Remove-Item 拒绝访问
+        & icacls $tmp /reset /T /Q 2>&1 | Out-Null
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
     ""
@@ -370,7 +379,7 @@ if ($cfgProblems.Count -gt 0) { Add-Result 'work-hours' 'FAIL' ('配置有误（
 elseif ($start -and $end) { Add-Result 'work-hours' 'PASS' "$start–$end" '-' }
 else { Add-Result 'work-hours' 'WARN' '未配置工作时段（默认全天）' '需要时 config set work_start/work_end' }
 
-# 4 计划任务：8 个全覆盖 + principal
+# 4 计划任务：逐项覆盖 $ExpectedPrincipal（现 10 项，含 anc-devbot）
 foreach ($r in @(Get-TaskCoverage $ExpectedPrincipal)) {
     Add-Result ("task-" + $r.name) $r.state $r.detail $r.fix
 }
@@ -566,8 +575,19 @@ try {
     if ($h.ok) { Add-Result 'http-health' 'PASS' $h.detail '-' }
     else { Add-Result 'http-health' 'FAIL' ('服务在但心跳不健康: ' + $h.detail) '检查 anc-service 是否在跑' }
 } catch {
-    if (Get-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue) {
-        Add-Result 'http-health' 'FAIL' 'anc-http 任务在但端口没响应' '看 %ProgramData%\anc\data\http.log；确认 17891 没被占用'
+    # 2026-11-06：全量测试 / 部署并发时 3 秒探测会超时，直接判 FAIL 是误报
+    # （实测负载回落后同一端点 200 OK）。失败后再给一次机会，两次都不通才判死。
+    Start-Sleep -Milliseconds 800
+    $retryOk = $false
+    $retryDetail = ''
+    try {
+        $h2 = Invoke-RestMethod -Uri 'http://127.0.0.1:17891/__anc_health' -TimeoutSec 5
+        if ($h2.ok) { $retryOk = $true; $retryDetail = [string]$h2.detail }
+    } catch { }
+    if ($retryOk) {
+        Add-Result 'http-health' 'PASS' ($retryDetail + '（首次探测超时，重试通过）') '-'
+    } elseif (Get-ScheduledTask -TaskName 'anc-http' -ErrorAction SilentlyContinue) {
+        Add-Result 'http-health' 'FAIL' 'anc-http 任务在但端口没响应（已重试）' '看 %ProgramData%\anc\data\http.log；确认 17891 没被占用'
     } else {
         Add-Result 'http-health' 'WARN' 'HTTP 面未启用（没有 anc-http 任务）' '需要时跑 scripts\register-tasks.ps1 -Apply'
     }

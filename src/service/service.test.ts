@@ -1,10 +1,15 @@
+// 生产代码按本地时区算「今天 / 工作时段」（config.ts、loop.ts、dayend.ts 用 getHours/getDate），
+// 而本文件的期望值按 UTC+8 写死。不固定时区时 UTC 机器上有 5 项翻红（2026-11-06 实测）。
+process.env.TZ = 'Asia/Shanghai';
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb } from './db.ts';
+import { openDb, tx } from './db.ts';
 import * as tasks from './tasks.ts';
 import * as reminders from './reminders.ts';
 import * as outbox from './outbox.ts';
@@ -12,8 +17,9 @@ import * as bindings from './bindings.ts';
 import * as config from './config.ts';
 import * as a2a from './a2a.ts';
 import { scanOutbound, assertSafeOutbound } from './outbound-scan.ts';
-import { tick as loopTick } from './loop.ts';
+import { tick as loopTick, sendPending } from './loop.ts';
 import * as backup from './backup.ts';
+import * as dayend from './dayend.ts';
 
 function withDb(fn: (db: ReturnType<typeof openDb>) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'anc-svc-'));
@@ -579,6 +585,10 @@ test('A2A：内部区必须是独立 git 目录，且不能是共享区', () => 
     assert.equal(a2a.assertInternalDir(internal), internal);
     assert.throws(() => a2a.assertInternalDir(shared, shared), /不能是共享区/);
     assert.throws(() => a2a.assertInternalDir(join(shared, 'sub'), shared), /不能是共享区/);
+    // Windows 大小写不敏感：全小写的路径仍落在共享区里，不能绕过两区隔离
+    if (process.platform === 'win32') {
+      assert.throws(() => a2a.assertInternalDir(join(shared, 'sub').toLowerCase(), shared), /不能是共享区/);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -821,6 +831,112 @@ test('顺延通知有上限：8 个逾期任务只发 5 条，但提醒全部重
     assert.equal(upcoming.c, 8, '8 个任务的提醒都该重排，实际 pending ' + upcoming.c);
   } finally {
     db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('outbox：坏 payload 判死且不拖垮 tick（2026-11-06 回归）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-badpayload-'));
+  const db = openDb(join(dir, 'anc.db'));
+  try {
+    const hook = join(dir, 'hook.txt');
+    writeFileSync(hook, 'https://example.invalid/hook\n', 'utf8');
+    const bad = outbox.enqueue(db, { text: '坏消息', chatId: 'chat-A' });
+    db.prepare("UPDATE outbox SET payload = '{not-json' WHERE id = ?").run(bad.id);
+    outbox.enqueue(db, { text: '好消息', chatId: 'chat-A' });
+    const calls: string[] = [];
+    const opts = { webhookFile: hook, chatId: 'chat-A', send: async (_u: string, text: string) => { calls.push(text); } };
+    const r = await sendPending(db, opts);
+    assert.equal(r.sent, 1, '一条坏数据不能让整个 tick 停摆');
+    assert.equal(r.failed, 1);
+    assert.deepEqual(calls, ['好消息']);
+    const row = db.prepare('SELECT status, last_error FROM outbox WHERE id = ?').get(bad.id) as { status: string; last_error: string };
+    assert.equal(row.status, 'failed', '坏 payload 重试永远不会变好，必须判死');
+    assert.match(row.last_error, /BAD_PAYLOAD_JSON/);
+    const again = await sendPending(db, opts);
+    assert.equal(again.failed, 0, '判死后不该再被领取');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('outbox：chatId 过滤下推到 SQL，LIMIT 不被无关群吃光', () => withDb((db) => {
+  for (let i = 0; i < 25; i++) outbox.enqueue(db, { text: 'A' + i, chatId: 'chat-A' });
+  outbox.enqueue(db, { text: 'B', chatId: 'chat-B' });
+  const now = new Date(Date.now() + 60_000).toISOString();
+  const first20 = outbox.listPendingDue(db, now, 20);
+  assert.equal(first20.length, 20);
+  assert.ok(!first20.some((m) => m.chat_id === 'chat-B'), 'B 排在第 26 条，前 20 条本来就没有');
+  const onlyB = outbox.listPendingDue(db, now, 20, 'chat-B');
+  assert.equal(onlyB.length, 1, '指定群的消息不能被无关群占满的 LIMIT 挤掉');
+  assert.equal(onlyB[0].chat_id, 'chat-B');
+}));
+
+test('db：嵌套 tx 用 SAVEPOINT，内层抛错不撤销外层已完成的写入（2026-11-06 回归）', () => withDb((db) => {
+  tx(db, () => {
+    db.prepare("INSERT INTO config (key, value) VALUES ('outer', 'kept')").run();
+    assert.throws(() => tx(db, () => {
+      db.prepare("INSERT INTO config (key, value) VALUES ('inner', 'gone')").run();
+      throw new Error('内层故意失败');
+    }), /内层故意失败/);
+  });
+  const outer = db.prepare("SELECT value FROM config WHERE key = 'outer'").get() as { value: string } | undefined;
+  assert.equal(outer?.value, 'kept', '外层写入不能被内层失败整体回滚');
+  assert.equal(db.prepare("SELECT value FROM config WHERE key = 'inner'").get(), undefined, '内层写入必须回滚');
+}));
+
+test('dayend：首次 / 同日重复 / 跨天 / 全员判定（2026-11-06 回归）', () => withDb((db) => {
+  const a = dayend.add(db, { employee: '张三', day: '2026-11-06', userid: 'u-zhang', chatId: 'chat-A' });
+  assert.equal(a.created, true);
+  assert.equal(a.record.day, '2026-11-06');
+  const again = dayend.add(db, { employee: '张三', day: '2026-11-06' });
+  assert.equal(again.created, false);
+  assert.equal(again.record.at, a.record.at, '不覆盖第一次说下班的时间');
+  assert.equal(dayend.add(db, { employee: '张三', day: '2026-11-07' }).created, true, '跨天是新记录');
+  assert.equal(dayend.list(db, { day: '2026-11-06' }).length, 1);
+
+  assert.equal(dayend.checkAllOff(db, { day: '2026-11-06' }).allOff, false, '空名册不能算全员下班');
+  bindings.bind(db, 'chat-A', '张三', undefined, 'u-zhang');
+  bindings.bind(db, 'chat-B', '李四', undefined, 'u-li');
+  let s = dayend.checkAllOff(db, { day: '2026-11-06' });
+  assert.equal(s.allOff, false);
+  assert.deepEqual(s.pending, ['李四']);
+  dayend.add(db, { employee: '李四', day: '2026-11-06' });
+  s = dayend.checkAllOff(db, { day: '2026-11-06' });
+  assert.equal(s.allOff, true);
+  assert.equal(s.off.length, 2);
+}));
+
+test('submissions：两个进程同时 add 同一 dedupe_key，不崩不重复（2026-11-06 真并发回归）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-conc-'));
+  const dbPath = join(dir, 'anc.db');
+  const cli = resolve(import.meta.dirname, '..', '..', 'src', 'service', 'cli.ts');
+  const run = (args: string[]) => new Promise<{ code: number; out: string; err: string }>((res) => {
+    const p = spawn(process.execPath, ['--no-warnings', cli, '--db', dbPath, '--json', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    p.stdout.on('data', (c) => { out += c; });
+    p.stderr.on('data', (c) => { err += c; });
+    p.on('close', (code) => res({ code: code ?? -1, out: out.trim(), err: err.trim() }));
+  });
+  try {
+    const init = await run(['config', 'list']);
+    assert.equal(init.code, 0, '先建库：' + init.err);
+    const [a, b] = await Promise.all([
+      run(['submission', 'add', '--text', '并发测试', '--chat-id', 'chat-A']),
+      run(['submission', 'add', '--text', '并发测试', '--chat-id', 'chat-A']),
+    ]);
+    assert.equal(a.code, 0, 'A 不该崩：' + a.err);
+    assert.equal(b.code, 0, 'B 不该崩：' + b.err);
+    const ja = JSON.parse(a.out.slice(a.out.indexOf('{')));
+    const jb = JSON.parse(b.out.slice(b.out.indexOf('{')));
+    assert.notEqual(ja.created, jb.created, '恰好一个 created:true');
+    assert.equal(ja.id, jb.id, '两个进程拿到同一个 id');
+    const db = new DatabaseSync(dbPath);
+    const rows = db.prepare('SELECT id FROM submissions').all() as Array<{ id: number }>;
+    db.close();
+    assert.equal(rows.length, 1, '并发下只落一行');
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });

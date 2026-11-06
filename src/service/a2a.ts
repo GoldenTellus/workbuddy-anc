@@ -13,8 +13,11 @@ export function assertInternalDir(dir: string, sharedDir?: string): string {
   if (!isAbsolute(dir)) throw new A2AError('BAD_INTERNAL', '内部区必须是绝对路径: ' + dir);
   // 越区先判，且不依赖目录是否存在：shared\sub 这种还没建的路径也要当场拒掉
   if (sharedDir && isAbsolute(sharedDir)) {
-    const r = resolve(dir);
-    const s2 = resolve(sharedDir);
+    // Windows 文件系统大小写不敏感：'d:\anc\vault-shared\internal' 绕得过字符串前缀比较，
+    // 却仍落在共享区里（D12 两区隔离）。只在 win32 上统一小写，别改动 POSIX 语义。
+    const norm = process.platform === 'win32' ? (p: string) => p.toLowerCase() : (p: string) => p;
+    const r = norm(resolve(dir));
+    const s2 = norm(resolve(sharedDir));
     if (r === s2 || r.startsWith(s2 + sep)) {
       throw new A2AError('BAD_INTERNAL', '内部区不能是共享区或其子目录: ' + dir);
     }
@@ -128,7 +131,8 @@ export function submit(db: DatabaseSync, env: Envelope, internalDir: string, fro
   if (expected.length && (!fromUserid || !expected.includes(fromUserid))) {
     throw new A2AError('NOT_EXPECTED', '提交人不在这场调查的名单里');
   }
-  // 去重在同一场调查内：每场访谈都用 q1..qN，跨调查同名不是重复
+  // 去重在同一场调查内：每场访谈都用 q1..qN，跨调查同名不是重复。
+  // 这里的查重只挡顺序重复；并发竞态由下面事务里的 ON CONFLICT 兜住。
   const dup = db.prepare('SELECT message_id FROM a2a_messages WHERE survey_id = ? AND message_id = ?').get(env.survey_id, env.message_id);
   if (dup) return { inserted: false, message_id: env.message_id, survey_id: env.survey_id, file: null };
 
@@ -160,15 +164,21 @@ export function submit(db: DatabaseSync, env: Envelope, internalDir: string, fro
     '',
   ].join('\n');
 
-  // 先插库再写文件，同一事务：写文件失败（含 wx 撞名）会回滚插入，不会留下有记录没文件或覆盖旧文件
+  // 先插库再写文件，同一事务：写文件失败（含 wx 撞名）会回滚插入，不会留下有记录没文件或覆盖旧文件。
+  // ON CONFLICT 让并发重复投递回 inserted:false，而不是抛裸主键约束错。
+  let inserted = false;
   tx(db, () => {
-    db.prepare(
+    const r = db.prepare(
       `INSERT INTO a2a_messages (message_id, survey_id, from_userid, type, rule_version, file_path, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(survey_id, message_id) DO NOTHING`
     ).run(env.message_id, env.survey_id, fromUserid ?? null, env.type, env.rule_version, file, nowIso());
+    if (Number(r.changes ?? 0) === 0) return;
     writeFileSync(file, body, { encoding: 'utf8', flag: 'wx' });
+    inserted = true;
   });
 
+  if (!inserted) return { inserted: false, message_id: env.message_id, survey_id: env.survey_id, file: null };
   return { inserted: true, message_id: env.message_id, survey_id: env.survey_id, file };
 }
 

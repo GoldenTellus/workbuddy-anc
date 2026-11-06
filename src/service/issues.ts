@@ -11,6 +11,7 @@
 
 import type { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
+import { tx } from './db.ts';
 
 export interface Issue {
   id: number;
@@ -132,8 +133,14 @@ export interface DraftResult {
   needTriage: boolean;
 }
 
-/** 一条 submission → 一条 issue。同一条 submission 重复 draft 会返回已有的那条。 */
+/** 一条 submission → 一条 issue。同一条 submission 重复 draft 会返回已有的那条。
+ *  查重 + INSERT + 回填必须在同一个 BEGIN IMMEDIATE 事务里：两个进程同时 draft 时，
+ *  第二个会等写锁，然后读到已回填的 issue_id，不会各插一条 issue 再互相覆盖。 */
 export function draftFromSubmission(db: DatabaseSync, submissionId: number): DraftResult {
+  return tx(db, () => draftOnce(db, submissionId));
+}
+
+function draftOnce(db: DatabaseSync, submissionId: number): DraftResult {
   const sub = db
     .prepare('SELECT id, text, status, issue_id FROM submissions WHERE id = ?')
     .get(submissionId) as { id: number; text: string; status: string; issue_id: number | null } | undefined;
@@ -143,6 +150,13 @@ export function draftFromSubmission(db: DatabaseSync, submissionId: number): Dra
   if (sub.issue_id) {
     const existing = db.prepare('SELECT * FROM issues WHERE id = ?').get(sub.issue_id) as Issue | undefined;
     if (existing) return { issue: existing, created: false, needTriage: !existing.skill };
+  }
+
+  // 旧库 / 绕过 CLI 直接写库可能留下「issue 已存在但 submission.issue_id 没回填」，补一次
+  const dup = db.prepare('SELECT * FROM issues WHERE submission_id = ?').get(sub.id) as Issue | undefined;
+  if (dup) {
+    db.prepare("UPDATE submissions SET issue_id = ?, status = 'triaged' WHERE id = ?").run(dup.id, sub.id);
+    return { issue: dup, created: false, needTriage: !dup.skill };
   }
 
   const tri = triage(sub.text);
@@ -184,8 +198,16 @@ export function list(db: DatabaseSync, opts: { limit?: number; status?: string }
   return rows as unknown as Issue[];
 }
 
+/** 技能名会直接拼进 light/skills/<skill>/SKILL.md，且 prune --apply 会写回该文件，必须白名单。 */
+export const SKILL_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+export function assertSkillId(skill: string): void {
+  if (!SKILL_ID.test(skill)) throw new Error('技能名不合规（小写字母数字 _ -，≤64）: ' + skill);
+}
+
 /** 人工分诊：分诊没命中时补上 skill/section，或者直接关掉。 */
 export function setTriage(db: DatabaseSync, id: number, skill: string | null, section: string | null): boolean {
+  if (skill !== null) assertSkillId(skill);
   const now = new Date().toISOString();
   const verify = makeVerify(skill, section);
   const r = db

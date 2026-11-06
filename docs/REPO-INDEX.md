@@ -19,20 +19,20 @@ Windows 单机 + 企业微信 + WorkBuddy 的公司 bot 系统：**确定性的�
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **155 / 155 pass** | `npm test`（2026-11-06 文档改动后重跑） |
-| 覆盖率（行 / 分支 / 函数） | **91.34% / 81.34% / 93.68%** | `npm run coverage` |
+| 测试 | **163 / 163 pass** | `npm test`（2026-11-06 第二轮补充审查后重跑；`TZ=UTC` 下同样 163/163） |
+| 覆盖率（行 / 分支 / 函数） | **91.99% / 81.39% / 94.42%** | `npm run coverage`（2026-11-06 第二轮重跑） |
 | 测试文件 | **17** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
 | 计划任务 | **10** 个 | `grep -c "Name = '" scripts/register-tasks.ps1` |
 | 技能目录 | **7** 个 | `ls -d light/skills/*/ \| wc -l` |
-| 本地服务命令组 | **15** 组 | `grep -o "group === '[a-z]*'" src/service/cli.ts \| sort -u` |
+| 本地服务命令组 | **16** 组 | `grep -o "group === '[^']*'" src/service/cli.ts \| sort -u \| wc -l`（原取数用 `[a-z]*` 漏掉了含数字的 `a2a`） |
 | 终态 DoD | **38 ✅ / 2 🟡 / 0 ⬜** | [ACCEPTANCE.md](./ACCEPTANCE.md)（实测结论，本轮未改动） |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
 | Node | **v22.22.2** | `node -v`（`node:sqlite` 与类型剥离默认可用，无需实验标志） |
 | VERIFY 章节 | **87** 节 / 509,452 字节 | 见 [VERIFY-INDEX.md](./VERIFY-INDEX.md) |
 
-> 两个口径提醒：① `node src/service/cli.ts` 不带参数时打印的帮助文本只列 **11** 组，
-> `cli.ts` 实际解析的是 **15** 组（缺的是 `dayend / eval / issue / patch / submission` 等）。
+> 两个口径提醒：① 帮助文本现列出全部 **16** 个命令组（2026-11-06 前只列 11 组，
+> 漏了 `dayend / eval / issue / patch / submission`；`cli.smoke.test.ts` 加了回归断言防再漂移）。
 > ② doctor 项数按检查名计为 31，`-Json` 返回的 `checks.Count` 也是 31。
 
 ---

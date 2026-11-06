@@ -56,14 +56,17 @@ function staleBefore(now: string): string {
   return new Date(new Date(now).getTime() - CLAIM_STALE_MIN * 60_000).toISOString();
 }
 
-/** 到点且退避已过的待发消息（next_attempt_at 为空按到期处理）；含领取后超时未回写的。 */
-export function listPendingDue(db: DatabaseSync, now: string, limit = 20): OutboxMessage[] {
+/** 到点且退避已过的待发消息（next_attempt_at 为空按到期处理）；含领取后超时未回写的。
+ *  chatId 过滤下推到 SQL —— 先 LIMIT 再在 JS 里过滤会让无关群的消息把名额吃光，
+ *  指定群的消息永远排不上（联调 --chat-id 时必现）。 */
+export function listPendingDue(db: DatabaseSync, now: string, limit = 20, chatId?: string | null): OutboxMessage[] {
   return db.prepare(
     `SELECT * FROM outbox
      WHERE ((status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
          OR (status = 'sending' AND claimed_at < ?))
+       AND (? IS NULL OR chat_id = ?)
      ORDER BY id LIMIT ?`
-  ).all(now, staleBefore(now), limit) as unknown as OutboxMessage[];
+  ).all(now, staleBefore(now), chatId ?? null, chatId ?? null, limit) as unknown as OutboxMessage[];
 }
 
 /**
@@ -98,7 +101,7 @@ const BACKOFF_MIN = [1, 5, 15, 30, 60];
  * 这类要**立即判死**，否则会按业务错误退避 5 次（累计半小时以上），
  * 期间每次重试都必然失败，而真正该做的是让人去修配置。
  */
-const PERMANENT = /NO_WEBHOOK_FOR_CHAT|webhook 文件内容不是 https URL|读不到 webhook 文件|webhook 文件为空|webhook 文件不是/i;
+const PERMANENT = /NO_WEBHOOK_FOR_CHAT|webhook 文件内容不是 https URL|读不到 webhook 文件|webhook 文件为空|webhook 文件不是|BAD_PAYLOAD_JSON/i;
 
 /** 网络类错误（开机后还没联网、DNS 未就绪）与业务错误分开：前者多给几次机会。 */
 // 超时（AbortSignal.timeout → TimeoutError / aborted due to timeout）也算网络类

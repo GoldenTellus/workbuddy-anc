@@ -26,7 +26,9 @@ import { searchAndSummarize, summarizeMarkdown } from '../shared/summarize.ts';
 
 type Args = Record<string, string | true> & { _: string[] };
 
-const BOOL_FLAGS = new Set(['json', 'once', 'check', 'rebuild']);
+// 开关型 flag 必须登记：否则后面跟一个不带 -- 的 token 时会被当成「这个 flag 的值」，
+// `args.apply === true` / `args['wait-ready'] === true` 静默变假（--apply 退化成只预览）。
+const BOOL_FLAGS = new Set(['json', 'once', 'check', 'rebuild', 'apply', 'wait-ready']);
 
 function parse(argv: string[]): Args {
   const out: Args = { _: [] };
@@ -97,7 +99,7 @@ try {
   fail((e as Error).message, 1);
 }
 
-if (!group) fail('缺少命令组（summary / bind / task / reminder / outbox / a2a / config / backup / project / loop / serve）');
+if (!group) fail('缺少命令组（summary / bind / task / reminder / outbox / a2a / config / backup / project / loop / serve / submission / issue / patch / dayend / eval）');
 
 try {
   // 本地摘要（D19/C13）：读本机文件、按规则抽要点。两种用法：
@@ -484,7 +486,8 @@ if (group === 'summary') {
       const cases = evalMod.loadCases(repo, typeof args.skill === 'string' ? args.skill : undefined);
       out({ ok: true, cases });
     } else if (cmd === 'history') {
-      const limit = typeof args.limit === 'string' ? Number(args.limit) : 20;
+      // 和其它列表一致：非法值退回默认，正数夹到 1..200（LIMIT -1 = 不限制，会拉全表；NaN 会直接绑定）
+      const limit = numArg(args.limit, 20, 1, 200);
       const rows = db.prepare('SELECT id, case_id, skill, verdict, answer_len, note, created_at FROM eval_runs ORDER BY id DESC LIMIT ?').all(limit);
       out({ ok: true, runs: rows });
     } else fail('未知 eval 子命令（run/list/history）');

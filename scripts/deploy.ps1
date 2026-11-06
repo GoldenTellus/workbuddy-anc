@@ -1,7 +1,7 @@
 ﻿# 部署：把仓库里的运行件复制到 %ProgramData%\anc\
 # 原则（OPS.md「补丁的唯一来源」）：线上只从部署目录跑，不从 git 工作副本跑。
 # 默认 dry-run；加 -Apply 才落盘。落盘前备份、落盘后逐文件对拍 hash，失败回滚。
-# 退出码：0 成功（含 dry-run）/ 1 校验失败且已回滚 / 2 用法或环境错误 / 3 已应用但探针失败且已回滚
+# 退出码：0 成功（含 dry-run）/ 1 落盘后校验失败且已回滚 / 2 用法或环境错误 / 3 复制失败且已回滚
 [CmdletBinding()]
 param(
     [string]$Repo = 'E:\workbuddy-anc',
@@ -119,6 +119,30 @@ function Copy-WithRetry([string]$Src, [string]$Dst, [int]$Tries = 3) {
     }
 }
 
+# 回滚：把 $Items 里每个目标恢复到备份、删掉没有备份的新文件，并清掉本次新建的目录。
+# 2026-11-06 修：原来只有「落盘后 hash 校验失败」会回滚，复制中途抛错直接 exit 3，
+# 前半套新文件已经盖在旧文件上，错误文案却说「已写入的文件会回滚」——是假的。
+function Restore-Deploy([object[]]$Items, [string]$BackupRoot) {
+    # 2026-11-06 二修：回滚是最后一道安全底线，原来每步都 -ErrorAction SilentlyContinue
+    # 且不查 $? —— 文件被占用 / ACL 拒绝 / 盘满时静默跳过，脚本照样打印「已回滚」。
+    $failed = @()
+    foreach ($p in $Items) {
+        $b = Join-Path (Join-Path $BackupRoot $p.Target) (Split-Path $p.Dst -Leaf)
+        try {
+            if (Test-Path -LiteralPath $b) {
+                Copy-Item -LiteralPath $b -Destination $p.Dst -Force -ErrorAction Stop
+            } elseif (Test-Path -LiteralPath $p.Dst) {
+                Remove-Item -LiteralPath $p.Dst -Force -ErrorAction Stop
+            }
+        } catch { $failed += ($p.Dst + '：' + $_.Exception.Message) }
+    }
+    foreach ($d in $createdDirs) {
+        try { Remove-Item -LiteralPath $d -Force -Recurse -ErrorAction Stop }
+        catch { $failed += ($d + '：' + $_.Exception.Message) }
+    }
+    return ,$failed
+}
+
 # 权限：secrets 与 data 的 ACL 不随文件复制走，单独设（2026-11-05，VERIFY §65/§66/§70）。
 # 必须在 Copy-WithRetry 定义**之外** —— 2026-11-05 曾误插进那个 for 循环里，
 # 结果每次重试都调一次 set-acl，73 个文件 × 3 次重试 = 219 次 × 7 秒，deploy 变成 25 分钟。
@@ -154,7 +178,12 @@ try {
         $copied += $p
     }
 } catch {
-    Fail ('复制失败: ' + $_.Exception.Message) ('已写入的文件会回滚；备份在 ' + $bakRoot) 3
+    # 只回滚真正复制过的 $copied：没处理到的目标若走「无备份就删除」，会误删原文件
+    $rb = @(Restore-Deploy $copied $bakRoot)
+    if ($rb.Count -gt 0) {
+        Fail ('复制失败: ' + $_.Exception.Message) ('回滚不完整（' + $rb.Count + ' 项失败）：' + ($rb -join '; ') + '；需手工从 ' + $bakRoot + ' 恢复') 3
+    }
+    Fail ('复制失败: ' + $_.Exception.Message) ('已回滚 ' + $copied.Count + ' 个已写入文件；备份在 ' + $bakRoot) 3
 }
 
 # 逐文件对拍
@@ -165,12 +194,10 @@ foreach ($p in $plan) {
 }
 
 if ($bad.Count -gt 0) {
-    foreach ($p in $plan) {
-        $b = Join-Path (Join-Path $bakRoot $p.Target) (Split-Path $p.Dst -Leaf)
-        if (Test-Path $b) { Copy-Item -LiteralPath $b -Destination $p.Dst -Force -ErrorAction SilentlyContinue }
-        else { Remove-Item -LiteralPath $p.Dst -Force -ErrorAction SilentlyContinue }
+    $rb = @(Restore-Deploy $plan $bakRoot)
+    if ($rb.Count -gt 0) {
+        Fail ('落盘后校验失败: ' + ($bad -join '; ')) ('回滚不完整（' + $rb.Count + ' 项失败）：' + ($rb -join '; ') + '；需手工从 ' + $bakRoot + ' 恢复') 1
     }
-    foreach ($d in $createdDirs) { Remove-Item -LiteralPath $d -Force -Recurse -ErrorAction SilentlyContinue }
     Fail ('落盘后校验失败: ' + ($bad -join '; ')) ('已回滚；备份在 ' + $bakRoot) 1
 }
 

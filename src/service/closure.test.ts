@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { openDb } from './db.ts';
@@ -230,10 +230,40 @@ test('patch-drafts：draftFromIssue 四条错误路径都不能猜位置', () =>
   assert.throws(() => patchDrafts.draftFromIssue(db, 9999, { repo: dir }), /没有这个 issue/);
   const untriaged = insertIssue(db, { skill: null, section: null });
   assert.throws(() => patchDrafts.draftFromIssue(db, untriaged, { repo: dir }), /还没分诊/);
-  const noFile = insertIssue(db, { skill: '不存在的技能', section: '查任务' });
+  const noFile = insertIssue(db, { skill: 'no-such-skill', section: '查任务' });
   assert.throws(() => patchDrafts.draftFromIssue(db, noFile, { repo: dir }), /技能文件不存在/);
   const noSection = insertIssue(db, { skill: 'anc-task', section: '没有这一段' });
   assert.throws(() => patchDrafts.draftFromIssue(db, noSection, { repo: dir }), /找不到/);
+}));
+
+test('patch-drafts：skill 路径穿越在写入与读写两端都被拒（2026-11-06 回归）', () => withRepo(({ dir, db }) => {
+  const outside = join(dir, 'outside.txt');
+  writeFileSync(outside, 'KEEP', 'utf8');
+  const evil = '../../outside.txt';
+  const id = insertIssue(db, { skill: null, section: '查任务' });
+  assert.throws(() => issues.setTriage(db, id, evil, '查任务'), /技能名不合规/);
+  assert.equal(issues.setTriage(db, id, 'anc-task', '查任务'), true, '合法技能名照常通过');
+  // 模拟绕过 CLI 直接改库的脏数据：draft 与 prune --apply 都不许拼出仓库外路径
+  db.prepare('UPDATE issues SET skill = ? WHERE id = ?').run(evil, id);
+  assert.throws(() => patchDrafts.draftFromIssue(db, id, { repo: dir }), /技能名不合规/);
+  assert.throws(() => patchDrafts.prune(db, { issueId: id, repo: dir, apply: true }), /技能名不合规/);
+  assert.equal(readFileSync(outside, 'utf8'), 'KEEP', '仓库外文件不能被写回');
+}));
+
+test('patch-drafts：分诊规则里每个技能都能定位到真实 SKILL.md（线上名反查目录名）', () => withDb((db) => {
+  const repo = resolve(import.meta.dirname, '..', '..');
+  for (const rule of issues.RULES) {
+    const id = insertIssue(db, { skill: rule.skill, section: rule.section });
+    const r = patchDrafts.draftFromIssue(db, id, { repo });
+    assert.ok(existsSync(join(repo, r.draft.skill_path)),
+      `${rule.skill} / ${rule.section} → ${r.draft.skill_path} 定位不到`);
+    assert.ok(r.draft.diff.length > 0, `${rule.skill} 应产出 diff`);
+  }
+  // deploy-skills.ps1 按 SKILL.md 的 name: 落盘：线上名 anc-ingest 对应仓库目录 anc-ingest-company。
+  // 原来直接拿线上名拼目录，L3 必然报「技能文件不存在」。
+  const id = insertIssue(db, { skill: 'anc-ingest', section: '执行方式（硬约束，违反即事故）' });
+  const r = patchDrafts.draftFromIssue(db, id, { repo });
+  assert.equal(r.draft.skill_path, 'light/skills/anc-ingest-company/SKILL.md');
 }));
 
 test('patch-drafts：正常产出 diff + base_hash + warnings，重复 draft 会警告', () => withRepo(({ dir, skillFile, db }) => {
@@ -287,7 +317,7 @@ test('patch-drafts：prune 的四个失败 reason 与 pruneClosed 只处理 clos
   assert.match(patchDrafts.prune(db, { issueId: 9999, repo: dir }).reason ?? '', /没有这个 issue/);
   const untriaged = insertIssue(db, { skill: null });
   assert.match(patchDrafts.prune(db, { issueId: untriaged, repo: dir }).reason ?? '', /还没分诊/);
-  const noFile = insertIssue(db, { skill: '不存在的技能' });
+  const noFile = insertIssue(db, { skill: 'no-such-skill' });
   assert.match(patchDrafts.prune(db, { issueId: noFile, repo: dir }).reason ?? '', /技能文件不存在/);
   const noBlock = insertIssue(db, { skill: 'anc-task' });
   assert.match(patchDrafts.prune(db, { issueId: noBlock, repo: dir }).reason ?? '', /可能已经删过/);

@@ -220,5 +220,5 @@ if ($failed.Count -gt 0) {
     Fail ('注册失败: ' + ($failed -join '; ')) '检查是否有同名任务被策略锁定，或用管理员重跑' 1
 }
 
-'已注册 {0} 个任务。跑 scripts\doctor.ps1 复核 9/9 与 principal。' -f $defs.Count
+'已注册 {0} 个任务。跑 scripts\doctor.ps1 复核 {0} 项与 principal。' -f $defs.Count
 exit 0

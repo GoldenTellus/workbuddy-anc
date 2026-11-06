@@ -63,7 +63,12 @@ function Invoke-Icacls([string]$Command, [string]$What) {
     if (-not $Apply) { Say ("  dry-run: " + $What) 'PLAN'; return }
     # icacls 是原生 exe，不抛异常 —— 必须查 $LASTEXITCODE。
     # 仓库里唯一正确范式是 provision-vault-accounts.ps1:92-93。
-    $out = & cmd /c $Command 2>&1
+    # PS 5.1 在 $ErrorActionPreference='Stop' 下，原生命令写 stderr 会把 `2>&1`
+    # 变成终止性 ErrorRecord（RemoteException），根本走不到下面的 $LASTEXITCODE 判断 ——
+    # 结果是「icacls 已改了一半、脚本崩了、失败汇总没记」。只在调用期间临时降级。
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $out = & cmd /c $Command 2>&1 } finally { $ErrorActionPreference = $prevPref }
     if ($LASTEXITCODE -ne 0) {
         Say ("  icacls 失败（exit " + $LASTEXITCODE + "）: " + $What) 'ERR'
         Say ("    " + (($out | Out-String).Trim())) 'ERR'
@@ -117,7 +122,8 @@ function Test-ViaDoctor {
         Say ("找不到 " + $doc + " —— 先跑 deploy.ps1 把 bin 部署过去") 'ERR'
         return 2
     }
-    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $doc, '-Json')
+    # -Root 必须传：doctor 默认查 %ProgramData%\anc，自定义演练根时自检会查错一套目录
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $doc, '-Json', '-Root', $Root)
     if ($Repo) { $a += @('-Repo', $Repo) }
 
     Say "自检：跑 doctor.ps1 的 secrets-acl / data-acl（约 17 秒）"
