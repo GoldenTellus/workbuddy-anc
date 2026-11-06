@@ -1,6 +1,8 @@
 # 入职 / 离职 runbook
 
-对应 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.8、[PLAN.md](./PLAN.md) 阶段 D（O-5 干净机重建）与离职自动化、共享账号。目标：新员工一小时内拿到个人 bot 和三方群。
+> 类型：运维手册（入职/离职）
+
+对应 [DECISIONS.md](./DECISIONS.md) §5.8、[PLAN.md](./PLAN.md) 阶段 D（O-5 干净机重建）与离职自动化、共享账号。目标：新员工一小时内拿到个人 bot 和三方群。
 
 ## 入职
 

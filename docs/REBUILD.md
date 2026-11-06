@@ -1,5 +1,7 @@
 # 主机重建 runbook
 
+> 类型：运维手册（主机重建）
+
 主机坏了，按这份在新机器上重建。目标：**数据不丢、提醒照常、bot 能上线**。
 
 ## 0. 先分清哪些东西不在 git 里
@@ -138,7 +140,7 @@ Unregister-ScheduledTask -TaskName 'anc-probe-ls' -Confirm:$false
 Start-ScheduledTask -TaskName 'anc-service'
 Start-ScheduledTask -TaskName 'anc-http'
 Start-Sleep -Seconds 60
-powershell -File E:\workbuddy-anc\scripts\doctor.ps1
+powershell -File E:\workbuddy-anc\scripts\doctor\doctor.ps1
 # 期望 fails=0；如果 http-health 还 FAIL，确认 17891 在监听（不是 18765，那个是猜的）
 ```
 
@@ -153,7 +155,7 @@ powershell -File E:\workbuddy-anc\scripts\doctor.ps1
 $R = '<仓库>'; $A = 'C:\ProgramData\anc'
 # 目标目录先建好（root 不存在时 deploy 会 Fail）
 'service','ingest','render','shared','bin','backup','patch' | ForEach-Object { New-Item -ItemType Directory -Force "$A\$_" | Out-Null }
-powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
+powershell -File "$R\scripts\deploy\deploy.ps1" -Repo $R -Root $A -Apply
 ```
 
 > 为什么改成这样：原来这段手工列 `Copy-Item "$R\src\service\*" ...`，只覆盖 service/ingest/render。
@@ -180,8 +182,8 @@ powershell -File "$R\scripts\deploy.ps1" -Repo $R -Root $A -Apply
 4. 装技能：**用脚本，不要手工复制**（手工抄一次就可能和仓库不一致，而且没人知道差在哪）：
 
    ```powershell
-   powershell -File "<仓库>\scripts\deploy-skills.ps1"          # 预检
-   powershell -File "<仓库>\scripts\deploy-skills.ps1" -Apply   # 真部署
+   powershell -File "<仓库>\scripts\deploy\deploy-skills.ps1"          # 预检
+   powershell -File "<仓库>\scripts\deploy\deploy-skills.ps1" -Apply   # 真部署
    ```
 
    落盘目录按 `SKILL.md` 里的 `name:` 字段，不是仓库目录名（仓库里 `anc-ingest-company` 的
@@ -253,10 +255,10 @@ Remove-Item "$env:ProgramData\anc\data\test-emit.flag"
 
 ```powershell
 # 端到端：一条反馈走完 L1→L2→L3→L4→L6（约 12 分钟）
-powershell -File "<仓库>\scripts\e2e-loop.ps1" -ChatId <id> -UserId <id> -Apply -WithDevbot
+powershell -File "<仓库>\scripts\devbot\e2e-loop.ps1" -ChatId <id> -UserId <id> -Apply -WithDevbot
 
 # 只跑 devbot：切 persona → 注入 issue → 等 → 检查 → 恢复（约 7 分钟）
-powershell -File "<仓库>\scripts\devbot.ps1" -Issue <api号> -ChatId <id> -UserId <id> -Apply
+powershell -File "<仓库>\scripts\devbot\devbot.ps1" -Issue <api号> -ChatId <id> -UserId <id> -Apply
 ```
 
 `devbot.ps1` 会把 live persona 切到 `light/personas/devbot/CODEBUDDY.md`，跑完在 `finally` 里恢复。
@@ -297,8 +299,8 @@ WARN  vault-ingest-audit   3 个未跟踪文件，但 1 小时内没有成功入
 它不能替代真机（§2 数据恢复、§4 bot 登录没法自动化），但能回答两件事——结构 doctor 认不认、每步多久。
 
 ```powershell
-powershell -File scripts\rebuild-drill.ps1            # 默认用临时空目录，跑完自清理
-powershell -File scripts\rebuild-drill.ps1 -Keep      # 保留演练根，便于手工看
+powershell -File scripts\rebuild\rebuild-drill.ps1            # 默认用临时空目录，跑完自清理
+powershell -File scripts\rebuild\rebuild-drill.ps1 -Keep      # 保留演练根，便于手工看
 ```
 
 **基线（本机 2026-11-02 实测）**：

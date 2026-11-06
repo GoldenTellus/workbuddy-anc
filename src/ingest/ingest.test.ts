@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyBatch, archiveBatch, failBatch, inferInbox } from './apply.ts';
-import { commitVault } from './git.ts';
-import { normalizeTarget, blobHash, IngestError } from './validate.ts';
+import { applyBatch, archiveBatch, failBatch, inferInbox } from '../modules/knowledge/ingest/apply.ts';
+import { commitVault } from '../modules/knowledge/ingest/git.ts';
+import { normalizeTarget, blobHash, IngestError } from '../modules/knowledge/ingest/validate.ts';
 
 const MD = '---\ntitle: 测试\nsource_file: _originals/x.pdf\nupdated_at: 2026-10-31\n---\n\n正文\n';
 

@@ -1,7 +1,7 @@
 {
   "name": "@goldentellus/workbuddy-anc",
   "version": "0.0.0",
-  "description": "把你的团队变成 AI native company:一台 Mac mini,一人一个 bot,公司知识全在 markdown 里。One Mac mini, one bot per person, all company knowledge in markdown.",
+  "description": "小团队的 AI native 公司：一台 7×24 的 Windows 主机跑公司 bot，每个员工电脑跑个人 bot，IM 用企业微信，执行引擎用 WorkBuddy，公司知识放在 markdown vault 里。",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,27 +11,32 @@
   "keywords": [
     "ai-native",
     "agent",
-    "claude-code",
-    "codex",
-    "feishu",
-    "lark",
-    "dingtalk",
+    "workbuddy",
     "wecom",
-    "cc-connect",
+    "wechat-work",
+    "windows",
+    "sqlite",
+    "automation",
     "company",
     "bot"
   ],
   "scripts": {
-    "test": "node --test scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/service/cli.smoke.test.ts src/service/closure.test.ts src/ingest/ingest.test.ts src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/app.asar.unpacked/**\" scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/service/cli.smoke.test.ts src/service/closure.test.ts src/ingest/ingest.test.ts src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
+    "test": "node --test scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/interfaces/http.test.ts src/service/project.test.ts src/service/cli.smoke.test.ts src/service/closure.test.ts src/ingest/ingest.test.ts src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/app.asar.unpacked/**\" scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/interfaces/http.test.ts src/service/project.test.ts src/service/cli.smoke.test.ts src/service/closure.test.ts src/ingest/ingest.test.ts src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
+    "check": "node scripts/checks/check-modules.mjs --strict-deep && node scripts/checks/check-docs.mjs",
+    "pretest": "npm run check",
+    "precoverage": "npm run check",
+    "check:modules": "node scripts/checks/check-modules.mjs",
+    "check:modules:deep": "node scripts/checks/check-modules.mjs --strict-deep",
+    "check:docs": "node scripts/checks/check-docs.mjs",
     "test:bind": "node --test scripts/anc-bind/bind.test.mjs scripts/workbuddy-patch/narration.test.mjs",
-    "test:service": "node --test src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/service/http.test.ts src/service/project.test.ts src/service/cli.smoke.test.ts src/service/closure.test.ts",
+    "test:service": "node --test src/shared/audit.test.ts src/shared/summarize.test.ts src/service/deploy-state.test.ts src/service/service.test.ts src/interfaces/http.test.ts src/service/project.test.ts src/service/cli.smoke.test.ts src/service/closure.test.ts",
     "test:ingest": "node --test src/ingest/ingest.test.ts",
     "ingest": "node src/ingest/cli.ts",
     "test:render": "node --test src/render/cli.smoke.test.ts src/render/deploy.test.ts src/render/offboard.test.ts src/render/render.test.ts src/render/dept.test.ts src/render/onboard.test.ts",
     "render": "node src/render/cli.ts",
     "service": "node src/service/cli.ts",
-    "scan": "node scripts/scan-catch.mjs"
+    "scan": "node scripts/checks/scan-catch.mjs"
   },
   "private": true
 }

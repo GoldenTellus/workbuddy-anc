@@ -19,12 +19,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { openDb } from './db.ts';
-import * as submissions from './submissions.ts';
-import * as issues from './issues.ts';
-import * as patchDrafts from './patch-drafts.ts';
-import * as evalRunner from './eval.ts';
-import * as bindings from './bindings.ts';
+import { openDb } from '../core/index.ts';
+import { submissions, issues, patchDrafts, evalRunner } from '../modules/improvement/index.ts';
+import * as bindings from '../modules/identity/index.ts';
 
 type Db = ReturnType<typeof openDb>;
 

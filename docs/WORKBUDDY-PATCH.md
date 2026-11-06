@@ -1,6 +1,8 @@
 # WorkBuddy 补丁清单：群身份注入
 
-对应 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §4 D17 与 §11 台账，实测依据见 [VERIFY.md](./VERIFY.md) §3 T16/T16b。
+> 类型：接口契约（WorkBuddy 补丁）
+
+对应 [DECISIONS.md](./DECISIONS.md) §4 D17 与 §11 台账，实测依据见 [VERIFY.md](./archive/history/VERIFY.md) §3 T16/T16b。
 
 ## 为什么
 
@@ -40,7 +42,7 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 ### 5) 自愈与守卫（不依赖模型）
 
 - 每次成功打补丁会写 `%ProgramData%\anc\data\patch-state.json`（时间、版本、模式）；
-- `scripts/patch-guard.ps1`（计划任务 `anc-patch-guard`，登录后每分钟）：WorkBuddy 在跑但 `patch-state` 早于进程启动 → 判定未打补丁 → 调 `anc-selfheal.ps1 -Apply`；
+- `scripts/workbuddy/patch-guard.ps1`（计划任务 `anc-patch-guard`，登录后每分钟）：WorkBuddy 在跑但 `patch-state` 早于进程启动 → 判定未打补丁 → 调 `anc-selfheal.ps1 -Apply`；
 - `anc-selfheal.ps1`：Worker 经 **Explorer** 启动（脱离 WorkBuddy 进程树），停进程 → 用启动器拉起 → 轮询补丁日志，失败重试 1 次并告警；10 分钟冷却；
 - `anc-workbuddy-launch`（登录后 30 秒）：直接用启动器拉起，避免登录自动起无补丁实例。
 
@@ -204,7 +206,7 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 
 ## 升级流程
 
-升级前后都跑一次 `scripts\verify-upgrade.ps1`：8 项机械检查（版本/hash/锚点/bootstrap/applied/update-hook/doctor）应全 PASS；它判不了的 4 项（前缀、@、旁白过滤、更新拦截）会打印成人工清单。
+升级前后都跑一次 `scripts\workbuddy\verify-upgrade.ps1`：8 项机械检查（版本/hash/锚点/bootstrap/applied/update-hook/doctor）应全 PASS；它判不了的 4 项（前缀、@、旁白过滤、更新拦截）会打印成人工清单。
 
 1. WorkBuddy 升级 → 先按 `restore.ps1` 用原版跑一遍回归（T1–T5、T16、T17）；
 2. 从新版 `app.asar` 取出 `main/wecomaibot-client.js`，算 sha256，更新 `manifest.json` 的 `workbuddyVersion` 与 `sha256`；
@@ -301,7 +303,7 @@ WorkBuddy 闭源，但**这不是"做不到"的理由**。下面这些手段本�
 | 目标 | 手段 | 位置 / 状态 |
 |---|---|---|
 | 拿群身份与发送人 | 在 `_compile` 里包 `emitMessage`，往正文注入 `[anc:chat=… from=…]` | `preload.cjs`，**在跑**（D17） |
-| 拿出站文本 | 包 `sendReply(chatId, text)` | `preload.cjs`，**在跑**（出站过滤挂这） |
+| 拿出站文本 | 包 `sendReply(chatId, text)` | `preload.cjs`，**在跑**；但企微实际走 `sendStreamChunk`，最终整句不经过它——旁白过滤**实际不生效**（`VERIFY §17`），当前只能靠 persona |
 | 拦自动升级检查 | 劫持 `https.request` 匹配 `/v2/update` | `preload.cjs`，**在跑**；**注意它会让 Electron 主进程崩**，已加进程守卫（`process.type === "browser"` 时直接返回） |
 | 驱动 UI（切工作区、点按钮） | CDP / UIA | 已验证（T6 / T13 / R6） |
 | 看内部结构 | `app.asar` 解包 + 反编译 + `Module._compile` hook 观察 | D16 允许，按需 |

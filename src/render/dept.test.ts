@@ -11,8 +11,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadOrg, splitList } from './org.ts';
-import { renderOrg } from './index.ts';
+import { loadOrg, splitList, renderOrg } from '../modules/org/index.ts';
 
 const COMPANY = [
   '---',

@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "baseline": "2026-11-06",
+  "note": "模块边界真相源。paths 按数组顺序匹配，先匹配到的赢；scripts/ 是兜底，放在具体脚本模块之后。",
+  "modules": [
+    {
+      "id": "core",
+      "name": "平台底座",
+      "doc": "docs/modules/core.md",
+      "entry": "src/core/index.ts",
+      "status": "current",
+      "paths": [
+        "src/core/"
+      ],
+      "dependsOn": [],
+      "owns": ["meta/config 表", "schema 与迁移", "audit.log 格式", "出站扫描规则", "数据库备份"]
+    },
+    {
+      "id": "identity",
+      "name": "身份与群绑定",
+      "doc": "docs/modules/identity.md",
+      "entry": "src/modules/identity/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/identity/",
+        "scripts/anc-bind/"
+      ],
+      "dependsOn": ["core"],
+      "owns": ["chat_bindings 表", "webhook 文件名校验"]
+    },
+    {
+      "id": "tasks",
+      "name": "任务与提醒",
+      "doc": "docs/modules/tasks.md",
+      "entry": "src/modules/tasks/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/tasks/"
+      ],
+      "dependsOn": ["core", "delivery"],
+      "owns": ["tasks 表", "task_events 表", "reminders 表"]
+    },
+    {
+      "id": "delivery",
+      "name": "出站投递",
+      "doc": "docs/modules/delivery.md",
+      "entry": "src/modules/delivery/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/delivery/"
+      ],
+      "dependsOn": ["core", "identity"],
+      "owns": ["outbox 表", "webhook 发送与退避策略"]
+    },
+    {
+      "id": "knowledge",
+      "name": "知识与入库",
+      "doc": "docs/modules/knowledge.md",
+      "entry": "src/modules/knowledge/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/knowledge/",
+        "src/ingest/cli.ts"
+      ],
+      "dependsOn": ["core"],
+      "owns": ["vault 两区文件", "ingest 锁", "a2a_surveys/a2a_messages 表", "本地摘要规则"]
+    },
+    {
+      "id": "org",
+      "name": "组织与渲染",
+      "doc": "docs/modules/org.md",
+      "entry": "src/modules/org/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/org/",
+        "src/render/cli.ts",
+        "scripts/deploy-persona.ps1",
+        "scripts/deploy-skills.ps1",
+        "scripts/offboard-member.ps1"
+      ],
+      "dependsOn": ["core"],
+      "owns": ["org 输入", "render 产物", "manifest.json", "groups.json"]
+    },
+    {
+      "id": "improvement",
+      "name": "自我改进",
+      "doc": "docs/modules/improvement.md",
+      "entry": "src/modules/improvement/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/improvement/",
+        "scripts/devbot.ps1",
+        "scripts/devbot-scheduler.ps1",
+        "scripts/e2e-loop.ps1"
+      ],
+      "dependsOn": ["core"],
+      "owns": ["submissions 表", "issues 表", "patch_drafts 表", "eval_runs 表", "dayend 表"]
+    },
+    {
+      "id": "runtime",
+      "name": "运行编排",
+      "doc": "docs/modules/runtime.md",
+      "entry": "src/modules/runtime/index.ts",
+      "status": "current",
+      "paths": [
+        "src/modules/runtime/",
+        "src/service/loop.ts"
+      ],
+      "dependsOn": ["core", "identity", "tasks", "delivery", "knowledge"],
+      "owns": ["一次 tick 的编排顺序", "任务投影文件"]
+    },
+    {
+      "id": "interfaces",
+      "name": "服务接口",
+      "doc": "docs/modules/interfaces.md",
+      "entry": "src/interfaces/index.ts",
+      "status": "current",
+      "paths": [
+        "src/interfaces/",
+        "src/service/cli.ts"
+      ],
+      "dependsOn": ["core", "identity", "tasks", "delivery", "knowledge", "improvement", "runtime"],
+      "owns": ["service CLI 命令面", "HTTP 路由", "退出码与 ERROR/FIX 格式"]
+    },
+    {
+      "id": "workbuddy",
+      "name": "WorkBuddy 适配",
+      "doc": "docs/modules/workbuddy.md",
+      "entry": "scripts/workbuddy-patch/preload.cjs",
+      "status": "current",
+      "paths": [
+        "scripts/workbuddy-patch/",
+        "scripts/check-workbuddy-update.ps1",
+        "scripts/verify-upgrade.ps1",
+        "scripts/patch-guard.ps1",
+        "scripts/anc-selfheal.ps1"
+      ],
+      "dependsOn": [],
+      "owns": ["patch-state.json", "patch-canary.json", "patch-run.json", "patch-out.log", "群身份前缀格式"]
+    },
+    {
+      "id": "ops",
+      "name": "主机运维",
+      "doc": "docs/modules/ops.md",
+      "entry": "scripts/deploy.ps1",
+      "status": "current",
+      "paths": [
+        "scripts/"
+      ],
+      "dependsOn": [],
+      "owns": ["%ProgramData%\\anc 布局", "计划任务", "ACL", "备份", "日志轮转", "部署台账"]
+    },
+    {
+      "id": "content",
+      "name": "业务内容",
+      "doc": "docs/modules/content.md",
+      "entry": "light/skills/",
+      "status": "current",
+      "paths": [
+        "light/",
+        "org.example/"
+      ],
+      "dependsOn": [],
+      "owns": ["技能", "persona", "模板", "eval 用例", "vault 模板"]
+    }
+  ]
+}

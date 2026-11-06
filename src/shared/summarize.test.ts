@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeMarkdown, searchAndSummarize } from './summarize.ts';
+import { summarizeMarkdown, searchAndSummarize } from '../modules/knowledge/summarize.ts';
 
 const doc = `---
 title: 对账流程

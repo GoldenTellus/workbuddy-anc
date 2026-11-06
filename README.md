@@ -1,12 +1,14 @@
 # workbuddy-anc
 
+> 类型：入口（项目概览）
+
 小团队的「AI native 公司」落地仓库：一台 7×24 的 Windows 主机跑一个**公司 bot**，每个员工电脑跑一个**个人 bot**，执行引擎是腾讯 **WorkBuddy（企业版）**，IM 是**企业微信**，公司知识放在主机上的 markdown vault 里。
 
 基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`（MIT）二次开发，结构照搬上游的制造企业试点；上游写的是 Mac mini + cc-connect + Claude Code，和本库的形态不同，上游原文只作参考（见 [reference/upstream/](./reference/upstream/README.md)）。
 
 ## 想装一套？把仓库链接发给你的 agent
 
-> **先读这份**：[`docs/WHAT-IT-DOES.md`](./docs/WHAT-IT-DOES.md) —— 部署完能干什么、每项能力怎么用。
+> **先读这份**：[`docs/PRODUCT.md`](./docs/PRODUCT.md) —— 部署完能干什么、每项能力怎么用。
 
 **不用照文档一步步做。** 把这个链接发给本机的 agent（**首选这台机器上的 WorkBuddy 自己**，
 也可以用 Claude Code / Codex），让它读完仓库自己装：
@@ -23,14 +25,13 @@ https://github.com/GoldenTellus/workbuddy-anc
 
 **agent 会问你这几件事**（提前准备好）：企微 corpid 与群机器人 webhook、部门划分、员工名单与 userid。
 
-细节见 [docs/PLAN.md](./docs/PLAN.md) §2.4 与 §6 D4。**给 agent 的部署手册**：
-[docs/AGENT-DEPLOY-COMPANY.md](./docs/AGENT-DEPLOY-COMPANY.md) / [docs/AGENT-DEPLOY-EMPLOYEE.md](./docs/AGENT-DEPLOY-EMPLOYEE.md)
+细节见 [docs/PRODUCT.md](./docs/PRODUCT.md)（能做什么）与 [docs/DEPLOY-COMPANY.md](./docs/DEPLOY-COMPANY.md) / [docs/DEPLOY-EMPLOYEE.md](./docs/DEPLOY-EMPLOYEE.md)（怎么装）。
 
 ### 装完之后：验一遍（★ 新机器必读）
 
 **如果你是一台新机器、一个新 agent**，除了装，还请你帮忙验证——这个项目现在最缺的就是"第二个人能不能独立装起来"这件事被真正验过。
 
-**读这份**：[docs/AGENT-VERIFY-HANDOFF.md](./docs/AGENT-VERIFY-HANDOFF.md)
+**读这份**：[docs/RELEASE-CHECKLIST.md](./docs/RELEASE-CHECKLIST.md)（现行发布门禁）；历史交接记录在 [docs/archive/history/AGENT-VERIFY-HANDOFF.md](./docs/archive/history/AGENT-VERIFY-HANDOFF.md)。
 
 它包含：
 
@@ -39,7 +40,7 @@ https://github.com/GoldenTellus/workbuddy-anc
 - **25 条踩过的坑**（PowerShell 大小写敏感、CRLF、`if` 解包数组、Interactive 任务静默不执行…）
 - **6 个可复用的测试方法**（故障注入、注入时间而不是改系统时间、真关掉而不是伪造 SKIP…）
 
-**装的时候会问你的**：机器是干净机还是员工机、有没有管理员权限。（这两份还没写，见 PLAN D4）。
+**装的时候会问你的**：机器是干净机还是员工机、有没有管理员权限。
 
 ---
 
@@ -49,16 +50,28 @@ https://github.com/GoldenTellus/workbuddy-anc
 agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一个）。本库只做它们之外、必须确定性完成的部分：
 
 > 「不写」和「不用」是两件事。项目里没有一行 agent 框架代码，但**会用一个现成 agent 去改技能**
-> （PLAN 阶段 L 的 devbot）。两者的区别是"造工具"与"用工具"。
+> （迭代闭环里的 devbot）。两者的区别是"造工具"与"用工具"。
 
 | 部分 | 位置 | 作用 |
 |---|---|---|
-| 本地小服务 | `src/service/` | 任务与提醒、完成判定、outbox（经群机器人 webhook 发消息）、群绑定、工作时段、A2A 访谈归档。SQLite 为真相 |
-| 入库进程 | `src/ingest/` | 校验公司 bot 整理好的批次并写进 vault：路径校验、覆盖写必须带 base hash、原件只许新建、事务回滚。不调模型 |
-| 渲染器 | `src/render/` | 从 org 数据（角色 × 成员）生成 persona（`CODEBUDDY.md`）、个人接入包、群映射 |
-| WorkBuddy 补丁 | `scripts/workbuddy-patch/` | 把群标识与发送人注入消息正文（D17）、拦自动升级；带版本绑定、一键关闭、自愈与守卫 |
-| 主机运维 | `scripts/*.ps1` | 体检、watchdog、备份、开机提醒、附件清理、更新探测、自愈 |
+| 本地小服务 | `src/modules/{tasks,identity,delivery,runtime}` | 任务与提醒、完成判定、outbox（经群机器人 webhook 发消息）、群绑定、工作时段、A2A 访谈归档。SQLite 为真相；`src/service/cli.ts` 只是入口薄壳 |
+| 入库进程 | `src/modules/knowledge/ingest/` | 校验公司 bot 整理好的批次并写进 vault：路径校验、覆盖写必须带 base hash、原件只许新建、事务回滚。不调模型 |
+| 渲染器 | `src/modules/org/` | 从 org 数据（角色 × 成员）生成 persona（`CODEBUDDY.md`）、个人接入包、群映射 |
+| WorkBuddy 补丁 | `scripts/workbuddy-patch/`、`scripts/workbuddy/` | 把群标识与发送人注入消息正文（D17）、拦自动升级；带版本绑定、一键关闭、自愈与守卫 |
+| 主机运维 | `scripts/<domain>/` | 体检、watchdog、备份、开机提醒、附件清理、更新探测、自愈；部署仍扁平到 `bin\` |
 | 技能与 persona | `light/` | 公司 bot 的技能、persona、渲染模板、vault 模板、个人 bot 的技能名片 |
+
+## 架构与进度
+
+- **现行切分**：[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) —— 12 个模块的边界、依赖规则、部署布局。
+- **模块契约**：[docs/modules/](./docs/modules/) —— 改某块之前必须知道的约束；机器可读版是 [`module-map.json`](./module-map.json)。
+- **未来发展设计**：[docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md) —— 主干（你的想法）、分支（讨论细节）、叶子（待定问题）。
+- **当前计划**：[docs/PLAN.md](./docs/PLAN.md) —— 当前主干怎么落地。
+- **已完成 / 缺口**：[docs/STATUS.md](./docs/STATUS.md) —— 做完什么、还缺什么。
+- **文档联动规则**：[docs/DOC-SYNC.md](./docs/DOC-SYNC.md) —— 主干完成时哪些文档要跟着更新。
+- **来源与许可证**：[docs/UPSTREAM.md](./docs/UPSTREAM.md) + [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)。
+- **仓库导航**：[docs/INDEX.md](./docs/INDEX.md) —— 哪个文件管什么、命令怎么跑。
+- **边界检查**：`npm test` 的 `pretest` 会自动跑 `npm run check`（模块边界 + 文档检查），0 违规、0 深导入才继续跑测试。
 
 ## 能实现什么（举例）
 
@@ -127,28 +140,27 @@ Windows 主机（7×24）
 
 ## 现状
 
-- 里程碑 M0–M4 的功能都已交付：任务提醒、vault 与入库、渲染与接入、访谈与 A2A；补丁侧有锚点模式、自愈与守卫、canary、更新探测，主机上 **10 个**计划任务。
-- **终态 DoD 40 条：38 ✅ / 2 🟡 / 0 ⬜**（见 [docs/ACCEPTANCE.md](./docs/ACCEPTANCE.md)）。**2026-11-05 一天内从 35/5 推到 38/2**：O-5 真机清空重建（`VERIFY §81`）、E-2 与 P-7 完成（`§84`）、P-3 降级到 9.5 成（`§82`+`§85`）。剩的 2 个已到本机物理边界（`§85`）：**P-3** 缺真人/真群/员工机，**E-1** 缺第二台机器（降级方案实测否掉），不是代码缺陷。
-- **迭代闭环跑通了**：员工在群里报一句问题 → `submission` → `issue`（规则表分诊）→ `patch draft` → devbot 出分支 → 人 review 合入 → `prune-closed` 清块。端到端 12 分钟，全程有记录（`VERIFY §21`–`§27`、`§38`）。
-- **补丁自愈三条路径验通**：锚点缺失 → 不重启并告警；hash 不符 → 降级锚点模式仍生效；进程崩塌 → 91 秒内拉起（`VERIFY §37`）。
-- **单机封顶**：2026-11-04 把本机能验的 8 项全做完（`VERIFY §34`–`§41`）。
-- **当前目标是 PLAN 1.0**（阶段 S 稳 / O 观 / L 环 / D 交），见 [docs/PLAN.md](./docs/PLAN.md)。**阶段 S/O/L 已全绿**（3/3 · 3/3 · 7/7），阶段 D 是 1/3。
-- `npm test` **155 项**全绿（Node 22.18+ / 24 直接跑 `.ts`：`node:sqlite` 与类型剥离均已默认可用，更老的 22.x 才需实验标志）；`doctor` **31 项**检查。
+- 12 个模块全部 `current`；`npm test` **163/163**；`npm run check`（模块边界 + 文档检查）通过。
+- 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
+- **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
+- 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。
 
 ## 从哪里开始读
 
 | 想了解 | 读 |
 |---|---|
-| 为什么这么设计、所有已定裁决 | [docs/FORK-DIRECTION.md](./docs/FORK-DIRECTION.md)（唯一真相源） |
-| 做到哪了、下一步做什么 | [docs/PLAN.md](./docs/PLAN.md) |
-| 实测记录 | [docs/VERIFY.md](./docs/VERIFY.md) |
+| **项目怎么分块、边界在哪、怎么按块迭代** | **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**（`module-map.json` + `npm run check:modules`） |
+| 为什么这么设计、所有已定裁决 | [docs/DECISIONS.md](./docs/DECISIONS.md)（决策台账） |
+| **未来要建什么** | [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)（主干/分支/叶子） |
+| 做到哪了、下一步做什么 | [docs/STATUS.md](./docs/STATUS.md) + [docs/PLAN.md](./docs/PLAN.md) |
+| 实测记录 | [docs/archive/history/VERIFY.md](./docs/archive/history/VERIFY.md) |
 | **发布前要查什么** | **[docs/RELEASE-CHECKLIST.md](./docs/RELEASE-CHECKLIST.md)**（bug/漏洞视角，四阶段：补代码缺口 → 证明能自愈 → 清空重装 → 陌生 agent） |
 | 主机怎么运维、怎么重建 | [docs/OPS.md](./docs/OPS.md)、[docs/REBUILD.md](./docs/REBUILD.md) |
 | 各组件用法 | [LOCAL-SERVICE](./docs/LOCAL-SERVICE.md)、[INGEST](./docs/INGEST.md)、[RENDERER](./docs/RENDERER.md)、[ONBOARDING](./docs/ONBOARDING.md)、[WORKBUDDY-PATCH](./docs/WORKBUDDY-PATCH.md) |
-| 借了上游什么 | [docs/REUSE-MAP.md](./docs/REUSE-MAP.md) |
-| 陌生 agent 接手 / 交班提示词 | [docs/D-HANDOFF-PROMPT.md](./docs/D-HANDOFF-PROMPT.md)（B 路交接，整段复制到新会话） |
-| 上游 4 份原样文档什么时候才看 | [docs/UPSTREAM-ORIGINALS.md](./docs/UPSTREAM-ORIGINALS.md) |
-| **仓库导航 / 现状数字 / VERIFY 检索** | **[docs/REPO-INDEX.md](./docs/REPO-INDEX.md)**、[docs/VERIFY-INDEX.md](./docs/VERIFY-INDEX.md) |
+| 借了上游什么、许可证 | [docs/UPSTREAM.md](./docs/UPSTREAM.md) + [docs/upstreams/](./docs/upstreams/) |
+| 陌生 agent 接手 / 交班提示词 | [docs/INDEX.md](./docs/INDEX.md)、[docs/archive/history/AGENT-VERIFY-HANDOFF.md](./docs/archive/history/AGENT-VERIFY-HANDOFF.md)（历史坑） |
+| 上游 4 份原样文档什么时候才看 | [docs/UPSTREAM.md](./docs/UPSTREAM.md) |
+| **仓库导航 / 现状数字 / VERIFY 检索** | **[docs/INDEX.md](./docs/INDEX.md)**、[docs/archive/history/VERIFY-INDEX.md](./docs/archive/history/VERIFY-INDEX.md) |
 
 上游原文（仅作参考）：[SPEC.md](./SPEC.md)、[reference/upstream/originals/M1-DESIGN.md](./reference/upstream/originals/M1-DESIGN.md)、[reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md](./reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md)、[reference/upstream/originals/LIGHT-MVP.md](./reference/upstream/originals/LIGHT-MVP.md)、[reference/upstream/originals/RESEARCH.md](./reference/upstream/originals/RESEARCH.md)。
 
@@ -157,7 +169,7 @@ Windows 主机（7×24）
 - 文档中文为主；TypeScript + Node 22 LTS，零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
 - 开发流程：分支 → PR → 验证 → squash merge。
 - 部署：从仓库复制到 `%ProgramData%\anc\`（命令见 REBUILD §3），主机上手改线上文件视为事故。
-- 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/check-public.mjs` 并人工过一遍全量 diff。
+- 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/checks/check-public.mjs` 并人工过一遍全量 diff。
 
 `package.json` 保持 `"private": true`，不发 npm。
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installPackage, verifyInstall } from './onboard.ts';
+import { installPackage, verifyInstall } from '../modules/org/index.ts';
 
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), 'anc-onboard-'));

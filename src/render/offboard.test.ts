@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deployOrg } from './index.ts';
+import { deployOrg } from '../modules/org/index.ts';
 
 function orgWith(dir: string, members: Array<{ id: string; name: string; userid?: string; disabled?: boolean }>): void {
   mkdirSync(join(dir, 'members'), { recursive: true });

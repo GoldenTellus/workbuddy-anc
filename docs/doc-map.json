@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "docs": [
+    { "id": "index", "path": "docs/INDEX.md", "type": "导航", "role": "文档地图 + 仓库导航" },
+    { "id": "future-design", "path": "docs/FUTURE-DESIGN.md", "type": "方向", "role": "设计树与完成状态" },
+    { "id": "plan", "path": "docs/PLAN.md", "type": "执行", "role": "当前主干计划" },
+    { "id": "status", "path": "docs/STATUS.md", "type": "账本", "role": "已完成 / 缺口 / 风险" },
+    { "id": "doc-sync", "path": "docs/DOC-SYNC.md", "type": "联动规则", "role": "主干完成时的文档联动" },
+    { "id": "product", "path": "docs/PRODUCT.md", "type": "现状能力", "role": "现在能做什么" },
+    { "id": "architecture", "path": "docs/ARCHITECTURE.md", "type": "现状架构", "role": "现在代码怎么组织" },
+    { "id": "decisions", "path": "docs/DECISIONS.md", "type": "决策台账", "role": "为什么这么定" },
+    { "id": "local-service", "path": "docs/LOCAL-SERVICE.md", "type": "接口契约", "role": "CLI / HTTP" },
+    { "id": "renderer", "path": "docs/RENDERER.md", "type": "接口契约", "role": "org → persona" },
+    { "id": "ingest", "path": "docs/INGEST.md", "type": "接口契约", "role": "入库进程" },
+    { "id": "workbuddy-patch", "path": "docs/WORKBUDDY-PATCH.md", "type": "接口契约", "role": "WorkBuddy 补丁" },
+    { "id": "deploy-company", "path": "docs/DEPLOY-COMPANY.md", "type": "运维手册", "role": "公司侧部署" },
+    { "id": "deploy-employee", "path": "docs/DEPLOY-EMPLOYEE.md", "type": "运维手册", "role": "员工侧部署" },
+    { "id": "ops", "path": "docs/OPS.md", "type": "运维手册", "role": "主机运维" },
+    { "id": "rebuild", "path": "docs/REBUILD.md", "type": "运维手册", "role": "主机重建" },
+    { "id": "release-checklist", "path": "docs/RELEASE-CHECKLIST.md", "type": "发布门禁", "role": "发布前检查" },
+    { "id": "onboarding", "path": "docs/ONBOARDING.md", "type": "运维手册", "role": "入职/离职" },
+    { "id": "upstream", "path": "docs/UPSTREAM.md", "type": "来源政策", "role": "上游/参考来源政策与索引" },
+    { "id": "upstream-ai-native-company", "path": "docs/upstreams/ai-native-company.md", "type": "来源", "role": "fork 基线" },
+    { "id": "upstream-dsh-superagent", "path": "docs/upstreams/dsh-superagent.md", "type": "来源", "role": "设计参考" },
+    { "id": "upstream-openai-future-of-the-firm", "path": "docs/upstreams/openai-future-of-the-firm.md", "type": "来源", "role": "between us 参考" }
+  ],
+  "modules": {
+    "dir": "docs/modules",
+    "index": "docs/modules/README.md",
+    "contracts": [
+      "core",
+      "identity",
+      "tasks",
+      "delivery",
+      "runtime",
+      "knowledge",
+      "org",
+      "improvement",
+      "interfaces",
+      "workbuddy",
+      "ops",
+      "content"
+    ]
+  }
+}

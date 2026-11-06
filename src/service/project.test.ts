@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDb } from './db.ts';
-import * as tasks from './tasks.ts';
-import * as project from './project.ts';
+import { openDb } from '../core/index.ts';
+import * as tasks from '../modules/tasks/index.ts';
+import * as project from '../modules/runtime/index.ts';
 
 test('投影：生成 markdown、幂等、check 能识别缺失与手改', () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-proj-'));

@@ -3,9 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
-import { renderTemplate, checkLength, writeAtomic } from './render.ts';
-import { renderOrg } from './index.ts';
-import { loadOrg } from './org.ts';
+import { renderTemplate, checkLength, writeAtomic, renderOrg, loadOrg } from '../modules/org/index.ts';
 
 test('模板：占位符替换，未知占位符报错', () => {
   assert.equal(renderTemplate('你好 {{name}}', { name: '张三' }), '你好 张三');

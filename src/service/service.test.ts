@@ -9,17 +9,16 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, tx } from './db.ts';
-import * as tasks from './tasks.ts';
-import * as reminders from './reminders.ts';
-import * as outbox from './outbox.ts';
-import * as bindings from './bindings.ts';
-import * as config from './config.ts';
-import * as a2a from './a2a.ts';
-import { scanOutbound, assertSafeOutbound } from './outbound-scan.ts';
+import { openDb, tx, scanOutbound, assertSafeOutbound } from '../core/index.ts';
+import * as tasks from '../modules/tasks/index.ts';
+import * as reminders from '../modules/tasks/index.ts';
+import * as outbox from '../modules/delivery/index.ts';
+import * as bindings from '../modules/identity/index.ts';
+import * as config from '../core/index.ts';
+import * as a2a from '../modules/knowledge/index.ts';
 import { tick as loopTick, sendPending } from './loop.ts';
-import * as backup from './backup.ts';
-import * as dayend from './dayend.ts';
+import * as backup from '../core/index.ts';
+import { dayend } from '../modules/improvement/index.ts';
 
 function withDb(fn: (db: ReturnType<typeof openDb>) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'anc-svc-'));

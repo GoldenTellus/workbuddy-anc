@@ -1,6 +1,8 @@
 # 主机运维
 
-对应 [PLAN.md](./PLAN.md) 阶段 D（运行身份迁移已按 D25 关闭）与 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.1/§5.10。
+> 类型：运维手册（主机运维）
+
+对应 [PLAN.md](./PLAN.md) 阶段 D（运行身份迁移已按 D25 关闭）与 [DECISIONS.md](./DECISIONS.md) §5.1/§5.10。
 
 ## 计划任务
 
@@ -19,15 +21,15 @@
 | `anc-http` | 开机 + 每分钟（常驻，已跑不叠跑） | `LOCAL SERVICE` | `cmd /c <bin>\anc-http.cmd` | 只监听 `127.0.0.1:17891`：`/__anc_health` 存活探测（不需 token）、`/__anc_status` 需 Bearer token |
 | `anc-devbot` | 工作日 22:00~06:00 每 30 分钟 | bot 用户（Interactive） | `devbot-scheduler.ps1` | 查「全员下班」，满足三个条件才触发夜间迭代闭环；与另两个交互类任务同一 principal |
 
-PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册用 `scripts\register-tasks.ps1`（默认 dry-run，`-Apply` 才写；两个交互类任务要求 bot 用户已登录过、没有用户配置目录时会拒绝注册）：`-BotUser`、`-BackupDestination`、`-CleanupMediaDir` 都可覆盖。
+PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册用 `scripts\deploy\register-tasks.ps1`（默认 dry-run，`-Apply` 才写；两个交互类任务要求 bot 用户已登录过、没有用户配置目录时会拒绝注册）：`-BotUser`、`-BackupDestination`、`-CleanupMediaDir` 都可覆盖。
 
 ### 部署（一条命令）
 
 ```powershell
 # 先看计划（默认 dry-run）
-powershell -File scripts\deploy.ps1
+powershell -File scripts\deploy\deploy.ps1
 # 落盘：备份 → 复制 → 逐文件对拍 hash → 失败回滚
-powershell -File scripts\deploy.ps1 -Apply
+powershell -File scripts\deploy\deploy.ps1 -Apply
 ```
 
 把 `src\{service,ingest,render}`、`scripts\*.ps1|*.cmd|*.vbs`、`scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 下的 `service|ingest|render|bin|patch`，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
@@ -35,7 +37,7 @@ powershell -File scripts\deploy.ps1 -Apply
 ## 账号与凭据
 
 - `%ProgramData%\anc\accounts` **只给 Administrators 与 SYSTEM**：里面有 `anc-bot` 密码和按名单开出的只读账号初始密码，bot 账号（标准用户）不得读取；
-- 员工账号用 `scripts\provision-vault-accounts.ps1 -Csv <名单> -DryRun` 先看计划，再正式执行；CSV 用 UTF-8 写；
+- 员工账号用 `scripts\accounts\provision-vault-accounts.ps1 -Csv <名单> -DryRun` 先看计划，再正式执行；CSV 用 UTF-8 写；
 - 凭据文件发给本人后删除，不进仓库、不进聊天。
 
 ### 初始化 org（渲染器的输入）
@@ -56,11 +58,11 @@ node C:\ProgramData\anc\render\cli.ts deploy --org D:\anc\org --out D:\anc\build
 
 ```powershell
 # 1) 准备名单 CSV（name,id）  2) 看计划
-powershell -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
+powershell -File scripts\accounts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
 # 3) 建号：同时授 vault 只读、把组加进「拒绝本地登录」
-powershell -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv
+powershell -File scripts\accounts\provision-vault-accounts.ps1 -Csv .\team.csv
 # 4) 验收（读通 / 写拒 / 非管理员 / 拒绝登录），出 JSON 报告
-powershell -File scripts\verify-vault-accounts.ps1 -Csv C:\ProgramData\anc\accounts\provisioned-<时间>.csv
+powershell -File scripts\accounts\verify-vault-accounts.ps1 -Csv C:\ProgramData\anc\accounts\provisioned-<时间>.csv
 # 5) 凭据发给本人后，删掉那份 provisioned CSV
 ```
 
@@ -90,7 +92,7 @@ Remove-Item C:\ProgramData\anc\data\maintenance.flag
 
 ## 为什么不再弹窗
 
-以登录用户身份运行的任务（`anc-patch-guard`、`anc-workbuddy-launch`）如果直接调 `powershell.exe`，每次触发都会闪一个控制台窗口（守卫每分钟一次）。现在统一用 `scripts/run-hidden.vbs` 包一层：
+以登录用户身份运行的任务（`anc-patch-guard`、`anc-workbuddy-launch`）如果直接调 `powershell.exe`，每次触发都会闪一个控制台窗口（守卫每分钟一次）。现在统一用 `scripts/launch/run-hidden.vbs` 包一层：
 
 ```
 wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
@@ -102,16 +104,16 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 
 线上只从 `%ProgramData%\anc\patch\` 跑补丁（`launch-patched.ps1` / `preload.cjs` / `inspect.mjs` / `manifest.json`）；守卫与自愈默认 `-PatchDir` 也指向这里。**不从 git 工作副本跑**：在仓库里切分支会直接改到线上补丁，两份 manifest 也会漂移。部署补丁 = 把 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\patch\`。
 
-登录拉起（`anc-launch.cmd`）、守卫与自愈三条启动路径必须用同一份补丁：`anc-launch.cmd` 一律以仓库 `scripts/anc-launch.cmd` 为准，指向 `%ProgramData%\anc\patch\launch-patched.ps1`。入库技能调用的入库 CLI 同理，应从部署目录跑，不从工作副本跑。
+登录拉起（`anc-launch.cmd`）、守卫与自愈三条启动路径必须用同一份补丁：`anc-launch.cmd` 一律以仓库 `scripts/launch/anc-launch.cmd` 为准，指向 `%ProgramData%\anc\patch\launch-patched.ps1`。入库技能调用的入库 CLI 同理，应从部署目录跑，不从工作副本跑。
 
 公司 bot 看到消息没有 `[anc:chat=…]` 前缀时**不再自己跑自愈**，只回「身份识别暂不可用」；修复完全交给守卫。任何群成员都能发消息，交给 bot 触发等于让人随意重启 WorkBuddy。
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor.ps1              # 只读体检（31 项）：部署账号（D25 用管理员账号）、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
-powershell -File scripts\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
-powershell -File scripts\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
-powershell -File scripts\watchdog.ps1            # 手动跑一次看有没有要告警的
+powershell -File scripts\doctor\doctor.ps1              # 只读体检（31 项）：部署账号（D25 用管理员账号）、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
+powershell -File scripts\doctor\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
+powershell -File scripts\selfheal\watchdog.ps1            # 手动跑一次看有没有要告警的
 ```
 
 doctor 退出码：0 无 FAIL，1 有 FAIL，并在末尾列出 `FIX`。全 PASS 是上线门槛之一。
@@ -133,8 +135,8 @@ doctor 退出码：0 无 FAIL，1 有 FAIL，并在末尾列出 `FIX`。全 PASS
 ```powershell
 # 名单 CSV（name,id；id 只允许小写字母数字 . _ -）
 #   张三,zhangsan
-powershell -ExecutionPolicy Bypass -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
-powershell -ExecutionPolicy Bypass -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv
+powershell -ExecutionPolicy Bypass -File scripts\accounts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
+powershell -ExecutionPolicy Bypass -File scripts\accounts\provision-vault-accounts.ps1 -Csv .\team.csv
 ```
 
 - 账号名 `anc-read-<id>`，随机 12 位密码、永不过期，默认只在 `Users` 组；
@@ -149,10 +151,10 @@ powershell -ExecutionPolicy Bypass -File scripts\provision-vault-accounts.ps1 -C
 
 ```powershell
 # 手动跑一次（本地）
-powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1
+powershell -ExecutionPolicy Bypass -File scripts\backup\backup-anc.ps1
 
 # 带离机目标（UNC 或 U 盘）；目标不可达只告警，不算备份失败
-powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1 -Destination "\\主机\backup\anc"
+powershell -ExecutionPolicy Bypass -File scripts\backup\backup-anc.ps1 -Destination "\\主机\backup\anc"
 ```
 
 - 备份是 SQLite `VACUUM INTO` 的一致性快照，服务在跑也能做；
@@ -169,11 +171,11 @@ powershell -ExecutionPolicy Bypass -File scripts\backup-anc.ps1 -Destination "\\
 ```powershell
 # 1) 手工在 org/members/<id>.md 的 frontmatter 加 disabled: true（脚本不改 org）
 # 2) 看计划（默认 dry-run）
-powershell -File scripts\offboard-member.ps1 -MemberId zhangsan -ToUserid <新人 userid> -ToName 王五
+powershell -File scripts\accounts\offboard-member.ps1 -MemberId zhangsan -ToUserid <新人 userid> -ToName 王五
 # 3) 真做
-powershell -File scripts\offboard-member.ps1 -MemberId zhangsan -ToUserid <新人 userid> -ToName 王五 -Apply
+powershell -File scripts\accounts\offboard-member.ps1 -MemberId zhangsan -ToUserid <新人 userid> -ToName 王五 -Apply
 # 4) 连 Windows 账号一起删（不可逆，默认不做）
-powershell -File scripts\offboard-member.ps1 ... -Apply -DeleteAccount -AccountName <账号名>
+powershell -File scripts\accounts\offboard-member.ps1 ... -Apply -DeleteAccount -AccountName <账号名>
 ```
 
 - 做四件事：重渲染（清掉该成员 persona、从 `groups.json` 移除）、把 open 任务转给新人（记 `reassigned` 事件）、解绑群、可选删账号；

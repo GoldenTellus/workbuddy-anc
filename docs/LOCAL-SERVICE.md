@@ -1,8 +1,10 @@
-# 本地小服务（第一切片）
+# 本地小服务
 
-对应 [FORK-DIRECTION.md](./FORK-DIRECTION.md) §5.5 与 D10/D11。目标是把 WorkBuddy 里没有、又必须确定性的部分接过来：任务状态、提醒、outbox、群绑定。
+> 类型：接口契约（现行）
 
-**当前是第一切片**：SQLite 真相源 + 核心规则 + 命令行。还没有 HTTP 监听、守护进程、Windows 服务、vault 投影（`reproject`）、附件清理与 watchdog——那些等 T6/T17 落地后再加。
+对应 [DECISIONS.md](./DECISIONS.md) §5.5 与 D10/D11。目标是把 WorkBuddy 里没有、又必须确定性的部分接过来：任务状态、提醒、outbox、群绑定。
+
+**当前已落地**：SQLite 真相源、16 组命令、HTTP 面（`serve`）、任务投影（`project`）、常驻 `loop`、A2A 访谈归档、迭代闭环。**没有** Windows 服务形态（用计划任务 `anc-service` 每分钟跑 `loop --once`）；发送队列的多进程协调靠 SQLite 领取，不靠进程间锁。
 
 ## 数据模型（SQLite）
 
@@ -92,7 +94,7 @@ npm run service -- serve
 > **不参与运行时时间计算**（`isWorkTime` / 提醒排期 / `localDay` 一律按主机系统本地时区）。
 > 改它不会改变行为；要让提醒换时区，得改主机系统时区。见 `ACCEPTANCE S-5`、`VERIFY §87 #1`。
 
-所有命令支持 `--db <path>` 与 `--json`。默认库 `%USERPROFILE%\anc\anc.db`。
+所有命令支持 `--db <path>` 与 `--json`。默认库 `%ProgramData%\anc\data\anc.db`（可用 `--db` 或环境变量 `ANC_DB` 覆盖）。
 
 `loop` 每次 tick 做四件事：
 

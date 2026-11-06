@@ -1,77 +1,89 @@
-# workbuddy-anc — 项目指引(Codex 版,与 CLAUDE.md 内容一致)
+# workbuddy-anc — 项目指引
 
-GoldenTellus 的二次开发仓库,基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`(MIT)。目标:小团队用一台 7×24 的 Windows 主机跑一个**公司 bot**,每个员工电脑跑一个**个人 bot**,执行引擎是腾讯 **WorkBuddy(Enterprise 版)**,IM 是**企业微信**,公司知识放在主机上的 markdown vault 里。结构照搬上游的制造企业试点。
+> 类型：agent 规则（canonical）· 最后整理：2026-11-07
+>
+> 本文件是 agent 开工前的最小必读。`CLAUDE.md` 只是指向本文件的短指针，不再维护第二份正文。
 
-本库**不自己实现** agent 框架、**不写** IM 网关——这两样都用现成的（IM 用 WorkBuddy 自带的企微机器人，agent 用 WorkBuddy 本身）。本库只做它们之外的部分：渲染器（生成 `CODEBUDDY.md` 与群映射）、本地小服务（状态、提醒、完成判定、outbox）、入库进程、接入脚本、主机运维。
+GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`（MIT）。目标：小团队用一台 7×24 的 Windows 主机跑**公司 bot**，每个员工电脑跑**员工 bot**；执行引擎是腾讯 **WorkBuddy**，IM 是**企业微信**，公司知识放在 markdown vault 里。
 
-> 「不写」≠「不用」：迭代闭环里的 devbot 用一个现成 agent 去改技能（PLAN 阶段 L），项目里没有 agent 框架代码。
+本库**不自己实现** agent 框架、**不写** IM 网关——用 WorkBuddy 与企业微信现成能力。本库做它们之外必须确定性完成的部分：状态、计时、完成判定、出站消息、渲染、入库、主机运维。
 
-## 当前状态
+## 1. 现在到哪了
 
-- 方向 `docs/FORK-DIRECTION.md` **0.6**；已定裁决 D1–**D26**。**里程碑见 `docs/PLAN.md` 1.0**：阶段 S（稳）/ O（观）/ L（环）/ D（交）。
-- **1.0 的定义（四条 + 一条硬要求）**：① 40 条终态 DoD 全绿（现 **38 ✅ / 2 🟡**，O-4 备份离机 2026-11-04 达成；**2026-11-05 一天内 O-5 真机清空重建 `§81` / P-3 降级 9.5 成 `§82`+`§85` / E-2 与 P-7 完成 `§84`**；剩 **P-3 的"真人+真群"那一层** 与 **E-1 降级未达成**）② 补丁在升级后能自愈（**✅ 2026-11-05 实测通过，`VERIFY §75`**）③ 迭代闭环跑通一次 ④ 第二个人能独立装（**✅ 2026-11-05 两半都实测通过：「接手」`§79`、「从零装」11/11 `§81`**）；**⑤ 覆盖上游全部功能模块、零差距**（`UPSTREAM-COVERAGE.md` 21 项逐项有结论）。
-- **阶段 S 全绿 3/3**：冷启动 3 次 46/60/29 秒、注入异常告警、逾期提醒（造的数据，`VERIFY §20`）。
-- **阶段 O 全绿 3/3**：O1 出站过滤结案（`§17`）、O2 persona 读盘结案（`§18`）、doctor **31 项**台账（2026-11-04 补 `time-sync`、2026-11-05 补 `task-anc-devbot`，`§15`/`§46`）。
-- **阶段 L 全绿 7/7**：submission（`§21`）→ issue 规则表分诊（`§22`）→ patch draft（`§23`）→ devbot 全自动出分支（`§26`）→ eval 判 pass/fail（`§25`）→ 端到端 12 分钟跑通（`§27`）→ **dayend 自动识别（`§36`）**。最后一项是临时给公司 bot 加 persona 规则验的——**不是个人 bot**，验的是"技能触发链路"。
-- **阶段 D：1/3**：无隐性知识已过（`§29`）；ACCEPTANCE 的 5 个 🟡 已于 2026-11-05 全部处置（现 **38 ✅ / 2 🟡**，`§81`–`§85`），剩第二台机器。**2026-11-04 单机封顶**：8 项能做的全做完 —— O-5 换盘符重建（`§34`）、P-7 真跑离职四步（`§35`）、dayend 自动识别（`§36`）、补丁自愈三路径（`§37`）、闭环状态流转（`§38`）、doctor 31 项（`§39`/`§46`/`§63`）、并发压力（`§40`）、错误恢复（`§41`）。
-- **上游覆盖：零差距判据达成**：`13✅ / 6🔄 / 2➖ / 🟡0 / ⬜0`（`VERIFY §30`）。注意「零差距」是**功能等价不是实现相同**——#20 的出站过滤从"确定性拦截"降级成"persona 约束"，一类代价写在各自"差在哪"里。
-- **D26（2026-11-03）**：闭源不构成排除理由——遇到 WorkBuddy 做不到，默认动作是**加一层**（patch / hook / 代理 / 注入 / 解包反编译），不是降级需求；确因维护成本不做时才进台账并写代价。手段表见 PLAN §2.1。
-- 已知遗留：**2 个 DoD 🟡 全卡环境**（2026-11-05 闭合 O-5 `§81` / E-2 `§84` / P-7 `§84`；**P-3 降级到 9.5 成** `§82`+`§85`；**E-1 降级未达成 0 成** `§85` —— 实测第二实例起不来，要真第二台机器）（需要员工机 / 企微后台 / 真实账号 / 第二台真机；O-4 备份离机已于 2026-11-04 达成，`VERIFY §28`/`§33`）——**不是代码缺陷**；**devbot 产出质量不稳定**（同一类 issue 两次写出 `due_at` 和 `due_local`，`§27`）；出站约束只能靠 persona 不能保证（`§17`）；L4 夜间轮换必须**重建会话**（`§18`）。
-- **2026-11-05 后的剩余**：ACCEPTANCE 还有 **2 个 🟡** —— **P-3** 已降级到 **9.5 成**（自动化 7.5 秒 + 群里第 1 条验收通，`§82`/`§85`），差"真人员工 + 三方群 + 员工机 + 群里第 2–4 条"；**E-1 降级未达成（0 成）**，实测第二个 WorkBuddy 实例起不来（原生层全局互斥体，`§33` 复验），**要真第二台机器**；1.0 第 2 条（真升级回归）等厂商发版；第 4 条（第二个人能装）要真人和干净机。**这些不是本机能解决的**，`VERIFY §28`/`§33` 逐个定过性。
-- **本轮新增的坑**：任何会改 `git` 当前分支的脚本必须自己切回去（`e2e-loop.ps1` 早期只在正常收尾切回、异常终止会漏，现用 trap 双路径复位，`§27`）；`patch-out.log` 的换行被转义成字面 `\n` 且只记前 400 字符（`§25`）；表定义必须和代码一起进 git，否则新建库缺表、老库缺列两种报错都会出现（`§21`/`§22`）。
-- **主机时间**：`W32Time` 原本 Stopped，2026-11-04 修复；**03:00 之前的绝对时间戳可能不准**，影响面见 `VERIFY §19`，验证提醒时用新数据。
-- `npm test` **163 项**（`TZ=UTC` 下同样全绿）；`doctor -Repo` FAIL=0 WARN=1（2026-11-06 第二轮补充审查后实测，唯一 WARN 是 `work-hours` 未配置；不带 `-Repo` 时会多报一个 `secrets-in-git` WARN，因为无仓库可扫）；故障矩阵 **30/31** 项已注入验证（2026-11-05 补上 `task-anc-devbot` 的注入，见 `§48`；剩 1 项是 `vault-ingest-audit` 上限即 WARN）（`database` 2026-11-04 补，原来判"不做"是错的；`vault-ingest-audit` 的上限是 WARN 不是 FAIL，基线即 WARN，见 `§39`）。
-- **发布前审计（2026-11-05，`VERIFY §65`–`§69`）**：SQL 层 6 处可疑拼接**全部安全**（参数绑定写对了）；真正的风险是**手工修补没固化**。已补三样：① `deploy.ps1` 的 ACL → 新脚本 `scripts/set-acl.ps1`（`§66`，幂等已验）② lockfile + `coverage` 脚本（`§67`）③ **7 个文件 1555 行（占 src 的 35.7%）从未被执行** → 已加 smoke test 让 7/7 全进表（`§69`）。**§69 当时 `npm test` 130 项、`coverage` 行 76.61%** —— 比 93.14% 低不是退步，是原来「藏起来的空地方」被照亮了；**2026-11-06 补闭环测试后为 155 项 / 行 91.34%（`VERIFY §87`）**。**发布前按 `docs/RELEASE-CHECKLIST.md` 四阶段走，顺序不能换：先补代码缺口 → 再证明代码能自愈 → 才清空重装 → 最后让陌生 agent 装。**
-- **1.0 发布路线（2026-11-05 维护者决策，当日执行完毕）**：**不用虚拟机**，5 个 🟡 全部降级到本机做，**结果：3 条转 ✅ + 1 条到 9.5 成 + 1 条实测做不到** —— O-5 真机清空 **10 成 ✅**（`§81`）、E-2 **9 成 ✅**（`§84`）、P-7 **8 成 ✅**（`§84`）、P-3 **9.5 成 🟡**（`§82`+`§85`）、**E-1 降级方案被实测否掉 → 0 成**（`§85`，第二实例 12 秒内退出，原生层全局互斥体）。**「做不了的标未做」这条真用上了**：E-1 不美化。处置表见 `ACCEPTANCE.md`。
-- **部署约定（D25）**：直接用管理员账号，不建专用用户；D6 的「不开自动登录、本机不存密码」仍有效。
-- WorkBuddy 只有补丁一条路（D18）：企业版与个人版实测一样，群身份靠 D17 补丁。凡上主机的版本都先过 FORK-DIRECTION §11 的升级回归。
-- **测试入口（2026-11-04 打通）**：`OPS.md`「程序化测试入口」+ `REBUILD §4b`——本地 `POST 127.0.0.1:17999/emit` 可模拟"有人 @ 了 bot"，重启后 8–30 秒自动可用，**验证 persona / 技能 / 出站行为不再需要真人配合**。默认关闭（`test-emit.flag` 控制），用完删 flag。**2026-11-06 起**：同目录放 `emit-token.txt` 可为 `/emit` 加 `X-Anc-Token` 校验；隔离测试用 `ANC_EMIT_PORT` 换端口，别撞在跑部署的 17999（`VERIFY §87`）。
-- **两个编排脚本**：`scripts/devbot.ps1`（切 persona→注入 issue→等→检查→恢复）、`scripts/e2e-loop.ps1`（L1→L2→L3→L4→L6 串起来，12 分钟）。`devbot` 靠 WorkBuddy 的 `SandboxCLIClient` 跑 git/node——**2026-11-04 实测它能跑系统命令**（`VERIFY §26`）。注意：不是 `run_command`（那个是 Excel 插件的 JS 运行时），归因 2026-11-05 已更正。
-- `package.json` 保持 `"private": true`，不发 npm。
+- 12 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
+- `npm test` **163/163**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
+- 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
+- 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
 
-## 文档地图(改代码前先读)
+**现行入口**：
+
+| 问题 | 文档 |
+|---|---|
+| 要建什么、完成到哪 | [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md) |
+| 当前主干怎么干 | [docs/PLAN.md](./docs/PLAN.md) |
+| 做完什么、还缺什么 | [docs/STATUS.md](./docs/STATUS.md) |
+| 主干完成时文档怎么联动 | [docs/DOC-SYNC.md](./docs/DOC-SYNC.md) |
+| 现在代码怎么组织 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) + [docs/modules/](./docs/modules/) |
+| 现在能做什么 | [docs/PRODUCT.md](./docs/PRODUCT.md) |
+| 文档/目录导航 | [docs/INDEX.md](./docs/INDEX.md) |
+
+## 2. 文档地图（改代码前先读）
 
 | 文件 | 内容 |
 |---|---|
-| **`docs/WHAT-IT-DOES.md`** | **部署完能干什么**：7 个技能 + 16 个命令组 + 10 个计划任务逐项说明、能力边界、典型一天 |
-| `docs/FORK-DIRECTION.md` | **设计裁决的唯一真相源**:已定裁决 D1–**D26**、组件设计、WorkBuddy 已观察行为、实测 T1–T22、安全基线、风险登记、改动台账(§11) |
-| `docs/VERIFY.md` | 阻断项实测手册与结果记录 |
-| `docs/REUSE-MAP.md` | 上游代码与设计逐项的复用判定。**0.4（2026-11-03）起 §3 按"零差距"口径重判**：原来 9 条"不适用"里只有 3 条是真的，5 条是"换机制达成"、1 条待补。**默认复用，不重复造**：先查本表 → 再查 `reference/upstream/` → 最后才自己写 |
-| `reference/upstream/` | 上游参考:未合并分支(含渲染器的改写来源 `feat-m1-w1`)、以后可能用到的上游技能与 MCP 骨架。不参与构建,README 写明每份什么时候会用 |
-| `docs/PLAN.md` | **里程碑 1.0**:阶段 S(稳)/O(观)/L(环)/D(交)、终态 DoD **40 条**、每阶段 gate；1.0 还要覆盖上游全部功能、零差距 |
-| `docs/AGENT-DEPLOY-COMPANY.md`、`AGENT-DEPLOY-EMPLOYEE.md` | **给 agent 的部署手册**（读者是 agent 不是人）：开工前的问值清单、每步的成功判据与回滚、分节跳转 |
-| **`docs/AGENT-VERIFY-HANDOFF.md`** | **给新机器的验证交接**：能验什么/不能验什么、待验证任务、**25 条踩过的坑（§4，编号有跳号，以标题为准）**、6 个测试方法、工具速查。**换机器/换 agent 时先读这份** |
-| `docs/OPS.md`、`docs/REBUILD.md` | 主机运维:10 个计划任务、补丁与部署的唯一来源、维护开关、重建步骤 |
-| `docs/archive/` | 历史接手/验证记录的归档件（如 `VERIFY-HOST-TAKEOVER-20261105.md`，其**附录 B 复现清单**是独有的，VERIFY 里没有） |
-| **`docs/REPO-INDEX.md`**、**`docs/VERIFY-INDEX.md`** | **仓库导航**：目录职责、实测数字、常用命令；VERIFY 87 节的检索索引（按问题查） |
-| `docs/D-HANDOFF-PROMPT.md` | D 阶段 B 路交班提示词：开新会话整段贴过去，让陌生 agent 自己查，不继承当前上下文 |
-| `docs/UPSTREAM-ORIGINALS.md` | 4 份上游原样文档的索引：原位置、什么时候真的会看它；正文在 `reference/upstream/originals/` |
-| `SPEC.md` 等上游原文 | 设计文档原位保留并标了「上游原文」,仅作参考;与 FORK-DIRECTION 冲突时以后者为准 |
+| **`docs/ARCHITECTURE.md`** | 12 个模块、依赖规则、源码/部署布局；`module-map.json` + `check:modules` 可执行 |
+| **`docs/FUTURE-DESIGN.md`** | 未来设计树：主干/分支/叶子；主干 0 是常驻清债 |
+| `docs/PLAN.md` | 当前主干的执行计划；一次只写一个主干 |
+| `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险；`GAP-###` 总账 |
+| `docs/DOC-SYNC.md` | 主干完成时的文档联动清单与审计表 |
+| `docs/PRODUCT.md` | 部署完能干什么：技能、命令组、计划任务、能力边界 |
+| `docs/DECISIONS.md` | 设计裁决台账（D1–D26 及后续）；与代码冲突时先改代码或改决策，不要两边漂 |
+| `docs/modules/` | 12 份模块契约：职责/拥有/公开接口/不变量/失败模式/测试 |
+| `docs/LOCAL-SERVICE.md` | CLI / HTTP 契约 |
+| `docs/RENDERER.md` / `docs/INGEST.md` / `docs/WORKBUDDY-PATCH.md` | 渲染 / 入库 / 补丁契约 |
+| `docs/DEPLOY-COMPANY.md` / `docs/DEPLOY-EMPLOYEE.md` | 给 agent 的部署手册 |
+| `docs/OPS.md` / `docs/REBUILD.md` / `docs/RELEASE-CHECKLIST.md` | 主机运维 / 重建 / 发布门禁 |
+| `docs/UPSTREAM.md` + `docs/upstreams/` | 上游/参考来源、许可证、用了什么 |
+| `docs/archive/` | 历史计划、验收、实测、交接；只读，不再当现行契约 |
 
-## 关键裁决速览(详见 FORK-DIRECTION §4,不要在实现中偏离)
+## 3. 关键裁决（不要偏离）
 
-1. **可以改 WorkBuddy**:patch 程序、封装、读取它的凭据与内部数据都允许(D16)。但每处改动都要按 FORK-DIRECTION §11 登记版本、随升级重放、可一键关闭;仓库里只放清单与脚本骨架,不放厂商代码 diff。它的行为仍不是公开契约,改动后的行为只能记在 §11 台账,不能当产品事实。
-2. **公司 bot 是所有人共用的一个实例**,员工靠「一人一群」隔离(本人 + 公司 bot + 本人的个人 bot);私聊公司 bot 只留管理员。两个 bot 在群里都 @ 才回应。
-3. **确定性的事不交给模型**:任务与工作流状态、计时提醒、「完成」判定、出站消息都归本地小服务(SQLite 为真相,markdown 是投影)。
-4. **vault 分两区**(共享区全员只读、内部区只有公司侧能读写),是两个独立的 git 目录;原件不进 git。
-5. **公司 bot 只做结构化,入库进程只校验和提交**,不调模型;覆盖写必须带读取时的 base hash。
-6. **运行身份（D25 已调整）**:直接用管理员账号部署，不再要求专用标准用户（D6 的这一半被 D25 覆盖）；**保留**「主机不开自动登录、本机不存账号密码」。代价知情：WorkBuddy 及其补丁拿到管理员权限，要收紧时按 `REBUILD §4` 末尾迁标准用户。
-7. 技能、模板、org 数据只走 git 变更 → 渲染器部署;主机上手改线上文件视为事故。
-8. **闭源不构成排除理由(D26)**:遇到 WorkBuddy 做不到，默认动作是**加一层**(patch/hook/代理/注入/解包反编译)，不是降级需求。手段表见 `PLAN §2.1`；每加一层都要按 §11 登记、随升级重放(R7)。
+1. **可以改 WorkBuddy**：patch、封装、读凭据与内部数据都允许（D16）；每处改动按 `DECISIONS` 登记、随升级重放、可一键关闭。
+2. **当前实现是“一个公司 bot + 一人一群”**：员工群 = 员工 + 员工 bot + 公司 bot；公司 bot 是老板的个人 bot。未来还要加公司大群、老板 1:1，见 `FUTURE-DESIGN` 主干 1。
+3. **确定性的事不交给模型**：任务/工单状态、计时提醒、“完成”判定、出站消息归本地服务；SQLite 是真相，markdown 是投影。
+4. **vault 分两区**：共享区全员只读、内部区只有公司侧能读写；两个独立 git 目录，原件不进 git。
+5. **公司 bot 只做结构化，入库进程只校验和提交**，不调模型；覆盖写必须带读取时的 base hash。
+6. **运行身份（D25）**：直接用管理员账号部署，不建专用用户；保留“主机不开自动登录、本机不存账号密码”。
+7. **技能、模板、org 数据只走 git → 渲染器部署**；主机上手改线上文件视为事故。
+8. **闭源不构成排除理由（D26）**：WorkBuddy 做不到时默认加一层（patch/hook/代理/注入），不是降级需求；每层都要登记、随升级重放。
 
-## 约定
+## 4. 约定
 
-- 文档中文为主;渲染器与本地小服务用 TypeScript + Node 22 LTS,零或极少运行时依赖;主机运维脚本用 PowerShell。
-- 开发流程:分支 → PR → 验证 → squash merge;维护者明确要求时可直接提交 main。
-- 从上游借代码前先查 `docs/REUSE-MAP.md`;上游写死的飞书、cc-connect、macOS 内容不要带进来。
-- 这台机器上 git 命令较慢,耗时的 git 操作放后台跑。
-- **计划随时可变，但改要留痕**：`docs/PLAN.md` 是"当前最佳判断"不是合同——前提不成立、成本远超收益、出现新信息、找到更简单的路，都该当场调整（改顺序/验收/拆合并/砍/加）。唯一不动的是 1.0 的五条判据（那是目标）。**每次调整在 PLAN §0.1 的调整记录里留一行理由**。
-- **AGENTS.md 与本文件同步维护**(Codex 镜像,内容一致)。
+- **模块边界**：新代码按 `ARCHITECTURE` 归块；跨模块只 import 对方 `index.ts`；不直接读别人的表。改完跑 `npm run check:modules:deep`。
+- **主干流程**：从 `FUTURE-DESIGN` 选主干 → 写 `PLAN` → 做 → `STATUS` 记证据 → 按 `DOC-SYNC` 全量核对文档 → 标 `FUTURE-DESIGN` → 归档 PLAN 快照。
+- **设计反哺**：未来主干如果纠正旧行为/旧契约，必须在 `STATUS` §3.3 登记 `GAP`（旧行为/目标行为/影响文件），并同步改受影响的现状文档；不能在新主干里静默改掉旧行为。
+- **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
+- **代码**：TypeScript + Node 22；零或极少运行时依赖；主机脚本 PowerShell 5.1。
+- **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。
+- **上游**：借代码/设计前先查 `docs/UPSTREAM.md` 与 `docs/upstreams/`；许可证不明只学概念，不拷代码。
+- **计划可变，但改要留痕**：`PLAN` 是当前最佳判断，不是合同；调整理由写进 `PLAN` 顶部或 `STATUS`，不要静默改。
+- **AGENTS.md 是唯一正文**；`CLAUDE.md` 只是指针。
 
-## 铁律:泄密防线
+## 5. 铁律：泄密防线
 
-- `_research/` 与任何含生产细节的内容**绝不 commit**(.gitignore 已排除,别绕过)。
-- 改动 WorkBuddy 的产物(patch diff、反编译中间件、提取脚本输出)同样不进仓库:原件放 `_research/workbuddy/`,仓库里只放清单与脚本骨架,规矩见 FORK-DIRECTION §11。
-- 绝不进仓库:企微 webhook 地址、corpid / corpsecret、WorkBuddy 或企微的账号 ID、按 D16 读取的任何凭据值、真实的主机名、内网地址、带真实用户名的本机路径、人名。文档里用 `%USERPROFILE%`、`\\主机\vault`、`<userid>` 这类占位符。
-- 转公开检查(repo 转 public 前必跑):`node scripts/check-public.mjs`,零输出且退出码 0 = 通过。扫描范围:`*.md *.json *.ts *.mjs *.cjs *.ps1`;`.ps1` 必须带 UTF-8 BOM、`.json` 不许带 BOM。`.vbs` / `.cmd` / `.tsx` 等不在范围内,新增时要人工过一遍。脚本是绊线不是证明,转公开前仍需人工过一遍全量 diff。
-- 涉及部署现场的表述只写通用化 lessons learned,不写可定位到具体在跑机器的攻击面线索(措辞用设计约束时态,如「一律不授予」,不用「已整改/待整改」)。
+- `_research/` 与任何含生产细节的内容**绝不 commit**（`.gitignore` 已排除，别绕过）。
+- 改动 WorkBuddy 的产物（patch diff、反编译中间件、提取脚本输出）同样不进仓库；原件放 `_research/workbuddy/`，仓库只放清单与脚本骨架。
+- 绝不进仓库：企微 webhook 地址、corpid / corpsecret、WorkBuddy 或企微账号 ID、按 D16 读取的任何凭据值、真实主机名、内网地址、带真实用户名的本机路径、人名。文档用 `%USERPROFILE%`、`\\主机\vault`、`<userid>` 占位。
+- 转公开前必跑：`node scripts/checks/check-public.mjs`，零输出且退出码 0 = 通过。`.ps1` 必须 UTF-8 BOM，`.json` 不许带 BOM。
+- 脚本是绊线不是证明；转公开前仍需人工过一遍全量 diff。
+
+## 6. 常用命令
+
+```powershell
+npm test                 # pretest 自动跑 npm run check
+npm run check            # check:modules:deep + check:docs
+npm run check:docs       # 只查文档链接/类型/入口
+npm run coverage
+npm run test:service     # 分组测试：test:bind / test:ingest / test:render
+node scripts/checks/check-public.mjs
+```

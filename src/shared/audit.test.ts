@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendAudit, auditPath, commandName } from './audit.ts';
+import { appendAudit, auditPath, commandName } from '../core/index.ts';
 
 test('审计：追加 JSONL，多行可逐行解析', () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-audit-'));

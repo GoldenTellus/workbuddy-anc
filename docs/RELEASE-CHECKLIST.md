@@ -1,11 +1,15 @@
 # 1.0 发布前检查清单
 
+> 类型：发布门禁（现行）
+
+> **发布门禁（现行）**：判据可执行；历史实测见 [VERIFY.md](./archive/history/VERIFY.md)，当前架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+
 > **读者是 agent，不是人。** 每一项都有可执行的判据；判据不成立就停在这一项，不要往下走。
 >
-> 为什么要这份东西：`docs/ACCEPTANCE.md` 回答的是「功能做到了没」，这份回答的是
+> 为什么要这份东西：`docs/archive/history/ACCEPTANCE.md` 回答的是「功能做到了没」，这份回答的是
 > 「**这东西能不能拿去发布**」。后者包含前者，但多了一整套「代码自己能不能做到」的检验。
 >
-> 背景见 [VERIFY §65](./VERIFY.md)（2026-11-05 第一次发布前审计）。
+> 背景见 [VERIFY §65](./archive/history/VERIFY.md)（2026-11-05 第一次发布前审计）。
 
 ---
 
@@ -14,7 +18,7 @@
 ### A1 `deploy.ps1` 补 ACL —— **最高优先**  ← **✅ 2026-11-05 已完成**（`VERIFY §66`）
 
 > **做法与下面这段不同**：最终没有把 `icacls` 写进 `deploy.ps1`，而是新建了独立的
-> [`scripts/set-acl.ps1`](../scripts/set-acl.ps1)（默认 dry-run，`-Apply` 落盘，`-Side employee` 跳过），
+> [`scripts/deploy/set-acl.ps1`](../scripts/deploy/set-acl.ps1)（默认 dry-run，`-Apply` 落盘，`-Side employee` 跳过），
 > 再由 `deploy.ps1`（L113-125）与 `rebuild-z.ps1`（L46）调用它。原因有两个：
 > ① `deploy.ps1` **根本不建** `secrets`/`data`（建它们的是 `rebuild-z.ps1`），所以接入点必须是两处；
 > ② 自检不该自己写判据 —— `set-acl.ps1` 直接跑 `doctor.ps1` 的 `secrets-acl`/`data-acl` 两项（那两项是双向的、刚实测过）。
@@ -265,7 +269,7 @@ powershell -File scripts\deploy.ps1 -Side company
 **前置**：阶段 C 通过 ✅
 
 **怎么做的**：真机清空 → 静默重装 WorkBuddy 5.9.3 → 维护者登录 → 开**全新会话**（无本会话上下文），
-只给一段任务描述 + 仓库地址，让它照 `docs/AGENT-DEPLOY-COMPANY.md` 一节节装。
+只给一段任务描述 + 仓库地址，让它照 `docs/DEPLOY-COMPANY.md` 一节节装。
 
 **结果：11/11，`§12` 自证 `PASS=4 FAIL=0 SKIP=1`，`doctor ok=true FAIL=0`**（`VERIFY §81`）。
 
@@ -282,7 +286,7 @@ powershell -File scripts\deploy.ps1 -Side company
 
 **它没有满足这条 —— 但这是对的。** 它在 **§1** 停下，列了 11 项问值表，等了 **4 分 37 秒**。
 
-**这不是"文档不够清楚"，是文档规定的硬门槛**：`AGENT-DEPLOY-COMPANY.md` §1 明写
+**这不是"文档不够清楚"，是文档规定的硬门槛**：`DEPLOY-COMPANY.md` §1 明写
 「开工前必须问人、**填不全就停在这里，别往下做**」，且「**这四类我不会替你编**」。
 
 **实测印证了这条设计是对的**：它把该问的一次问清（还自己发现 `#2 corpId` 不需要，引用了 `§11.1` 的划掉说明），

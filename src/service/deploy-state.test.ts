@@ -18,7 +18,7 @@ import { join, resolve } from 'node:path';
 
 // 测试在 src/service/，要上溯两级才是仓库根（一级只到 src/）。
 const REPO = resolve(import.meta.dirname, '..', '..');
-const SCRIPT = join(REPO, 'scripts', 'deploy-state.ps1');
+const SCRIPT = join(REPO, 'scripts', 'deploy', 'deploy-state.ps1');
 
 // powershell 用绝对路径：node --test 的 worker 进程里 PATH 不含 System32\WindowsPowerShell\v1.0，
 // 直接写 'powershell' 会拿到 0xFFFF0000（命令找不到），但普通 node 里是好的——这个差别很难查。
