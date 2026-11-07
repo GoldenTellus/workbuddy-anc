@@ -140,7 +140,7 @@ Windows 主机（7×24）
 
 ## 现状
 
-- 12 个模块全部 `current`；`npm test` **163/163**；`npm run check`（模块边界 + 文档检查）通过。
+- 12 个模块全部 `current`；`npm test` **191/191**；`npm run check`（模块边界 + 文档检查）通过。
 - 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。

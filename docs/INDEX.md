@@ -40,9 +40,9 @@
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **163 / 163 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
+| 测试 | **191 / 191 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
 | 覆盖率（行 / 分支 / 函数） | **91.99% / 81.39% / 94.42%** | `npm run coverage`（2026-11-06） |
-| 测试文件 | **17** 个 | `package.json` 的 `scripts.test` 列表 |
+| 测试文件 | **23** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
 | 计划任务 | **10** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
 | 技能目录 | **7** 个 | `ls -d light/skills/*/ \| wc -l` |

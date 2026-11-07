@@ -33,6 +33,17 @@ npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企
 npm run service -- bind resolve --chat-id <chatid>
 npm run service -- bind list
 
+# 主干 1：org → people/groups/manager_scopes（同时双写 chat_bindings 兼容旧技能）
+npm run service -- bind sync-org --org <org 目录>
+# 旧库回填：chat_bindings → groups(type=employee)，按 userid 匹配 people，不猜未知人
+npm run service -- bind backfill
+# 非员工群：company / department / boss_dm
+npm run service -- bind group-set --chat-id <chatid> --type company
+npm run service -- bind group-set --chat-id <chatid> --type department --dept-id sales --name 销售部
+npm run service -- bind group-set --chat-id <chatid> --type boss_dm --name 老板1:1
+npm run service -- bind group-list [--type department]
+npm run service -- bind person-list
+
 # 本地摘要（D19/C13）：正文不出本机。只读文件、按规则抽要点，不调模型、不发网络请求
 npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--max-chars 160]
 # 按关键词在 vault 里定位（标题命中优先），每条给路径 + 摘要；不带 --root 时用 config 里的两个 vault
@@ -40,6 +51,11 @@ npm run service -- --json summary --find <关键词> [--root <目录>] [--max-do
 
 # 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
 npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00"
+# 主干 1：员工请求同事；跨部门会自动要求先审批
+npm run service -- task request --title "帮我看下报价" --requester-id <person_id> --assignee-id <person_id> --chat-id <origin_chat> [--requires-approval]
+npm run service -- task approve --id <n> --approver-id <manager_person_id>
+npm run service -- task accept --id <n> --assignee-id <person_id>
+npm run service -- task reject --id <n> --actor-id <person_id> --reason "没资源"
 # 后台任务（D22）：执行器仍是 WorkBuddy，小服务只管超时；start 由 bot 动手时调一次
 npm run service -- task add --title "跑月度汇总" --chat-id <chatid> --requester <姓名> --requester-userid <userid> --kind background --timeout 30
 npm run service -- task start --id 9

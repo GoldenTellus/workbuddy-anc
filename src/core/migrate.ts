@@ -15,6 +15,16 @@ export function migrate(db: DatabaseSync): void {
   addCol('tasks', 'started_at', 'TEXT');
   addCol('tasks', 'timeout_minutes', 'INTEGER');
   addCol('tasks', 'requester_userid', 'TEXT');
+  addCol('tasks', 'requester_id', 'TEXT');
+  addCol('tasks', 'assignee_id', 'TEXT');
+  addCol('tasks', 'origin_group_id', 'TEXT');
+  addCol('tasks', 'dept_id', 'TEXT');
+  addCol('tasks', 'approver_id', 'TEXT');
+  addCol('tasks', 'approved_at', 'TEXT');
+  addCol('tasks', 'accepted_at', 'TEXT');
+  addCol('tasks', 'accept_deadline', 'TEXT');
+  addCol('tasks', 'approval_deadline', 'TEXT');
+  addCol('tasks', 'reject_reason', 'TEXT');
   addCol('outbox', 'next_attempt_at', 'TEXT');
   addCol('outbox', 'claimed_at', 'TEXT');
   addCol('outbox', 'requeued_at', 'TEXT');

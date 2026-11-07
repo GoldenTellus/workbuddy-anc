@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as bindings from '../../modules/identity/index.ts';
 import type { CliContext } from './context.ts';
+import { syncOrgIdentity, backfillFromBindings } from './identity-sync.ts';
 
 export default function bind(ctx: CliContext): void {
   const { db, args, cmd, out, fail } = ctx;
@@ -27,5 +28,29 @@ export default function bind(ctx: CliContext): void {
     if (!from) fail('缺少 --from <groups.json>');
     const groups = JSON.parse(readFileSync(from, 'utf8')) as bindings.GroupsFile;
     out({ ok: true, ...bindings.importGroups(db, groups) });
+  } else if (cmd === 'sync-org') {
+    const org = typeof args.org === 'string' ? args.org : '';
+    if (!org) fail('缺少 --org <org 目录>');
+    out(syncOrgIdentity(db, org));
+  } else if (cmd === 'backfill') {
+    out(backfillFromBindings(db));
+  } else if (cmd === 'group-set') {
+    const chatId = String(args['chat-id'] ?? '');
+    const type = String(args.type ?? '');
+    if (!chatId || !type) fail('缺少 --chat-id / --type');
+    const g = bindings.upsertGroup(db, {
+      chatId,
+      type: type as bindings.GroupType,
+      employeeId: typeof args['employee-id'] === 'string' ? args['employee-id'] : undefined,
+      deptId: typeof args['dept-id'] === 'string' ? args['dept-id'] : undefined,
+      name: typeof args.name === 'string' ? args.name : undefined,
+      status: args.status === 'disabled' ? 'disabled' : 'active',
+    });
+    out({ ok: true, group: g });
+  } else if (cmd === 'group-list') {
+    const type = typeof args.type === 'string' ? args.type as bindings.GroupType : undefined;
+    out({ ok: true, groups: bindings.listGroups(db, type) });
+  } else if (cmd === 'person-list') {
+    out({ ok: true, people: bindings.listPeople(db) });
   } else fail('未知 bind 子命令');
 }

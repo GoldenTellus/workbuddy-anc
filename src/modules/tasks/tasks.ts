@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { nowIso, toIso, tx, assertSafeOutbound } from '../../core/index.ts';
 import { enqueue } from '../delivery/index.ts';
 
-export type TaskStatus = 'open' | 'done' | 'cancelled' | 'needs_review';
+export type TaskStatus = 'open' | 'pending_approval' | 'pending_acceptance' | 'done' | 'cancelled' | 'rejected' | 'needs_review';
 export type TaskKind = 'simple' | 'background';
 
 export interface Task {
@@ -21,6 +21,16 @@ export interface Task {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  requester_id: string | null;
+  assignee_id: string | null;
+  origin_group_id: string | null;
+  dept_id: string | null;
+  approver_id: string | null;
+  approved_at: string | null;
+  accepted_at: string | null;
+  accept_deadline: string | null;
+  approval_deadline: string | null;
+  reject_reason: string | null;
 }
 
 export interface CreateTaskInput {
@@ -35,9 +45,13 @@ export interface CreateTaskInput {
   timeoutMinutes?: number;
   policyVersion?: string;
   ruleHash?: string;
+  requesterId?: string;
+  assigneeId?: string;
+  originGroupId?: string;
+  deptId?: string;
 }
 
-const FIELDS = 'id, title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, kind, started_at, timeout_minutes, created_at, updated_at, completed_at';
+const FIELDS = 'id, title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, kind, started_at, timeout_minutes, created_at, updated_at, completed_at, requester_id, assignee_id, origin_group_id, dept_id, approver_id, approved_at, accepted_at, accept_deadline, approval_deadline, reject_reason';
 
 export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
   if (!input.title || !input.title.trim()) throw new Error('title 必填');
@@ -46,8 +60,8 @@ export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
   const t = nowIso();
   return tx(db, () => {
     const r = db.prepare(
-      `INSERT INTO tasks (title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, kind, timeout_minutes, policy_version, rule_hash, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO tasks (title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, kind, timeout_minutes, policy_version, rule_hash, requester_id, assignee_id, origin_group_id, dept_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       input.title.trim(),
       input.chatId ?? null,
@@ -60,12 +74,112 @@ export function createTask(db: DatabaseSync, input: CreateTaskInput): Task {
       input.kind === 'background' ? Math.min(1440, Math.max(1, Math.floor(input.timeoutMinutes ?? 30))) : null,
       input.policyVersion ?? null,
       input.ruleHash ?? null,
+      input.requesterId ?? null,
+      input.assigneeId ?? null,
+      input.originGroupId ?? input.chatId ?? null,
+      input.deptId ?? null,
       t,
       t
     );
     const id = Number(r.lastInsertRowid);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
       .run(id, 'created', JSON.stringify({ title: input.title.trim() }), t);
+    return getTask(db, id)!;
+  });
+}
+
+export interface CreateTaskRequestInput extends CreateTaskInput {
+  requesterId: string;
+  assigneeId: string;
+  deptId: string;
+  requiresApproval: boolean;
+  approvalDeadline?: string;
+  acceptDeadline?: string;
+}
+
+/**
+ * 员工请求同事：同部门直接 pending_acceptance；跨部门先 pending_approval。
+ * 权限判断（谁能请求谁）由 policy 层做；这里只落状态，保证状态机一致。
+ */
+export function createTaskRequest(db: DatabaseSync, input: CreateTaskRequestInput): Task {
+  if (!input.title || !input.title.trim()) throw new Error('title 必填');
+  if (!input.requesterId || !input.assigneeId) throw new Error('请求任务必须有 requesterId / assigneeId');
+  assertSafeOutbound(input.title);
+  const t = nowIso();
+  const status: TaskStatus = input.requiresApproval ? 'pending_approval' : 'pending_acceptance';
+  return tx(db, () => {
+    const r = db.prepare(
+      `INSERT INTO tasks (title, chat_id, assignee, requester, assignee_userid, requester_userid, due_at, status, kind, timeout_minutes, policy_version, rule_hash, requester_id, assignee_id, origin_group_id, dept_id, accept_deadline, approval_deadline, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'simple', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      input.title.trim(),
+      input.chatId ?? null,
+      input.assignee ?? null,
+      input.requester ?? null,
+      input.assigneeUserId ?? null,
+      input.requesterUserId ?? null,
+      input.dueAt ? toIso(input.dueAt) : null,
+      status,
+      input.policyVersion ?? null,
+      input.ruleHash ?? null,
+      input.requesterId,
+      input.assigneeId,
+      input.originGroupId ?? input.chatId ?? null,
+      input.deptId,
+      input.acceptDeadline ? toIso(input.acceptDeadline) : null,
+      input.approvalDeadline ? toIso(input.approvalDeadline) : null,
+      t,
+      t
+    );
+    const id = Number(r.lastInsertRowid);
+    db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, 'requested', JSON.stringify({ requiresApproval: input.requiresApproval, requesterId: input.requesterId, assigneeId: input.assigneeId }), t);
+    return getTask(db, id)!;
+  });
+}
+
+export function approveTaskRequest(db: DatabaseSync, id: number, approverId: string): Task {
+  return tx(db, () => {
+    const task = getTask(db, id);
+    if (!task) throw new Error(`任务不存在: ${id}`);
+    if (task.status !== 'pending_approval') throw new Error(`只有 pending_approval 的任务需要审批: ${id}（当前 ${task.status}）`);
+    const t = nowIso();
+    db.prepare("UPDATE tasks SET status = 'pending_acceptance', approver_id = ?, approved_at = ?, updated_at = ? WHERE id = ?")
+      .run(approverId, t, t, id);
+    db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, 'approved', JSON.stringify({ approverId }), t);
+    return getTask(db, id)!;
+  });
+}
+
+export function acceptTaskRequest(db: DatabaseSync, id: number, assigneeId: string): Task {
+  return tx(db, () => {
+    const task = getTask(db, id);
+    if (!task) throw new Error(`任务不存在: ${id}`);
+    if (task.status !== 'pending_acceptance') throw new Error(`只有 pending_acceptance 的任务需要接受: ${id}（当前 ${task.status}）`);
+    if (task.assignee_id && task.assignee_id !== assigneeId) throw new Error(`只有执行人能接受这个任务: ${id}`);
+    const t = nowIso();
+    db.prepare("UPDATE tasks SET status = 'open', accepted_at = ?, updated_at = ? WHERE id = ?")
+      .run(t, t, id);
+    db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, 'accepted', JSON.stringify({ assigneeId }), t);
+    return getTask(db, id)!;
+  });
+}
+
+export function rejectTaskRequest(db: DatabaseSync, id: number, actorId: string, reason: string): Task {
+  if (!reason.trim()) throw new Error('拒绝必须带原因');
+  return tx(db, () => {
+    const task = getTask(db, id);
+    if (!task) throw new Error(`任务不存在: ${id}`);
+    if (task.status !== 'pending_approval' && task.status !== 'pending_acceptance') {
+      throw new Error(`只有待审批/待接受的任务能拒绝: ${id}（当前 ${task.status}）`);
+    }
+    const t = nowIso();
+    db.prepare("UPDATE tasks SET status = 'rejected', reject_reason = ?, updated_at = ? WHERE id = ?")
+      .run(reason.trim(), t, id);
+    db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, 'rejected', JSON.stringify({ actorId, stage: task.status, reason: reason.trim() }), t);
     return getTask(db, id)!;
   });
 }
@@ -107,6 +221,9 @@ export function completeTask(db: DatabaseSync, id: number, outbox?: { chatId?: s
     assertActor(task, actor);
     if (task.status === 'done') return { task, enqueued: false };
     if (task.status === 'cancelled') throw new Error(`任务已取消，不能标记完成: ${id}`);
+    if (task.status === 'pending_approval' || task.status === 'pending_acceptance' || task.status === 'rejected') {
+      throw new Error(`任务还没进入 open，不能标记完成: ${id}（当前 ${task.status}）`);
+    }
     db.prepare('UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?').run('done', t, t, id);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)').run(id, 'completed', null, t);
     db.prepare("UPDATE reminders SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'").run(id);
@@ -142,7 +259,9 @@ export function cancelTask(db: DatabaseSync, id: number, actor?: string): Task {
     const task = getTask(db, id);
     if (!task) throw new Error(`任务不存在: ${id}`);
     assertActor(task, actor);
-    if (task.status !== 'open') throw new Error(`只有 open 的任务能取消: ${id}`);
+    if (task.status !== 'open' && task.status !== 'pending_approval' && task.status !== 'pending_acceptance') {
+      throw new Error(`只有 open / 待审批 / 待接受的任务能取消: ${id}`);
+    }
     db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('cancelled', t, id);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)').run(id, 'cancelled', null, t);
     db.prepare("UPDATE reminders SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'").run(id);

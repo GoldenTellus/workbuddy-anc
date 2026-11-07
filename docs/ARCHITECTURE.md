@@ -44,14 +44,14 @@
 | ID | 模块 | 一句话 | 拥有（数据/文件） | 依赖 |
 |---|---|---|---|---|
 | `core` | 平台底座 | 库、迁移、事务、时间、配置、审计、出站扫描、备份 | `meta`/`config` 表、schema、`audit.log` 格式 | 无 |
-| `identity` | 身份与群绑定 | chatid ↔ 员工 ↔ userid ↔ webhook 文件 | `chat_bindings` | core |
-| `tasks` | 任务与提醒 | 任务生命周期、提醒排期、后台任务超时、离职转交 | `tasks`/`task_events`/`reminders` | core · delivery |
+| `identity` | 身份与群绑定 | chatid ↔ 群类型 ↔ 人/角色/部门 ↔ webhook | `people`/`groups`/`manager_scopes`；`chat_bindings` 兼容 | core |
+| `tasks` | 任务与提醒 | 任务生命周期、提醒排期、后台任务超时、离职转交；两阶段请求 | `tasks`/`task_events`/`reminders` | core · delivery |
 | `delivery` | 出站投递 | 队列、去重、领取、退避、过期、按群选 webhook、发送 | `outbox` | core · identity |
 | `knowledge` | 知识与入库 | 入库校验/写入/锁/归档；本地检索与摘要；A2A 归档 | vault 两区文件、ingest 锁、`a2a_*` 表 | core |
 | `org` | 组织与渲染 | org 解析、persona/接入包、`groups.json`、事务部署与回滚 | org 输入、render 产物、manifest | core |
 | `improvement` | 自我改进 | submission → issue → patch draft → eval；dayend；devbot 契约 | `submissions`/`issues`/`patch_drafts`/`eval_runs`/`dayend` | core |
 | `runtime` | 运行编排 | 一次 tick：回收、顺延、提醒、升级、发送、超时、投影 | 无表；读各能力模块 | core · identity · tasks · delivery · knowledge |
-| `interfaces` | 服务接口 | 16 组 CLI + 3 条 HTTP 路由 + 审计包装 + ERROR/FIX 格式 | 无 | 能力模块 + runtime |
+| `interfaces` | 服务接口 | 16 组 CLI + 3 条 HTTP 路由 + 审计包装 + ERROR/FIX 格式 | 无 | 能力模块 + runtime + org（仅 `bind sync-org`） |
 | `workbuddy` | WorkBuddy 适配 | 群身份注入、旁白过滤、升级拦截、补丁状态、canary、test-emit | `scripts/workbuddy-patch/*`、`patch-*.json/log` | 无（只写状态文件） |
 | `ops` | 主机运维 | 部署、体检、备份、自愈、重建、账号、计划任务 | `%ProgramData%\anc\` 布局、任务、ACL、备份 | 无（只走 CLI/文件） |
 | `content` | 业务内容 | 7 个技能、2 个 persona、模板、eval 用例、vault 模板 | `light/`、`org.example/` | 无代码依赖；依赖 CLI 契约 |

@@ -68,3 +68,4 @@
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P1 迁入 `src/core/`；P3 删除旧薄壳 | 模块化 |
 | 2026-11-06 | P1b：schema/migrate/tx 拆出，`writeAtomic` 下沉 `fs.ts` | 收掉 core 最后的混装 |
+| 2026-11-07 | 加 people/groups/manager_scopes 表与 tasks 请求字段 | 主干 1 |

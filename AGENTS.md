@@ -11,7 +11,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 12 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- `npm test` **163/163**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
+- `npm test` **191/191**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
 
@@ -49,7 +49,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 3. 关键裁决（不要偏离）
 
 1. **可以改 WorkBuddy**：patch、封装、读凭据与内部数据都允许（D16）；每处改动按 `DECISIONS` 登记、随升级重放、可一键关闭。
-2. **当前实现是“一个公司 bot + 一人一群”**：员工群 = 员工 + 员工 bot + 公司 bot；公司 bot 是老板的个人 bot。未来还要加公司大群、老板 1:1，见 `FUTURE-DESIGN` 主干 1。
+2. **当前实现是“一个公司 bot + 一人一群”**：员工群 = 员工 + 员工 bot + 公司 bot；公司 bot 是老板的个人 bot。未来还要加部门群、公司大群、老板 1:1，见 `FUTURE-DESIGN` 主干 1。
 3. **确定性的事不交给模型**：任务/工单状态、计时提醒、“完成”判定、出站消息归本地服务；SQLite 是真相，markdown 是投影。
 4. **vault 分两区**：共享区全员只读、内部区只有公司侧能读写；两个独立 git 目录，原件不进 git。
 5. **公司 bot 只做结构化，入库进程只校验和提交**，不调模型；覆盖写必须带读取时的 base hash。
@@ -62,6 +62,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 - **模块边界**：新代码按 `ARCHITECTURE` 归块；跨模块只 import 对方 `index.ts`；不直接读别人的表。改完跑 `npm run check:modules:deep`。
 - **主干流程**：从 `FUTURE-DESIGN` 选主干 → 写 `PLAN` → 做 → `STATUS` 记证据 → 按 `DOC-SYNC` 全量核对文档 → 标 `FUTURE-DESIGN` → 归档 PLAN 快照。
 - **设计反哺**：未来主干如果纠正旧行为/旧契约，必须在 `STATUS` §3.3 登记 `GAP`（旧行为/目标行为/影响文件），并同步改受影响的现状文档；不能在新主干里静默改掉旧行为。
+- **主干 0 复检**：每次讨论形成结论、或完成一个任务/主干后，逐项看 `FUTURE-DESIGN` 0.1–0.7，有新增/关闭就更新 `STATUS` 的 `GAP`，没有变化也在 `STATUS` §3.4 留一行“已核对无变化”。
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
 - **代码**：TypeScript + Node 22；零或极少运行时依赖；主机脚本 PowerShell 5.1。
 - **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。

@@ -39,6 +39,41 @@ CREATE TABLE IF NOT EXISTS chat_bindings (
   updated_at TEXT NOT NULL
 );
 
+-- 主干 1：人、群、管理者范围。
+-- chat_bindings 保留做员工群兼容层；新代码优先读 people/groups。
+CREATE TABLE IF NOT EXISTS people (
+  person_id   TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  userid      TEXT UNIQUE,
+  system_role TEXT NOT NULL DEFAULT 'employee'
+              CHECK (system_role IN ('boss', 'manager', 'employee')),
+  dept_id     TEXT,
+  status      TEXT NOT NULL DEFAULT 'active',   -- active | disabled
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS groups (
+  chat_id     TEXT PRIMARY KEY,
+  type        TEXT NOT NULL
+              CHECK (type IN ('employee', 'department', 'company', 'boss_dm')),
+  employee_id TEXT,                              -- employee 群：该员工 person_id
+  dept_id     TEXT,                              -- department 群：该部门 id
+  name        TEXT,
+  status      TEXT NOT NULL DEFAULT 'active',    -- active | disabled
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_groups_type ON groups(type, status);
+
+CREATE TABLE IF NOT EXISTS manager_scopes (
+  person_id  TEXT NOT NULL,
+  dept_id    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (person_id, dept_id)
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   title          TEXT NOT NULL,
@@ -46,12 +81,22 @@ CREATE TABLE IF NOT EXISTS tasks (
   assignee       TEXT,
   requester      TEXT,
   due_at         TEXT,
-  status         TEXT NOT NULL DEFAULT 'open',      -- open | done | cancelled
+  status         TEXT NOT NULL DEFAULT 'open',      -- open | pending_approval | pending_acceptance | done | cancelled | rejected | needs_review
   policy_version TEXT,
   rule_hash      TEXT,
   created_at     TEXT NOT NULL,
   updated_at     TEXT NOT NULL,
-  completed_at   TEXT
+  completed_at   TEXT,
+  requester_id   TEXT,
+  assignee_id    TEXT,
+  origin_group_id TEXT,
+  dept_id        TEXT,
+  approver_id    TEXT,
+  approved_at    TEXT,
+  accepted_at    TEXT,
+  accept_deadline TEXT,
+  approval_deadline TEXT,
+  reject_reason  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS task_events (

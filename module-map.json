@@ -26,7 +26,7 @@
         "scripts/anc-bind/"
       ],
       "dependsOn": ["core"],
-      "owns": ["chat_bindings 表", "webhook 文件名校验"]
+      "owns": ["chat_bindings 表", "people / groups / manager_scopes 表", "webhook 文件名校验", "角色/隐私策略"]
     },
     {
       "id": "tasks",
@@ -119,7 +119,7 @@
         "src/interfaces/",
         "src/service/cli.ts"
       ],
-      "dependsOn": ["core", "identity", "tasks", "delivery", "knowledge", "improvement", "runtime"],
+      "dependsOn": ["core", "identity", "tasks", "delivery", "knowledge", "improvement", "runtime", "org"],
       "owns": ["service CLI 命令面", "HTTP 路由", "退出码与 ERROR/FIX 格式"]
     },
     {

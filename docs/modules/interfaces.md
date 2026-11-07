@@ -60,9 +60,9 @@ patch    dayend  eval  backup  config  project  serve  loop
 
 ## 依赖
 
-- 允许：core、identity、tasks、delivery、knowledge、improvement、runtime
-- 禁止：org / workbuddy / ops（它们有各自入口）
-- 说明：本模块是**组合根**，允许 import 所有能力模块；能力模块不许反向 import 它。
+- 允许：core、identity、tasks、delivery、knowledge、improvement、runtime、org
+- 禁止：workbuddy / ops（它们有各自入口）
+- 说明：本模块是**组合根**，允许 import 能力模块；`org` 只用于 `bind sync-org` 的 org→DB 同步，不反向依赖。能力模块不许反向 import 它。
 
 ## 测试
 
@@ -80,3 +80,4 @@ patch    dayend  eval  backup  config  project  serve  loop
 |---|---|---|
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P2 拆分 CLI 与 HTTP；P4 依赖改为 modules 入口 | 模块化 |
+| 2026-11-07 | `bind sync-org` 组合 org + identity；interfaces 允许 import org | 主干 1 |

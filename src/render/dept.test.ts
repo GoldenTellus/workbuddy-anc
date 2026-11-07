@@ -24,11 +24,13 @@ const COMPANY = [
   '',
 ].join('\n');
 
-function mkOrg(dir: string, opts: { members?: string[]; depts?: Array<[string, string]> } = {}): string {
+const COMPANY_BOSS = COMPANY.replace('\n---\n', '\nboss: zhangsan\n---\n');
+
+function mkOrg(dir: string, opts: { members?: string[]; depts?: Array<[string, string]>; company?: string } = {}): string {
   const org = join(dir, 'org');
   mkdirSync(join(org, 'members'), { recursive: true });
   mkdirSync(join(org, 'roles'), { recursive: true });
-  writeFileSync(join(org, 'company.md'), COMPANY);
+  writeFileSync(join(org, 'company.md'), opts.company ?? COMPANY);
   writeFileSync(join(org, 'roles', 'eng.md'), '---\nid: eng\nname: 工程师\nduties: 写代码\n---\n');
   if (opts.depts) {
     mkdirSync(join(org, 'depts'), { recursive: true });
@@ -49,6 +51,8 @@ function withTmp(fn: (dir: string) => void): void {
 const MEMBER_PLAIN = '---\nid: zhangsan\nname: 张三\nrole: eng\nuserid: uid-zs\nchat_id: chat-1\n---\n';
 const MEMBER_WITH_DEPT = '---\nid: zhangsan\nname: 张三\nrole: eng\nuserid: uid-zs\nchat_id: chat-1\ndept: engineering\n---\n';
 const DEPT_ENG = '---\nid: engineering\nname: 研发部\nvault_paths: shared/工艺, internal/研发\nskills: anc-task, anc-vault-read\n---\n';
+const DEPT_SALES = '---\nid: sales\nname: 销售部\nskills: anc-task\n---\n';
+const MEMBER_MANAGER = '---\nid: zhangsan\nname: 张三\nrole: eng\nuserid: uid-zs\nchat_id: chat-1\ndept: engineering\nmanages: engineering, sales\n---\n';
 
 test('splitList：逗号分隔的字符串拆成数组，空值返回空数组', () => {
   assert.deepEqual(splitList('a, b , c'), ['a', 'b', 'c']);
@@ -109,6 +113,55 @@ test('loadOrg：部门里写未知字段要报错（拼错的键会被静默忽�
     const typo = '---\nid: engineering\nname: 研发部\nskill: anc-task\n---\n';   // skill 少了 s
     const org = mkOrg(d, { members: [], depts: [['engineering.md', typo]] });
     assert.throws(() => loadOrg(org), /不认识的字段.*skill/s);
+  });
+});
+
+test('loadOrg：读得到唯一老板与管理者管辖的多个部门', () => {
+  withTmp((d) => {
+    const org = mkOrg(d, {
+      members: [MEMBER_MANAGER],
+      depts: [['engineering.md', DEPT_ENG], ['sales.md', DEPT_SALES]],
+      company: COMPANY_BOSS,
+    });
+    const o = loadOrg(org);
+    assert.equal(o.boss, 'zhangsan');
+    const m = o.members.find((x) => x.id === 'zhangsan');
+    assert.deepEqual(m?.manages, ['engineering', 'sales']);
+  });
+});
+
+test('loadOrg：boss 引用不存在的成员要报错', () => {
+  withTmp((d) => {
+    const org = mkOrg(d, {
+      members: [MEMBER_MANAGER],
+      depts: [['engineering.md', DEPT_ENG], ['sales.md', DEPT_SALES]],
+      company: COMPANY_BOSS.replace('boss: zhangsan', 'boss: nobody'),
+    });
+    assert.throws(() => loadOrg(org), /company\.boss 引用了不存在的成员: nobody/);
+  });
+});
+
+test('loadOrg：manages 引用不存在的部门要报错', () => {
+  withTmp((d) => {
+    const bad = MEMBER_MANAGER.replace('manages: engineering, sales', 'manages: engineering, nonexistent');
+    const org = mkOrg(d, {
+      members: [bad],
+      depts: [['engineering.md', DEPT_ENG], ['sales.md', DEPT_SALES]],
+      company: COMPANY_BOSS,
+    });
+    assert.throws(() => loadOrg(org), /manages 引用了不存在的部门: nonexistent/);
+  });
+});
+
+test('loadOrg：boss 不能是停用成员', () => {
+  withTmp((d) => {
+    const disabled = MEMBER_MANAGER.replace('dept: engineering', 'dept: engineering\ndisabled: true');
+    const org = mkOrg(d, {
+      members: [disabled],
+      depts: [['engineering.md', DEPT_ENG], ['sales.md', DEPT_SALES]],
+      company: COMPANY_BOSS,
+    });
+    assert.throws(() => loadOrg(org), /company\.boss 不能是停用成员: zhangsan/);
   });
 });
 

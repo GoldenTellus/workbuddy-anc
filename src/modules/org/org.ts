@@ -13,6 +13,8 @@ export interface Member {
   disabled?: boolean;
   /** 所属部门（org/depts/<id>.md）。缺省表示不归任何部门，按"全部技能、全部 vault"处理 */
   dept?: string;
+  /** 管理的部门 id（可多个）。非空即管理者；老板由 company.boss 指定 */
+  manages?: string[];
   bot?: string;
 }
 
@@ -40,6 +42,8 @@ export interface Org {
   roles: Map<string, Record<string, string>>;
   depts: Map<string, Dept>;
   members: Member[];
+  /** 唯一老板的成员 id；老 org 可缺省，主干 1 启动校验时要求存在 */
+  boss?: string;
 }
 
 /** 把 "a, b , c" 拆成 [a,b,c]；空串返回 [] */
@@ -76,8 +80,8 @@ const PERSONA_TEXT_FIELDS = ['name', 'role', 'userid', 'chat_id'] as const;
 
 /** 允许出现的 frontmatter 键。拼错一个键会被静默忽略（字段没生效但不报错），所以白名单要收死。 */
 const KNOWN_KEYS: Record<string, string[]> = {
-  company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir'],
-  member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled', 'dept'],
+  company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir', 'boss'],
+  member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled', 'dept', 'manages'],
   role: ['id', 'name', 'duties'],
   dept: ['id', 'name', 'vault_paths', 'skills', 'note'],
 };
@@ -157,6 +161,7 @@ export function loadOrg(dir: string): Org {
       // 只认字符串 "true"：写成 yes/1 之类不生效，避免"以为停用了其实没有"
       disabled: fm.disabled === 'true',
       dept: fm.dept,
+      manages: splitList(fm.manages),
     });
   }
 
@@ -173,6 +178,23 @@ export function loadOrg(dir: string): Org {
     if (m.role && !roles.has(m.role)) {
       throw new Error('成员 ' + m.id + ' 引用了不存在的角色: ' + m.role + '（roles/ 下有: ' + [...roles.keys()].join(', ') + '）');
     }
+    for (const d of m.manages ?? []) {
+      if (!depts.has(d)) {
+        throw new Error('成员 ' + m.id + ' 的 manages 引用了不存在的部门: ' + d + '（depts/ 下有: ' + ([...depts.keys()].join(', ') || '空') + '）');
+      }
+    }
+    if (new Set(m.manages ?? []).size !== (m.manages ?? []).length) {
+      throw new Error('成员 ' + m.id + ' 的 manages 有重复部门');
+    }
   }
-  return { company, roles, depts, members };
+
+  const boss = company.boss;
+  if (boss !== undefined) {
+    if (!MEMBER_ID.test(boss)) throw new Error('company.boss 不是合法成员 id: ' + boss);
+    const b = members.find((m) => m.id === boss);
+    if (!b) throw new Error('company.boss 引用了不存在的成员: ' + boss);
+    if (b.disabled) throw new Error('company.boss 不能是停用成员: ' + boss);
+  }
+
+  return { company, roles, depts, members, boss };
 }

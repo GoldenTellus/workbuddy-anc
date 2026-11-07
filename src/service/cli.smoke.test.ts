@@ -103,6 +103,8 @@ test('service CLI 冒烟：只读子命令全部以 0 退出并回 {"ok": true}'
     // （submission / issue / patch / dayend / eval）。写库的子命令一律不列。
     const cases: Array<[string, string[]]> = [
       ['bind list', ['bind', 'list']],
+      ['bind group-list', ['bind', 'group-list']],
+      ['bind person-list', ['bind', 'person-list']],
       ['task list', ['task', 'list']],
       ['outbox list', ['outbox', 'list']],
       ['a2a list', ['a2a', 'list', '--survey', 'smoke']],
