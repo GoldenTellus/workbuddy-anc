@@ -2,7 +2,7 @@
 
 > 类型：方向（master，设计树）
 
-> 状态：设计草案 v0.3 · 2026-11-08
+> 状态：设计草案 v0.4 · 2026-11-08
 >
 > **这份文档描述“要建成什么”，不是“现在已经有什么”。** 现状以 [ARCHITECTURE.md](./ARCHITECTURE.md)、[module-map.json](../module-map.json) 和 [modules/](./modules/) 为准；两者冲突时，先改设计，再改代码。
 >
@@ -42,11 +42,11 @@
 │  ├─ 分支 1.4 任务请求与权限
 │  └─ 未定项（见 6.1，不计入分支数）
 ├─ 主干 2：公司 bot 是 super-agent，自己看任务、自己干
-│  ├─ 分支 2.1 Main Session + Executor Session
-│  ├─ 分支 2.2 Task / Ticket / Assignment / Report / Attention
-│  ├─ 分支 2.3 任务从哪来、怎么排期
-│  ├─ 分支 2.4 双工作区：群交互 vs 任务执行
-│  ├─ 分支 2.5 状态
+│  ├─ 分支 2.1 Main：入站、判断与派活
+│  ├─ 分支 2.2 Executor：会话、工作区与适配器
+│  ├─ 分支 2.3 工作模型与生命周期
+│  ├─ 分支 2.4 调度与资源控制
+│  ├─ 分支 2.5 执行安全、恢复与审计
 │  └─ 未定项（见 6.2，不计入分支数）
 ├─ 主干 3：between us，先自主完成，再通知人
 │  ├─ 分支 3.1 三种需要人的情况
@@ -97,12 +97,12 @@
 | 1 | 1.3 隐私路由与老板 1:1 | ✅ | 🟡 | 🟡 | router + chat_id 解析已有；boss_dm spike 待做 |
 | 1 | 1.4 任务请求与权限 | ✅ | 🟡 | 🟡 | 策略/状态机/CLI/persona/通知链已有；真实群回归待做 |
 | **1** | **主干 1 汇总** | **✅** | **🟡** | **🟡** | 4/4 设计 ✅；实现已落，验收待跑 |
-| 2 | 2.1 Main + Executor | ✅ | ⬜ | — | 两层结构已定；WorkBuddy 适配未做 |
-| 2 | 2.2 Task / Ticket / Assignment | ✅ | ⬜ | — | 模型已定；表/迁移未做 |
-| 2 | 2.3 任务来源与排期 | 🟡 | ⬜ | — | 接单规则、员工互派待定 |
-| 2 | 2.4 双工作区 | ✅ | ⬜ | — | 路径/会话管理未做 |
-| 2 | 2.5 状态 | ✅ | ⬜ | — | 状态机已定；未实现 |
-| **2** | **主干 2 汇总** | **🟡** | **⬜** | **—** | 4/5 分支设计 ✅ |
+| 2 | 2.1 Main：入站、判断与派活 | 🟡 | ⬜ | — | 职责/边界已定；入站判断细节待设计 |
+| 2 | 2.2 Executor：会话、工作区与适配器 | 🟡 | ⬜ | — | 会话/工作区已定；WorkBuddy 适配器待定 |
+| 2 | 2.3 工作模型与生命周期 | 🟡 | ⬜ | — | 三层模型已定；Ticket 授权/状态细节待定 |
+| 2 | 2.4 调度与资源控制 | 🟡 | ⬜ | — | 优先级/队列已定；预算/并发待定 |
+| 2 | 2.5 执行安全、恢复与审计 | 🟡 | ⬜ | — | 幂等/恢复原则已定；实现契约待定 |
+| **2** | **主干 2 汇总** | **🟡** | **⬜** | **—** | 5/5 分支设计进行中；未开始实现 |
 | 3 | 3.1 三种需要人的情况 | ✅ | ⬜ | — | 已定 |
 | 3 | 3.2 群回复确认协议 | ✅ | ⬜ | — | 已定 |
 | 3 | 3.3 谁确认、责任怎么交 | 🟡 | ⬜ | — | `require_ack` 待定 |
@@ -294,35 +294,39 @@ flowchart TB
 ## 2. 主干 2：公司 bot 是 super-agent，自己看任务、自己干｜设计 🟡 · 实现 ⬜ · 验收 —
 
 > **你的原话（转述）**：公司 bot 像 DSH 的 super-agent，自己看到有任务，自己去干。比如任务表里有一条 background 任务 → bot 自己发现 → 自己排期 → 自己去干 → 干完报。
+>
+> **2026-11-08 分支重构**：按“变更原因”拆成 Main / Executor / 工作模型 / 调度 / 执行安全。原“双工作区”并入 Executor，原“状态”并入工作模型；不新增功能，只把边界切清。
 
-### 2.1 Main Session + Executor Session｜设计 ✅ · 实现 ⬜
+### 2.1 Main：入站、判断与派活｜设计 🟡 · 实现 ⬜
 
-DSH 的 super-agent 不是“一个大 agent 全干”，而是两层。我们采用同样的分层：
+Main 是唯一对人说话的层；它决定“这是不是活、要不要接、派给谁”，但不执行长任务。
 
 ```mermaid
 flowchart LR
-  A["群消息 / 老板 1:1 / 任务表"] --> B["Main Session<br/>评估、接单、派活、通知、回复"]
+  A["群消息 / 老板 1:1 / 任务表"] --> B["Main<br/>评估、接单、建 Ticket、派活、通知、回复"]
   B --> C["Ticket<br/>一次被授权的执行单元"]
-  C --> D["Executor Session<br/>一个任务一个会话 + 一个目录"]
+  C --> D["Executor<br/>一个 Ticket 一个会话 + 一个目录"]
   D --> E["Report / Attention"]
   E --> B
   B --> F["群 / 1:1 回复"]
 ```
 
-**Main Session**
+**职责**
 
-- 接收员工群、公司大群、老板 1:1 的消息。
-- 判断：这是不是活？谁在要？有没有权限？是不是重复？要不要接？
-- 建/更新 Task、Ticket、Assignment。
-- 排期、派活、跟踪状态。
+- 接收员工群、部门群、公司大群、老板 1:1 的消息；先跑 `bind actor` 拿群类型/角色/部门。
+- 判断：这是不是活、谁在要、有没有权限、是不是重复、要不要接。
+- 建/更新 Task；决定是否建 Ticket；把 Ticket 放进调度队列。
 - 把 Executor 的 Report / Attention 转成人话，发到正确的群或 1:1。
 - 回答状态查询、处理确认、停任务、改优先级。
 
-**Main 的约束**
+**约束**
 
 - **不干长活**：不在 Main 里跑长时间 shell、写大文件、做完整交付。
-- **不等待**：发出派活后结束当前回合；报告和确认会作为新消息回来。
+- **不等待**：发出派活后结束当前回合；报告和确认作为新消息回来。
 - **不碰执行现场**：不直接改 Executor 的会话/工作文件；Ticket/Assignment 的状态由命令和 Report 驱动。
+- **不做确认解析**：`required_confirmer`、引用/短号/@ 解析属于主干 3；Main 只创建和发出 Attention。
+
+### 2.2 Executor：会话、工作区与适配器｜设计 🟡 · 实现 ⬜
 
 **Executor Session**
 
@@ -331,36 +335,93 @@ flowchart LR
 - 用 Report 回报：`progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`。
 - 需要人时写 Attention，不自己找人说。
 
-**Executor 的约束**
+**约束**
 
 - **不能直接对人说话**：没有 `ask_user_question`、没有群发、没有 @。
-- **不能改授权/额度/优先级**。
+- **不能改授权/额度/优先级**；只能使用 Ticket 授权的工具、路径和预算。
 - **默认不能开别的 Executor Session**；是否允许子 agent/子会话待定。
 - 交接给人时释放 slot；人回复后，同一 Ticket 恢复。
 
-### 2.2 Task / Ticket / Assignment / Report / Attention｜设计 ✅ · 实现 ⬜
+**双工作区**
+
+| 工作区 | 位置 | 用途 | 生命周期 |
+|---|---|---|---|
+| **群交互工作区** | WorkBuddy 的“助理”文件夹 | Main 处理不同群的对话 | 常驻；按群保存上下文 |
+| **任务执行工作区** | 主机 C 盘某目录（路径待定） | Executor 一个 Ticket 一个目录/对话框 | 随 Ticket 创建；产物保留，按策略清理 |
+
+原则：
+
+- 群交互工作区**不跑长任务**；任务执行工作区**不直接进群**。
+- 任务目录按 Ticket 命名；不同任务的会话、文件、日志互不污染。
+- Main 只读 Executor 的 Report 和约定产物，不直接改它的工作文件。
+- **结果交付**：Report 带摘要、证据路径、未完成项；Main 只发摘要和可访问路径，不把大文件/敏感内容贴群。
+- **一个嘴巴**：Executor 不直接进群、不直接 @ 人；所有对人说话都经 Main。
+
+**适配器契约（待 6.2 #6 定稿）**
+
+- 创建/恢复/停止 Session；Session id 与 Ticket/Assignment 绑定。
+- 超时、并发、slot 释放、进程崩溃后的恢复。
+- WorkBuddy 版本/补丁不匹配时 fail closed，不带着未知补丁跑任务。
+
+### 2.3 工作模型与生命周期｜设计 🟡 · 实现 ⬜
 
 | 概念 | 定义 | 关键字段 | 谁写 |
 |---|---|---|---|
 | **Task** | 人可见的“要做什么” | `task_id`、标题、交办人、执行人、群、截止时间、优先级、状态 | Main |
-| **Ticket** | 一次被授权的执行单元；一个 Task 可以有多张 Ticket（重做/恢复） | `ticket_id`、`task_id`、授权范围、状态、创建原因 | Main |
-| **Assignment** | 一次具体的执行尝试；一个 Ticket 可以有多次 Assignment | `assignment_id`、`ticket_id`、`session_id`、目录、开始/结束 | Main / Executor 事实回报 |
+| **Ticket** | 一次被授权的执行单元；一个 Task 可以有多张 Ticket（重做/恢复） | `ticket_id`、`task_id`、授权范围（工具/路径/预算/有效期/最大尝试）、状态、创建原因 | Main |
+| **Assignment** | 一次具体的执行尝试；一个 Ticket 可以有多次 Assignment | `assignment_id`、`ticket_id`、`session_id`、目录、开始/结束、结束原因 | Main / Executor 事实回报 |
 | **Report** | Executor 对一次执行的回报 | `report_id`、`assignment_id`、类型、摘要、证据、下一步 | Executor |
 | **Attention** | 需要人行动的一条待确认 | `attention_id`、`ticket_id`、目的、问题、选项、`required_confirmer`、状态、回复消息 id | Main |
 | **Notification** | 一条对外通知/回复 | `notification_id`、目标（群/1:1）、目的、关联 Task/Ticket/Attention、状态 | Main |
 | **Thread** | 一个群或 1:1 的会话上下文 | `chat_id`、类型、成员、绑定 | 平台适配层 |
 
-**为什么分三层**：
+**为什么分三层**
 
 - Task 是人看的；人可以改标题、改截止、取消，不需要知道 Ticket。
 - Ticket 是授权/执行单位；同一个人可见任务可以重做、恢复，不重复建 Task。
 - Assignment 是一次尝试；失败重派、换会话，不影响 Task/Ticket 的身份。
 
-### 2.3 任务从哪来、怎么排期｜设计 🟡 · 实现 ⬜
+**Ticket 授权范围（必须显式）**
+
+- `tools`：允许调用的工具/技能白名单。
+- `vault_paths`：允许读写的 vault 路径；默认只读。
+- `budget`：token/时间/金额上限；超限即 `blocked`，不静默继续。
+- `expires_at` / `max_attempts`：过期与重试上限。
+- 没有授权范围的 Ticket 不允许 Executor 启动。
+
+**状态机**
+
+Task（人可见）：`open` → `in_progress` → `waiting_human` / `blocked` → `done` / `cancelled` / `needs_review`
+
+Ticket（执行单元）：
+
+| 状态 | 含义 |
+|---|---|
+| `queued` | 已授权，等 slot |
+| `working` | Executor 正在跑 |
+| `waiting_answer` | 等人回答（Attention） |
+| `waiting_review` | 等人核查结果（ready Report） |
+| `waiting_ack` | 等责任回执（`require_ack`） |
+| `blocked` / `failed` | 执行受阻/失败，等人处理 |
+| `done` / `cancelled` | 结束 |
+
+Assignment：`pending` → `running` → `ended` / `interrupted`
+
+Report：`progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`
+
+Attention：`open` → `answered` / `approved` / `rejected` / `expired` / `cancelled`
+
+**与主干 3 的边界**
+
+- 主干 2 负责：Attention 的创建、存储、发出，`required_confirmer` 字段，回复消息 id 回写。
+- 主干 3 负责：确认人校验、引用/短号/@ 解析、代确认 `on_behalf_of`、确认后的状态推进。
+- 主干 2 不实现“谁有资格确认”的 UI/话术；只提供数据和命令。
+
+### 2.4 调度与资源控制｜设计 🟡 · 实现 ⬜
 
 **来源**
 
-1. **人在群里说**（员工群 / 公司大群 / 老板 1:1）→ Main 判断后建 Task。
+1. **人在群里说**（员工群 / 部门群 / 公司大群 / 老板 1:1）→ Main 判断后建 Task。
 2. **任务表里已有**（如 `background` 任务）→ runtime 轮询产生候选 → Main 评估是否接、何时接。
 3. **主动发现**（后续）→ 规则或 agent 提议 → 先 `observe`，记录“本来会做什么”，人确认后再 `auto`。
 
@@ -379,65 +440,66 @@ flowchart LR
 2. 没有截止时间的排后面；
 3. 都一样，按创建时间先来后到（FIFO）。
 
-**抢占**
+**抢占与队列**
 
 - **不自动抢占。** 正在跑的 Executor 不会被新来的 P0 任务踢掉。
 - P0 排到队首，等下一个 slot。
 - 老板要立刻腾位置，显式“停掉某个任务”；记审计，不静默杀。
 - 并发上限可配置；**是否预留 1 个“人工续谈”slot 待定**。
+- 队列积压时按优先级+截止时间出队；不允许无限重试。
 
 **接单规则**
 
-- 群里的明确请求：Main 评估后接；员工可以发起请求，不能直接替别人派活（B：同部门直接接受，跨部门先审批）。
-- `background` 任务：Main 评估后接，不自动接；谁授权、谁定优先级见叶子 6.2。
+- 群里的明确请求：Main 评估后接；员工可以发起请求，不能直接替别人派活（同部门直接接受，跨部门先审批）。
+- `background` 任务：Main 评估后接，不自动接；谁授权、谁定优先级见 6.2 #8。
 - 主动任务：先 `observe`，不直接 `auto`。
 
-### 2.4 双工作区：群交互 vs 任务执行｜设计 ✅ · 实现 ⬜
+**资源控制**
 
-> **你的原话（转述）**：公司 bot 做任务时，应该在主机的一个工作区进行，比如 C 盘的一个文件夹；不同的任务在这个工作区不同的对话框进行。WorkBuddy 的“助理”文件夹工作区，是用于处理公司 bot 不同群的。
+- 并发 slot、模型选择、额度/预算、失败重试上限统一在这里定。
+- 超出预算/并发 → 任务保持 `blocked` 或排队，不降级成“偷偷继续跑”。
+- 与 `5.2 排期与抢占` 的关系：5.2 是策略摘要，2.4 是执行细节；冲突时以 2.4 为准并回写 5.2。
 
-| 工作区 | 位置 | 用途 | 生命周期 |
-|---|---|---|---|
-| **群交互工作区** | WorkBuddy 的“助理”文件夹 | 公司 bot 的 Main Session；处理不同群的对话 | 常驻；按群保存上下文 |
-| **任务执行工作区** | 主机 C 盘某目录（路径待定） | Executor Session；一个任务一个目录/对话框 | 随 Ticket 创建；完成后保留产物，按策略清理 |
+### 2.5 执行安全、恢复与审计｜设计 🟡 · 实现 ⬜
 
-原则：
+**幂等与副作用**
 
-- 群交互工作区**不跑长任务**；任务执行工作区**不直接进群**。
-- 任务目录按 Ticket 命名；不同任务的会话、文件、日志互不污染。
-- Main 只读 Executor 的 Report 和约定产物，不直接改它的工作文件。
-- **结果交付**：Report 带摘要、证据路径、未完成项；Main 只发摘要和可访问路径，不把大文件/敏感内容贴群。
-- **一个嘴巴**：Executor 不直接进群、不直接 @ 人；所有对人说话都经 Main。
+- 每条对外消息走 outbox 的 `dedupe_key`；重复入队不重复发。
+- 外部写入/工具调用必须带幂等键（`effect_key`）；没有幂等键的副作用默认标为“不可自动重试”。
+- 重试只重放可幂等步骤；不可幂等步骤失败 → `blocked`，交人处理。
 
-### 2.5 状态｜设计 ✅ · 实现 ⬜
+**崩溃与恢复**
 
-**Task（人可见）**：`open` → `in_progress` → `waiting_human` / `blocked` → `done` / `cancelled` / `needs_review`
+- 主机重启/进程崩溃：`running` Assignment 标 `interrupted`；Ticket 回 `queued` 或 `blocked`，不盲目重跑。
+- 恢复前先查已有副作用/产物，避免重复写 vault、重复发消息、重复调用外部 API。
+- 超过 `max_attempts` 仍失败 → `failed`，通知交办人/老板，不无限重试。
 
-**Ticket（执行单元）**
+**卡住与失败分类**
 
-| 状态 | 含义 |
-|---|---|
-| `queued` | 已授权，等 slot |
-| `working` | Executor 正在跑 |
-| `waiting_answer` | 等人回答（Attention） |
-| `waiting_review` | 等人核查结果（ready Report） |
-| `waiting_ack` | 等责任回执（`require_ack`） |
-| `blocked` / `failed` | 执行受阻/失败，等人处理 |
-| `done` / `cancelled` | 结束 |
+- 超时/无心跳 → `blocked` 或 `failed`；区分网络、模型、工具、权限、数据缺失。
+- 需要人决策 → Attention；需要人接管 → `blocked` + 明确接手人。
+- 失败报告必须带：失败阶段、最后成功步骤、已产生副作用、建议下一步。
 
-**Assignment**：`pending` → `running` → `ended`
+**审计与可观测**
 
-**Report**：`progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`
-
-**Attention**：`open` → `answered` / `approved` / `rejected` / `expired` / `cancelled`
+- 最小事件：Task/Ticket/Assignment 状态变化、Ticket 授权、Executor 启动/结束、Report、Attention、副作用键、人工接管。
+- 审计字段：`actor`、`at`、`from_status`、`to_status`、`reason`、`effect_key`、`session_id`。
+- 与 `5.3 失败、恢复、审计` 的关系：5.3 是横切摘要，本节是 Executor 的具体契约。
 
 ### 未定项（叶子，不计入分支）
 
-- WorkBuddy 怎么创建/恢复/停止 Executor Session；会话 id、目录、并发、超时怎么管。
-- 任务工作区 C 盘具体路径、命名、清理、备份、权限。
-- `background` 任务的接单规则：自动接还是 Main 评估；谁授权、谁定优先级。
-- 员工能不能给另一个员工派活；大群派活算谁的 Task。
-- Executor 并发上限、模型选择、额度/预算、失败重试上限；是否预留“人工续谈”slot。
+- WorkBuddy 怎么创建/恢复/停止 Executor Session；会话 id、目录、并发、超时怎么管（6.2 #6）。
+- 任务工作区 C 盘具体路径、命名、清理、备份、权限、产物保留（6.2 #7）。
+- `background` 任务自动接还是 Main 评估；谁授权、谁定优先级（6.2 #8）。
+- 员工能不能给另一个员工派活；大群派活算谁的 Task（6.2 #8 邻近问题）。
+- Executor 并发上限、模型选择、额度/预算、失败重试上限；是否预留“人工续谈”slot（6.2 #9/#10）。
+- Task / Ticket / Assignment 的基数与重试/重开/拆分语义（6.2 #26）。
+- Ticket 授权范围字段的最终集合（6.2 #27）。
+- Main↔Executor 的传输与投递语义（DB+tick 已选方向，细节待定，6.2 #28）。
+- Attention 与主干 3 的最终接口（6.2 #29）。
+- 外部副作用幂等键的生成与保证级别（6.2 #30）。
+- 产物/证据的保留、清理、权限（6.2 #31）。
+- 主机重启后 Assignment/Ticket 的恢复语义（6.2 #32）。
 
 ## 3. 主干 3：between us，先自主完成，再通知人｜设计 🟡 · 实现 ⬜ · 验收 —
 
@@ -643,6 +705,13 @@ created_at, answered_at
 | 9 | Executor 并发上限、模型选择、额度/预算、失败重试上限 | 后续 |
 | 10 | 是否预留 1 个“人工续谈”slot | 后续 |
 | 11 | 主动任务规则：哪些类型允许 `observe` / `auto`，规则变更谁审批、怎么回滚 | 后续 |
+| 26 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 阻塞设计 |
+| 27 | Ticket 授权范围字段：`tools` / `vault_paths` / `budget` / `expires_at` / `max_attempts` | 阻塞设计 |
+| 28 | Main↔Executor 传输与投递语义（已选 DB+tick，细节待定） | 阻塞设计 |
+| 29 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 阻塞设计 |
+| 30 | 外部副作用的幂等键与 at-most-once 保证 | 阻塞实现 |
+| 31 | 产物/证据的保留、清理、权限 | 后续 |
+| 32 | 主机重启后 Assignment/Ticket 的恢复语义 | 阻塞实现 |
 
 ### 6.3 主干 3 的叶子
 
