@@ -34,6 +34,8 @@
 - 每个产物带输入指纹 `<!-- anc:input-sha256:... -->`；输入没变但文件变了 → 判手改。
 - 写入：备份 → 原子写 → 读回对拍 sha256 → 任一失败**整组还原**。
 - `disabled` 只认字符串 `true`（`1`/`yes` 不生效）；停用成员不出 persona、不进 `groups.json`，旧产物删除。
+- `groups.json` 同时输出 `members[]` 与 `groups[]`：employee 来自 `members.chat_id`，department 来自 `depts.chat_id`，company/boss_dm 来自 `company.md`；没有 chat_id 的群不生成。
+- `company.boss` 唯一且必须是启用成员；`members.manages` 引用的部门必须存在。
 - 没有 `userid` 的成员**不生成**个人 persona（否则模板里是字面量 `<userid>`）。
 - 孤儿成员目录只在部署对拍通过后清理，且只删"有 CODEBUDDY.md 或空"的目录。
 
@@ -67,3 +69,4 @@
 |---|---|---|
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P4 迁入 `src/modules/org/`；index 拆成 persona + deploy | 模块化 |
+| 2026-11-07 | org 加 boss/manages/群配置；groups.json 输出四类群 | 主干 1 |

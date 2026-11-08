@@ -25,6 +25,7 @@ export function migrate(db: DatabaseSync): void {
   addCol('tasks', 'accept_deadline', 'TEXT');
   addCol('tasks', 'approval_deadline', 'TEXT');
   addCol('tasks', 'reject_reason', 'TEXT');
+  addCol('groups', 'webhook_file', 'TEXT');
   addCol('outbox', 'next_attempt_at', 'TEXT');
   addCol('outbox', 'claimed_at', 'TEXT');
   addCol('outbox', 'requeued_at', 'TEXT');

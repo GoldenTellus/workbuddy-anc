@@ -217,7 +217,7 @@ New-Item -ItemType File -Force "$env:ProgramData\anc\data\test-emit.flag" | Out-
 
 # 用：注入一条消息
 $body = @{
-  chatId  = "<完整 chatId，从 chat_bindings 取，别从日志抄截断的>"
+  chatId  = "<完整 chatId，从 groups 表或 bind group-list 取，别从日志抄截断的>"
   user    = "<员工 userid>"
   msgId   = ([guid]::NewGuid().ToString("N"))
   content = "今天有什么任务"

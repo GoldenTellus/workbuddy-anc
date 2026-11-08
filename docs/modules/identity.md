@@ -15,7 +15,7 @@
 | 数据/文件 | 说明 |
 |---|---|
 | `people` 表 | `person_id` 主键；`userid` 唯一；`system_role`：boss/manager/employee；`dept_id` |
-| `groups` 表 | `chat_id` 主键；`type`：employee/department/company/boss_dm；`employee_id`/`dept_id` |
+| `groups` 表 | `chat_id` 主键；`type`：employee/department/company/boss_dm；`employee_id`/`dept_id`/`webhook_file` |
 | `manager_scopes` 表 | 管理者 → 部门（多对多） |
 | `chat_bindings` 表 | 兼容层：员工群 `chat_id` → `employee` / `userid` / `webhook_file` |
 | webhook 文件名校验规则 | 只接受 secrets 目录下的纯文件名（字母数字 `._-`，`.txt` 结尾） |
@@ -26,7 +26,7 @@
 - `resolve(db, chatId)` → binding | null
 - `resolveByUserid(db, userid)` → binding | null（交办人通知用）
 - `unbind(db, chatId)` / `listBindings(db)`
-- `importGroups(db, groups)`：一次导入 `groups.json`
+- `importGroups(db, groups)`：一次导入 `groups.json` 的 `members[]` 与 `groups[]`（四类群）
 - `assertWebhookFileName(name)`：防路径穿越
 - `upsertPerson` / `resolvePerson` / `resolvePersonByUserid` / `listPeople`
 - `upsertGroup` / `resolveGroup` / `listGroups`

@@ -3,7 +3,9 @@ import { loadOrg } from '../../modules/org/index.ts';
 import {
   bind as bindLegacy,
   listBindings,
+  listManagerScopes,
   resolveGroup,
+  resolvePerson,
   resolvePersonByUserid,
   setManagerScopes,
   upsertGroup,
@@ -14,6 +16,9 @@ export interface OrgSyncResult {
   ok: true;
   people: number;
   employeeGroups: number;
+  departmentGroups: number;
+  companyGroups: number;
+  bossDmGroups: number;
   managers: number;
   legacyBindings: number;
   warnings: string[];
@@ -31,6 +36,9 @@ export function syncOrgIdentity(db: DatabaseSync, orgDir: string): OrgSyncResult
   const seenChats = new Map<string, string>();
   let people = 0;
   let employeeGroups = 0;
+  let departmentGroups = 0;
+  let companyGroups = 0;
+  let bossDmGroups = 0;
   let managers = 0;
   let legacyBindings = 0;
 
@@ -79,7 +87,44 @@ export function syncOrgIdentity(db: DatabaseSync, orgDir: string): OrgSyncResult
     legacyBindings++;
   }
 
-  return { ok: true, people, employeeGroups, managers, legacyBindings, warnings };
+  for (const dept of org.depts.values()) {
+    if (!dept.chat_id) continue;
+    upsertGroup(db, {
+      chatId: dept.chat_id,
+      type: 'department',
+      deptId: dept.id,
+      name: dept.name,
+      webhookFile: dept.webhook_file,
+    });
+    departmentGroups++;
+    if (!dept.webhook_file) warnings.push(`部门 ${dept.id} 有群但没 webhook_file：能收不能发`);
+  }
+
+  const companyChat = org.company.company_group_chat_id;
+  if (companyChat) {
+    upsertGroup(db, {
+      chatId: companyChat,
+      type: 'company',
+      name: '公司大群',
+      webhookFile: org.company.company_group_webhook_file,
+    });
+    companyGroups++;
+    if (!org.company.company_group_webhook_file) warnings.push('公司大群有 chat_id 但没 webhook_file：能收不能发');
+  }
+
+  const bossChat = org.company.boss_dm_chat_id;
+  if (bossChat) {
+    upsertGroup(db, {
+      chatId: bossChat,
+      type: 'boss_dm',
+      name: '老板1:1',
+      webhookFile: org.company.boss_dm_webhook_file,
+    });
+    bossDmGroups++;
+    if (!org.company.boss_dm_webhook_file) warnings.push('boss_dm 有 chat_id 但没 webhook_file：能收不能发');
+  }
+
+  return { ok: true, people, employeeGroups, departmentGroups, companyGroups, bossDmGroups, managers, legacyBindings, warnings };
 }
 
 export interface BackfillResult {
@@ -88,6 +133,69 @@ export interface BackfillResult {
   groupsCreated: number;
   skipped: number;
   warnings: string[];
+}
+
+export interface OrgVerifyResult {
+  ok: boolean;
+  checked: number;
+  problems: string[];
+}
+
+/**
+ * 本地一致性校验：org 真相 vs people/groups/manager_scopes。
+ * 不做企微 API 对账；只保证“渲染出来的 org”和“库里投影”没有漂移。
+ */
+export function verifyOrgIdentity(db: DatabaseSync, orgDir: string): OrgVerifyResult {
+  const org = loadOrg(orgDir);
+  const problems: string[] = [];
+  let checked = 0;
+
+  for (const m of org.members) {
+    if (m.disabled) continue;
+    checked++;
+    const p = resolvePerson(db, m.id);
+    if (!p) { problems.push(`缺 person: ${m.id}`); continue; }
+    const role = org.boss === m.id ? 'boss' : (m.manages?.length ? 'manager' : 'employee');
+    if (p.system_role !== role) problems.push(`${m.id} 角色不一致: org=${role} db=${p.system_role}`);
+    if ((p.userid ?? null) !== (m.userid ?? null)) problems.push(`${m.id} userid 不一致: org=${m.userid ?? 'null'} db=${p.userid ?? 'null'}`);
+    if ((p.dept_id ?? null) !== (m.dept ?? null)) problems.push(`${m.id} 部门不一致: org=${m.dept ?? 'null'} db=${p.dept_id ?? 'null'}`);
+    const scopes = [...listManagerScopes(db, m.id)].sort();
+    const want = [...(m.manages ?? [])].sort();
+    if (scopes.join(',') !== want.join(',')) problems.push(`${m.id} manager_scopes 不一致: org=[${want}] db=[${scopes}]`);
+
+    if (m.chat_id) {
+      const g = resolveGroup(db, m.chat_id);
+      if (!g) problems.push(`缺员工群: ${m.chat_id} (${m.id})`);
+      else if (g.type !== 'employee' || g.employee_id !== m.id) {
+        problems.push(`员工群不一致: ${m.chat_id} org=${m.id} db=${g.type}/${g.employee_id ?? 'null'}`);
+      }
+    }
+  }
+
+  for (const d of org.depts.values()) {
+    if (!d.chat_id) continue;
+    checked++;
+    const g = resolveGroup(db, d.chat_id);
+    if (!g) problems.push(`缺部门群: ${d.chat_id} (${d.id})`);
+    else if (g.type !== 'department' || g.dept_id !== d.id) {
+      problems.push(`部门群不一致: ${d.chat_id} org=${d.id} db=${g.type}/${g.dept_id ?? 'null'}`);
+    }
+  }
+
+  const companyChat = org.company.company_group_chat_id;
+  if (companyChat) {
+    checked++;
+    const g = resolveGroup(db, companyChat);
+    if (!g || g.type !== 'company') problems.push(`公司大群不一致: ${companyChat}`);
+  }
+  const bossChat = org.company.boss_dm_chat_id;
+  if (bossChat) {
+    checked++;
+    const g = resolveGroup(db, bossChat);
+    if (!g || g.type !== 'boss_dm') problems.push(`boss_dm 不一致: ${bossChat}`);
+  }
+
+  return { ok: problems.length === 0, checked, problems };
 }
 
 /**

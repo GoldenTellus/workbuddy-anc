@@ -32,7 +32,7 @@ powershell -File scripts\deploy\deploy.ps1
 powershell -File scripts\deploy\deploy.ps1 -Apply
 ```
 
-把 `src\{service,ingest,render}`、`scripts\*.ps1|*.cmd|*.vbs`、`scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 下的 `service|ingest|render|bin|patch`，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
+把 `src\core`、`src\interfaces`、`src\modules`、`src\service`、`src\ingest`、`src\render`、`src\shared`、`light\templates`、`scripts\<domain>\*`（部署时扁平到 `bin\`）和 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 对应目录，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
 
 ## 账号与凭据
 
@@ -45,15 +45,17 @@ powershell -File scripts\deploy\deploy.ps1 -Apply
 `D:\anc\org` 还不存在时，渲染、`groups.json`、离职流程都没法跑。最小初始化：
 
 ```powershell
-New-Item -ItemType Directory 'D:\anc\org\members','D:\anc\org\roles','D:\anc\build' -Force
-# company.md 的必填字段：name / company_bot_name / vault_shared / vault_internal / local_workdir
+New-Item -ItemType Directory 'D:\anc\org\members','D:\anc\org\roles','D:\anc\org\depts','D:\anc\build' -Force
+# company.md 的必填字段：name / company_bot_name / vault_shared / vault_internal / local_workdir / boss
+# 群配置：company_group_chat_id/company_group_webhook_file / boss_dm_chat_id/boss_dm_webhook_file
+# 部门群：org\depts\<id>.md 的 chat_id / webhook_file
 # 成员放 org\members\<id>.md，渲染时按 id 出 members\<id>\CODEBUDDY.md
-node C:\ProgramData\anc\render\cli.ts deploy --org D:\anc\org --out D:\anc\build --json
+node C:\ProgramData\anc\render\cli.ts deploy --org D:\anc\org --out D:\anc\build --db C:\ProgramData\anc\data\anc.db --json
 ```
 
 - `vault_shared` 在公司 bot 上填本机路径（`D:\anc\vault-shared`），**不要填 UNC**：UNC 里带主机名，persona 会把它写进对话；
 - 渲染是整组事务：失败会整体还原（`deployOrg`），不会留半套产物；
-- `groups.json` 是 `bind import` 的输入；停用成员不会出现在里面。
+- `groups.json` 是 `bind sync-org` / `bind import` 的输入；停用成员不会出现在里面。
 ### 共享账号（vault 只读）
 
 ```powershell
@@ -178,10 +180,10 @@ powershell -File scripts\accounts\offboard-member.ps1 -MemberId zhangsan -ToUser
 powershell -File scripts\accounts\offboard-member.ps1 ... -Apply -DeleteAccount -AccountName <账号名>
 ```
 
-- 做四件事：重渲染（清掉该成员 persona、从 `groups.json` 移除）、把 open 任务转给新人（记 `reassigned` 事件）、解绑群、可选删账号；
+- 做四件事：重渲染（清掉该成员 persona、从 `groups.json` 移除）、把 open 任务转给新人（记 `reassigned` 事件）、解绑员工群、可选删账号；
 - **不删数据**：vault 里的档案与入库记录原样保留（D21 复核保留，离职也一样）；
 - `disabled` 只认字符串 `true`：写 `1` / `yes` 不生效，渲染时会当成在职；
-- 停用后 `groups.json` 里不再出现这个人，`bind import` 不会给他重建绑定。
+- 停用后 `groups.json` 里不再出现这个人，`bind sync-org` 不会给他重建绑定；groups 表停用目前要手工 `bind group-set --status disabled`。
 
 ## 开机提醒
 
@@ -280,7 +282,7 @@ Remove-Item 'C:\ProgramData\anc\data\test-emit.flag'
 ### 怎么用
 
 ```powershell
-$chatId = '<群的 chatId，见 chat_bindings 表>'
+$chatId = '<员工群 chatId；四类群用 groups 表或 bind group-list 查>'
 $msgId  = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Max 16) })  # 32 位 hex，缺了会出 undefined
 $body = @{
   chatId  = $chatId

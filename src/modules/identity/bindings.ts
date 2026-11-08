@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { nowIso } from '../../core/index.ts';
+import { upsertGroup, type GroupType } from './groups.ts';
 
 export interface Binding {
   chat_id: string;
@@ -66,15 +67,36 @@ export function unbind(db: DatabaseSync, chatId: string): number {
 
 export interface GroupsFile {
   members: Array<{ id: string; name: string; chat_id?: string | null; userid?: string | null; webhook_file?: string | null }>;
+  groups?: Array<{
+    type: GroupType;
+    chat_id: string;
+    employee_id?: string | null;
+    dept_id?: string | null;
+    name?: string | null;
+    webhook_file?: string | null;
+  }>;
 }
 
 /** 把渲染器产出的 groups.json 同步进绑定表（members/ 是真相，绑定表是投影）。 */
-export function importGroups(db: DatabaseSync, groups: GroupsFile): { created: number; updated: number; skipped: number } {
+export function importGroups(db: DatabaseSync, groups: GroupsFile): { created: number; updated: number; skipped: number; groupsImported: number } {
   let created = 0; let updated = 0; let skipped = 0;
   for (const m of groups.members ?? []) {
     if (!m.chat_id) { skipped += 1; continue; }
     const r = bind(db, m.chat_id, m.name, undefined, m.userid ?? undefined, m.webhook_file ?? undefined);
     if (r.action === 'created') created += 1; else updated += 1;
   }
-  return { created, updated, skipped };
+  let groupsImported = 0;
+  for (const g of groups.groups ?? []) {
+    if (!g.chat_id) { skipped += 1; continue; }
+    upsertGroup(db, {
+      chatId: g.chat_id,
+      type: g.type,
+      employeeId: g.employee_id ?? undefined,
+      deptId: g.dept_id ?? undefined,
+      name: g.name ?? undefined,
+      webhookFile: g.webhook_file ?? undefined,
+    });
+    groupsImported += 1;
+  }
+  return { created, updated, skipped, groupsImported };
 }

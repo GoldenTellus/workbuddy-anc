@@ -176,6 +176,35 @@ export function renderOrg(orgDir: string, outDir: string, templateDir = DEFAULT_
         vault_paths: splitList(d ? d.vault_paths : undefined),
       };
     }),
+    // 主干 1：群类型投影。没有 chat_id 的群不生成，部署时再补。
+    groups: [
+      ...org.members.filter((m) => !m.disabled && m.chat_id).map((m) => ({
+        type: 'employee',
+        chat_id: m.chat_id,
+        employee_id: m.id,
+        name: `${m.name}的员工群`,
+        webhook_file: m.webhook_file || null,
+      })),
+      ...[...org.depts.values()].filter((d) => d.chat_id).map((d) => ({
+        type: 'department',
+        chat_id: d.chat_id,
+        dept_id: d.id,
+        name: d.name,
+        webhook_file: d.webhook_file || null,
+      })),
+      ...(org.company.company_group_chat_id ? [{
+        type: 'company',
+        chat_id: org.company.company_group_chat_id,
+        name: '公司大群',
+        webhook_file: org.company.company_group_webhook_file || null,
+      }] : []),
+      ...(org.company.boss_dm_chat_id ? [{
+        type: 'boss_dm',
+        chat_id: org.company.boss_dm_chat_id,
+        name: '老板1:1',
+        webhook_file: org.company.boss_dm_webhook_file || null,
+      }] : []),
+    ],
   };
   mkdirSync(outDir, { recursive: true });
   // groups.json 是 bind import 的输入、manifest 是手改检测的基准：都走原子写，半截文件会让下一步误判

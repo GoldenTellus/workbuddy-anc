@@ -31,6 +31,9 @@ patch    dayend  eval  backup  config  project  serve  loop
 - 所有命令支持 `--db <path>` 与 `--json`
 - 失败固定两行：`ERROR <原因>` + `FIX <出路>`
 - `bind resolve` 查不到 → 退出 1（不是 2）
+- `bind actor --chat-id --userid`：一次返回 `group` / `person` / `manager_scopes`；查不到退出 1
+- `bind sync-org` / `verify-org` / `backfill` / `group-set` / `group-list` / `person-list`：主干 1 的群/人/角色接口
+- `task request` / `approve` / `accept` / `reject`：两阶段任务请求；拒绝必须带 `--reason`
 
 **HTTP**：
 

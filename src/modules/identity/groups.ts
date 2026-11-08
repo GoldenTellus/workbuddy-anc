@@ -24,6 +24,7 @@ export interface Group {
   employee_id: string | null;
   dept_id: string | null;
   name: string | null;
+  webhook_file: string | null;
   status: GroupStatus;
   created_at: string;
   updated_at: string;
@@ -61,6 +62,14 @@ function assertRole(v: string | undefined): SystemRole {
 function assertGroupType(v: string): GroupType {
   if (v !== 'employee' && v !== 'department' && v !== 'company' && v !== 'boss_dm') {
     throw new Error('group.type 只能是 employee / department / company / boss_dm: ' + v);
+  }
+  return v;
+}
+
+function assertWebhook(v: string | undefined): string | null {
+  if (!v) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.txt$/.test(v) || v.includes('..')) {
+    throw new Error('webhook_file 只能是 secrets 目录下的文件名（字母数字._-，以 .txt 结尾）: ' + v);
   }
   return v;
 }
@@ -128,6 +137,7 @@ export function upsertGroup(
     employeeId?: string;
     deptId?: string;
     name?: string;
+    webhookFile?: string;
     status?: GroupStatus;
   },
 ): Group {
@@ -138,20 +148,22 @@ export function upsertGroup(
   if (type === 'employee' && !employeeId) throw new Error('employee 群必须有 employee_id');
   if (type === 'department' && !deptId) throw new Error('department 群必须有 dept_id');
   const name = input.name ? clean(input.name, 'name') : null;
+  const webhookFile = assertWebhook(input.webhookFile);
   const status = input.status ?? 'active';
   if (status !== 'active' && status !== 'disabled') throw new Error('group.status 只能是 active / disabled: ' + status);
   const t = nowIso();
   db.prepare(`
-    INSERT INTO groups (chat_id, type, employee_id, dept_id, name, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO groups (chat_id, type, employee_id, dept_id, name, webhook_file, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(chat_id) DO UPDATE SET
       type = excluded.type,
       employee_id = excluded.employee_id,
       dept_id = excluded.dept_id,
       name = excluded.name,
+      webhook_file = excluded.webhook_file,
       status = excluded.status,
       updated_at = excluded.updated_at
-  `).run(chatId, type, employeeId, deptId, name, status, t, t);
+  `).run(chatId, type, employeeId, deptId, name, webhookFile, status, t, t);
   return resolveGroup(db, chatId)!;
 }
 

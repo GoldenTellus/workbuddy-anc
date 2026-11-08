@@ -34,6 +34,10 @@ export interface Dept {
   vault_paths: string;
   /** 逗号分隔的技能 id。空表示全部 */
   skills: string;
+  /** 部门群 chat_id；空表示尚未建群 */
+  chat_id?: string;
+  /** 部门群出站 webhook 文件名（secrets 目录下） */
+  webhook_file?: string;
   note?: string;
 }
 
@@ -80,10 +84,10 @@ const PERSONA_TEXT_FIELDS = ['name', 'role', 'userid', 'chat_id'] as const;
 
 /** 允许出现的 frontmatter 键。拼错一个键会被静默忽略（字段没生效但不报错），所以白名单要收死。 */
 const KNOWN_KEYS: Record<string, string[]> = {
-  company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir', 'boss'],
+  company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir', 'boss', 'company_group_chat_id', 'company_group_webhook_file', 'boss_dm_chat_id', 'boss_dm_webhook_file'],
   member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled', 'dept', 'manages'],
   role: ['id', 'name', 'duties'],
-  dept: ['id', 'name', 'vault_paths', 'skills', 'note'],
+  dept: ['id', 'name', 'vault_paths', 'skills', 'chat_id', 'webhook_file', 'note'],
 };
 
 function assertKnownKeys(file: string, kind: 'company' | 'member' | 'role' | 'dept', fm: Record<string, string>): void {
@@ -138,6 +142,8 @@ export function loadOrg(dir: string): Org {
       name: fm.name,
       vault_paths: fm.vault_paths || '',
       skills: fm.skills || '',
+      chat_id: fm.chat_id,
+      webhook_file: fm.webhook_file,
       note: fm.note,
     });
   }

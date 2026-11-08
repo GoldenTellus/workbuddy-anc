@@ -5,6 +5,7 @@
 //   verify  --home <家目录> [--json]
 
 import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deployOrg, renderOrg, rollbackOutDir } from './index.ts';
@@ -38,6 +39,23 @@ function findSkillCards(): string {
   return candidates[0];
 }
 const DEFAULT_CARDS = findSkillCards();
+const SERVICE_CLI = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', 'service', 'cli.ts');
+
+function syncDb(orgDir: string, dbPath: string): { ok: boolean; detail: string } {
+  const run = (args: string[]) => spawnSync(process.execPath, [SERVICE_CLI, '--json', ...args], {
+    encoding: 'utf8',
+    cwd: process.cwd(),
+  });
+  const sync = run(['bind', 'sync-org', '--org', orgDir, '--db', dbPath]);
+  if (sync.status !== 0) {
+    return { ok: false, detail: (sync.stderr || sync.stdout || 'sync-org 失败').trim() };
+  }
+  const verify = run(['bind', 'verify-org', '--org', orgDir, '--db', dbPath]);
+  if (verify.status !== 0) {
+    return { ok: false, detail: (verify.stderr || verify.stdout || 'verify-org 失败').trim() };
+  }
+  return { ok: true, detail: (sync.stdout || '').trim() };
+}
 
 try {
   if (cmd === 'render') {
@@ -80,12 +98,22 @@ try {
     const orgDir = arg('--org');
     const outDir = arg('--out');
     if (!orgDir || !outDir) fail('缺少 --org 与 --out', 'USAGE', 2);
+    const dbPath = arg('--db');
+    const syncRequested = argv.includes('--sync-db') || Boolean(dbPath);
+    if (syncRequested && !dbPath) fail('--sync-db 需要同时给 --db <数据库路径>', 'USAGE', 2);
     const r = deployOrg(orgDir, outDir, arg('--templates') || undefined);
-    if (json) console.log(JSON.stringify({ ok: true, inputSha: r.inputSha, verified: r.verified, outputs: r.outputs.length, members: r.members, warn: r.warn, tampered: r.tampered, warnings: r.warnings, pruned: r.pruned }));
+    let syncInfo: unknown = null;
+    if (syncRequested) {
+      const s = syncDb(orgDir, dbPath);
+      if (!s.ok) fail('产物已部署，但 org→DB 同步/校验失败：' + s.detail, 'SYNC', 1);
+      try { syncInfo = JSON.parse(s.detail); } catch { syncInfo = { ok: true, raw: s.detail }; }
+    }
+    if (json) console.log(JSON.stringify({ ok: true, inputSha: r.inputSha, verified: r.verified, outputs: r.outputs.length, members: r.members, warn: r.warn, tampered: r.tampered, warnings: r.warnings, pruned: r.pruned, db_sync: syncInfo }));
     else {
       console.log('deploy : ' + r.outputs.length + ' 个产物，对拍通过 ' + r.verified + ' 个');
       console.log('input  : ' + r.inputSha);
       if (r.pruned.length) console.log('prune  : ' + r.pruned.join(', ') + '（不在 org 里的成员产物已清理）');
+      if (syncInfo) console.log('sync   : org → people/groups/manager_scopes 已同步并校验通过');
       for (const w of r.warnings) console.log('warn   : ' + w);
       for (const t of r.tampered) console.log('手改   : ' + t + '（本次已按 org 重写）');
     }

@@ -41,7 +41,11 @@
 | 「我的任务」 | 同上，按你的 userid 过滤 |
 | 「#6 完成了」 | 标记完成 |
 | 「取消任务 #6」 | 标记取消 |
+| 「让张三帮我看下报价」 | 员工走 `task request`：同部门等对方接受，跨部门先由张三部门管理者审批 |
+| 「批准 #12 / 接受 #12 / 拒绝 #12，原因是…」 | 管理者审批、执行人接受、带原因拒绝 |
 | 「提醒我 18:52 做 X」 | 登记带 `due_at` 的任务，到点由 `loop` 发提醒 |
+
+**角色边界**：老板可全局派活；管理者只能本部门；员工只能给自己建任务，请同事走 `task request`。公司 bot 每轮先 `bind actor` 拿群类型和角色，不靠记忆。
 
 **关键设计**：**任务状态在 SQLite 里，不在模型记忆里**。模型只负责"把话翻译成 CLI 调用"，状态由服务端判定。
 **实测**：从注入到写库 + 回复，**49 秒**（`VERIFY §85.2`）。
@@ -115,7 +119,7 @@
 
 | 命令组 | 子命令 | 能做什么 |
 |---|---|---|
-| **`task`** | `add` `list` `get` `done` `start` `reassign` `cancel` | 任务的完整生命周期。`reassign` 是**离职转交**（把某人 open 任务全转给接手人，幂等） |
+| **`task`** | `add` `list` `get` `done` `start` `reassign` `cancel` `review` `request` `approve` `accept` `reject` | 任务生命周期 + 两阶段请求：同部门待接受，跨部门先审批；拒绝必须带原因 |
 | **`reminder`** | `add` `due` `sent` | 计时提醒的入队与发送记录 |
 | **`outbox`** | `list` `flush` `create` `submit` `status` | 出站消息队列。**真正的发送通道**，所有提醒都经它 |
 | **`submission`** | `add` `list` `set-status` | 员工报的问题（原始记录） |
@@ -124,7 +128,7 @@
 | **`patch`** | `draft` `list` `show` `prune-closed` `prune` | 补丁草稿管理 |
 | **`eval`** | `run` `list` `history` | 判 devbot 产出 pass/fail |
 | **`dayend`** | `add` `list` `all-off` | 下班记录 + **全员判定** |
-| **`bind`** | `set` `resolve` `unbind` `list` `import` | 群 ↔ 员工映射（**一人一群的身份边界**）。`import` 一次导入 `groups.json` 全部绑定 |
+| **`bind`** | `set` `resolve` `actor` `unbind` `list` `import` `sync-org` `verify-org` `backfill` `group-set` `group-list` `person-list` | 群/人/角色/部门真相同步。员工群兼容 `chat_bindings`，新代码优先 `people/groups/manager_scopes` |
 | **`config`** | `list` `get` `set` | 运行时配置（工作时段、时区等） |
 | **`summary`** | — | 汇总视图 |
 | **`backup`** | — | 触发备份 |
@@ -223,18 +227,19 @@ WOULD SKIP
 
 | 能力 | 怎么用 |
 |---|---|
-| 一个员工的全部配置 | `D:\anc\org\members\<id>.md`（`userid` / `chat_id` / `dept` / `webhook_file`） |
-| 部门 | `D:\anc\org\depts\<id>.md`（`vault_paths` / `skills`） |
-| 公司级字段 | `D:\anc\org\company.md`（`name` / `company_bot_name` / vault 路径 / `local_workdir`） |
-| 生成 persona | `render --org D:\anc\org --out D:\anc\build` |
+| 一个员工的全部配置 | `D:\anc\org\members\<id>.md`（`userid` / `chat_id` / `dept` / `manages` / `webhook_file`） |
+| 部门 | `D:\anc\org\depts\<id>.md`（`vault_paths` / `skills` / `chat_id` / `webhook_file`） |
+| 公司级字段 | `D:\anc\org\company.md`（`name` / `company_bot_name` / vault 路径 / `boss` / 公司群/`boss_dm` 配置） |
+| 生成 persona + 群投影 | `render deploy --org D:\anc\org --out D:\anc\build --db C:\ProgramData\anc\data\anc.db` |
 | 员工机接入 | `onboard --package <员工目录> --home %USERPROFILE%` + `verify --home %USERPROFILE%` |
-| 群绑定 | `bind import --from groups.json`（一次导入全部） |
+| 群/人/角色同步 | `bind sync-org --org D:\anc\org`；校验 `bind verify-org --org D:\anc\org` |
+| 旧库回填 | `bind backfill`（按 userid 匹配 people，不猜未知人） |
 
 **实测时间**（`VERIFY §82`）：
 ```
-写成员记录 0.1s / render 5.6s / bind import 0.8s / onboard 0.3s / verify 0.3s = 7.5 秒
+写成员记录 0.1s / render 5.6s / bind sync-org 0.8s / onboard 0.3s / verify 0.3s = 7.5 秒
 ```
-判据是「新员工一小时内拿到个人 bot 与三方群」——**自动化部分 7.5 秒，用了判据的 0.2%**。
+判据是「新员工一小时内拿到员工 bot 与员工群」——**自动化部分 7.5 秒，用了判据的 0.2%**。
 
 **"渲染器是唯一上线路径"**：persona 和接入包只能由 `src/render` 生成，**手改线上文件视为事故**。
 
@@ -271,14 +276,14 @@ issue
 
 | # | 做什么 | 谁做 |
 |---|---|---|
-| 0 | 备齐：姓名 + ASCII id + 企微 userid + 三方群 + 该群 webhook 文件 | 人 |
+| 0 | 备齐：姓名 + ASCII id + 企微 userid + 员工群 + 部门 + 该群 webhook 文件 | 人 |
 | 1 | 开只读共享账号（`provision-vault-accounts.ps1 -Csv team.csv`） | 人 |
-| 2 | 写 `org/members/<id>.md` | 人 |
-| 3 | `render --org --out` | 自动 |
-| 4 | `bind import --from groups.json` | 自动 |
+| 2 | 写 `org/members/<id>.md`（`dept` / `manages`） | 人 |
+| 3 | `render deploy --org --out --db` | 自动 |
+| 4 | 部门群/公司群/`boss_dm` 用 `bind group-set` 配 | 自动/人 |
 | 5 | 员工机装 WorkBuddy 并登录 | 员工 |
 | 6 | 员工机 `onboard` + `verify` | 自动 |
-| 7 | 群里验四条：登记任务 / 到点提醒 / 查任务 / 入库 | 人 |
+| 7 | 群里验：登记任务 / 同部门请求 / 跨部门审批 / 入库 | 人 |
 | 8 | 收尾：`bot: 已接入`、删 `provisioned-*.csv`、确认当晚备份 | 人 |
 
 **离职 4 步**（`VERIFY §84`）：
@@ -316,7 +321,7 @@ issue
 | 关闭补丁 | `launch-patched.ps1 -NoPatch` | 或设环境变量 |
 | 重放 | `anc-wb-patch` 技能 | 升级后重放并回归 |
 
-**补丁做什么**：在 WorkBuddy 收到的每条群消息前加 `[anc:chat=<chatid> from=<userid>]`，让 bot 知道"这条消息来自哪个群、谁发的" —— **这是"一人一群"身份隔离的基础**。
+**补丁做什么**：在 WorkBuddy 收到的每条群消息前加 `[anc:chat=<chatid> from=<userid>]`，让 bot 知道"这条消息来自哪个群、谁发的" —— **这是四类群身份隔离的基础**。
 
 ---
 
@@ -325,7 +330,7 @@ issue
 | 做不到 | 为什么 | 影响 |
 |---|---|---|
 | **同一台机器跑两个 bot** | WorkBuddy 用原生层全局互斥体（`asar` 里 `CreateMutex` 11 处），**`--user-data-dir` 绕不过** | E-1 只能标「0 成」，要真第二台机器 |
-| **私聊公司 bot** | 设计上只留管理员，且要在企微后台配可见范围 | 后台那一下本机无法代劳 |
+| **私聊公司 bot** | 真 1:1 还没在企微验证；当前用 `boss_dm` 私有群 fallback，不开放给全员 | 老板的私有控制台先用私有群替代 |
 | **验证码 / 批量注册** | 不涉及 | — |
 | **脱离企微工作** | IM 层完全依赖 WorkBuddy 的企微机器人 | — |
 | **模型不犯错** | 出站约束只能靠 persona，不能确定性拦截 | `DECISIONS` §17 记过这个代价 |
@@ -373,13 +378,14 @@ issue
 
 | 角色 | 能看 | 能改 |
 |---|---|---|
-| **员工** | 自己群的对话、共享区 vault（只读） | 自己的任务、报问题、入库（共享区） |
-| **管理员** | 全部 | org / 技能 / 模板 / 内部区 vault |
-| **公司 bot** | 所有群的消息 | 任务、提醒、入库结构化（**只做结构化，不调模型做判断**） |
-| **个人 bot** | 自己那个群 | 自己那个员工的下班记录 |
+| **老板** | 全公司；公司群/部门群/`boss_dm` | 全局派活、审批、停任务、改优先级 |
+| **管理者** | 本部门 + 公司级 | 本部门派活/审批/改派；无独立私聊 |
+| **员工** | 自己的员工群、可读的公司/部门级 | 自己的任务、`task request`、报问题、入库（共享区） |
+| **公司 bot** | 四类群的消息 | 任务、提醒、入库结构化、按角色/群路由 |
+| **员工 bot** | 自己那个员工群（旧实现） | 本机资料/下班记录；待主干 4 返工 |
 | **入库进程** | 待入库内容 | 只做校验和 commit（**不调模型**） |
 
-**"一人一群"是身份边界**：`chat_id` → `employee` 的映射在 `chat_bindings` 里，**未绑定的群查不到绑定就直接失败，不退回任何默认群**。
+**群/人/角色的真相在 `people` / `groups` / `manager_scopes`**；`chat_bindings` 只保留为员工群兼容层。未识别/未绑定的群直接失败，不退回默认群。
 
 ---
 
@@ -393,7 +399,7 @@ issue
 | 任务链路是否通 | 群里说「登记任务：明天 10:00 提醒我交周报」→ 49 秒内应回任务号 |
 | 自愈是否工作 | `anc-selfheal.ps1 -DryRun` → `hashMatches=True anchorsOk=True` |
 | 备份是否做过 | `doctor` 的 `backup-freshness` 必须是 PASS（**要本地备份，不是离机副本**） |
-| 单元与集成测试 | `npm test` → 191/191 |
+| 单元与集成测试 | `npm test` → 193/193 |
 
 ---
 

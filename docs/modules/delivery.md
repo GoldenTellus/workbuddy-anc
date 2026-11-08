@@ -22,12 +22,12 @@
 - `enqueue(db, {text, chatId, dedupeKey, mentions?, at?, expiresAt?})` → `{inserted}`
 - `listPendingDue(db, now, limit, chatId?)`
 - `claim(db, id, now)` / `markSent` / `markFailed` / `requeueTransientFailures`
-- `sendPending(db, opts)`：按每条消息的 `chat_id` 查绑定 → 读 secrets 里的 webhook → 发送
+- `sendPending(db, opts)`：按每条消息的 `chat_id` 查员工群绑定；查不到再查 `groups.webhook_file`（部门/公司/`boss_dm`）→ 读 secrets 里的 webhook → 发送
 
 ## 不变量
 
 - **入队前与发送前各扫一次凭据**；扫描器异常 → 不发。
-- **没有绑定或没有 `webhook_file` → 判失败，禁止退回默认群**（一人一群）。
+- **没有 `chat_bindings.webhook_file` 也没有 `groups.webhook_file` → 判失败，禁止退回默认群**。
 - 发送前先 `claim`（pending → sending）；重叠的 tick / `outbox flush` 不会重复发。
 - 领取后 10 分钟没回写视为发送方退出，可重领。
 - 到点提醒迟到超过 1 小时 → `EXPIRED`，不补发。
@@ -38,7 +38,7 @@
 
 | 错误码 | 含义 | 出路 |
 |---|---|---|
-| `NO_WEBHOOK_FOR_CHAT` | 群未绑定/未登记 webhook | 管理员补 `bind set --webhook-file` |
+| `NO_WEBHOOK_FOR_CHAT` | 群未绑定/未登记 webhook | 管理员补 `bind set --webhook-file` 或 `bind group-set --webhook-file` |
 | `BAD_PAYLOAD_JSON` | payload 坏了 | 手改库/旧数据；直接判死，人工处理 |
 | `EXPIRED` | 超过 TTL | 不补发；需要就重排提醒 |
 | `HTTP 4xx/5xx` | webhook 返回非 0 | 看 last_error；修好后 `outbox requeue` |

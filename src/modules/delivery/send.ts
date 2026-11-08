@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { nowIso, toIso, assertSafeOutbound } from '../../core/index.ts';
-import { resolve, assertWebhookFileName } from '../identity/index.ts';
+import { resolve, resolveGroup, assertWebhookFileName } from '../identity/index.ts';
 import { listPendingDue, claim, markSent, markFailed, isPermanentFailure } from './outbox.ts';
 
 export type Sender = (url: string, text: string, mentions: string[]) => Promise<void>;
@@ -101,14 +101,16 @@ export async function sendPending(db: DatabaseSync, opts: SendOptions = {}): Pro
     let url = fixedUrl;
     let file = '(fixed)';
     if (!url) {
-      // 一人一群：只发到这条消息所属群自己的 webhook；查不到就失败，不退回任何默认群
+      // 员工群优先走 chat_bindings 兼容层；公司/部门/boss_dm 群走 groups.webhook_file
       const binding = m.chat_id ? resolve(db, m.chat_id) : null;
-      if (!binding?.webhook_file) {
+      const group = m.chat_id ? resolveGroup(db, m.chat_id) : null;
+      const webhook = binding?.webhook_file ?? group?.webhook_file;
+      if (!webhook) {
         await failConfigAndAlert(db, secretsDir, m.chat_id, m.id, 'NO_WEBHOOK_FOR_CHAT: 该群未绑定或未登记 webhook_file', '有群没登记 webhook，消息发不出去已判失败');
         failed += 1;
         continue;
       }
-      file = binding.webhook_file;
+      file = webhook;
       try {
         url = readFileSync(join(secretsDir, assertWebhookFileName(file)), 'utf8').trim();
       } catch {

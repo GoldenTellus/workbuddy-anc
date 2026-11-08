@@ -31,6 +31,10 @@ export default function task(ctx: CliContext): void {
       // 后台任务（D22）：执行器是 WorkBuddy，小服务只管超时；简单任务不允许 start
       kind: args.kind === 'background' ? 'background' : 'simple',
       timeoutMinutes: typeof args.timeout === 'string' ? numArg(args.timeout, 30, 1, 1440) : undefined,
+      requesterId: typeof args['requester-id'] === 'string' ? args['requester-id'] : undefined,
+      assigneeId: typeof args['assignee-id'] === 'string' ? args['assignee-id'] : undefined,
+      originGroupId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined,
+      deptId: typeof args['dept-id'] === 'string' ? args['dept-id'] : undefined,
     });
     if (dueAt) reminders.scheduleReminder(db, { taskId: t.id, dueAt });
     out({ ok: true, task: t, due_local: dueAt ? new Date(dueAt).toLocaleString('sv-SE') : null });

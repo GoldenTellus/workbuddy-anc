@@ -1,6 +1,6 @@
 # workbuddy-anc — 项目指引
 
-> 类型：agent 规则（canonical）· 最后整理：2026-11-07
+> 类型：agent 规则（canonical）· 最后整理：2026-11-08
 >
 > 本文件是 agent 开工前的最小必读。`CLAUDE.md` 只是指向本文件的短指针，不再维护第二份正文。
 
@@ -11,7 +11,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 12 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- `npm test` **191/191**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
+- `npm test` **193/193**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
 
@@ -49,7 +49,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 3. 关键裁决（不要偏离）
 
 1. **可以改 WorkBuddy**：patch、封装、读凭据与内部数据都允许（D16）；每处改动按 `DECISIONS` 登记、随升级重放、可一键关闭。
-2. **当前实现是“一个公司 bot + 一人一群”**：员工群 = 员工 + 员工 bot + 公司 bot；公司 bot 是老板的个人 bot。未来还要加部门群、公司大群、老板 1:1，见 `FUTURE-DESIGN` 主干 1。
+2. **当前实现已落“四类群 + 三角色”地基**：员工群/部门群/公司大群/老板 1:1；boss/manager/employee；`people/groups/manager_scopes` 是真相，`chat_bindings` 只保留员工群兼容层。**员工 bot 仍按旧实现**，主干 4 返工；真实群验收见 `STATUS §3.5`。
 3. **确定性的事不交给模型**：任务/工单状态、计时提醒、“完成”判定、出站消息归本地服务；SQLite 是真相，markdown 是投影。
 4. **vault 分两区**：共享区全员只读、内部区只有公司侧能读写；两个独立 git 目录，原件不进 git。
 5. **公司 bot 只做结构化，入库进程只校验和提交**，不调模型；覆盖写必须带读取时的 base hash。
@@ -57,12 +57,23 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 7. **技能、模板、org 数据只走 git → 渲染器部署**；主机上手改线上文件视为事故。
 8. **闭源不构成排除理由（D26）**：WorkBuddy 做不到时默认加一层（patch/hook/代理/注入），不是降级需求；每层都要登记、随升级重放。
 
+## 3.5 文件驱动工作法（不是聊天驱动）
+
+- **聊天只用于讨论；结论必须落到文件。** 没写进仓库的结论 = 没发生，下一次会话不会记得。
+- **文件是跨会话唯一记忆**：开工先读 `STATUS` / `PLAN` / `FUTURE-DESIGN` / 模块契约；不要靠“上次聊过”推进。
+- **顺序**：先改账本/计划/契约（GAP、PLAN、模块文档）→ 再执行 → 再补证据和状态；不是做完再想怎么记。
+- **完成不是“代码写完”**：按 `STATUS` §3.6 逐项更新；没有账本更新不算完成。
+- **需要真实环境的**不阻塞：登记 `STATUS` §3.5 的 ACC，继续做本地能做的，统一收尾时跑。
+- **每次讨论形成结论**：在 `STATUS` §3.4 留一行，哪怕“已核对无变化”。
+
 ## 4. 约定
 
 - **模块边界**：新代码按 `ARCHITECTURE` 归块；跨模块只 import 对方 `index.ts`；不直接读别人的表。改完跑 `npm run check:modules:deep`。
 - **主干流程**：从 `FUTURE-DESIGN` 选主干 → 写 `PLAN` → 做 → `STATUS` 记证据 → 按 `DOC-SYNC` 全量核对文档 → 标 `FUTURE-DESIGN` → 归档 PLAN 快照。
 - **设计反哺**：未来主干如果纠正旧行为/旧契约，必须在 `STATUS` §3.3 登记 `GAP`（旧行为/目标行为/影响文件），并同步改受影响的现状文档；不能在新主干里静默改掉旧行为。
-- **主干 0 复检**：每次讨论形成结论、或完成一个任务/主干后，逐项看 `FUTURE-DESIGN` 0.1–0.7，有新增/关闭就更新 `STATUS` 的 `GAP`，没有变化也在 `STATUS` §3.4 留一行“已核对无变化”。
+- **主干 0 复检**：每次讨论形成结论、或完成一个任务/主干后，逐项看 `FUTURE-DESIGN` 0.1–0.8，有新增/关闭就更新 `STATUS` 的 `GAP`，没有变化也在 `STATUS` §3.4 留一行“已核对无变化”。
+- **真实环境验收不阻塞**：需要真实群、凭据、公司主机或现场动作的，登记到 `STATUS` §3.5 的 ACC 批次，继续做能做的；统一收尾时一次跑，通过前主干保持 🟡 待验收。
+- **完成即更新**：任何完成都按 `STATUS` §3.6 更新 `GAP`、`FUTURE-DESIGN` 分支/主干、`PLAN`、模块契约/审计行和测试数；只改代码或文档，不算完成。
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
 - **代码**：TypeScript + Node 22；零或极少运行时依赖；主机脚本 PowerShell 5.1。
 - **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。

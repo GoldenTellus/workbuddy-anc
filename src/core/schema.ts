@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS groups (
   employee_id TEXT,                              -- employee 群：该员工 person_id
   dept_id     TEXT,                              -- department 群：该部门 id
   name        TEXT,
+  webhook_file TEXT,                              -- 出站 webhook 文件名（secrets 目录下）
   status      TEXT NOT NULL DEFAULT 'active',    -- active | disabled
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL

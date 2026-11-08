@@ -11,13 +11,15 @@
 
 ## 0. 为什么现在分块
 
-现在能跑，但"改一处要读半个仓库"：
+> 下面这组数字是 **P0 前的基线（2026-11-06）**，不是现状；现状见 §2 模块总表与 §5 部署布局。
+
+P0 前能跑，但"改一处要读半个仓库"：
 
 - `src/service/cli.ts` **627 行**，16 组命令在一个 if/else 里；
 - `src/service/loop.ts` **367 行**，一次 tick 干 6 件事；
 - `src/render/index.ts` **324 行**，渲染 + 事务部署 + 回滚 + 孤儿清理混在一起；
 - 48 个脚本平铺在 `scripts/`；
-- 23 份文档，契约、验收、实测、路线混在一起。
+- 23 份文档（当时），契约、验收、实测、路线混在一起。
 
 分块的目的不是"好看"，是四件事：
 
@@ -64,10 +66,11 @@
 
 ```
 interfaces（service CLI / HTTP）
-   └─ runtime（tick）
-        ├─ tasks ────── delivery
-        ├─ identity
-        └─ knowledge
+   ├─ runtime（tick）
+   │    ├─ tasks ────── delivery
+   │    ├─ identity
+   │    └─ knowledge
+   └─ org（仅 bind sync-org；组合根例外，不反向依赖）
 
 tasks / delivery / identity / knowledge / org / improvement
    └─ core（db / config / audit / scan / backup）
@@ -113,7 +116,7 @@ content     独立：只依赖 CLI 命令契约
 | `scripts/<domain>/*.ps1` | `%ProgramData%\anc\bin\<name>.ps1`（**扁平**） | 文件名不变，计划任务引用 |
 | `light/*` | 由 `deploy-skills.ps1` / 渲染器部署 | 内容 |
 
-`deploy.ps1` 的复制表要加 `core` / `modules` / `interfaces` 三项；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
+`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
 
 ---
 
@@ -204,7 +207,7 @@ content     独立：只依赖 CLI 命令契约
 不涉及部署：
 
 ```powershell
-npm test                       # 163/163，不得少
+npm test                       # 193/193，不得少
 npm run check:modules          # 0 违规
 ```
 

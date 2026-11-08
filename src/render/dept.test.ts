@@ -25,6 +25,13 @@ const COMPANY = [
 ].join('\n');
 
 const COMPANY_BOSS = COMPANY.replace('\n---\n', '\nboss: zhangsan\n---\n');
+const COMPANY_GROUPS = COMPANY_BOSS.replace('boss: zhangsan', [
+  'boss: zhangsan',
+  'company_group_chat_id: c-company',
+  'company_group_webhook_file: hook-company.txt',
+  'boss_dm_chat_id: c-boss',
+  'boss_dm_webhook_file: hook-boss.txt',
+].join('\n'));
 
 function mkOrg(dir: string, opts: { members?: string[]; depts?: Array<[string, string]>; company?: string } = {}): string {
   const org = join(dir, 'org');
@@ -50,7 +57,7 @@ function withTmp(fn: (dir: string) => void): void {
 
 const MEMBER_PLAIN = '---\nid: zhangsan\nname: 张三\nrole: eng\nuserid: uid-zs\nchat_id: chat-1\n---\n';
 const MEMBER_WITH_DEPT = '---\nid: zhangsan\nname: 张三\nrole: eng\nuserid: uid-zs\nchat_id: chat-1\ndept: engineering\n---\n';
-const DEPT_ENG = '---\nid: engineering\nname: 研发部\nvault_paths: shared/工艺, internal/研发\nskills: anc-task, anc-vault-read\n---\n';
+const DEPT_ENG = '---\nid: engineering\nname: 研发部\nvault_paths: shared/工艺, internal/研发\nskills: anc-task, anc-vault-read\nchat_id: c-dept-eng\nwebhook_file: hook-dept.txt\n---\n';
 const DEPT_SALES = '---\nid: sales\nname: 销售部\nskills: anc-task\n---\n';
 const MEMBER_MANAGER = '---\nid: zhangsan\nname: 张三\nrole: eng\nuserid: uid-zs\nchat_id: chat-1\ndept: engineering\nmanages: engineering, sales\n---\n';
 
@@ -162,6 +169,26 @@ test('loadOrg：boss 不能是停用成员', () => {
       company: COMPANY_BOSS,
     });
     assert.throws(() => loadOrg(org), /company\.boss 不能是停用成员: zhangsan/);
+  });
+});
+
+test('renderOrg：groups.json 生成 employee/department/company/boss_dm 四类群', () => {
+  withTmp((d) => {
+    const org = mkOrg(d, {
+      members: [MEMBER_MANAGER],
+      depts: [['engineering.md', DEPT_ENG], ['sales.md', DEPT_SALES]],
+      company: COMPANY_GROUPS,
+    });
+    const out = join(d, 'out');
+    renderOrg(org, out);
+    const g = JSON.parse(readFileSync(join(out, 'groups.json'), 'utf8')) as {
+      groups: Array<{ type: string; chat_id: string; employee_id?: string; dept_id?: string; webhook_file?: string }>;
+    };
+    assert.deepEqual(g.groups.map((x) => x.type).sort(), ['boss_dm', 'company', 'department', 'employee']);
+    assert.equal(g.groups.find((x) => x.type === 'department')?.dept_id, 'engineering');
+    assert.equal(g.groups.find((x) => x.type === 'department')?.webhook_file, 'hook-dept.txt');
+    assert.equal(g.groups.find((x) => x.type === 'company')?.webhook_file, 'hook-company.txt');
+    assert.equal(g.groups.find((x) => x.type === 'boss_dm')?.webhook_file, 'hook-boss.txt');
   });
 });
 

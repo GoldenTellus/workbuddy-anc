@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as bindings from '../../modules/identity/index.ts';
 import type { CliContext } from './context.ts';
-import { syncOrgIdentity, backfillFromBindings } from './identity-sync.ts';
+import { syncOrgIdentity, backfillFromBindings, verifyOrgIdentity } from './identity-sync.ts';
 
 export default function bind(ctx: CliContext): void {
   const { db, args, cmd, out, fail } = ctx;
@@ -19,6 +19,22 @@ export default function bind(ctx: CliContext): void {
     const b = bindings.resolve(db, String(args['chat-id'] ?? ''));
     out(b ? { ok: true, found: true, binding: b } : { ok: false, found: false });
     if (!b) process.exit(1);
+  } else if (cmd === 'actor') {
+    const chatId = String(args['chat-id'] ?? '');
+    const userid = String(args['userid'] ?? '');
+    if (!chatId || !userid) fail('缺少 --chat-id / --userid');
+    const a = bindings.resolveActor(db, chatId, userid);
+    if (!a.group || !a.person) {
+      out({ ok: false, found: false, group: a.group, person: a.person });
+      process.exit(1);
+    }
+    out({
+      ok: true,
+      found: true,
+      group: a.group,
+      person: a.person,
+      manager_scopes: a.person.system_role === 'manager' ? bindings.listManagerScopes(db, a.person.person_id) : [],
+    });
   } else if (cmd === 'unbind') {
     out({ ok: true, removed: bindings.unbind(db, String(args['chat-id'] ?? '')) });
   } else if (cmd === 'list') {
@@ -32,6 +48,12 @@ export default function bind(ctx: CliContext): void {
     const org = typeof args.org === 'string' ? args.org : '';
     if (!org) fail('缺少 --org <org 目录>');
     out(syncOrgIdentity(db, org));
+  } else if (cmd === 'verify-org') {
+    const org = typeof args.org === 'string' ? args.org : '';
+    if (!org) fail('缺少 --org <org 目录>');
+    const r = verifyOrgIdentity(db, org);
+    out(r);
+    if (!r.ok) process.exit(1);
   } else if (cmd === 'backfill') {
     out(backfillFromBindings(db));
   } else if (cmd === 'group-set') {
@@ -44,6 +66,7 @@ export default function bind(ctx: CliContext): void {
       employeeId: typeof args['employee-id'] === 'string' ? args['employee-id'] : undefined,
       deptId: typeof args['dept-id'] === 'string' ? args['dept-id'] : undefined,
       name: typeof args.name === 'string' ? args.name : undefined,
+      webhookFile: typeof args['webhook-file'] === 'string' ? args['webhook-file'] : undefined,
       status: args.status === 'disabled' ? 'disabled' : 'active',
     });
     out({ ok: true, group: g });

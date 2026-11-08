@@ -1,7 +1,7 @@
 # 状态与缺口
 
 > 类型：账本（已完成 / 进行中 / 缺口 / 风险）
-> 最后更新：2026-11-07
+> 最后更新：2026-11-08
 >
 > 规则：这里只记**事实和证据**。计划和排期在 [PLAN.md](./PLAN.md)；设计意图在 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)。
 > 每个缺口都有 `GAP-###`，主干完成时必须逐条处理：修掉、进主干 0、或明确接受不修。
@@ -15,9 +15,8 @@
 - [x] 12 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 191/191；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 193/193；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run 125 个文件；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
-
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
 ### 1.2 文档基线（2026-11-07）
@@ -39,8 +38,11 @@
 - [x] org→DB 同步：`bind sync-org` 写 people / employee groups / manager_scopes / 兼容 `chat_bindings`；`bind group-set/group-list/person-list`。
 - [x] 两阶段任务请求 CLI：`task request|approve|accept|reject`；跨部门自动要求审批。
 - [x] 旧绑定回填：`bind backfill` 按 userid 匹配 people，补 employee 群，未知人不猜。
-- [x] `npm test` **191/191**；`npm run check` 通过。
-- [ ] `boss_dm` spike、真实群成员校验、T1.9 剩余文档。
+- [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
+- [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
+- [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
+- [x] `npm test` **193/193**；`npm run check` 通过。
+- [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ---
 
@@ -96,8 +98,13 @@
 | GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
 | GAP-030 | 没有 boss/manager/employee 角色模型 | 实现 | S1 | 主干 1 | 是 | people/policy/sync 已有；补文档与真实群接线 |
 | GAP-031 | 没有任务工作区 / 会话管理 | 实现 | S1 | 主干 2 | 是 | 每 Ticket 一目录/会话 |
-| GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次 191/191 通过，关闭 |
+| GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次通过（当时 191/191），关闭 |
 | GAP-040 | org 角色源未同步到 people/manager_scopes | 实现 | S1 | 主干 1 | 是 | 已解析并同步；仅剩文档/边界收口 |
+| GAP-041 | 公司 bot persona / skills 未接新角色、群类型、任务请求 | 实现 | S1 | 主干 1 | 是 | persona/`anc-task` 已改；真实消息回归并入 T1.11 |
+| GAP-042 | 四类群真实成员/部署验收未做 | 验收 | S1 | 主干 1 | 否 | render/import/sync/send/deploy 自动 sync 已做；企微成员 API 对账待 ACC-08 |
+| GAP-050 | 四类群真实端到端验收批次 | 验收 | S1 | 主干 1 | 否 | 按 §3.5 ACC-01..08 统一收尾；不阻塞代码推进 |
+| GAP-051 | FUTURE-DESIGN 内部状态/规则不一致（0.8/主干1/叶子/差距表） | 文档/契约 | S1 | 主干 0 | 否 | 已修：0.8/三态/树/叶子/差距表；check 通过；关闭 |
+| GAP-052 | 全仓文档语义漂移（一人一群/私聊/命令/计数） | 文档/契约 | S1 | 主干 0 | 否 | 已批量修 README/AGENTS/PRODUCT/DECISIONS/部署/契约/计数；check 通过；关闭 |
 
 > `S0` 阻断主流程；`S1` 高；`S2` 中；`S3` 低。`阻塞=是` 表示不解决就不能完成对应主干/分支。
 
@@ -107,7 +114,7 @@
 
 | ID | 修正对象 | 旧行为 / 旧契约 | 目标行为 | 来源主干 | 阻塞 | 下一步 |
 |---|---|---|---|---|---|---|
-| GAP-033 | 文档 / 身份契约 | 文档把“一人一群”写成完整模型 | 员工群 + 部门群 + 公司大群 + 老板 1:1 + 角色 | 主干 1 | 是 | 同步改 PRODUCT / ARCHITECTURE / identity 契约 |
+| GAP-033 | 文档 / 身份契约 | 文档把“一人一群”写成完整模型 | 员工群 + 部门群 + 公司大群 + 老板 1:1 + 角色 | 主干 1 | 否 | 已同步 README/AGENTS/PRODUCT/DECISIONS/部署/契约；关闭 |
 | GAP-034 | `tasks` 状态 | open / done / cancelled / needs_review | Task + Ticket / Assignment 状态 | 主干 2 | 是 | 定义映射；旧字段不反向覆盖 |
 | GAP-035 | `runtime` tick | 只做提醒 / 超时 / 投影 | Main / Executor 分层；tick 只做通知与调度 | 主干 2 | 是 | 在 D2 拆边界，保留旧行为兼容 |
 | GAP-036 | outbox / 通知 | 单向消息 | Attention / 确认 / 回执 | 主干 3 | 是 | 不覆盖旧 outbox；新增 Attention 层 |
@@ -119,13 +126,57 @@
 
 ### 3.4 主干 0 复检记录
 
-> 触发：讨论形成结论 / 任务完成 / 主干完成。逐项看 0.1–0.7；新增或关闭 `GAP` 要写清楚，没有变化也留一行“已核对无变化”。
+> 触发：讨论形成结论 / 任务完成 / 主干完成。逐项看 0.1–0.8；新增或关闭 `GAP` 要写清楚，没有变化也留一行“已核对无变化”。
 
 | 日期 | 触发 | 0.x 变化 | 新增/关闭 GAP | 备注 |
 |---|---|---|---|---|
 | 2026-11-07 | 主干 1 设计讨论 + 复检规则 | 0.3 文档已同步（FUTURE-DESIGN / PLAN / STATUS / AGENTS）；0.7 无新增 | 更新 GAP-001/002/003/004/005/019/028/030/033；新增 GAP-040 | 0.1/0.2/0.4/0.5/0.6 已核对无新增；实现缺口随主干 1 的 PLAN |
-| 2026-11-07 | 主干 1 第一批实现（T1.1/T1.2/T1.4/T1.5/T1.6 + 部分 T1.3）；org→DB 同步 + bind CLI | 0.6 测试 191/191；0.3 identity/tasks/core/interfaces 契约已同步；0.7 无新增 | GAP-040 已解析并同步；GAP-028/030 表/策略/CLI 基础已有 | 0.1/0.2/0.4/0.5 无新增；T1.7/T1.9 未完成 |
-| 2026-11-07 | 主干 1 第二批：任务请求 CLI、旧绑定回填、测试串行门禁 | 0.6 191/191；0.1 GAP-032 已关闭（串行 3 次 191/191）；0.3 LOCAL-SERVICE/模块契约已同步 | GAP-002/019/040 更新 | T1.7 `boss_dm` spike、T1.9 剩余文档 |
+| 2026-11-07 | 主干 1 第一批实现（T1.1/T1.2/T1.4/T1.5/T1.6 + 部分 T1.3）；org→DB 同步 + bind CLI | 0.6 测试 193/193；0.3 identity/tasks/core/interfaces 契约已同步；0.7 无新增 | GAP-040 已解析并同步；GAP-028/030 表/策略/CLI 基础已有 | 0.1/0.2/0.4/0.5 无新增；T1.7/T1.9 未完成 |
+| 2026-11-07 | 主干 1 第二批：任务请求 CLI、旧绑定回填、测试串行门禁 | 0.6 193/193；0.1 GAP-032 已关闭（串行 3 次通过）；0.3 LOCAL-SERVICE/模块契约已同步 | GAP-002/019/040 更新 | T1.7 `boss_dm` spike、T1.9 剩余文档 |
+| 2026-11-07 | 主干 1 第三批：`bind actor` + company-bot persona + anc-task 技能 | 0.3 persona/skill/LOCAL-SERVICE 已同步；0.6 193/193 | GAP-041 已改，真实消息回归待 T1.11 | 无新增 0.1/0.2/0.4/0.5/0.7 |
+| 2026-11-07 | 主干 1 第四批：render groups[] + bind import + send fallback | 0.3 RENDERER/org/identity 契约已同步；0.6 193/193 | GAP-042 大部分完成；deploy 自动同步/成员校验待做 | 无新增 0.1/0.2/0.4/0.5/0.7 |
+| 2026-11-07 | 主干 1 第五批：deploy --db 自动 sync-org + verify-org | 0.3 RENDERER/OPS/LOCAL-SERVICE 已同步；0.6 193/193 | GAP-042 只剩企微 API 成员校验 | 无新增 0.1/0.2/0.4/0.5/0.7 |
+| 2026-11-08 | 全仓文档批量修复 | 0.3 20 份文档同步：概念/部署/契约/计数；0.6 193/193；0.4/0.8 未变 | GAP-033/052 关闭；GAP-042 仍在 ACC | check 通过；真实群验收未跑 |
+| 2026-11-08 | 收尾方式改为“先做完、验收后置” | 0.8 真实环境验收加入主干 0；0.3 流程文档同步；0.6 代码测试不变 | 新增 GAP-050 验收批次；GAP-003/004/042 映射到 ACC | 验收不阻塞推进；统一收尾跑 ACC-01..08 |
+| 2026-11-08 | 完成即更新规则 | 0.3 STATUS §3.6 / FUTURE / DOC-SYNC / AGENTS / skill 同步；0.6 代码测试不变 | 无新增 GAP | 只改代码不算完成；check 通过 |
+| 2026-11-08 | FUTURE-DESIGN 全量审计 + 修复 | 0.3 统一 0.8/三态/树/分支计数/叶子/差距表/D 阶段 | 新增并关闭 GAP-051 | 设计正文已修；代码测试未动 |
+| 2026-11-08 | 全仓文档语义扫描 | 0.3 发现 11 份重大漂移、11 份小问题、15 份当前；0.4/0.8 仅记录 | 新增 GAP-052 | 扫描后已批量修复，GAP-052 关闭 |
+| 2026-11-08 | 文件驱动工作法显式化 | 0.3 AGENTS §3.5、DOC-SYNC、FUTURE 规则 14；0.6/0.8 未变 | 无新增 GAP | 聊天是临时、文件是持久；check 通过 |
+
+### 3.5 真实环境验收批次（统一收尾）
+
+> 这些是 `0.8` 验收项：需要真实群、真实凭据或公司主机。它们**不阻塞代码推进**；统一收尾时按 ACC 顺序一次跑。通过前主干保持 🟡 待验收，不能标 ✅。
+
+| 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP |
+|---|---|---|---|---|
+| ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 |
+| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 |
+| ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 |
+| ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 |
+| ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 |
+| ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 |
+| ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 |
+| ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 |
+
+### 3.6 完成时的更新清单
+
+> **完成 = 做完 + 账本更新 + 检查通过。** 只改代码/文档、不改下面这些，不算完成。
+
+| 完成了什么 | 必须同步更新 |
+|---|---|
+| 代码 / 测试 | 对应 `GAP` 状态、证据、测试数；`README` / `AGENTS` / `INDEX` / `PRODUCT` 里的当前数字 |
+| 模块契约 / 文档 | 对应 `docs/modules/<module>.md`、`DOC-SYNC` §4 审计行、`INDEX` 入口 |
+| 设计分支 / 主干 | `FUTURE-DESIGN` 分支与汇总状态；`PLAN` 勾选 / 快照 |
+| 真实环境验收 | `STATUS` §3.5 的 ACC 行；不能拿本地测试关 `GAP-050` |
+| 每次完成 | §3.4 复检行；`npm run check`；必要时 `check-public` |
+| 部署 / 群配置 | `LOCAL-SERVICE` / `RENDERER` / `OPS`；旧 `groups.json` 兼容说明 |
+
+规则：
+
+- 先更新账本，再宣布完成；顺序反了就会漏。
+- 没有 `GAP` 可关，也要在 §3.4 写“已核对无变化”。
+- 一次完成涉及多个分支时，逐个分支改状态，不要只改总表。
+- 验收项只更新 ACC，不能把主干标 ✅。
 
 ## 4. 文档同步审计
 
@@ -159,3 +210,5 @@
 5. 主干完成 → 按 [DOC-SYNC.md](./DOC-SYNC.md) 填 §4 一行。
 6. 只改 STATUS 不够：同步改 `FUTURE-DESIGN` 的进度和 `PLAN` 的任务状态。
 7. 每次讨论形成结论、或完成一个任务/主干后，在 §3.4 做一次主干 0 复检；没有变化也留痕。
+8. 需要真实群/凭据/主机的验收，登记到 §3.5，不阻塞代码推进；统一收尾时按 ACC 批次跑。
+9. 完成任何事项后，按 §3.6 清单逐项更新；只改代码/文档不算完成。

@@ -40,8 +40,8 @@
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **191 / 191 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
-| 覆盖率（行 / 分支 / 函数） | **91.99% / 81.39% / 94.42%** | `npm run coverage`（2026-11-06） |
+| 测试 | **193 / 193 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
+| 覆盖率（行 / 分支 / 函数） | **91.86% / 81.71% / 95.08%** | `npm run coverage`（2026-11-08） |
 | 测试文件 | **23** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
 | 计划任务 | **10** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
@@ -70,13 +70,13 @@
 | `docs/UPSTREAM.md` | 上游/参考来源政策与索引 | 一项目一文件，见 `docs/upstreams/` |
 | `docs/upstreams/` | 每个来源一份记录 | URL / 许可证 / 固定版本 / 用了什么 |
 | `src/core/` | 平台底座：库/schema/迁移/事务、原子写、配置、审计、出站扫描、备份 | 11 个文件；`db.ts` 只留 `openDb` + 时间函数 |
-| `src/interfaces/` | service CLI 的 16 组命令 + 注册表 + HTTP 门面 | 23 个文件；`src/service/cli.ts` 是入口薄壳 |
-| `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`improvement`、`knowledge`、`org` | 42 个文件；每个模块有 `index.ts` 公开入口 |
+| `src/interfaces/` | service CLI 的 16 组命令 + 注册表 + HTTP 门面 | 25 个文件；`src/service/cli.ts` 是入口薄壳 |
+| `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`improvement`、`knowledge`、`org` | 49 个文件；每个模块有 `index.ts` 公开入口 |
 | `src/service/` | 只剩入口薄壳（`cli.ts` / `loop.ts`）与集成测试 | 8 个文件；部署时只复制 3 个 |
 | `src/render/` | 只剩 `cli.ts` 薄壳与渲染器测试 | 8 个文件；部署时只复制 2 个 |
 | `src/ingest/` | 只剩 `cli.ts` 薄壳与入库测试 | 3 个文件；部署时只复制 2 个 |
 | `src/shared/` | 只剩 summarize 测试与 package | 3 个文件；运行代码已迁 `modules/knowledge` |
-| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 49 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
+| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 50 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
 | `scripts/workbuddy-patch/` | WorkBuddy 补丁体、启动器、注入测试口 | 见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
 | `light/` | 技能名片、persona、模板、eval 用例 | 7 个技能目录 |
 | `reference/upstream/` | 上游原样文档与未合并分支 | **不参与构建**；来源登记见 [UPSTREAM.md](./UPSTREAM.md) |

@@ -72,15 +72,17 @@ D:\anc\                    vault + org + build
 | 7 | **部门列表** | org 数据 | 问人（例：研发部 / 行政部 / 销售部） | 见 §10 |
 | 8 | **员工名单 + 每个人的 userid** | org 数据 | 企微通讯录里的 userid（**不是**姓名、**不是**手机号） | 见 §10 |
 | 9 | **每个员工属于哪个部门** | org 数据 | 问人 | 见 §10 |
-| 10 | **每个员工的群 chatId** | 群绑定 | 建群后从群设置里拿；**32 字符，不要截断** | 见 §10 |
-| 11 | **管理员自己的 userid** | 私聊权限 | 企微通讯录 | `________________` |
+| 10 | **每个员工的员工群 chatId** | 员工群绑定 | 建群后从群设置里拿；**32 字符，不要截断** | 见 §10 |
+| 10b | **部门群 / 公司大群 / 老板 1:1 的 chatId + webhook 文件名** | org 群配置 | 企微群设置；`boss_dm` 真 1:1 不可用时用私有群 | 见 §10 |
+| 11 | **老板自己的 userid** | `boss_dm` / 全局权限 | 企微通讯录 | `________________` |
 
 **填不全时的行为**：
 
 - **1、4、5、6 缺** → 停下来问。这些没有合理默认值。
 - **2、3 缺** → 可以继续到 §10，但 §11 会卡住；`verify` 的 `bot-reply` 那项会是 SKIP。
 - **7、8、9、10 缺** → 可以装出一个"没有员工"的公司侧（`groups.json` 0 个成员）。**能用，但没人能 @ 它**。装完告诉用户"员工还没配，配好之后重跑 §10 和 §12"。
-- **11 缺** → 不影响装，但私聊谁都能用。**告诉用户这是安全缺口**。
+- **10b 缺** → 员工群能跑；部门群/公司大群/`boss_dm` 还不能用。**不要假装四类群已经通了**，在交付说明里列出来。
+- **11 缺** → `boss_dm`/全局权限无法校验；先问老板 userid，不要用管理员自己的 userid 猜。
 
 ---
 
@@ -633,9 +635,9 @@ Set-Content "$Root\secrets\zhangsan-bot.txt" -Value '<完整 webhook URL>' -Enco
 **这两步是分开的，别混**：
 
 ```powershell
-# ① 渲染：从 org 数据生成 persona 和 groups.json
+# ① 渲染 + 事务部署 + org→DB 同步/校验
 #    用仓库里的 cli.ts（渲染器本体），不是 deploy-persona.ps1
-node --no-warnings "$Repo\src\render\cli.ts" render --org $org --out "$Root\render"
+node --no-warnings "$Repo\src\render\cli.ts" deploy --org $org --out "$Root\render" --db "$Root\data\anc.db"
 
 # ② 装：把渲染出来的公司 bot persona 复制到 WorkBuddy 读的位置
 #    deploy-persona.ps1 只做这一步（它不渲染）
@@ -648,12 +650,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\deploy-persona.ps
 # 渲染产物存在
 Test-Path "$Root\render\company-bot\CODEBUDDY.md"
 Test-Path "$Root\render\groups.json"
-# groups.json 里的成员数 = 你写的 member 文件数
-# ⚠ 别用 (Get-Content ... -Raw | ConvertFrom-Json) 验这个文件 —— 见下面的说明
-
-# 用 node 读（纯 ASCII 判定，不受控制台代码页影响）
-node -e "const j=require('fs').readFileSync(process.argv[1],'utf8');const o=JSON.parse(j);console.log('members=',o.members.length,o.members.map(m=>m.name).join(','))" "$Root\render\groups.json"
-# 每条的 dept/skills 都在（没部门的是 null/[]）
+# members / groups 都要有：groups 里应出现 employee/department/company/boss_dm（没有配的群不会生成）
+node -e "const j=require('fs').readFileSync(process.argv[1],'utf8');const o=JSON.parse(j);console.log('members=',o.members.length,'groups=',(o.groups||[]).map(g=>g.type).join(','))" "$Root\render\groups.json"
 ```
 
 > **⚠ 验证 `groups.json` 时不要用 `Get-Content -Raw | ConvertFrom-Json`。**
@@ -707,9 +705,10 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark org -AsDone
 | 做什么 | 在哪 | 为什么 |
 |---|---|---|
 | ~~建自建应用，拿 `corpId` + `secret`~~ | 管理后台 → 应用管理 | **⚠ 不需要，见下面的说明** |
-| 建**每个员工的群**（本人 + 公司 bot + 个人 bot + 群机器人） | 企微客户端 | 一人一群 = 身份边界 |
-| 群里加**群机器人**，拿 webhook | 群设置 → 群机器人 | 提醒从这个 webhook 发 |
-| 设**私聊限管理员** | 管理后台 → 应用 → 可见范围 | 否则谁都能私聊公司 bot |
+| 建**员工群**（本人 + 公司 bot + 个人 bot + 群机器人） | 企微客户端 | 员工群 = 一人一群的兼容层 |
+| 建**部门群 / 公司大群 / 老板 1:1**（或私有群 fallback） | 企微客户端 | 四类群的身份边界 |
+| 群里加**群机器人**，拿 webhook | 群设置 → 群机器人 | 提醒/通知从这个 webhook 发 |
+| 把四类群 chatId + webhook 文件名交给 agent | 见 §1 第 10/10b 项 | 写进 `company.md` / `depts/*.md` |
 | 通讯录里查每个员工的 **userid** | 管理后台 → 通讯录 | §10.4 要用 |
 
 > **⚠ `corpId` / `corpSecret` 其实不需要（2026-11-05 查证，`VERIFY §77`）**

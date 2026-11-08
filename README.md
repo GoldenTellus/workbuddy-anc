@@ -54,7 +54,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 
 | 部分 | 位置 | 作用 |
 |---|---|---|
-| 本地小服务 | `src/modules/{tasks,identity,delivery,runtime}` | 任务与提醒、完成判定、outbox（经群机器人 webhook 发消息）、群绑定、工作时段、A2A 访谈归档。SQLite 为真相；`src/service/cli.ts` 只是入口薄壳 |
+| 本地小服务 | `src/modules/{tasks,identity,delivery,runtime}` | 任务与提醒、完成判定、outbox（经群机器人 webhook 发消息）、群/人/角色/部门、工作时段、A2A 访谈归档。SQLite 为真相；`src/service/cli.ts` 只是入口薄壳 |
 | 入库进程 | `src/modules/knowledge/ingest/` | 校验公司 bot 整理好的批次并写进 vault：路径校验、覆盖写必须带 base hash、原件只许新建、事务回滚。不调模型 |
 | 渲染器 | `src/modules/org/` | 从 org 数据（角色 × 成员）生成 persona（`CODEBUDDY.md`）、个人接入包、群映射 |
 | WorkBuddy 补丁 | `scripts/workbuddy-patch/`、`scripts/workbuddy/` | 把群标识与发送人注入消息正文（D17）、拦自动升级；带版本绑定、一键关闭、自愈与守卫 |
@@ -104,9 +104,9 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 
 | 操作 | 效果 |
 |---|---|
-| 改 `org/members/*.md` 后 `render deploy` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → 任一失败**整体还原**，不会留"一半新一半旧" |
+| 改 `org/members/*.md` 后 `render deploy --db ...` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → org→DB 同步/校验 → 任一失败**整体还原**，不会留"一半新一半旧" |
 | `render verify` | 用指纹 + manifest 检出产物被手改（改过就说明线上与 git 不一致） |
-| 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除（不会再给他重建绑定）、open 任务转交新人、解绑群；**vault 里的档案不动** |
+| 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除、解绑员工群（groups 表停用还没自动化）、open 任务转交新人；**vault 里的档案不动** |
 | `doctor.ps1` | **31 项**体检：10 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 + 完整性校验；离机目标与本地**同盘时告警**（同盘不算离机）；失败必发运维告警；日档 60 份 + 每月 1 号留 12 份 |
 | 查"谁动过库" | `%ProgramData%\anc\data\audit.log` 每次 CLI 调用留一行（只记命令与目标，不记参数值） |
@@ -118,14 +118,16 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 - **不产出文档内容**：入库只做校验、归档与索引，整理稿由 bot 写、由人复核。
 - **没有公网入口**：HTTP 面只绑 `127.0.0.1`，公司 bot 与本机服务都在内网。
 - **模型的旁白挡不住**：多步工具链里它仍会说「我先看一下」这类过程话，persona 禁止词表已验证无效。**2026-11-04 查清：出站过滤在代码层也做不到**——企微走流式（`sendStreamChunk`），整句在发出前就发完了（`VERIFY §17`）。所以这条降级成 persona 约束，是**已知代价**，不是待办。
-- **未实测的四项**：员工转发的 A2A 通道（T14）、技能同步到员工机（T15）、两个群同时提问（T8）、企微后台的私聊限管理员（T11）。**全卡外部条件**——要员工机、企业版后台、第二个群、企微管理后台，不是代码没写完。
+- **未实测的四项**：员工转发的 A2A 通道（T14）、技能同步到员工机（T15）、两个群同时提问（T8）、企微真 1:1 的 `boss_dm` 通道（T11）。**全卡外部条件**——要员工机、企业版后台、第二个群、企微管理后台，不是代码没写完。
 
 ## 架构一览
 
 ```
 企业微信
-  ├─ 每个员工一个群：本人 + 公司 bot + 本人的个人 bot + 提醒用群机器人（一人一群 = 身份边界）
-  └─ 私聊公司 bot：仅管理员
+  ├─ 员工群：本人 + 公司 bot + 本人的员工 bot（加提醒用群机器人）
+  ├─ 部门群：部门员工 + 部门管理者 + 老板 + 公司 bot
+  ├─ 公司大群：老板 + 全体员工 + 公司 bot
+  └─ 老板 1:1（不可用时退化为“老板 + 公司 bot”的私有群）
 
 Windows 主机（7×24）
   ├─ 公司 bot：WorkBuddy + D17 补丁（消息开头带 [anc:chat=<chatid> from=<userid>]）
@@ -133,14 +135,18 @@ Windows 主机（7×24）
   ├─ vault 共享区（全员只读，SMB）/ 内部区（只有公司侧读写），各是一个 git 目录
   └─ inbox：公司 bot 投递 → 入库进程校验后写入
 
-员工电脑：个人 bot（WorkBuddy），只服务本人，只读 vault 共享区
+员工电脑：员工 bot（WorkBuddy），只服务本人，只读 vault 共享区
 ```
+
+群/人/角色的真相在 `people` / `groups` / `manager_scopes`；`chat_bindings` 只保留为员工群的兼容层。**未识别/未绑定的群不猜人、不退回默认群。**
+
+**四类群与角色不是靠记忆**：公司 bot 每轮先跑 `bind actor`，用 `group.type`（employee/department/company/boss_dm）和 `person.system_role`（boss/manager/employee）决定能看什么、能在哪答；真实群验收见 `STATUS §3.5`。
 
 确定性的事（状态、计时、「完成」判定、出站消息）一律归本地小服务，不交给模型。
 
 ## 现状
 
-- 12 个模块全部 `current`；`npm test` **191/191**；`npm run check`（模块边界 + 文档检查）通过。
+- 12 个模块全部 `current`；`npm test` **193/193**；`npm run check`（模块边界 + 文档检查）通过。
 - 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。

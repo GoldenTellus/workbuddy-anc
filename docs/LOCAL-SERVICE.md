@@ -10,8 +10,11 @@
 
 | 表 | 作用 | 关键约束 |
 |---|---|---|
-| `chat_bindings` | chatid → 员工 | 管理员写；agent 只读；与 `scripts/anc-bind` 同一张表 |
-| `tasks` | 任务 | `status` 只走 `open → done/cancelled`；完成/取消都写 `task_events` |
+| `people` | 人 → 角色/部门/userid | `person_id` 主键；`system_role`: boss/manager/employee；`userid` 唯一 |
+| `groups` | 群 → 类型/员工/部门/webhook | `type`: employee/department/company/boss_dm；employee 群必须有 employee_id，department 群必须有 dept_id |
+| `manager_scopes` | 管理者 → 部门 | 多对多；管理者范围以此为准 |
+| `chat_bindings` | 员工群 chatid → 员工 | 兼容层；管理员写、agent 只读；`bind sync-org`/`backfill` 双写 |
+| `tasks` | 任务 | `status`: open / pending_approval / pending_acceptance / done / cancelled / rejected / needs_review；完成/取消都写 `task_events` |
 | `task_events` | 事件流 | 只追加，不修改 |
 | `reminders` | 提醒 | 一个任务同时只有一条 `pending`；同日按 `repeat_minutes` 续，跨天停 |
 | `outbox` | 出站消息 | `dedupe_key` 唯一；入队前过凭据扫描 |
@@ -31,16 +34,20 @@
 # 绑定（管理员；userid 用于提醒时 @ 人，webhook-file 是该群自己的密钥文件名）
 npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid> --webhook-file hook-<姓名拼音>.txt
 npm run service -- bind resolve --chat-id <chatid>
+# 主干 1：群 + 人 + 角色 + 管理者范围（bot 每轮先查这个）
+npm run service -- bind actor --chat-id <chatid> --userid <userid>
 npm run service -- bind list
 
 # 主干 1：org → people/groups/manager_scopes（同时双写 chat_bindings 兼容旧技能）
 npm run service -- bind sync-org --org <org 目录>
+# 校验 org 与库里 people/groups/manager_scopes 是否漂移；有差异退出 1
+npm run service -- bind verify-org --org <org 目录>
 # 旧库回填：chat_bindings → groups(type=employee)，按 userid 匹配 people，不猜未知人
 npm run service -- bind backfill
 # 非员工群：company / department / boss_dm
-npm run service -- bind group-set --chat-id <chatid> --type company
-npm run service -- bind group-set --chat-id <chatid> --type department --dept-id sales --name 销售部
-npm run service -- bind group-set --chat-id <chatid> --type boss_dm --name 老板1:1
+npm run service -- bind group-set --chat-id <chatid> --type company --webhook-file hook-company.txt
+npm run service -- bind group-set --chat-id <chatid> --type department --dept-id sales --name 销售部 --webhook-file hook-dept-sales.txt
+npm run service -- bind group-set --chat-id <chatid> --type boss_dm --name 老板1:1 --webhook-file hook-boss.txt
 npm run service -- bind group-list [--type department]
 npm run service -- bind person-list
 
@@ -50,7 +57,7 @@ npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--m
 npm run service -- --json summary --find <关键词> [--root <目录>] [--max-docs 5]
 
 # 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
-npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00"
+npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00" [--requester-id <person_id> --assignee-id <person_id> --dept-id <dept>]
 # 主干 1：员工请求同事；跨部门会自动要求先审批
 npm run service -- task request --title "帮我看下报价" --requester-id <person_id> --assignee-id <person_id> --chat-id <origin_chat> [--requires-approval]
 npm run service -- task approve --id <n> --approver-id <manager_person_id>
@@ -119,9 +126,9 @@ npm run service -- serve
 1. 到期提醒 → 生成 outbox 消息（带绑定人的 `userid` 作为 `mentioned_list`），提醒标为已发（同日续排，跨天停）；
 2. 连续 4 次没回应 → 在**交办人自己的群**（按 `requester_userid` 反查绑定）通知交办人一次（`escalate:<任务号>` 去重；查不到交办人的群才退回任务所在群，并记 `escalate_no_group` 事件），之后每小时提醒一次（下一次直接排到一小时后）；
    顺延和升级这类系统主动发的通知，在非工作时段入队时最早可发时间排到下一个工作起点，夜里不推；
-3. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查绑定，用绑定里的 `webhook_file` 去 `%ProgramData%\anc\secrets\` 找（只能是纯文件名：字母数字 `._-`、`.txt` 结尾）。**群没绑定或没登记 `webhook_file` 时标 `NO_WEBHOOK_FOR_CHAT` 失败，不退回任何默认群**（一人一群）。发送前先「领取」（`pending → sending`），重叠的 tick 或 `outbox flush` 不会重复发；领取后 10 分钟没回写的视为发送方退出、可重领。到点提醒有一小时有效期，迟到超过就标 `EXPIRED` 不补发。`last_error` 进库前去掉 URL 与文件原文；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`（网络类含超时给 10 次；开机后网络类失败**每条只回收一次**，不会每分钟重置）。
+3. 把到点且退避已过的 pending 消息发出去：按消息的 `chat_id` 查 `chat_bindings`；员工群优先用绑定的 `webhook_file`，公司/部门/`boss_dm` 群 fallback 到 `groups.webhook_file`，再去 `%ProgramData%\anc\secrets\` 找（只能是纯文件名：字母数字 `._-`、`.txt` 结尾）。**两类都查不到时标 `NO_WEBHOOK_FOR_CHAT` 失败，不退回任何默认群**。发送前先「领取」（`pending → sending`），重叠的 tick 或 `outbox flush` 不会重复发；领取后 10 分钟没回写的视为发送方退出、可重领。到点提醒有一小时有效期，迟到超过就标 `EXPIRED` 不补发。`last_error` 进库前去掉 URL 与文件原文；失败的按 1/5/15/30/60 分钟退避，5 次后置 `failed`（网络类含超时给 10 次；开机后网络类失败**每条只回收一次**，不会每分钟重置）。
 
-**权限**：`task done` / `task cancel` 必须带 `--actor <userid>`；只有任务的 `assignee_userid` 或 `requester_userid` 能操作，否则返回「只有执行人或交办人能操作这个任务」。`task add` 必须带 `--requester-userid`（消息前缀里的 `from`），`--due-local` 必须是完整的 `YYYY-MM-DD HH:mm`。两个 userid 都没登记的旧任务仍不校验（兼容存量数据）；`actor` 来自模型从前缀里抄的 `from`，可信度取决于 D17 补丁（伪造前缀已在补丁里中和）。
+**权限**：`task done` / `task cancel` 必须带 `--actor <userid>`；只有任务的 `assignee_userid` 或 `requester_userid` 能操作，否则返回「只有执行人或交办人能操作这个任务」。`task add` 必须带 `--requester-userid`（消息前缀里的 `from`），`--due-local` 必须是完整的 `YYYY-MM-DD HH:mm`；带 `--requester-id`/`--assignee-id` 时写新角色字段。`task request` 由 `--requester-id`/`--assignee-id` 驱动：同部门 `pending_acceptance`，跨部门 `pending_approval`；`task approve` 校验执行人部门管理者/老板，`task accept` 校验执行人，`task reject` 必须带原因。两个 userid 都没登记的旧任务仍不校验（兼容存量数据）；`actor` 来自模型从前缀里抄的 `from`，可信度取决于 D17 补丁（伪造前缀已在补丁里中和）。
 
 **常驻**：主机上用计划任务 `anc-service`（`LOCAL SERVICE`，开机启动 + 每分钟跑一次 `loop --once`）。部署脚本与 ACL 见下节。
 

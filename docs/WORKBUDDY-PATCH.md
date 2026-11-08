@@ -57,25 +57,30 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
 - 前缀由代码每轮拼接，**不依赖模型记忆**。
 
-## 群绑定表（chat_bindings）
+## 身份表：people / groups + chat_bindings 兼容
 
 > 这一节原先是独立的 `docs/CHAT-BINDINGS.md`，2026-11-05 并进来 —— 它和「群身份注入」是同一件事的两半：
-> 补丁负责**把 chatid 塞进消息**，这张表负责**把 chatid 翻成人**。拆两份会让人来回跳。
+> 补丁负责**把 chatid 塞进消息**，身份表负责**把 chatid 翻成群类型/人/角色**。
 
-### 为什么要有这张表
+### 为什么要有身份表
 
 agent 在消息开头能看到 `[anc:chat=<chatid> from=<userid>]`（D17 的注入），但**它不该自己记住谁是谁** —— 名单是易变事实，模型记不住也不该记。
 
-所以把「chatid → 员工」放进本地 SQLite 当真相；agent 只负责把前缀里的 chatid 拿来查，不在上下文里存名单。
+主干 1 起，真相是：
 
-### 表结构
+- `groups`：chatid → `employee` / `department` / `company` / `boss_dm`，部门群带 `dept_id`，每群带 `webhook_file`；
+- `people`：员工/老板/管理者，带 `userid`、`dept_id`、`system_role`；
+- `manager_scopes`：管理者管哪些部门；
+- `chat_bindings`：只保留员工群兼容层，供旧技能/旧脚本继续用。
+
+### 表结构（兼容层）
 
 ```sql
--- 真实定义见 src/service/bindings.ts; 默认库 %ProgramData%\anc\data\anc.db
+-- 真实定义见 src/modules/identity/bindings.ts; 默认库 %ProgramData%\anc\data\anc.db
 CREATE TABLE IF NOT EXISTS chat_bindings (
   chat_id      TEXT PRIMARY KEY,
   employee     TEXT NOT NULL,
-  userid       TEXT,              -- 企微 userid（wokc… 形态）；一人一群时可空
+  userid       TEXT,              -- 企微 userid（wokc… 形态）；员工群兼容层可空
   webhook_file TEXT,              -- secrets 目录下的文件名，如 test2-webhook.txt
   note         TEXT,
   created_at   TEXT NOT NULL,
@@ -86,49 +91,47 @@ CREATE TABLE IF NOT EXISTS chat_bindings (
 **这两列容易被文档漏掉**（2026-11-05 前的 `CHAT-BINDINGS.md` 就漏了 `userid` / `webhook_file`）：
 
 - `userid`：企微的员工 userid。`resolveByUserid()` 靠它做「交办人的通知发到交办人的群」。
-- `webhook_file`：每群一个 webhook 文件。`loop.ts` 按它选文件发提醒，**没登记就发不出去**（`doctor` 的 `bindings` 那一项查的就是这个）。
+- `webhook_file`：员工群 webhook 文件。`groups` 表的公司/部门/`boss_dm` 群也各带 `webhook_file`。
 
 约束：
 
-- 一个人一个群（D7），正常情况下 `employee` 唯一；表本身不强制，方便临时一人多群。
+- 员工群仍是一人一群（D7 兼容层）；`chat_bindings` 不强制唯一，方便临时一人多群。
+- `groups` 的 `employee` 群必须有 `employee_id`，`department` 群必须有 `dept_id`；公司/`boss_dm` 群由 `company.md` 配置。
 - `webhook_file` 只接受 `secrets` 目录下的文件名（字母数字 `._-`，以 `.txt` 结尾），防止路径穿越。
-- schema 由 `scripts/anc-bind/bind.mjs` 或本地小服务建，重复执行安全（`CREATE TABLE IF NOT EXISTS`）。
+- schema 由 `src/core/schema.ts` / `migrate()` 建，重复执行安全。
 
 ### 用法
 
 ```powershell
-# 建群时绑定（管理员执行）
-node scripts\anc-bind\bind.mjs bind --chat-id <chatid> --employee <姓名>
+# 主干 1：org → people/groups/manager_scopes（同时双写 chat_bindings）
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json bind sync-org --org D:\anc\org
+# 一帧消息查群+人+角色
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json bind actor --chat-id <chatid> --userid <wokc…>
+# 旧库回填
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json bind backfill
 
-# 带 userid 和 webhook（实际部署都需要）
+# 旧员工群兼容命令（anc-bind）
 node scripts\anc-bind\bind.mjs bind --chat-id <chatid> --employee <姓名> --userid <wokc…> --webhook-file test2-webhook.txt
-
-# 查
 node scripts\anc-bind\bind.mjs resolve --chat-id <chatid> --json
-
-# 改绑（员工换群 / 离职交接）
-node scripts\anc-bind\bind.mjs bind --chat-id <chatid> --employee <姓名> --note "2026-11 换人"
-
-# 解绑 / 列表
 node scripts\anc-bind\bind.mjs unbind --chat-id <chatid>
 node scripts\anc-bind\bind.mjs list
 ```
 
 退出码：0 成功 / 1 查不到（`resolve`）/ 2 参数或环境错误。支持 `--json`。
 
-测试：`node --test scripts/anc-bind/bind.test.mjs`。
+测试：`node --test scripts/anc-bind/bind.test.mjs`；`src/modules/identity/*.test.ts`。
 
 ### 谁写、什么时候写
 
-- **只允许管理员写**：绑定发生在建群那一步（一人一群），或离职交接时由管理员改。
-- 员工和 agent 都不能改这张表；agent 只读。
+- **只允许管理员/`bind sync-org` 写**：员工群、部门群、公司群、`boss_dm` 的配置都来自 org；离职交接时由管理员改。
+- 员工和 agent 都不能改这些表；agent 只读。
 - 绑定口令方案（管理员在群里发一句、bot 记住）**不再使用** —— 那是 T16 不通过时的退路，现在有 chatid 就不需要了。
 
 ### agent 侧怎么用
 
 1. 每轮消息开头有 `[anc:chat=<chatid> from=<userid>]`；
-2. persona 规则：**先拿 chatid 查绑定表，查到再按员工走**；查不到就按「未绑定的人」处理，不猜；
-3. 具体查法在本地工具/技能里实现（读这张表或调本地小服务的接口），不在 prompt 里塞名单。
+2. persona 规则：**先跑 `bind actor` 拿 group.type / person.system_role / manager_scopes**；查不到按「未识别」处理，不猜；
+3. 具体查法在本地工具/技能里实现，不在 prompt 里塞名单。
 
 ### 隐私与边界
 
