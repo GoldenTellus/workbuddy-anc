@@ -211,6 +211,17 @@ export function listManagerScopes(db: DatabaseSync, personId: string): string[] 
   return rows.map((r) => r.dept_id);
 }
 
+/** 某部门的管理者（用于跨部门审批通知）；只返回启用人。 */
+export function listManagersForDept(db: DatabaseSync, deptId: string): Person[] {
+  const rows = db.prepare(`
+    SELECT p.* FROM people p
+    JOIN manager_scopes ms ON ms.person_id = p.person_id
+    WHERE ms.dept_id = ? AND p.status = 'active'
+    ORDER BY p.person_id
+  `).all(deptId);
+  return rows as unknown as Person[];
+}
+
 /** 只看“这条消息来自哪个群、是谁发的”；权限判断不在这里。 */
 export function resolveActor(db: DatabaseSync, chatId: string, userid: string): ActorContext {
   return {

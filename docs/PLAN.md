@@ -41,8 +41,8 @@ people（老板/管理者/员工）
 - [x] **T1.1 org 角色源**：`company.md` 加 `boss`；`members/<id>.md` 加 `manages`（逗号分隔部门）；校验 boss 唯一、manages 引用存在的部门。
 - [x] **T1.2 领域表**：`people` / `groups` / `manager_scopes`；迁移只加表/列，可回滚；`chat_bindings` 保留兼容。
 - [ ] **T1.3 群解析**：`group.type = employee | department | company | boss_dm`；`department` 带 `dept_id`；从 org 解析成员，企微成员只做校验。**resolver + org→DB 同步已完成；真实群配置/成员校验待 T1.11/T1.12。**
-- [x] **T1.4 权限策略**：boss / manager / employee；管理者按 `manager_scopes` 判范围；P0/P1/P2/P3 优先级。
-- [x] **T1.5 任务请求状态机**：`pending_approval` / `pending_acceptance` / `open` / `rejected`；审批人 = 执行人部门任一管理者；老板兜底；拒绝带原因。
+- [x] **T1.4 权限策略**：boss / manager / employee；管理者按 `manager_scopes` 判范围；P0/P1/P2/P3 优先级；`task add` 服务端 `canAssignTo` 已校验。
+- [x] **T1.5 任务请求状态机**：`pending_approval` / `pending_acceptance` / `open` / `rejected`；审批人 = 执行人部门任一管理者；老板兜底；拒绝带原因；请求/批准/接受/拒绝通知链已接 outbox。
 - [x] **T1.6 隐私路由**：数据级别（公司/部门/个人/内部/未知）→ 渠道；公司群可答公司+部门；个人/内部转员工群/1:1；无权限拒绝。**router + `resolvePrivateChat` + 测试已完成；真实群配置由 T1.11/T1.12 接。**
 - [ ] **T1.7 `boss_dm`**：加群类型与配置；真 1:1 可用则用，不可用走私有群；记录 spike 结论。**类型/表已完成；企微 spike 未做。**
 - [x] **T1.8 CLI / 迁移**：`bind`/`list`/`show` 支持群类型；旧 `chat_bindings` 数据迁移；不破坏旧命令。**sync-org / backfill / group-set / group-list / person-list / task request|approve|accept|reject 已完成。**
@@ -53,7 +53,7 @@ people（老板/管理者/员工）
 
 ## 4. 验收
 
-- [ ] 现有 `npm test` 193/193 不退化；新增测试覆盖 org 角色、群类型、管理者范围、两阶段任务、隐私路由。
+- [ ] 现有 `npm test` 196/196 不退化；新增测试覆盖 org 角色、群类型、管理者范围、两阶段任务、隐私路由。
 - [ ] 一个脚本化场景：员工群 / 部门群 / 公司大群 / `boss_dm` 各解析一次，权限符合矩阵。
 - [ ] 同部门请求：`pending_acceptance` → 接受/拒绝；跨部门：`pending_approval` → `pending_acceptance`。
 - [ ] 公司大群可答公司级 + 任意部门级；个人级/内部级转私密；无权限拒绝。

@@ -36,7 +36,7 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json task add --title "<事项>" --chat-id <chatid> --requester-id <当前 person_id> --assignee-id <目标 person_id> --dept-id <目标部门> --requester "<姓名>" --assignee "<姓名>" --requester-userid <当前 userid> --assignee-userid <目标 userid> --due-local "<YYYY-MM-DD HH:mm>"
 ```
 
-- 老板可把 `--assignee-id` 设为任何人；管理者只能设本部门；员工只能设自己。
+- 老板可把 `--assignee-id` 设为任何人；管理者只能设本部门；员工只能设自己。**服务端会校验，越权会失败，不是靠自觉。**
 - **时间用 `--due-local` 传本地时间**（如 `2026-10-31 17:30`），由命令行换算成 UTC；不要自己写 ISO 或做时区换算。
 - 用户只说「下午三点」就先问清是哪天，不要自行猜。
 - 回显用返回里的 `due_local`，例如「已登记 #3：2026-10-31 17:30 提醒你喝水」。
@@ -50,6 +50,7 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 - 同部门：直接 `pending_acceptance`，对方接受后变 `open`；
 - 跨部门：先 `pending_approval`，执行人部门管理者批准后转 `pending_acceptance`，再由执行人接受；
+- 通知由 CLI 入 outbox：请求→执行人；跨部门→执行人部门管理者；批准→执行人；接受/拒绝→交办人；
 - 不要替员工绕过审批直接 `task add` 给别人。
 
 ## 审批 / 接受 / 拒绝

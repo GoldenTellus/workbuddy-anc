@@ -23,6 +23,7 @@
 - `createTask(db, input)` / `getTask` / `listTasks`
 - `createTaskRequest(db, input)`：同部门 `pending_acceptance`，跨部门 `pending_approval`
 - `approveTaskRequest` / `acceptTaskRequest` / `rejectTaskRequest`：两阶段审批/接受
+- 任务请求的对外通知由 `interfaces` 层解析群/人后落到 outbox；tasks 只改状态，不 import identity
 - `completeTask(db, id, {chatId?, text}, actor?)` → `{task, enqueued}`；**完成与出站消息同事务**
 - `cancelTask` / `reassignTasks`（离职转交，幂等）
 - `startBackgroundTask` / `markTimedOut` / `reviewTask(id, 'retry'|'close')`

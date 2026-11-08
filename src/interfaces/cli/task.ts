@@ -1,6 +1,7 @@
 import * as tasks from '../../modules/tasks/index.ts';
 import * as reminders from '../../modules/tasks/index.ts';
 import * as identity from '../../modules/identity/index.ts';
+import { notifyTaskEvent } from './task-notify.ts';
 import type { CliContext } from './context.ts';
 
 export default function task(ctx: CliContext): void {
@@ -20,6 +21,16 @@ export default function task(ctx: CliContext): void {
       if (Number.isNaN(d.getTime())) fail('--due-local 不是合法时间（用 "YYYY-MM-DD HH:mm"）');
       dueAt = d.toISOString();
     }
+    const requesterId = typeof args['requester-id'] === 'string' ? args['requester-id'] : undefined;
+    const assigneeId = typeof args['assignee-id'] === 'string' ? args['assignee-id'] : undefined;
+    if (requesterId || assigneeId) {
+      if (!requesterId || !assigneeId) fail('--requester-id / --assignee-id 必须同时提供');
+      const requester = identity.resolvePerson(db, requesterId!);
+      const assignee = identity.resolvePerson(db, assigneeId!);
+      if (!requester) fail('找不到发起人: ' + requesterId);
+      if (!assignee) fail('找不到执行人: ' + assigneeId);
+      if (!identity.canAssignTo(db, requester, assignee)) fail('没有派活权限：老板可全局，管理者只能本部门，员工只能给自己');
+    }
     const t = tasks.createTask(db, {
       title: String(args.title ?? ''),
       chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined,
@@ -31,8 +42,8 @@ export default function task(ctx: CliContext): void {
       // 后台任务（D22）：执行器是 WorkBuddy，小服务只管超时；简单任务不允许 start
       kind: args.kind === 'background' ? 'background' : 'simple',
       timeoutMinutes: typeof args.timeout === 'string' ? numArg(args.timeout, 30, 1, 1440) : undefined,
-      requesterId: typeof args['requester-id'] === 'string' ? args['requester-id'] : undefined,
-      assigneeId: typeof args['assignee-id'] === 'string' ? args['assignee-id'] : undefined,
+      requesterId,
+      assigneeId,
       originGroupId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined,
       deptId: typeof args['dept-id'] === 'string' ? args['dept-id'] : undefined,
     });
@@ -65,23 +76,25 @@ export default function task(ctx: CliContext): void {
       requesterUserId: typeof args['requester-userid'] === 'string' ? args['requester-userid'] : requester.userid ?? undefined,
       assigneeUserId: typeof args['assignee-userid'] === 'string' ? args['assignee-userid'] : assignee.userid ?? undefined,
     });
-    out({ ok: true, task: t, cross_dept: crossDept, requires_approval: requiresApproval });
+    out({ ok: true, task: t, cross_dept: crossDept, requires_approval: requiresApproval, notified: notifyTaskEvent(db, t, 'requested') });
   } else if (cmd === 'approve') {
     const id = num('id');
     const approverId = String(args['approver-id'] ?? '');
     if (!approverId) fail('缺少 --approver-id');
-    const t = tasks.getTask(db, id);
-    if (!t) fail('任务不存在: ' + id);
+    const existing = tasks.getTask(db, id);
+    if (!existing) fail('任务不存在: ' + id);
     const approver = identity.resolvePerson(db, approverId);
-    const assignee = t.assignee_id ? identity.resolvePerson(db, t.assignee_id) : null;
+    const assignee = existing.assignee_id ? identity.resolvePerson(db, existing.assignee_id) : null;
     if (!approver) fail('找不到审批人: ' + approverId);
     if (!assignee || !identity.canApproveCrossDept(db, approver, assignee)) fail('没有跨部门审批权限');
-    out({ ok: true, task: tasks.approveTaskRequest(db, id, approverId) });
+    const t = tasks.approveTaskRequest(db, id, approverId);
+    out({ ok: true, task: t, notified: notifyTaskEvent(db, t, 'approved') });
   } else if (cmd === 'accept') {
     const id = num('id');
     const assigneeId = String(args['assignee-id'] ?? '');
     if (!assigneeId) fail('缺少 --assignee-id');
-    out({ ok: true, task: tasks.acceptTaskRequest(db, id, assigneeId) });
+    const t = tasks.acceptTaskRequest(db, id, assigneeId);
+    out({ ok: true, task: t, notified: notifyTaskEvent(db, t, 'accepted') });
   } else if (cmd === 'reject') {
     const id = num('id');
     const actorId = String(args['actor-id'] ?? '');
@@ -99,7 +112,8 @@ export default function task(ctx: CliContext): void {
     } else {
       fail('只有待审批/待接受的任务能拒绝: ' + t.status);
     }
-    out({ ok: true, task: tasks.rejectTaskRequest(db, id, actorId, reason) });
+    const rejected = tasks.rejectTaskRequest(db, id, actorId, reason);
+    out({ ok: true, task: rejected, notified: notifyTaskEvent(db, rejected, 'rejected') });
   } else if (cmd === 'list') {
     out({ ok: true, tasks: tasks.listTasks(db, { status: args.status as never, chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined }) });
   } else if (cmd === 'get') {

@@ -15,7 +15,7 @@
 - [x] 12 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 193/193；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 196/196；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run 125 个文件；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -41,7 +41,7 @@
 - [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
 - [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
 - [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
-- [x] `npm test` **193/193**；`npm run check` 通过。
+- [x] `npm test` **196/196**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ---
@@ -62,10 +62,10 @@
 
 | ID | 缺口 | 类型 | 严重度 | 来源 | 阻塞 | 下一步 |
 |---|---|---|---|---|---|---|
-| GAP-001 | 公司大群/部门级隐私分级与路由 | 实现 | S1 | 主干 1 | 是 | 隐私 router 已有；接实际员工群/1:1 渠道 |
-| GAP-002 | 员工请求同事的两阶段审批/接受 | 实现 | S1 | 主干 1 | 是 | 状态机 + CLI 已有；补通知/真实群接线 |
+| GAP-001 | 公司大群/部门级隐私分级与路由 | 验收 | S1 | 主干 1 | 否 | 隐私 router 已有；接实际员工群/1:1 渠道并入 ACC-05 |
+| GAP-002 | 员工请求同事的两阶段审批/接受 | 验收 | S1 | 主干 1 | 否 | 状态机/CLI/通知链已完成；真实群接线并入 ACC-03/04 |
 | GAP-003 | 公司大群/部门群成员与 org 同步 | 实现 | S2 | 主干 1 | 否 | org 为准；企微成员校验告警；入群/退群/换号 |
-| GAP-004 | 老板 1:1 真通道 / 私有群 fallback | 实现 | S1 | 主干 1 | 是 | 验证真 1:1；不可用走 boss_dm 私有群 |
+| GAP-004 | 老板 1:1 真通道 / 私有群 fallback | 验收 | S1 | 主干 1 | 否 | 类型/配置已有；真 1:1 spike 并入 ACC-06 |
 | GAP-005 | 员工群两个 bot 的触发分工 | 实现 | S1 | 主干 4 | 是 | 员工 bot 只服务员工；补丁/移除查库（GAP-037–039） |
 | GAP-006 | WorkBuddy Executor Session 适配 | 实现 | S0 | 主干 2 | 是 | 先做 adapter spike |
 | GAP-007 | 任务工作区路径/命名/清理 | 实现 | S1 | 主干 2 | 是 | 定 C 盘路径与生命周期 |
@@ -94,13 +94,13 @@
 |---|---|---|---|---|---|---|
 | GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 是 | D1 领域模型 |
 | GAP-027 | 没有 Main / Executor 运行时 | 实现 | S0 | 主干 2 | 是 | D2 执行器 |
-| GAP-028 | 没有 company/department/boss_dm 群模型 | 实现 | S1 | 主干 1 | 是 | people/groups 表 + CLI 已有；补真实群配置/spike |
+| GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | people/groups/CLI/render 已完成；真实群配置并入 ACC-01 |
 | GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
-| GAP-030 | 没有 boss/manager/employee 角色模型 | 实现 | S1 | 主干 1 | 是 | people/policy/sync 已有；补文档与真实群接线 |
+| GAP-030 | 没有 boss/manager/employee 角色模型 | 验收 | S1 | 主干 1 | 否 | people/policy/sync/persona 已完成；真实群接线并入 ACC |
 | GAP-031 | 没有任务工作区 / 会话管理 | 实现 | S1 | 主干 2 | 是 | 每 Ticket 一目录/会话 |
 | GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次通过（当时 191/191），关闭 |
-| GAP-040 | org 角色源未同步到 people/manager_scopes | 实现 | S1 | 主干 1 | 是 | 已解析并同步；仅剩文档/边界收口 |
-| GAP-041 | 公司 bot persona / skills 未接新角色、群类型、任务请求 | 实现 | S1 | 主干 1 | 是 | persona/`anc-task` 已改；真实消息回归并入 T1.11 |
+| GAP-040 | org 角色源未同步到 people/manager_scopes | 实现 | S1 | 主干 1 | 否 | 已解析并同步；文档/边界已收口；关闭 |
+| GAP-041 | 公司 bot persona / skills 未接新角色、群类型、任务请求 | 验收 | S1 | 主干 1 | 否 | persona/anc-task/通知链已完成；真实消息回归并入 ACC |
 | GAP-042 | 四类群真实成员/部署验收未做 | 验收 | S1 | 主干 1 | 否 | render/import/sync/send/deploy 自动 sync 已做；企微成员 API 对账待 ACC-08 |
 | GAP-050 | 四类群真实端到端验收批次 | 验收 | S1 | 主干 1 | 否 | 按 §3.5 ACC-01..08 统一收尾；不阻塞代码推进 |
 | GAP-051 | FUTURE-DESIGN 内部状态/规则不一致（0.8/主干1/叶子/差距表） | 文档/契约 | S1 | 主干 0 | 否 | 已修：0.8/三态/树/叶子/差距表；check 通过；关闭 |
@@ -137,6 +137,7 @@
 | 2026-11-07 | 主干 1 第四批：render groups[] + bind import + send fallback | 0.3 RENDERER/org/identity 契约已同步；0.6 193/193 | GAP-042 大部分完成；deploy 自动同步/成员校验待做 | 无新增 0.1/0.2/0.4/0.5/0.7 |
 | 2026-11-07 | 主干 1 第五批：deploy --db 自动 sync-org + verify-org | 0.3 RENDERER/OPS/LOCAL-SERVICE 已同步；0.6 193/193 | GAP-042 只剩企微 API 成员校验 | 无新增 0.1/0.2/0.4/0.5/0.7 |
 | 2026-11-08 | 全仓文档批量修复 | 0.3 20 份文档同步：概念/部署/契约/计数；0.6 193/193；0.4/0.8 未变 | GAP-033/052 关闭；GAP-042 仍在 ACC | check 通过；真实群验收未跑 |
+| 2026-11-08 | 主干1本地收口：通知链 + task add 权限 | 0.3 LOCAL-SERVICE/anc-task/tasks 契约；0.6 196/196 | GAP-002/041 转验收；GAP-040 关闭 | 真实群 ACC 未跑 |
 | 2026-11-08 | 收尾方式改为“先做完、验收后置” | 0.8 真实环境验收加入主干 0；0.3 流程文档同步；0.6 代码测试不变 | 新增 GAP-050 验收批次；GAP-003/004/042 映射到 ACC | 验收不阻塞推进；统一收尾跑 ACC-01..08 |
 | 2026-11-08 | 完成即更新规则 | 0.3 STATUS §3.6 / FUTURE / DOC-SYNC / AGENTS / skill 同步；0.6 代码测试不变 | 无新增 GAP | 只改代码不算完成；check 通过 |
 | 2026-11-08 | FUTURE-DESIGN 全量审计 + 修复 | 0.3 统一 0.8/三态/树/分支计数/叶子/差距表/D 阶段 | 新增并关闭 GAP-051 | 设计正文已修；代码测试未动 |

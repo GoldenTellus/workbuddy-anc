@@ -57,12 +57,14 @@ npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--m
 npm run service -- --json summary --find <关键词> [--root <目录>] [--max-docs 5]
 
 # 任务（时间用 --due-local 传本地时间，由 CLI 换算 UTC）
+# 带 --requester-id/--assignee-id 时服务端校验派活权限：老板全局、管理者本部门、员工只能给自己
 npm run service -- task add --title "写周报" --chat-id <chatid> --assignee <姓名> --assignee-userid <userid> --requester <姓名> --requester-userid <userid> --due-local "2026-10-31 09:00" [--requester-id <person_id> --assignee-id <person_id> --dept-id <dept>]
 # 主干 1：员工请求同事；跨部门会自动要求先审批
 npm run service -- task request --title "帮我看下报价" --requester-id <person_id> --assignee-id <person_id> --chat-id <origin_chat> [--requires-approval]
 npm run service -- task approve --id <n> --approver-id <manager_person_id>
 npm run service -- task accept --id <n> --assignee-id <person_id>
 npm run service -- task reject --id <n> --actor-id <person_id> --reason "没资源"
+# 通知链：请求→执行人；跨部门→执行人部门管理者；批准→执行人；接受/拒绝→交办人。通知走 outbox，发到对方员工群。
 # 后台任务（D22）：执行器仍是 WorkBuddy，小服务只管超时；start 由 bot 动手时调一次
 npm run service -- task add --title "跑月度汇总" --chat-id <chatid> --requester <姓名> --requester-userid <userid> --kind background --timeout 30
 npm run service -- task start --id 9
