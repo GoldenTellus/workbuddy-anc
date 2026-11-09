@@ -28,6 +28,8 @@
 | `executor_evaluations` | Main 评估记录 | accept/defer/ask/reject、理由、优先级、关联 Ticket |
 | `a2a_messages` | 交回的信封 | 按 `message_id` 去重；文件归档在内部区 `surveys/<survey_id>/` |
 
+**Task ↔ Ticket（GAP-034）**：`tickets.task_id → tasks.id`（外键）；Ticket 状态机**不反向覆盖** Task 状态，Task 沿用现行 `tasks.status`。完整映射/迁移归主干 2 后续，见 [MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md) §2.2.1。
+
 原则（§5.5）：
 
 - **「完成」与对应出站消息在同一个事务里提交**；重复点完成是幂等的，不会重复入队。
@@ -77,6 +79,8 @@ npm run service -- --json executor expire --now "2026-11-10T00:00:00+08:00"
 npm run service -- --json executor sweep --now "2026-11-10T03:00:00+08:00" --grace-minutes 10
 npm run service -- --json executor recover --host-id <old-host> --reason host-restart
 npm run service -- --json executor end --assignment-id <id> --reason completed
+# GAP-054 / D31：Ticket 授权字段 DDL 兜底 tools=[] / vault_paths=[] / budget=null / max_attempts=3 / expires_at=null；
+# Main 每次派单必须显式填写并在决策/claim 里展示，不得依赖默认值当授权（见 MAIN-EXECUTOR.md §2.2）
 
 # 本地摘要（D19/C13）：正文不出本机。只读文件、按规则抽要点，不调模型、不发网络请求
 npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--max-chars 160]
@@ -165,7 +169,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 212/212 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

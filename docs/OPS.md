@@ -24,7 +24,15 @@
 | `anc-http` | 开机 + 每分钟（常驻，已跑不叠跑） | `LOCAL SERVICE` | `cmd /c <bin>\anc-http.cmd` | 只监听 `127.0.0.1:17891`：`/__anc_health` 存活探测（不需 token）、`/__anc_status` 需 Bearer token |
 | `anc-devbot` | 工作日 22:00~06:00 每 30 分钟 | bot 用户（Interactive） | `devbot-scheduler.ps1` | 查「全员下班」，满足三个条件才触发夜间迭代闭环；与另两个交互类任务同一 principal |
 
-PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册用 `scripts\deploy\register-tasks.ps1`（默认 dry-run，`-Apply` 才写；两个交互类任务要求 bot 用户已登录过、没有用户配置目录时会拒绝注册）：`-BotUser`、`-BackupDestination`、`-CleanupMediaDir` 都可覆盖。
+PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <bin>\<脚本>`。两个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd`）与 `anc-loop.cmd` 的应有内容在仓库 `scripts/` 下，部署时以它们覆盖主机上的同名文件；`.cmd` 只写 ASCII（cmd.exe 按 OEM 代码页读）。注册用 `scripts\deploy\register-tasks.ps1`（默认 dry-run，`-Apply` 才写；三个交互类任务要求 bot 用户已登录过、没有用户配置目录时会拒绝注册）：`-BotUser`、`-BackupDestination`、`-CleanupMediaDir` 都可覆盖。
+
+> **两个容易踩的注册偏差（2026-11-09 实测）**：
+> - **`-BotUser` 默认取「当前部署账号」（`$env:USERNAME`，D25）**，不再硬编码 `anc-bot` / `Administrator`；
+>   本机实测 `BotUser=DNT`。早先默认值与 D25 矛盾（照默认值跑会要求一个不存在/没登录过的用户配置目录），
+>   换账号部署时才需要显式传。
+> - **从部署目录 `%ProgramData%\anc\bin` 跑必须显式传 `-Repo <仓库根>`**：脚本按「向上找 `.git`」探测仓库根，
+>   部署目录里找不到，`anc-devbot` 的动作会指不到 `scripts\devbot\devbot-scheduler.ps1`；
+>   本机实测要传 `-Repo D:\workbuddy-anc`。仓库里直接跑可自动探测。
 
 ### 部署（一条命令）
 
@@ -112,12 +120,36 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 登录拉起（`anc-launch.cmd`）、守卫与自愈三条启动路径必须用同一份补丁：`anc-launch.cmd` 一律以仓库 `scripts/launch/anc-launch.cmd` 为准，指向 `%ProgramData%\anc\patch\launch-patched.ps1`。入库技能调用的入库 CLI 同理，应从部署目录跑，不从工作副本跑。
 
 公司 bot 看到消息没有 `[anc:chat=…]` 前缀时**不再自己跑自愈**，只回「身份识别暂不可用」；修复完全交给守卫。任何群成员都能发消息，交给 bot 触发等于让人随意重启 WorkBuddy。
+
+## WorkBuddy 装在非标准路径（Junction）
+
+WorkBuddy 可以装在非标准位置。本机实测装在 `D:\App\WorkBuddy`，用 **Junction** 在标准位置指过去；
+补丁启动器、`doctor`、`anc-update-watch` 都按标准位置或 `workbuddy-path.txt` 定位。
+
+```powershell
+# 建 Junction（标准位置 → 实际安装目录）
+New-Item -ItemType Junction -Path "$env:LOCALAPPDATA\Programs\WorkBuddy" -Target 'D:\App\WorkBuddy'
+
+# 回滚 = 删 Junction（只删链接，不动 D:\App\WorkBuddy 本体）
+Remove-Item "$env:LOCALAPPDATA\Programs\WorkBuddy"
+```
+
+- **Junction 是机器相关状态**：重装 WorkBuddy、换机器、还原系统后要重建；git 和备份里都没有它。
+- **`doctor` 的 `workbuddy` 检查**：先读 `%ProgramData%\anc\data\workbuddy-path.txt`（补丁 `preload.cjs`
+  启动时写入实际 `process.execPath`，LOCAL SERVICE 也能定位），读不到或文件不存在再回落
+  `%LOCALAPPDATA%\Programs\WorkBuddy\WorkBuddy.exe`：
+  - 两处都找不到 exe → `WARN 找不到 WorkBuddy.exe`（不是 FAIL，常见于还没装或换路径后没重启补丁）；
+  - 找到但版本 ≠ `%ProgramData%\anc\patch\manifest.json` 的 `workbuddyVersion` → `FAIL`（按 `WORKBUDDY-PATCH.md` 重放补丁并更新 manifest）；
+  - 本机实测 `PASS 版本 5.9.3`（`workbuddy-path.txt` 指向标准位置，经 Junction 落到 `D:\App\WorkBuddy`）。
+- **排障顺序**：`Get-Item "$env:LOCALAPPDATA\Programs\WorkBuddy" | Select-Object LinkType,Target` 看 Junction 在不在 →
+  看 `workbuddy-path.txt` 内容 → 再跑 `doctor -Repo <仓库根> -Json`。
+
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor\doctor.ps1              # 只读体检（31 项）：部署账号（D25 用管理员账号）、进程 owner、13 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor\doctor.ps1              # 只读体检（34 项）：部署账号（D25 用管理员账号）、进程 owner、13 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
 powershell -File scripts\doctor\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
-powershell -File scripts\doctor\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
+powershell -File scripts\doctor\doctor.ps1 -BotUser X   # 换专用用户名（默认当前登录账号）
 powershell -File scripts\selfheal\watchdog.ps1            # 手动跑一次看有没有要告警的
 ```
 
@@ -131,7 +163,7 @@ doctor 退出码：0 无 FAIL，1 有 FAIL，并在末尾列出 `FIX`。全 PASS
 | 共享名 | `anc-vault-shared` → `D:\anc\vault-shared` |
 | 共享层权限 | `Authenticated Users` 只读、`Administrators` 完全控制 |
 | NTFS（共享区） | `BUILTIN\Users` 只读；`Administrators` / `SYSTEM` 完全控制；已断开继承，去掉继承来的 `Authenticated Users: Modify` |
-| NTFS（内部区） | 只有 `Administrators` / `SYSTEM`；普通用户与 `Authenticated Users` 已移除 |
+| NTFS（内部区） | 只有 `Administrators` / `SYSTEM` + 当前运行用户；`BUILTIN\Users` 与 `Authenticated Users` 已移除 |
 
 > 员工共享账号还没建：按 FORK §5.4，每人一个「只用于读共享、不能登录桌面」的本地账号，等员工名单确定后补。
 
@@ -164,8 +196,8 @@ powershell -ExecutionPolicy Bypass -File scripts\backup\backup-anc.ps1 -Destinat
 
 - 备份是 SQLite `VACUUM INTO` 的一致性快照，服务在跑也能做；
 - 恢复：停 `anc-service` → 用备份文件覆盖 `anc.db`（同时删掉 `-wal`/`-shm`）→ 启动任务；
-- **离机目标要填上才算真正离机**：当前任务的参数里没有 `-Destination`，需要时改任务参数或加一个带目标的副本。
-- **同一块物理盘不算离机**：脚本会比对两边的 `DiskNumber`，同盘就发运维告警（同一块盘只报一次，状态记在 `%ProgramData%\anc\data\backup.state.json`）。本机 `E:\anc-backup` 与 `C:` 都在 Disk 0，等于没有离机保护——要接独立盘或 UNC。
+- **离机目标要填上才算真正离机**：注册任务时用 `-BackupDestination <独立盘或 UNC>` 指定（脚本会把它写成任务参数 `-Destination`；本机实测注册为 `D:\anc-backup`）。目标不可达只告警，不算备份失败。
+- **同一块物理盘不算离机**：脚本会比对两边的 `DiskNumber`，同盘就发运维告警（同一块盘只报一次，状态记在 `%ProgramData%\anc\data\backup.state.json`）。本机 2026-11-09 实测：离机目标 `D:\anc-backup` 与本地备份同在 Disk 0 —— 会发 WARN、离机复制照常，但等于没有离机保护；要接独立物理盘或 UNC。`doctor` 的 `backup-freshness` 只看本地备份，因此这个 WARN 不影响它 PASS。
 - 保留策略：本地 `-Keep 14` 份（每天一份约两周）；离机 `-OffsiteKeep 60` + 每月 1 号那份留 `-OffsiteMonthlyKeep 12`（月档不会被日保留挤掉）。
 - 失败一定告警：`cli` 退出码非 0、文件为空/没生成、离机复制失败都会发 `ops-webhook.txt`；`doctor` 的 `backup-freshness` 在最近备份超过 30 小时时 FAIL。
 

@@ -1,7 +1,7 @@
 # PLAN — 当前主干：主干 0（收尾、清债与现状修正）
 
 > 类型：执行（当前主干）
-> 状态：2026-11-09 切换 · 本机收口已做，待两机验收
+> 状态：2026-11-09 本机收口执行完成 · 0.8 ACC-07/09 部分达成，其余待真实环境
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 0（分支 0.1–0.8）
 > 账本：[STATUS.md](./STATUS.md) §3.1–§3.5
 > 上一个主干：[archive/plans/TRUNK-2-INPROGRESS-20261109.md](./archive/plans/TRUNK-2-INPROGRESS-20261109.md)
@@ -51,6 +51,18 @@ WorkBuddy：5.9.3
 跨进程 recover → bootstrap → 重新 claim
 /new 新建对话 → workbuddy-anc → NEW_OK
 wake bridge 当前窗口注入
+```
+
+**2026-11-09 本机收口实测（执行本 PLAN 后更新）**：
+
+```text
+测试：212 / 212 ×3      模块：13 / 13 current
+CLI：17 组               技能：8
+计划任务：13 个 Ready     部署：137 文件（hash 对拍通过）
+doctor：34 项 FAIL=0 WARN=3
+deploy-verify：ok:true pass=4 fail=0 skip=1（bot-reply 无群 SKIP）
+补丁：applied=true mode=hash pid=24140 活着
+覆盖率：行 90.83 / 分支 80.43 / 函数 94.99
 ```
 
 ## 3. 两侧职责
@@ -186,22 +198,23 @@ deploy-verify          公司侧 ok:true；员工侧 smoke
 
 ### 5.1 代码与数据库
 
-- [ ] `npm test` 212/212；连续 3 次不挂起。
-- [ ] `npm run check`、`check-public.mjs` 通过。
-- [ ] schema 迁移能在旧库上跑；`executor_hosts/tickets/assignments/reports/events/evaluations` 可查。
-- [ ] 17 组 CLI smoke；`executor claim/start/report/end/recover/sweep/expire/evaluate` 可用。
-- [ ] `doctor` 31 项 FAIL=0；13 个任务 principal 正确。
+- [x] `npm test` 212/212；连续 3 次不挂起（`baseline/01-npm-test-run{1,2,3}`，40.6/43.7/40.7s）。
+- [x] `npm run check`、`check-public.mjs` 通过（零输出 exit 0）。
+- [x] schema 迁移能在旧库上跑；`executor_hosts/tickets/assignments/reports/events/evaluations` 可查（`deploy-verify` task-write PASS；`doctor database` PASS）。
+- [x] 17 组 CLI smoke；`executor claim/start/report/end/recover/sweep/expire/evaluate` 可用（`cli.smoke` + registry order=17）。
+- [x] `doctor` **34 项** FAIL=0；13 个任务 principal 正确（9 LOCAL SERVICE / 1 SYSTEM / 3 DNT 交互）。
 
 ### 5.2 部署与运行
 
-- [ ] `deploy.ps1` dry-run 通过，`-Apply` 后逐文件 hash 对拍通过。
-- [ ] `register-tasks.ps1 -Apply` 后 13 个任务 Ready/Running。
-- [ ] 补丁启动器：`patch-state.applied=true` 且 pid 活着。
-- [ ] 需要自动 host 时：创建 `wb-wake.flag`、`wb-wake-workspace.txt`，重启后 `18187/health` 通。
-- [ ] `anc-executor-host-tick` 在无新 host 时标 `cut_deferred`，旧 host 继续接单。
-- [ ] `anc-executor-new-host` 在 03:00 能新建 host 对话。
-- [ ] `anc-executor-wake` 只在 queued>0 时唤醒；不覆盖人的草稿。
-- [ ] 备份/恢复演练；日志轮转。
+- [x] `deploy.ps1` dry-run 通过，`-Apply` 后逐文件 hash 对拍通过（137 文件；`stage/elevated-*.log`）。
+- [x] `register-tasks.ps1 -Apply` 后 13 个任务 Ready/Running（`stage/tasks-elevated.json`）。
+- [x] 补丁启动器：`patch-state.applied=true` 且 pid 活着（pid 24140，mode=hash，version 5.9.3）。
+- [ ] 需要自动 host 时：创建 `wb-wake.flag`、`wb-wake-workspace.txt`，重启后 `18187/health` 通（**未启用**，默认关；ACC-09 差此项）。
+- [ ] `anc-executor-host-tick` 在无新 host 时标 `cut_deferred`，旧 host 继续接单（脚本/单测已有；未在真实 03:00 触发）。
+- [ ] `anc-executor-new-host` 在 03:00 能新建 host 对话（任务已注册；未到点验证；ACC-10）。
+- [ ] `anc-executor-wake` 只在 queued>0 时唤醒；不覆盖人的草稿（脚本已落、真实窗口注入曾验；本机 bridge 未启用）。
+- [x] 备份跑通：本地 `backup\anc-20261109-153622.db` + 离机 `D:\anc-backup`（同物理盘 WARN）；回滚在临时根演练通过（首次部署删 137 文件 / 升级恢复备份，`stage/rollback-drill.log`）。
+- [ ] 恢复演练（从备份覆盖回库）；日志轮转实测（脚本已有，未专门演练）。
 
 ### 5.3 真实群与人工通道
 
@@ -264,10 +277,10 @@ deploy-verify          公司侧 ok:true；员工侧 smoke
 
 | 项 | 现状 | 主干 0 处理 |
 |---|---|---|
-| GAP-054 tools/vault_paths/budget 默认值 | DDL 有字段 | 定默认值或明确由 Main 每次填 |
-| GAP-055 Main↔Executor ack/重试 | claim/report 已落 | 定 at-least-once 边界 |
-| GAP-026/056 Attention/Notification | 主干 3 接口 | 主干 0 只定占位，不实现全链路 |
-| GAP-058 产物/证据保留 | 未定 | 定保留期/清理责任 |
+| GAP-054 tools/vault_paths/budget 默认值 | DDL 有字段 | **已定（D31）**：DDL 兜底（tools=[]、vault_paths=[]、budget=null、max_attempts=3、expires_at=null）；Main 每次派单显式填并展示 |
+| GAP-055 Main↔Executor ack/重试 | claim/report 已落 | **已定（D31）**：at-least-once、无独立 ack、start/report 幂等、迟到 Report 只留证 |
+| GAP-026/056 Attention/Notification | 主干 3 接口 | 主干 0 只定占位，不实现全链路；接口归主干 3 |
+| GAP-058 产物/证据保留 | 未定 | **已定（D31）**：任务目录 90 天 / reports·events 180 天 / vault 长期；清理责任=运维；自动清理未实现（接受） |
 | D28 强 ACL | 已接受逻辑隔离 | 不阻塞；B 方案留以后 |
 | GAP-008 background | 已定 Main 评估 | 已落 evaluations；自动评估器不做 |
 
@@ -324,16 +337,20 @@ deploy-verify          公司侧 ok:true；员工侧 smoke
 10. 最后才改主干 0 状态
 ```
 
-### 10.3 计数取数命令
+### 10.3 计数取数命令（PowerShell 5.1 / node，2026-11-09 校正）
+
+> 原版用了 `grep` / `ls -d | wc -l` 等 Linux 命令，Windows 主机上不可用（GAP-066）。
 
 ```powershell
-npm test
-npm run check
+npm.cmd test
+npm.cmd run check
 node scripts/checks/check-public.mjs
-grep -c "Name = '" scripts/deploy/register-tasks.ps1
-grep -c "id: '" module-map.json
-ls -d light/skills/*/ | wc -l
+(Select-String -Path scripts\deploy\register-tasks.ps1 -Pattern "Name = 'anc-").Count
+node -e "const m=require('./module-map.json'); console.log(m.modules.length)"
+@(Get-ChildItem light\skills -Directory).Count
 node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"
+node -e "import('./src/service/deploy-verify.ps1')"   # 不适用；deploy-verify 用:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-verify.ps1 -Side company -Json
 ```
 
 ### 10.4 不许做的事
@@ -364,3 +381,42 @@ node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.orde
 ```
 
 本 PLAN 不把“本机测试通过”当成“主干 0 完成”。
+
+> **2026-11-09 执行状态**：本机收口（0.1–0.7）已按证据执行完；0.8 的 ACC-07/09 部分达成，其余 10 项待真实环境。主干 0 **仍未完成**，PLAN 保持进行中；本轮进度快照见 [archive/plans/TRUNK-0-INPROGRESS-20261109.md](./archive/plans/TRUNK-0-INPROGRESS-20261109.md)。
+
+## 13. 执行记录（2026-11-09，本机）
+
+### 13.1 代码 / 门禁
+
+- `npm test` 212/212 ×3（40.6/43.7/40.7s），`npm run check` 通过，`check-public` 零输出，`scan-catch` 空吞 0，`check-modules --strict-deep` 通过，`doctor -SelfTest` ALL PASS，coverage 90.83/80.43/94.99。
+- 证据：`.workbuddy/verify/baseline/SUMMARY.md` + 13 个日志（gitignored）。
+
+### 13.2 部署 / 运维（公司侧本机）
+
+- `deploy.ps1 -Apply` 137 文件（hash 全过）；`deploy-skills.ps1 -Apply` 8 技能；`register-tasks.ps1 -Apply` 13 任务 Ready；补丁 `applied=true pid=24140`；vault 两区 + SMB；org（新未来/公司bot，0 成员）+ persona；secrets 4 文件；`backup-anc.ps1` 跑通；`deploy.ps1 -Rollback` 临时根演练（首次/升级）。
+- `doctor` 34 项 FAIL=0 WARN=3（canary 在 15:38 收到首条真实消息后 PASS）；`deploy-verify` `ok:true pass=4 fail=0 skip=1`（bot-reply 无群）。
+- 真实消息验证：补丁在真实企微入站消息上注入群身份（canary 三项 true），说明补丁链路在真实路径生效；仍无群绑定，`bot-reply` SKIP。
+- 代码修复后重新 `deploy.ps1 -Apply` 137 文件 hash 全过（备份 `deploy-20261109-155502`）。
+- 证据：`%ProgramData%\anc\stage\elevated-*.log`、`stage\elevated-done.json`、`.workbuddy/verify/deploy/`。
+
+### 13.3 本轮修复（GAP-068，随本提交）
+
+- `deploy.ps1`：`$Map` 补 `modules\executor`；新增 `-Rollback`（首次=按清单删除，升级=恢复最近备份）。
+- `doctor.ps1`：`Test-DeployLayout` 补 `modules/executor/index.ts` 入口检查。
+- `deploy-skills.ps1`：仓库根改为向上找 `.git`（原写死两级 → 报“没有 light\skills”）。
+- `register-tasks.ps1`：2 处 `New-ServicePrincipal` 补 `$ServiceAccount`；`$BotUser` 默认改 `$env:USERNAME`。
+- `deploy-verify.ps1`：给 doctor 传 `-Repo`（消除 WARN 数不一致）。
+- 注意：`.ps1` 改完必须补回 UTF-8 BOM 再跑门禁。
+
+### 13.4 仍未完成（0.8 真实环境）
+
+| 项 | 缺什么 | 下一步 |
+|---|---|---|
+| ACC-01..06 / 08 / 12 | 四类群 chatid + webhook、员工名单/userid/部门、老板 userid、企微成员 API、第二台电脑 | 用户补数据后按 DEPLOY-COMPANY §10–§12 跑 |
+| ACC-09 剩余 | wake bridge 18187（默认关） | 用户确认启用后建 flag/workspace + 补丁重启 |
+| ACC-10 | 真实队列 + 03:00 + bridge | 依赖 ACC-01/09 |
+| ACC-11 | 真实 host 会话 + WorkBuddy 窗口重启 | 依赖 ACC-09/10 |
+| ACC-07 生产回滚窗口 | 一次生产回滚窗口（当前仅临时根演练） | 用户确认窗口后跑 `deploy.ps1 -Rollback` → `-Apply` |
+| 备份恢复演练 / 独立备份盘 | 恢复演练 + 独立盘/UNC | 用户提供盘后跑 |
+| GAP-034/053/070 | Task↔Ticket 映射实现、重试/拆分 | 归主干 2 后续 |
+| GAP-009/011/025 等 | 模型/预算、主动任务、审计面板 | 留后续主干 |

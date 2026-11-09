@@ -3,7 +3,7 @@
 > 类型：模块契约
 
 > 状态：现行（P5 后按域分组到 `scripts/<domain>/`，部署仍扁平到 `bin/`）
-> 代码：`scripts/`（50 个文件）
+> 代码：`scripts/`（54 个文件）
 > 入口：`scripts/deploy/deploy.ps1`
 
 ## 职责
@@ -24,7 +24,7 @@
 
 - `deploy.ps1`（默认 dry-run；`-Apply` 落盘；备份 → 复制 → 逐文件 SHA-256 对拍 → 失败整体回滚）
 - `deploy-verify.ps1 -Side company|employee -Json` → `ok: true`
-- `doctor.ps1 -Root <r> -Repo <r> -VaultRoot <r> -Json` → **31 项**，`FAIL=0`
+- `doctor.ps1 -Root <r> -Repo <r> -VaultRoot <r> -Json` → **34 项**，`FAIL=0`
 - `doctor.ps1 -SelfTest`：用 `%TEMP%` 夹具证明每类检查能 FAIL
 - `backup-anc.ps1 -Destination <盘>`；`register-tasks.ps1 -Apply`；`prepare-wipe.ps1 -Apply`；`rebuild-*.ps1`
 - 退出码：0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已回滚
@@ -55,7 +55,7 @@
 
 ## 测试
 
-`doctor -SelfTest`；`doctor-fault-matrix.mjs`（30/31 项已注入）；临时根 `deploy -Apply` + `deploy-verify`；重建演练 `rebuild-drill.ps1`。
+`doctor -SelfTest`；`doctor-fault-matrix.mjs`（故障矩阵基数 34，注入覆盖待重跑；历史 30/31 只代表旧基数）；临时根 `deploy -Apply` + `deploy-verify`；重建演练 `rebuild-drill.ps1`。
 
 ## 改动指南
 
@@ -69,3 +69,4 @@
 |---|---|---|
 | 2026-11-06 | 建档；P5 目标为按域分组、部署扁平化 | 模块化立项 |
 | 2026-11-06 | P5 完成：49 个脚本分 10 域，部署扁平到 `bin\` | 模块化 |
+| 2026-11-09 | 计数同步：54 个脚本、doctor 34 项；故障矩阵基数 34 待重跑 | 主干 0 文档收口（GAP-066） |

@@ -1,6 +1,6 @@
 # Main ↔ Executor 契约（主干 2）
 
-> 类型：接口契约（草案，未实现）
+> 类型：接口契约（现行；executor 侧已实现（本机 2026-11-09 部署通过），Main 行为由 `light/skills/anc-executor` 落地）
 > 最后整理：2026-11-09
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 2 / [PLAN.md](./PLAN.md) T2.1–T2.5
 > 参考：[upstreams/dsh-superagent.md](./upstreams/dsh-superagent.md)（只借模型，不拷贝代码）
@@ -32,7 +32,7 @@ task 行（title / requester_id / assignee_id / dept_id / due_at / kind=backgrou
 请求人角色与部门范围
 已有 Ticket / Assignment（去重）
 当前 slot（4 normal + 1 human）
-授权默认值（tools / vault_paths / budget / max_attempts）
+授权默认值（tools / vault_paths / budget / max_attempts / expires_at，见 §2.2）
 ```
 
 ### 硬门槛（任一不过就不接）
@@ -103,7 +103,7 @@ task 行（title / requester_id / assignee_id / dept_id / due_at / kind=backgrou
 - 没有任务时 `claim` 返回 `data: null`，不阻塞、不 sleep。
 - 一个 tick 最多 claim `normal limit` 个；human slot 单独走 `--slot human`。
 
-## 2. CLI 命令（草案）
+## 2. CLI 命令（现行）
 
 所有命令支持 `--db` / `--json`，退出码 0 成功、1 业务拒绝、2 参数/环境错误。
 
@@ -181,6 +181,15 @@ node src/service/cli.ts --json executor start `
 - `pending` 超过 60 秒未 `start`，回到 `queued`，Assignment 标 `failed`（reason `start-timeout`）。
 - `start` 只能把 `pending → running`；重复 start 幂等返回当前状态。
 
+**Ticket 授权字段（GAP-054 / D31）**：DDL 兜底默认值为 `tools=[]`、`vault_paths=[]`、`budget=null`、`max_attempts=3`、`expires_at=null`（`src/core/schema.ts` 的 `tickets` 段）。**这些默认值不是授权**——Main 每次派单建 Ticket 时必须显式填写上述字段，并在决策输出与 claim 返回里展示；不得先建空授权 Ticket、再靠 DDL 默认值放行。
+
+### 2.2.1 Task ↔ Ticket 映射（GAP-034）
+
+- `tickets.task_id → tasks.id` 是唯一关联（外键）；Ticket 是 Task 的执行单元，一个 Task 可以有多个历史 Ticket，同一 Task 不并存两个 open Ticket 由 Main 派单去重保证。
+- Ticket 状态机**不反向覆盖** Task 状态；Task 沿用现行 `tasks.status`（`open / pending_approval / pending_acceptance / done / cancelled / rejected / needs_review`，见 [LOCAL-SERVICE.md](./LOCAL-SERVICE.md) 数据模型）。
+- 完成 / 取消仍由 `task` 命令判定，Ticket 的 `done / failed` 只是执行证据。
+- 完整双向映射、状态机统一与数据迁移归**主干 2 后续**（GAP-034，不假关）。
+
 ### 2.3 Report / end
 
 ```powershell
@@ -219,6 +228,12 @@ report dropped  → done
 - `end` 只能从 `running → ended`；`interrupted/failed/cancelled` 是调度器/人工的终态。
 - 迟到 Report（Assignment 已不是 active）只记录，不覆盖 Ticket 当前状态。
 
+**投递语义（GAP-055 / D31）：at-least-once**
+
+- Main ↔ 本地服务**没有独立 ack**：`claim` 返回 Assignment 即视为投递；Main 崩溃后同一 Ticket 可能被再次 claim，靠下面的幂等收敛。
+- `claim` / `start` / `report` / `end` 全部幂等：重复 `start` 不新建 Assignment（返回当前状态）；同一 Assignment 重复 `report` **以第一次为准**，后续返回 409/业务拒绝并记 `executor_events`（不重复推进 Ticket）。
+- 迟到 Report（Assignment 已结束/被接管）记 `reports.late=1`，**只留证**：不覆盖新 Assignment 状态，也不覆盖 Ticket 当前状态。
+
 ### 2.4 Human slot
 
 ```powershell
@@ -251,10 +266,11 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 | `evidence` | 否 | 相对任务目录的路径数组；不能是绝对路径 |
 | `next_step` | 否 | `waiting/blocked` 时说明需要什么 |
 
-解析失败：
+解析失败（GAP-064：契约与实现对齐，已接受的偏差）：
 
-- 找不到 JSON / 字段不合法 → 记 `failed` Report，summary 保留截断的原始输出；
-- 不猜测成功，不把自由文本当 `ready`；
+- 找不到 JSON / 字段不合法 → CLI 报错并以非 0 退出，**不落 failed Report**；
+- 原始输出与错误信息保留在 CLI `stderr` / 主机日志里，作为证据，不进库；
+- Main 检测到该失败后决定重试（重新起 subagent）或降级（发 Attention / 人工处理）；不猜测成功，不把自由文本当 `ready`；
 - Main 可发 Attention，但不直接改 Ticket。
 
 ## 4. Main 唤醒
@@ -306,7 +322,12 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 | 自动创建 03:00 新对话 | GAP-065 |
 | 定时唤醒用 WorkBuddy 哪个机制 | 已落：`anc-executor-wake` + opt-in wake bridge |
 | Report 解析失败后的 Attention 话术 | 主干 3 |
+| Attention 接口（问答 / 确认 / 超时） | 主干 3（占位；本契约只留 `waiting` Report 信号） |
 | 强路径隔离/ACL | D28：接受逻辑隔离；OS/ACL 留作部署选项 |
-| 授权默认值（tools/vault_paths/budget） | GAP-054 |
+| 授权默认值（tools/vault_paths/budget/expires_at） | 已定：DDL 兜底 + Main 每次显式填（GAP-054 / D31，见 §2.2） |
+| Ticket 授权字段的 CLI 入参（`--tools` / `--vault-paths` / `--budget` / `--max-attempts` / `--expires-at`） | 待补（GAP-054 实现对齐）：模块 `createTicket` 已支持，CLI `ticket create` 尚未暴露 |
+| 重复 Report 的 409/拒绝收敛 | 待补（GAP-055 实现对齐）：当前 `appendReport` 对同一 running Assignment 允许多条、对已结束 Assignment 记 `late=1` 不拒绝 |
+| 产物/证据保留与清理 | GAP-058 / D31：任务目录 **90 天**、executor reports/events 审计 **180 天**、vault 投影**长期**；清理责任 = 主机管理员 / 运维计划任务；**自动清理未实现（待实现）** |
+| Task ↔ Ticket 完整映射与迁移 | 主干 2 后续（GAP-034，见 §2.2.1） |
 
-本契约先解决 **GAP-062 / GAP-064** 的接口形状；实现和真实 spike 仍按 PLAN T2.1–T2.5 推进。
+本契约解决 **GAP-062 / GAP-064** 的接口形状；executor 侧已实现（本机 2026-11-09 部署通过），Main 行为由 `light/skills/anc-executor` 落地。03:00 自动 bootstrap、重复投递收敛等真实 spike 仍按 PLAN T2.x / 主干 2 后续推进。

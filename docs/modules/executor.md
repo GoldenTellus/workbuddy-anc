@@ -3,6 +3,7 @@
 > 状态：现行（主干 2 第一批）
 > 代码：`src/modules/executor/{executor}.ts`
 > 入口：`src/modules/executor/index.ts`
+> 部署：`%ProgramData%\anc\modules\executor\`（`deploy.ps1` 映射 `modules\executor`）
 
 ## 职责
 
@@ -16,6 +17,8 @@
 | `tickets` 表 | 执行单元；`department_id`、`task_dir`、优先级、状态；不替代 `tasks` |
 | `assignments` 表 | 一次 subagent 尝试；一个 Ticket 同时只能有一个 pending/running |
 | `reports` 表 | 只追加：`progress / waiting / ready / blocked / failed / dropped` |
+| `executor_events` 表 | 只追加审计：claim / start / report / end / interrupt / recover |
+| `executor_evaluations` 表 | Main 对 background 候选的评估记录（accept/defer/ask/reject） |
 
 ## 公开契约
 
@@ -79,3 +82,4 @@
 | 日期 | 改了什么 | 为什么 |
 |---|---|---|
 | 2026-11-09 | 建档；加 host/ticket/assignment/report 与 slot/日切 | 主干 2 T2.1/T2.2 |
+| 2026-11-09 | 「拥有」补 `executor_events` / `executor_evaluations`；补部署目标 | 契约与实现（`schema.ts` 6 表）对齐 |

@@ -38,7 +38,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单与审计表 |
 | `docs/PRODUCT.md` | 部署完能干什么：技能、命令组、计划任务、能力边界 |
 | `docs/DECISIONS.md` | 设计裁决台账（D1–D26 及后续）；与代码冲突时先改代码或改决策，不要两边漂 |
-| `docs/modules/` | 12 份模块契约：职责/拥有/公开接口/不变量/失败模式/测试 |
+| `docs/modules/` | 13 份模块契约：职责/拥有/公开接口/不变量/失败模式/测试 |
 | `docs/LOCAL-SERVICE.md` | CLI / HTTP 契约 |
 | `docs/RENDERER.md` / `docs/INGEST.md` / `docs/WORKBUDDY-PATCH.md` | 渲染 / 入库 / 补丁契约 |
 | `docs/DEPLOY-COMPANY.md` / `docs/DEPLOY-EMPLOYEE.md` | 给 agent 的部署手册 |
@@ -75,7 +75,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 - **真实环境验收不阻塞**：需要真实群、凭据、公司主机或现场动作的，登记到 `STATUS` §3.5 的 ACC 批次，继续做能做的；统一收尾时一次跑，通过前主干保持 🟡 待验收。
 - **完成即更新**：任何完成都按 `STATUS` §3.6 更新 `GAP`、`FUTURE-DESIGN` 分支/主干、`PLAN`、模块契约/审计行和测试数；只改代码或文档，不算完成。
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
-- **代码**：TypeScript + Node 22；零或极少运行时依赖；主机脚本 PowerShell 5.1。
+- **代码**：TypeScript + Node 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0 亦可跑 212/212）；零或极少运行时依赖；主机脚本 PowerShell 5.1。
 - **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。
 - **上游**：借代码/设计前先查 `docs/UPSTREAM.md` 与 `docs/upstreams/`；许可证不明只学概念，不拷代码。
 - **计划可变，但改要留痕**：`PLAN` 是当前最佳判断，不是合同；调整理由写进 `PLAN` 顶部或 `STATUS`，不要静默改。

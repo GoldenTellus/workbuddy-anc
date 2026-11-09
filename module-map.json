@@ -48,7 +48,7 @@
       "status": "current",
       "paths": ["src/modules/executor/"],
       "dependsOn": ["core"],
-      "owns": ["executor_hosts 表", "tickets 表", "assignments 表", "reports 表"]
+      "owns": ["executor_hosts 表", "tickets 表", "assignments 表", "reports 表", "executor_events 表", "executor_evaluations 表"]
     },
     {
       "id": "delivery",

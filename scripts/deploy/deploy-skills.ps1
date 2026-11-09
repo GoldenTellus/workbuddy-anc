@@ -29,7 +29,17 @@ param(
 $ErrorActionPreference = 'Stop'
 function Fail($msg, $fix, $code) { Write-Host "ERROR $msg"; if ($fix) { Write-Host "FIX   $fix" }; exit $code }
 
-if (-not $Repo) { $Repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
+if (-not $Repo) {
+    # 脚本在 scripts\deploy\ 下，仓库根不是固定两级：从 $PSScriptRoot 向上找 .git。
+    # 2026-11-09 修：原来写死 Split-Path 两级 → 得到 scripts\，部署技能会报“没有 light\skills”。
+    $c = $PSScriptRoot
+    while ($c -and -not (Test-Path (Join-Path $c '.git'))) {
+        $p = Split-Path -Parent $c
+        if ($p -eq $c) { break }
+        $c = $p
+    }
+    $Repo = $c
+}
 if (-not (Test-Path $Repo)) { Fail "仓库不存在: $Repo" '用 -Repo 指向仓库根' 2 }
 $srcRoot = Join-Path $Repo 'light\skills'
 if (-not (Test-Path $srcRoot)) { Fail "没有 light\skills: $srcRoot" '确认仓库结构' 2 }

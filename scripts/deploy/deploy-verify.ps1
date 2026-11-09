@@ -117,7 +117,11 @@ $doctorScript = if (Test-Path (Join-Path $Repo 'scripts\doctor\doctor.ps1')) { J
 if (-not (Test-Path $doctorScript)) { Write-Host ('ERROR 找不到 doctor.ps1：' + $doctorScript); exit 2 }
     if (Test-Path $doctorScript) {
         try {
-            $dOut = & powershell -NoProfile -ExecutionPolicy Bypass -File $doctorScript -Root $Root -Json 2>&1 | Out-String
+            $docArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $doctorScript, '-Root', $Root, '-Json')
+            # 2026-11-09 修（GAP-068）：不传 -Repo 时 doctor 的 secrets-in-git 只能 WARN，
+            # 导致 deploy-verify 里的 WARN 数比直接跑 doctor 多 1，看起来像不一致。
+            if (Test-Path (Join-Path $Repo '.git')) { $docArgs += @('-Repo', $Repo) }
+            $dOut = & powershell @docArgs 2>&1 | Out-String
             $d = $dOut | ConvertFrom-Json
             if ($d.ok) {
                 Add-Check 'doctor' 'PASS' ("FAIL=0 WARN=" + $d.warns + "（" + @($d.checks).Count + " 项）") ''

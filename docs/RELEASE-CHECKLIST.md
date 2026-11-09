@@ -2,7 +2,7 @@
 
 > 类型：发布门禁（现行）
 
-> **2026-11-08 起**：本清单仍是 1.0 的发布门禁；当前主干 1 发布前还必须跑 `STATUS §3.5` 的 **ACC-01..08**（四类群/角色/两阶段任务/隐私/部署）。本地测试通过不能代替真实验收。
+> **2026-11-08 起**：本清单仍是 1.0 的发布门禁；**2026-11-09 主干 0 收口**后，当前主干发布前还必须跑 `STATUS §3.5` 的 **ACC-01..12**（四类群/角色/两阶段任务/隐私/部署/executor）。本地测试通过不能代替真实验收。
 
 > **读者是 agent，不是人。** 每一项都有可执行的判据；判据不成立就停在这一项，不要往下走。
 >
@@ -10,6 +10,27 @@
 > 「**这东西能不能拿去发布**」。后者包含前者，但多了一整套「代码自己能不能做到」的检验。
 >
 > 背景见 [VERIFY §65](./archive/history/VERIFY.md)（2026-11-05 第一次发布前审计）。
+
+---
+
+## 主干 0 发布门禁（2026-11-09 收口）
+
+> 本表是**当前主干（主干 0）**的发布门禁。下面「阶段 A–D」是 1.0 的历史记录，保留作参考。
+> 数字全部取自 2026-11-09 本机实测；原始证据在 `.workbuddy/verify/`（该目录不进 git）。
+
+| 门禁项 | 判据 | 本机实测（2026-11-09） |
+|---|---|---|
+| 测试 | `npm test` **212/212**，连跑 3 次不挂起 | ✅ 3 次都是 212/212、0 fail（单次 40–44 s） |
+| 静态检查 | `npm run check`（`check:modules:deep` + `check:docs`） | ✅ 通过（13 模块边界干净 + 40 份 Markdown 检查） |
+| 密钥扫描 | `node scripts/checks/check-public.mjs` | ✅ 零输出、exit 0 |
+| 计划任务 | **13 个**全部 Ready/Running，principal 正确 | ✅ 13/13（9 LOCAL SERVICE / 1 SYSTEM / 3 交互，`anc-http` Running） |
+| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **137 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP） |
+| 体检 | `doctor` **FAIL=0** | ✅ **34 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
+| 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
+| ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ⚠️ 仅 ACC-09 基本达成（差 wake bridge 18187）；ACC-07 部分达成（回滚未演练）；其余未达成 |
+
+**发布结论：不满足「ACC 全部通过」。** 主干 0 保持 🟡；本表不放行 1.0 / 主干 0 发布。
+**不得把未跑写成通过**——`deploy-verify` 的 SKIP 只能记「未验」，验收项的判定以 `STATUS §3.5` 为准。
 
 ---
 
@@ -117,7 +138,7 @@ src/service/dayend.ts          92
 
 ```powershell
 npm run coverage     # 那 7 个文件从「不在表里」变成「在表里且有行覆盖」
-npm test             # 应该是 155 项 0 fail（§87 补测后；不能把原有测试弄坏）
+npm test             # 历史读数：当时是 155 项 0 fail（§87 补测后；不能把原有测试弄坏）；2026-11-09 为 212/212
 ```
 
 **同时修两个分测脚本的漏**（`VERIFY §67.4`）：
@@ -127,7 +148,7 @@ npm test             # 应该是 155 项 0 fail（§87 补测后；不能把原�
 | `test:service` | `deploy-state` / `http` / `project` 三个 test |
 | `test:render` | `dept.test.ts` |
 
-因为主 `test` 跑的是 17 个文件全集（155 项是全的），但**分开跑会漏**。
+因为主 `test` 跑的是 17 个文件全集（**历史读数：当时 155 项是全的**；2026-11-09 为 25 个测试文件、212 项），但**分开跑会漏**。
 
 
 ```json
@@ -135,7 +156,7 @@ npm test             # 应该是 155 项 0 fail（§87 补测后；不能把原�
 "coverage": "node --experimental-test-coverage --test test/"
 ```
 
-**判据**：跑出真实的 line/branch 覆盖率数字，写进本文档。**没有这个数字，就不知道这 155 项测试护住的是核心还是边角。**
+**判据**：跑出真实的 line/branch 覆盖率数字，写进本文档。**没有这个数字，就不知道这 155 项测试（历史读数；2026-11-09 为 212 项）护住的是核心还是边角。**
 
 ### A4 错误路径测试  ← **✅ 2026-11-05 完成**（`VERIFY §71`，4/5 通过 + 1 项无结论）
 
@@ -280,7 +301,7 @@ powershell -File scripts\deploy.ps1 -Side company
 | 装公司侧 | **墙钟 59 分钟**（含等问值表 4m37s），**可计量执行 22 分钟**，逐节台账 11446 B |
 | `doctor` | `ok=True fails=0 warns=2`（`work-hours` + `canary`，都要真实群消息） |
 | 补丁 | `applied=true mode=hash 5.9.3`，pid 活着 |
-| 任务 | 10/10 Ready，principal 全对 |
+| 任务 | 10/10 Ready，principal 全对（**历史读数**，2026-11-05；2026-11-09 为 13/13） |
 
 ### ★ 关于「且全程没有问你『这一步该填什么』」这条判据
 

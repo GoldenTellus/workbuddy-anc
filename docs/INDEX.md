@@ -41,16 +41,16 @@
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
 | 测试 | **212 / 212 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
-| 覆盖率（行 / 分支 / 函数） | **91.80% / 81.44% / 95.14%** | `npm run coverage`（2026-11-08 旧基线；2026-11-09 起 212 测试，覆盖率待重跑） |
+| 覆盖率（行 / 分支 / 函数） | **90.83% / 80.43% / 94.99%** | `npm run coverage`（2026-11-09 实测，212 测试） |
 | 测试文件 | **25** 个 | `package.json` 的 `scripts.test` 列表 |
-| doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
+| doctor 检查项 | **34** 项 | 21 个 `Add-Result` 字面量 + 13 个 `task-*` 循环项 |
 | 计划任务 | **13** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
 | 技能目录 | **8** 个 | `ls -d light/skills/*/ \| wc -l` |
 | 本地服务命令组 | **17** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
-| Node | **v22.22.2** | `node -v`（`node:sqlite` 与类型剥离默认可用） |
-| 脚本 | **49** 个 | `find scripts -type f \| wc -l` |
+| Node | **v26.13.0**（本机实测；设计基线 Node 22 LTS） | `node -v`（`node:sqlite` 与类型剥离默认可用） |
+| 脚本 | **54** 个 | `(git ls-files scripts \| Measure-Object -Line).Lines`（文件系统同为 54） |
 
 > 历史验收（38 ✅ / 2 🟡）在 [archive/history/ACCEPTANCE.md](./archive/history/ACCEPTANCE.md)；历史实测在 [archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -76,7 +76,7 @@
 | `src/render/` | 只剩 `cli.ts` 薄壳与渲染器测试 | 8 个文件；部署时只复制 2 个 |
 | `src/ingest/` | 只剩 `cli.ts` 薄壳与入库测试 | 3 个文件；部署时只复制 2 个 |
 | `src/shared/` | 只剩 summarize 测试与 package | 3 个文件；运行代码已迁 `modules/knowledge` |
-| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 50 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
+| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 54 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
 | `scripts/workbuddy-patch/` | WorkBuddy 补丁体、启动器、注入测试口 | 见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
 | `light/` | 技能名片、persona、模板、eval 用例 | 8 个技能目录 |
 | `reference/upstream/` | 上游原样文档与未合并分支 | **不参与构建**；来源登记见 [UPSTREAM.md](./UPSTREAM.md) |

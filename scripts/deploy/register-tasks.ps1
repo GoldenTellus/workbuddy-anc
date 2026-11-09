@@ -13,7 +13,10 @@ param(
     # 原因是 D25 已经改成「直接用管理员账号部署，不建专用用户」，但这个默认值没跟上 ——
     # 照旧默认值跑会直接报「交互类任务要求 anc-bot 已登录过」，而 REBUILD §4 又写着不建专用用户。
     # 两条指引互相矛盾，陌生 agent 会在这里卡死。仍可显式传 -BotUser anc-bot 回到旧行为。
-    [string]$BotUser = 'Administrator',
+    # 2026-11-09 改：默认值从 'Administrator' 改成「当前部署账号」（D25：直接用管理员账号部署，不建专用用户）。
+    #   原默认值与 D25 矛盾：在非 Administrator 的机器上照默认值跑会要求该用户已登录过，
+    #   而实际交互任务是当前登录用户。显式传 -BotUser 可覆盖。
+    [string]$BotUser = $env:USERNAME,
     [string]$Root = '',
     [string]$ServiceAccount = 'LOCAL SERVICE',
     [string]$CleanupMediaDir = '',
@@ -103,14 +106,14 @@ $defs = @(
         Name = 'anc-executor-wake'; Desc = '主干2 每分钟检查队列，有 queued 才唤醒 WorkBuddy'
         Triggers = @((New-EveryMinutesTrigger 1))
         Action = (New-PsAction 'wake-if-queued.ps1')
-        Principal = (New-ServicePrincipal )
+        Principal = (New-ServicePrincipal $ServiceAccount)
         Settings = (New-Settings 'PT1M')
     },
     @{
         Name = 'anc-executor-new-host'; Desc = '主干2 03:00 自动创建新 host 对话；失败由 host-tick 兜底'
         Triggers = @((New-ScheduledTaskTrigger -Daily -At '03:00'))
         Action = (New-PsAction 'new-host.ps1')
-        Principal = (New-ServicePrincipal )
+        Principal = (New-ServicePrincipal $ServiceAccount)
         Settings = (New-Settings 'PT5M')
     },
     @{

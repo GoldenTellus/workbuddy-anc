@@ -17,7 +17,7 @@
 ## 1. 新机准备
 
 1. Windows + 管理员账号；
-2. Node.js 22 LTS、Git for Windows；
+2. Node.js 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0 亦可跑 212/212）、Git for Windows；
 3. 把仓库 clone 到 `E:\workbuddy-anc`（或任意路径，下面用变量）；
 4. 建目录。**完整清单在这里，别按 §3 那句命令行抄**（那段只建 deploy 要写的 7 个，其余要手工建）：
 
@@ -164,10 +164,11 @@ powershell -File "$R\scripts\deploy\deploy.ps1" -Repo $R -Root $A -Apply
 
 补丁（线上补丁的唯一来源）也由 deploy 一并复制到 `patch\`。
 
-按 [OPS.md](./OPS.md) 重新注册九个计划任务：`anc-service`、`anc-backup`、`anc-boot-alert`、
-`anc-cleanup`、`anc-watchdog`、`anc-http`、`anc-workbuddy-launch`、`anc-patch-guard`、`anc-update-watch`。
+按 [OPS.md](./OPS.md) 重新注册计划任务（现 **13 个**，以 OPS 的计划任务表为准）：`anc-service`、`anc-backup`、
+`anc-boot-alert`、`anc-cleanup`、`anc-watchdog`、`anc-http`、`anc-workbuddy-launch`、`anc-patch-guard`、
+`anc-update-watch`，以及 `anc-executor-wake`、`anc-executor-new-host`、`anc-executor-host-tick`、`anc-devbot`。
 
-> `anc-workbuddy-launch` 与 `anc-patch-guard` 必须用**bot 用户 + Interactive** 身份注册，否则拉不起 GUI。
+> `anc-workbuddy-launch`、`anc-patch-guard`、`anc-devbot` 必须用**bot 用户 + Interactive** 身份注册，否则拉不起 GUI / 切不了 persona。
 > 三个 `.cmd`（`anc-guard.cmd`、`anc-launch.cmd` 进 `bin\`，`anc-loop.cmd` 进 `service\`）由 deploy 复制；
 > 触发器、身份、参数照 OPS.md 的计划任务表。
 
@@ -177,6 +178,10 @@ powershell -File "$R\scripts\deploy\deploy.ps1" -Repo $R -Root $A -Apply
 
 1. 用管理员账号登录（不开自动登录、本机不存密码——这两条仍然有效）；
 2. 安装 WorkBuddy（企业版），扫码登录企业微信；
+   > **非标准安装路径用 Junction 指回标准位置**（本机装在 `D:\App\WorkBuddy`）：
+   > `New-Item -ItemType Junction -Path "$env:LOCALAPPDATA\Programs\WorkBuddy" -Target 'D:\App\WorkBuddy'`；
+   > **回滚 = 删 Junction**（`Remove-Item` 只删链接，不动安装本体）。补丁会把实际 exe 路径写进
+   > `%ProgramData%\anc\data\workbuddy-path.txt`，`doctor` 的 `workbuddy` 检查优先读它（详见 `OPS.md`）。
 3. 用补丁启动器启动：`launch-patched.ps1`，确认日志里 `APPLIED mode=hash` + `update-hook installed`；
    - 若启动器报"已启动"但进程数为 0，多半是 `--inspect-brk` 卡在等调试器，重跑一次即可；
 4. 装技能：**用脚本，不要手工复制**（手工抄一次就可能和仓库不一致，而且没人知道差在哪）：
@@ -272,7 +277,9 @@ powershell -File C:\ProgramData\anc\bin\doctor.ps1      # 判据见下
 powershell -File C:\ProgramData\anc\bin\watchdog.ps1    # 无异常退出 0
 ```
 
-**doctor 的合格线是 `FAIL=0`，不是"全 PASS"。** 当前基线是 `WARN=1`：
+**doctor 的合格线是 `FAIL=0`，不是"全 PASS"。** WARN 项按实际数据恢复情况而变：
+本机公司侧 2026-11-09 实测 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 在收到首条真实消息后 PASS，见 `DEPLOY-COMPANY.md §12`）。
+重建机上典型的一条 vault 相关 WARN 长这样：
 
 ```
 WARN  vault-ingest-audit   3 个未跟踪文件，但 1 小时内没有成功入库记录

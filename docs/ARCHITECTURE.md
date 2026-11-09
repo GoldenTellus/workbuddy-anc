@@ -48,7 +48,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 | `core` | 平台底座 | 库、迁移、事务、时间、配置、审计、出站扫描、备份 | `meta`/`config` 表、schema、`audit.log` 格式 | 无 |
 | `identity` | 身份与群绑定 | chatid ↔ 群类型 ↔ 人/角色/部门 ↔ webhook | `people`/`groups`/`manager_scopes`；`chat_bindings` 兼容 | core |
 | `tasks` | 任务与提醒 | 任务生命周期、提醒排期、后台任务超时、离职转交；两阶段请求 | `tasks`/`task_events`/`reminders` | core · delivery |
-| `executor` | 执行调度 | 03:00 host、Ticket、Assignment、Report、4+1 slot | `executor_hosts`/`tickets`/`assignments`/`reports` | core |
+| `executor` | 执行调度 | 03:00 host、Ticket、Assignment、Report、4+1 slot | `executor_hosts`/`tickets`/`assignments`/`reports`；`executor_events`/`executor_evaluations` | core |
 | `delivery` | 出站投递 | 队列、去重、领取、退避、过期、按群选 webhook、发送 | `outbox` | core · identity |
 | `knowledge` | 知识与入库 | 入库校验/写入/锁/归档；本地检索与摘要；A2A 归档 | vault 两区文件、ingest 锁、`a2a_*` 表 | core |
 | `org` | 组织与渲染 | org 解析、persona/接入包、`groups.json`、事务部署与回滚 | org 输入、render 产物、manifest | core |
@@ -117,7 +117,7 @@ content     独立：只依赖 CLI 命令契约
 | `scripts/<domain>/*.ps1` | `%ProgramData%\anc\bin\<name>.ps1`（**扁平**） | 文件名不变，计划任务引用 |
 | `light/*` | 由 `deploy-skills.ps1` / 渲染器部署 | 内容 |
 
-`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
+`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射；本机 dry-run = **137 个文件**，`bin` 35 个）；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
 
 ---
 
@@ -251,6 +251,7 @@ powershell -File scripts\doctor\doctor.ps1 -Repo <仓库> -Json            # FAI
 | core | [modules/core.md](./modules/core.md) |
 | identity | [modules/identity.md](./modules/identity.md) |
 | tasks | [modules/tasks.md](./modules/tasks.md) |
+| executor | [modules/executor.md](./modules/executor.md) |
 | delivery | [modules/delivery.md](./modules/delivery.md) |
 | knowledge | [modules/knowledge.md](./modules/knowledge.md) |
 | org | [modules/org.md](./modules/org.md) |
@@ -270,3 +271,4 @@ powershell -File scripts\doctor\doctor.ps1 -Repo <仓库> -Json            # FAI
 | 日期 | 改了什么 | 为什么 |
 |---|---|---|
 | 2026-11-06 | 建档：12 个模块、依赖规则、源码/部署布局、P0–P7 迁移路线 | fork 阶段收口，后续按块迭代 |
+| 2026-11-09 | executor 的 owns 补 `executor_events`/`executor_evaluations`；§11 补 executor 行；§5 补部署实测 137 文件 | 主干 0 文档收口（GAP-066，13 模块现状对齐） |

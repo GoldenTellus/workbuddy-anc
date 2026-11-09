@@ -52,15 +52,32 @@
 - [x] `npm test` **212/212**；`check` 通过；13 个计划任务、17 组 CLI、8 个技能、13 个模块。
 - [ ] 真实群/1:1/成员 API、部署、03:00、窗口重启、两机群 → ACC-01..12。
 
+### 1.5 公司侧部署与自证（2026-11-09，本机）
+
+- [x] `deploy.ps1 -Apply` 成功：**137 个文件**逐一 hash 对拍通过（日志 `%ProgramData%\anc\stage\elevated-*.log`）。
+- [x] `deploy-skills.ps1 -Apply`：8 个技能 / 10 个文件落盘（`%USERPROFILE%\.workbuddy\skills`）。
+- [x] `register-tasks.ps1 -Apply`：**13 个计划任务**全部 Ready（LOCAL SERVICE×9 / SYSTEM×1 / DNT 交互×3）。
+- [x] WorkBuddy 补丁：`patch-state.json` → `applied=true mode=hash pid=24140 version=5.9.3`，进程活着（由 `anc-patch-guard` 自愈拉起）。
+- [x] vault 两区：`D:\anc\vault-shared` / `vault-internal` 各自 git 仓库就绪；共享区 NTFS 只读、SMB 共享 `anc-vault-shared`（Authenticated Users 只读）；内部区仅 SYSTEM/Administrators/运行用户。
+- [x] org / persona：`name=新未来`、`company_bot_name=公司bot`，`groups.json members=0`（无员工版）；公司 bot persona 已装到 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`。
+- [x] wecom secrets：`wecom-webhook.txt` / `webhook.txt` / `ops-webhook.txt` + `service-token.txt`，`secrets-acl` PASS、不进 git。
+- [x] `backup-anc.ps1` 跑通：本地 `backup\anc-20261109-153622.db`；离机 `D:\anc-backup` 与本地同物理盘（WARN，需独立盘/UNC）。
+- [x] `deploy.ps1 -Rollback` 已实现并在临时根演练：首次部署回滚删除 137 个文件；升级回滚恢复备份文件（`%ProgramData%\anc\stage\rollback-drill.log`）。
+- [x] `doctor`（34 项）FAIL=0 WARN=3（work-hours / patch 日志落点 / bindings；canary 在 15:38 收到首条真实消息后转 PASS）；`deploy-verify` `ok:true pass=4 fail=0 skip=1`（bot-reply：无已绑定群，SKIP）。
+- [x] 真实消息路径：15:38:34 补丁处理了一条真实企微消息（`patch-canary.json` chatId/user/contentStr 三项 true，`patch-in.log` 记录前缀注入），随后 doctor 的 canary 转 PASS —— 群身份注入在真实入站路径生效；因为没有群绑定，`bot-reply` 仍 SKIP。
+- [x] 代码修复后重新 `deploy.ps1 -Apply`：137 文件 hash 全过（备份 `backup\deploy-20261109-155502`），线上脚本与仓库一致。
+- [ ] 真实两机群 / 员工数据 / 03:00 日切 / 窗口重启恢复 / 生产回滚窗口 → 仍归 ACC（本机无真实群、无员工名单、无第二台电脑）。
+
 ---
 
 ## 2. 进行中
 
 | 事项 | 状态 | 证据 / 下一步 |
 |---|---|---|
-| 主干 0 | 执行中 | [PLAN.md](./PLAN.md)；按 0.1–0.8 收口 |
+| 主干 0 | 本机收口完成，待 0.8 ACC | [PLAN.md](./PLAN.md)；0.1–0.7 已按证据处置，ACC-07/09 部分达成，其余未跑 |
 | 主干 1/2 本机 | 已收口 | 见 §1.4；待两机 ACC |
-| 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 审计行 |
+| 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
+| 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
 
 ---
 
@@ -123,7 +140,7 @@
 | GAP-040 | org 角色源未同步到 people/manager_scopes | 实现 | S1 | 主干 1 | 否 | 已解析并同步；文档/边界已收口；关闭 |
 | GAP-041 | 公司 bot persona / skills 未接新角色、群类型、任务请求 | 验收 | S1 | 主干 1 | 否 | persona/anc-task/通知链已完成；真实消息回归并入 ACC |
 | GAP-042 | 四类群真实成员/部署验收未做 | 验收 | S1 | 主干 1 | 否 | render/import/sync/send/deploy 自动 sync 已做；企微成员 API 对账待 ACC-08 |
-| GAP-050 | 四类群真实端到端验收批次 | 验收 | S1 | 主干 1 | 否 | 按 §3.5 ACC-01..08 统一收尾；不阻塞代码推进 |
+| GAP-050 | 四类群真实端到端验收批次 | 验收 | S1 | 主干 1 | 否 | 按 §3.5 ACC-01..12 统一收尾；不阻塞代码推进（2026-11-09：ACC-07/09 部分达成，其余未跑） |
 | GAP-051 | FUTURE-DESIGN 内部状态/规则不一致（0.8/主干1/叶子/差距表） | 文档/契约 | S1 | 主干 0 | 否 | 已修：0.8/三态/树/叶子/差距表；check 通过；关闭 |
 | GAP-052 | 全仓文档语义漂移（一人一群/私聊/命令/计数） | 文档/契约 | S1 | 主干 0 | 否 | 已批量修 README/AGENTS/PRODUCT/DECISIONS/部署/契约/计数；check 通过；关闭 |
 
@@ -141,7 +158,56 @@
 | GAP-036 | outbox / 通知 | 单向消息 | Attention / 确认 / 回执 | 主干 3 | 是 | 不覆盖旧 outbox；新增 Attention 层 |
 | GAP-037 | 员工 bot 技能集 | 现有员工侧 `anc-vault-read` 卡片 | 移除；员工查库直接 @ 公司 bot | 主干 4 | 是 | 改 member persona / skill cards / DEPLOY-EMPLOYEE |
 | GAP-038 | 员工侧补丁 | 现有员工侧不装补丁 | 员工侧打补丁，保证 handoff 归属 | 主干 4 | 是 | 补丁方案、版本绑定、回归测试 |
-| GAP-039 | 员工 bot 文档/职责 | 现有 `member-bot` 职责含“查公司知识库” | 本机资料 + handoff；不查公司库 | 主干 4 | 是 | 改模板与部署文档，加回归 |
+| GAP-039 | 员工 bot 文档/职责 | 现有 `member-bot` 职责含“查公司知识库” | 本机资料 + handoff；不查公司库 | 主干 4 | 是 | 改模板与部署文档，加回归；0.7 的文档警告已补 |
+
+### 3.3a 主干 0 收口处置（2026-11-09）
+
+> 本轮按 `PLAN.md` 主干 0 收口，逐条处置 §3.1–§3.3 的 GAP。`closed` = 已修/已接受并有证据；`acc` = 只能等 0.8 真实验收；`trunk-N` = 明确移出主干 0、归后续主干；`open` = 仍开放但不阻塞主干 0。
+
+| GAP | 判定 | 证据 / 说明 |
+|---|---|---|
+| 001 / 002 / 003 / 004 | acc | ACC-05 / ACC-03/04 / ACC-08 / ACC-06；本机无真实群/1:1/成员 API |
+| 005 | trunk-4 | 员工 bot 仍按旧实现；PLAN §3 明示不在主干 0 做 |
+| 006 / 031 / 041 / 042 / 050 / 059 / 065 | acc | ACC-09/10/11；本机 13 任务与补丁已落，真实群/03:00/窗口重启未跑 |
+| 007 | **closed** | `executor.ts` 的 task_dir 由部门 + ticket_id 推导；测试覆盖；`MAIN-EXECUTOR.md` |
+| 008 | **closed（接受）** | D29：Main 评估后接；`executor_evaluations` + `evaluate` CLI 已落；自动评估器不做 |
+| 009 | 收窄 | 4 normal + 1 human slot 已落；模型/预算默认值留主干 2 |
+| 010 | **closed** | human slot 只接等待人工的 Ticket（测试） |
+| 011 / 021 / 022 | accepted | 主动任务规则 / 注入评审 / 多公司多主机：接受现状，不阻塞 |
+| 012 / 013 / 014 / 015 | trunk-3 | `require_ack`、通知细分、多 Attention、频率合并 |
+| 016 / 017 / 018 / 020 | trunk-4 | 员工 bot 本地执行、handoff、双 bot 路由、知识边界 |
+| 019 | acc + trunk-4 | resolver/sync/backfill 已测；大群/1:1 成员同步留 ACC-08 |
+| 023 | **closed** | 工作时段/时区走 config；`service.test.ts` |
+| 024 | 并入 058 | 保留期统一由 GAP-058 定 |
+| 025 | 收窄（接受） | `executor_events` 审计已落；面板/最小字段留后续 |
+| 026 | **主干 0 部分 closed** | 四表 + 仓储 + CLI 已落；Attention/Notification 归主干 3 |
+| 027 | **closed** | executor 655 行 / 16 测试 / 17 CLI 子命令 / `anc-executor` 技能 |
+| 028 / 030 | acc | ACC-01 / ACC 真实群接线 |
+| 029 / 036 | trunk-3 | 群确认解析 / Attention 层 |
+| 032 / 033 / 040 / 051 / 052 / 061 | **closed（保持）** | 原证据仍成立；032 本轮补 3 次 212/212 证据 |
+| 034 | open（归主干 2 后续） | Ticket↔Task 映射已在 `MAIN-EXECUTOR` 说明；实现不假关 |
+| 035 | **closed** | runtime 不再引用 executor/Ticket；模块分层成立 |
+| 037 / 038 / 039 | trunk-4 | 员工侧补丁/handoff 归主干 4；文档警告已补（0.7 部分完成） |
+| 053 | **主干 0 关「基数/状态机」** | 状态机/唯一索引/claim-start-report-end 已落；重试/拆分归 GAP-070 |
+| 054 | **closed（定值）** | DDL 兜底 + Main 每次显式填（D31） |
+| 055 | **closed（定值）** | at-least-once、无独立 ack、幂等规则（D31） |
+| 056 | **主干 0 占位 closed** | Attention/Notification 接口归主干 3；主干 0 只留占位 |
+| 057 | **closed（接受）** | outbox dedupe_key 已落；其他外部副作用未接 |
+| 058 | **closed（接受默认值）** | 任务目录 90 天 / reports·events 180 天 / vault 长期；自动清理未实现（D31） |
+| 060 | **closed（接受）** | D28 逻辑隔离；强 ACL 留部署选项 |
+| 062 / 063 | **closed** | MAIN-EXECUTOR 契约 + CLI + 技能已落；wake bridge opt-in |
+| 064 | **closed（契约对齐）** | 解析失败 CLI 报错、不落 failed Report，由 Main 重试/降级（D31） |
+
+**本轮新增并关闭的 GAP（发现于部署收口）**：
+
+| ID | 缺口 | 处置 |
+|---|---|---|
+| GAP-066 | 文档计数漂移（doctor 31/34、scripts 49/54、覆盖率旧值、部署 125/137、Node 22/26、契约 12/13、PLAN §10.3 Linux 命令不可用） | 本轮全量同步，关闭 |
+| GAP-067 | 设计/现状文档状态漂移（FUTURE 主干 2「未开始实现」、MAIN-EXECUTOR「草案」、RELEASE-CHECKLIST ACC-01..08） | 本轮改文档，关闭 |
+| GAP-068 | 部署脚本缺陷：deploy.ps1 缺 executor 映射且无 -Rollback 实现；doctor.ps1 缺 executor 布局检查；deploy-skills.ps1 仓库根探测错；register-tasks.ps1 3 处漏参、BotUser 默认与 D25 冲突；deploy-verify 调 doctor 未传 -Repo | 本轮修复 + 临时根回滚演练，关闭 |
+| GAP-069 | DEPLOY-EMPLOYEE 卸载清单缺 `anc-executor` | 本轮改文档，关闭 |
+| GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 文档写明归主干 2 后续；主干 0 接受暂不实现 |
+| GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 归主干 2 后续；已在 `MAIN-EXECUTOR.md` §7 标「待补」，不阻塞主干 0 |
 
 ---
 
@@ -199,25 +265,28 @@
 | 2026-11-09 | 主干2 开工门禁审计 | 0.3 PLAN；0.6 196/196 | 新增 GAP-062..065 | T2.1 可开工；T2.4/2.5 等待契约 |
 | 2026-11-09 | 主干2 表草案/状态机：host + assignment | 0.3 FUTURE 2.3；0.6 196/196 | GAP-026/053/054 更新 | 唯一 active assignment；03:00 日切序列已定 |
 | 2026-11-08 | 文件驱动工作法显式化 | 0.3 AGENTS §3.5、DOC-SYNC、FUTURE 规则 14；0.6/0.8 未变 | 无新增 GAP | 聊天是临时、文件是持久；check 通过 |
+| 2026-11-09 | 公司侧部署收口 + 主干 0 处置 | 0.1–0.7 按证据处置；0.6 212/212×3、覆盖率重跑 90.83/80.43/94.99；0.4 部署/13 任务/补丁/备份/回滚演练 | 新增并关闭 GAP-066/067/068/069/070；关闭/接受 007/008/010/023/026/027/032/035/054/055/057/060/062/063/064 等；034/053 残留归 GAP-070 | 0.8 ACC-07/09 部分达成；其余 10 项未跑（缺真实群/员工/第二台电脑） |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
 > 这些是 `0.8` 验收项：需要真实群、真实凭据或公司主机。它们**不阻塞代码推进**；统一收尾时按 ACC 顺序一次跑。通过前主干保持 🟡 待验收，不能标 ✅。
+>
+> **2026-11-09 本机（单机）执行记录**：ACC-07 部分达成（部署/重启完成，回滚仅临时根演练，未做生产回滚窗口）；ACC-09 基本达成但按标准未达成（13 任务 Ready、补丁 applied、doctor FAIL=0；wake bridge 18187 未启用，默认关）；其余未达成。详见 §1.5 与 `.workbuddy/verify/gap/gap-audit.md` §C。
 
-| 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP |
-|---|---|---|---|---|
-| ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 |
-| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 |
-| ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 |
-| ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 |
-| ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 |
-| ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 |
-| ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 |
-| ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 |
-| ACC-09 | 公司主机部署 + 13 个任务 | 公司主机管理员 | `deploy.ps1 -Apply` + `register-tasks.ps1 -Apply`；13 个任务 Ready；带补丁重启后 wake bridge 监听 18187 | GAP-006/065 |
-| ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 |
-| ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 |
-| ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 |
+| 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP | 2026-11-09 本机结果 |
+|---|---|---|---|---|---|
+| ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 | 未达成：org 只有 company.md，groups=0、chat_bindings=0 |
+| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 | 未达成：无员工名单/员工群 |
+| ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 | 未达成：无真实员工群 |
+| ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 | 未达成：无部门群/管理者 |
+| ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 | 未达成：无真实群 |
+| ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 | 未达成：无老板 userid/1:1 |
+| ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 | **部分达成**：部署 137 文件、render deploy --db、WorkBuddy 重启（补丁）均完成；回滚只在临时根演练，未做生产回滚窗口 |
+| ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 | 未达成：无企微成员 API 凭据 |
+| ACC-09 | 公司主机部署 + 13 个任务 | 公司主机管理员 | `deploy.ps1 -Apply` + `register-tasks.ps1 -Apply`；13 个任务 Ready；带补丁重启后 wake bridge 监听 18187 | GAP-006/065 | **基本达成、按标准未达成**：137 文件 / 13 任务 Ready / `patch-state applied=true pid 24140` / doctor 34 项 FAIL=0；wake bridge 未启用（18187 不监听，默认关） |
+| ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | 未达成：new-host 任务已注册但 bridge/workspace 未启用；无真实任务队列 |
+| ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | 未达成：本机 executor_hosts=0（无真实 host 会话）；仅做过跨进程 drill |
+| ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | 未达成：无第二台员工电脑 |
 
 ### 3.6 完成时的更新清单
 
@@ -249,6 +318,7 @@
 | 2026-11-09 | 主干 2 PLAN 切换 + dsh-superagent 复核 | ✅ | ✅ | ✅ | ◎ | ◎ | ◎ | ✅ | ◎ | ✅ | ◎ | ✅ |
 | 2026-11-09 | 主干 2 第一批收口：表/CLI/恢复/审计 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ |
 | 2026-11-09 | 全量文档/部署计数：13 任务、17 CLI、8 技能、212 测试 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 2026-11-09 | 主干 0 本机收口 + 公司侧部署 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 待填 | 主干 2 完成 |  |  |  |  |  |  |  |  |  |  |  |
 
 ---
@@ -261,7 +331,11 @@
 | WorkBuddy subagent 并发/路径隔离未验证 | 多任务吞吐和部门边界受影响 | 先做 2 并发 + 目录写入 spike；必要时降为串行队列 |
 | 企微 1:1 / 入站路由未验证 | 老板控制台和确认链可能不可用 | 在 D3 前做最小实验 |
 | 未来上游许可证不明 | 不能合法二创 | `UPSTREAM.md` 的许可证门禁：不明只学概念 |
-| 文档再次漂移 | 又回到“多份真相” | `DOC-SYNC` + `check:docs` + 主干完成定义 |
+| 文档再次漂移 | 又回到“多份真相” | `DOC-SYNC` + `check:docs` + 主干完成定义；本轮已关闭 GAP-066/067 |
+| 离机备份与本地同物理盘（本机 D:\anc-backup） | 盘坏时本地与离机一起丢 | 换独立盘或 UNC；本机实测已在 `backup.log` 告警，D30 暂接受 |
+| WorkBuddy 非标准安装路径依赖 Junction（本机 D:\App\WorkBuddy） | 换机/重装/升级后路径假设失效 | DEPLOY-COMPANY §2 已写建法；回滚=删 Junction；doctor 每次体检覆盖 |
+| Node v26 与设计基线 v22 差异（本机实测） | 未在 v22 上复测本轮脚本改动 | 212/212 在 v26 通过；发布机建议仍用 Node 22 LTS |
+| 真实群/员工数据/第二台电脑缺失 | ACC-01..06/08/10/12 无法通过 | 用户补齐后按 DEPLOY-COMPANY §10/§12 + STATUS §3.5 跑 |
 
 ---
 

@@ -48,7 +48,7 @@ D:\anc\                    vault + org + build
 
 - **公司 bot 在企微群里能回话**
 - **13 个计划任务在跑**
-- **`doctor` 31 项 FAIL=0**
+- **`doctor` 34 项 FAIL=0**
 - **能登记任务、能到点提醒、能入库**
 
 **你不会做的事**：不装员工侧（那是另一份文档）、不配企微后台（人做，见 §11）。
@@ -117,9 +117,23 @@ if (-not (Test-Path (Join-Path $env:USERPROFILE 'WorkBuddy'))) { throw 'WorkBudd
 & $wb --version   # 能打印版本
 ```
 
+> **WorkBuddy 可以装在非标准路径。** 本机实测装在 `D:\App\WorkBuddy`，在
+> `%LOCALAPPDATA%\Programs\WorkBuddy` 建了一个 **Junction** 指过去：
+>
+> ```powershell
+> New-Item -ItemType Junction -Path "$env:LOCALAPPDATA\Programs\WorkBuddy" -Target 'D:\App\WorkBuddy'
+> # 回滚 = 删 Junction（只删链接，不动 D:\App\WorkBuddy 本体）
+> # Remove-Item "$env:LOCALAPPDATA\Programs\WorkBuddy"
+> ```
+>
+> 上面那段检测与后面的补丁启动器都按 `%LOCALAPPDATA%\Programs\WorkBuddy` 找，所以 Junction 能让它们正常工作。
+> 不建 Junction 时，补丁启动后会把实际 exe 路径写进 `%ProgramData%\anc\data\workbuddy-path.txt`，
+> `doctor` 的 `workbuddy` 检查优先读它、读不到才回落 `%LOCALAPPDATA%\Programs\WorkBuddy`。
+> **重装 WorkBuddy 或换机器后要重建 Junction**——它是机器相关状态，git 里没有。
+
 **失败了怎么办**：
 
-- **找不到 exe** → 让用户确认装了；WorkBuddy 可能装在别的路径，用 `Get-ChildItem -Path C:\,D:\ -Filter WorkBuddy.exe -Recurse -ErrorAction SilentlyContinue` 找
+- **找不到 exe** → 让用户确认装了；WorkBuddy 可能装在别的路径，用 `Get-ChildItem -Path C:\,D:\ -Filter WorkBuddy.exe -Recurse -ErrorAction SilentlyContinue` 找；找到非标准路径就按上面的 Junction 说明指回来
 - **没登录过** → 让用户启动它并登录企微
 - **版本低于 5.9.3** → 补丁的锚点是按 5.9.3 写的。**先让用户升级**，或者告诉用户"这个版本没验过，装完可能要手工调锚点"（见 §7）
 
@@ -408,21 +422,27 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark patch -AsDo
 
 ```powershell
 # dry-run：列出 13 个任务和它们的 principal，先看
-powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root
+# 从部署目录跑必须显式传 -Repo（部署目录里探测不到仓库根；仓库内跑可省略）
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root -Repo '<仓库根>'
 
 # 落盘
-powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root -Apply
+powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root -Repo '<仓库根>' -Apply
 ```
 
-> **交互类任务的运行身份（2026-11-05 校正，`VERIFY §76`）**：
+> **交互类任务的运行身份（2026-11-05 校正，`VERIFY §76`；2026-11-09 更新）**：
 > 三个交互类任务（`anc-workbuddy-launch` / `anc-patch-guard` / `anc-devbot`）的 principal 是
 > `-BotUser` 指定的那个用户，而且**要求该用户已登录过**（要有 `C:\Users\<user>` 目录）。
 >
-> **按 D25，`-BotUser` 的默认值已经是 `Administrator`** —— 直接用管理员账号部署时不用再传。
-> 早先默认值是 `anc-bot`，与 D25 矛盾：照默认值跑会报
-> 「交互类任务要求 anc-bot 已登录过（当前没有用户配置目录）」，而 `REBUILD §4` 又写着不建专用用户。
-> **如果确实要回到专用用户方案**：先切到那个用户跑一次（让它有配置目录），再
-> `-BotUser <那个用户> -ForceInteractive`。
+> **按 D25，`-BotUser` 默认取「当前部署账号」（`$env:USERNAME`）** —— 直接用管理员账号部署时不用再传；
+> 本机实测就是当前登录用户 `DNT`。早先默认值 `anc-bot` / `Administrator` 都与 D25 矛盾：
+> 照旧默认值跑会报「交互类任务要求 <用户> 已登录过（当前没有用户配置目录）」，
+> 而 `REBUILD §4` 又写着不建专用用户。**如果确实要回到专用用户方案**：先切到那个用户跑一次
+> （让它有配置目录），再 `-BotUser <那个用户> -ForceInteractive`。
+
+> **从部署目录跑必须显式传 `-Repo <仓库根>`**：脚本按「从自己所在目录向上找 `.git`」探测仓库根，
+> 部署目录（`C:\ProgramData\anc` 下）找不到仓库，`anc-devbot` 的动作会指不到
+> `scripts\devbot\devbot-scheduler.ps1`。本机实测要从部署目录跑 `-Repo D:\workbuddy-anc`；
+> 在仓库里直接跑可自动探测、不用传。
 
 > **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\bin\`），不是仓库里的。
 > 部署目录那份运行时路径正确（§5 已经把它复制过去了）。
@@ -518,6 +538,47 @@ icacls "$VaultRoot\vault-shared" /inheritance:r `
 > 「共享区对广泛组有写权限: NT AUTHORITY\Authenticated Users」，`deploy-verify` 连带 FAIL。
 > **而且用 `/grant:r` 修不好** —— 继承来的那条不受它影响，必须先 `/inheritance:r`。
 
+**内部区 NTFS 收紧**（内部区只有公司侧读写，普通用户与 `Authenticated Users` 不放进来）：
+
+```powershell
+icacls "$VaultRoot\vault-internal" /inheritance:r `
+    /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "$env:USERNAME:(OI)(CI)F"
+```
+
+> 本机 2026-11-09 实测 `D:\anc\vault-internal` 的 ACL 就是 `SYSTEM` / `BUILTIN\Administrators` /
+> 当前登录用户（`DNT`）三条完全控制。员工只读访问走下面的 SMB 共享，不直接碰内部区。
+
+**SMB 共享**（员工机 / 其他授权账号用 `\\<主机>\anc-vault-shared` 只读访问共享区）：
+
+```powershell
+# 共享层：Administrators 完全控制；Authenticated Users 只读。
+# 共享层 + NTFS 层叠加后才是「全员只读」（NTFS 已在上一段收紧）。
+# 已有同名共享时先删：Remove-SmbShare -Name 'anc-vault-shared' -Force
+New-SmbShare -Name 'anc-vault-shared' -Path "$VaultRoot\vault-shared" `
+    -FullAccess 'BUILTIN\Administrators' -ReadAccess 'Authenticated Users'
+```
+
+> 本机实测：`Get-SmbShareAccess -Name anc-vault-shared` → `BUILTIN\Administrators` Full、
+> `NT AUTHORITY\Authenticated Users` Read；`doctor` 的 `smb` 项按这个判 PASS。
+> 共享名固定为 `anc-vault-shared`（doctor 查的就是这个名字），路径由 `-VaultRoot` 推出 `<VaultRoot>\vault-shared`。
+
+**HTTP 面 token**（`%ProgramData%\anc\secrets\service-token.txt`）：
+
+```powershell
+# 32 字节随机数 → 64 个 hex 字符；无 BOM、无换行
+$Root = Join-Path $env:ProgramData 'anc'
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$hex = ($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+Set-Content "$Root\secrets\service-token.txt" -Value $hex -Encoding ASCII -NoNewline
+# 新文件不继承 secrets 的 ACE，写完必须重跑 set-acl（否则 doctor 的 secrets-acl 会红）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\set-acl.ps1 -Root $Root -Apply
+```
+
+> **未配置 token 时 `anc-http` 的业务路由一律 503**，只有 `/__anc_health` 可用；
+> `/__anc_status` 需要 `Authorization: Bearer <token>`（契约见 `LOCAL-SERVICE.md`）。
+> 本机实测 token 文件为 64 个 hex 字符（32 字节），`doctor` 的 `secrets-acl` PASS。
+
 **成功判据**：
 
 ```powershell
@@ -526,6 +587,10 @@ Test-Path (Join-Path $VaultRoot 'vault-shared\.git')
 Test-Path (Join-Path $VaultRoot 'vault-internal\.git')
 # 内部区必须有 collab（任务投影会写这里，没有就会报错）
 Test-Path (Join-Path $VaultRoot 'vault-internal\collab')
+# SMB 共享存在（doctor 的 smb 项也查这个）
+Get-SmbShare -Name 'anc-vault-shared'
+# service-token 是 64 个 hex 字符（32 字节）
+(Get-Content (Join-Path $env:ProgramData 'anc\secrets\service-token.txt') -Raw).Trim() -match '^[0-9a-f]{64}$'
 ```
 
 **失败了怎么办**：
@@ -854,35 +919,43 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-verify
 **成功判据**：`"ok": true`（`fail` 为 0）。
 
 > **`backup-freshness` 需要"本地"备份存在。** `doctor` 查的是 `%ProgramData%\anc\backup\anc-*.db`
-> （部署目录里的本地备份），**不是** `E:\anc-backup` 那个离机副本。
+> （部署目录里的本地备份），**不是**离机副本（本机实测离机目标是 `D:\anc-backup`，而且它与本地同盘，
+> 只发 WARN 不算真正离机，见 `OPS.md`「备份」）。
 > 新装的机器还没跑过备份，所以第一次 `deploy-verify` 会在这里 FAIL。
-> 按 fix 跑一次 `anc-backup`（或等 02:00 的定时任务），再重跑本脚本即可：
+> 按 fix 跑一次备份（或等 02:00 起的定时任务），再重跑本脚本即可：
 >
 > ```powershell
-> powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\backup-anc.ps1" -Root $Root
+> # backup-anc.ps1 没有 -Root 参数：本地备份默认落 $Root\backup，-Destination 才是离机目标
+> powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\backup-anc.ps1" -Destination '<独立盘或 UNC>'
 > ```
 >
 > **不要为了让它变绿去改判据** —— 2026-11-05 那次就是先诊断出"`E:\anc-backup` 不算数"，
 > 跑了一次备份后自然转绿（`VERIFY §81.4` #6）。
 
-**输出长这样**：
+**输出长这样**（2026-11-09 本机实测；从仓库跑 `deploy-verify` 会把 `-Repo` 传给 `doctor`，WARN 数与直跑一致；从部署目录跑没有 `.git`，`secrets-in-git` 会多一条 WARN，总数 +1）：
 
 ```
-database       PASS  库存在: C:\ProgramData\anc\data\anc.db
-doctor         PASS  FAIL=0 WARN=3（31 项）
-task-write     PASS  task #68 写进去了，查得回来
-bot-reply      SKIP  还没有实例引用（需先在群里收到一条真实消息）
-tasks          PASS  13 个任务全部 Ready/Running
+=== deploy-verify (company) ===
+根: C:\ProgramData\anc
+
+  database       PASS  库存在: C:\ProgramData\anc\data\anc.db
+  doctor         PASS  FAIL=0 WARN=3（34 项）
+  task-write     PASS  task #2 写进去了，查得回来
+  bot-reply      SKIP  没有已绑定的群，也没有传 -ChatId
+  tasks          PASS  13 个任务全部 Ready/Running
 
 结果  PASS=4  FAIL=0  SKIP=1
-NEXT  有 1 项没验（bot-reply），原因见 detail。
+NEXT  没有 FAIL，但有 1 项 SKIP——那不是通过，是没验。列在下面了。
 
-# 说明（2026-11-05 实测校正，见 VERIFY §62）：
-#  · WARN 是 3 不是 2：secrets-in-git（未指定 -Repo）、canary（需先收到真实群消息）、
-#    vault-ingest-audit（3 个未跟踪文件，1 小时内无入库记录）。三个都是设计内的，不是缺陷。
-#  · bot-reply 在「干净的机器上」通常是 SKIP 而不是 PASS —— 409 表示还没有实例引用，
-#    即 bot 还没收到过任何真实群消息。这不是故障（VERIFY §62.5）。
-#  · 任务数是 13 不是 12。
+# 说明（2026-11-09 本机实测；早先 2026-11-05 读数见 VERIFY §62）：
+#  · doctor 直跑 34 项 FAIL=0 WARN=3：work-hours（未配工作时段）、patch（没有补丁日志）、
+#    bindings（没有群绑定）——都是设计内的，不是缺陷。
+#  · canary 在 15:37 快照时还是 WARN；15:38 收到首条真实群消息（补丁注入到前缀）后转 PASS，
+#    所以复跑 doctor 是 WARN=3。这也证明补丁的群身份注入在真实消息路径上生效。
+#  · deploy-verify 2026-11-09 起给 doctor 传 -Repo；此前不传时 secrets-in-git 会多报一条 WARN（5 vs 4）。
+#  · bot-reply 在「干净的机器上」通常是 SKIP 而不是 PASS —— 没有已绑定的群、也没有传 -ChatId。
+#    这不是故障（VERIFY §62.5）。
+#  · 任务是 13 个：9 LOCAL SERVICE / 1 SYSTEM / 3 交互类（DNT）。
 ```
 
 **每一项什么意思**：
@@ -890,14 +963,15 @@ NEXT  有 1 项没验（bot-reply），原因见 detail。
 | 项 | 验什么 | FAIL 说明什么 |
 |---|---|---|
 | `database` | 库在 | 部署没做完 |
-| `doctor` | 31 项体检全过 | 有具体项坏了，看 detail |
+| `doctor` | 34 项体检全过 | 有具体项坏了，看 detail |
 | `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
 | `bot-reply` | 注入一条消息 | 409（还没有实例引用）是 SKIP 不是 FAIL；端口没监听也是 SKIP；只有真正注入失败才 FAIL。**「没等到回复」仍是 PASS**（回复慢是模型行为） |
 | `tasks` | 13 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
 
 **`SKIP` 不是通过**——它是"没验"。常见 SKIP：
 
-- `bot-reply` SKIP → 看 `detail` 字段，**两种原因**：
+- `bot-reply` SKIP → 看 `detail` 字段，**三种原因**：
+  - **「没有已绑定的群，也没有传 -ChatId」** → 群还没配；装完群后用 `-ChatId <真实chatId>` 重跑这一项。
   - **「还没有实例引用」**（后端是 409）→ 正常。`test-emit` 依赖一个活的 `WecomAiBotClient` 实例，
     而它只在 bot 收到过**真实群消息**之后才有值。**先去群里 @ 一次 bot，再重跑本脚本。**
     只建 `test-emit.flag` 解决不了这个。
@@ -917,10 +991,10 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark verify -AsD
 
 ```
 公司侧部署完成。
-  doctor: FAIL=0 WARN=X（31 项）
+  doctor: FAIL=0 WARN=3（34 项）
   群回应: <PASS/SKIP 及原因>
   任务落库: OK
-  计划任务: 10/10
+  计划任务: 13/13
 未完成: <列出来，没有就写"无">
 ```
 
@@ -1026,7 +1100,7 @@ powershell -File scripts\deploy\preflight.ps1 -Side company              # §3
 powershell -File scripts\deploy\deploy.ps1 -Apply                         # §5
 powershell -File scripts\deploy\deploy-skills.ps1 -Apply                  # §6
 powershell -File "$Root\patch\launch-patched.ps1"                 # §7（会重启 WorkBuddy，自己等 patch-state）
-powershell -File "$Root\bin\register-tasks.ps1" -Root $Root -Apply # §8
+powershell -File "$Root\bin\register-tasks.ps1" -Root $Root -Repo '<仓库根>' -Apply # §8（部署目录跑必须传 -Repo）
 # §9 建 vault（见文档）
 # §10 是两步，别只跑第二步：
 node --no-warnings "$Repo\src\render\cli.ts" render --org $org --out "$Root\render"   # §10.6 ① 渲染

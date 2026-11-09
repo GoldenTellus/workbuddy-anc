@@ -617,7 +617,7 @@ Get-ChildItem "$Root\data\persona-backup-*.md" | Sort-Object LastWriteTime -Desc
 Remove-Item $Root -Recurse -Force
 
 # ③ 删技能（只删这套装的；WorkBuddy 自带的技能别动）
-'anc-dayend','anc-feedback','anc-ingest','anc-interview','anc-task','anc-vault-read','anc-wb-patch','.anc-backup' |
+'anc-dayend','anc-executor','anc-feedback','anc-ingest','anc-interview','anc-task','anc-vault-read','anc-wb-patch','.anc-backup' |
   ForEach-Object { Remove-Item (Join-Path $env:USERPROFILE ".workbuddy\skills\$_") -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ④ 重启 WorkBuddy

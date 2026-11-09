@@ -23,7 +23,7 @@ https://github.com/GoldenTellus/workbuddy-anc
 | **公司侧**（一台 7×24 的主机） | 装一个**空的** WorkBuddy，装完不要配任何东西 | agent 从建目录一路做到自证 |
 | **员工侧**（你的办公电脑） | 无——WorkBuddy 本来就在用 | agent 装 persona、技能、绑定你自己的群 |
 
-**agent 会问你这几件事**（提前准备好）：企微 corpid 与群机器人 webhook、部门划分、员工名单与 userid。
+**agent 会问你这几件事**（提前准备好）：群机器人 webhook（每群一个，值只进主机 secrets、不进 git）、部门划分、员工名单与 userid、各群 chatId 与老板 userid。
 
 细节见 [docs/PRODUCT.md](./docs/PRODUCT.md)（能做什么）与 [docs/DEPLOY-COMPANY.md](./docs/DEPLOY-COMPANY.md) / [docs/DEPLOY-EMPLOYEE.md](./docs/DEPLOY-EMPLOYEE.md)（怎么装）。
 
@@ -107,7 +107,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 | 改 `org/members/*.md` 后 `render deploy --db ...` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → org→DB 同步/校验 → 任一失败**整体还原**，不会留"一半新一半旧" |
 | `render verify` | 用指纹 + manifest 检出产物被手改（改过就说明线上与 git 不一致） |
 | 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除、解绑员工群（groups 表停用还没自动化）、open 任务转交新人；**vault 里的档案不动** |
-| `doctor.ps1` | **31 项**体检：13 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
+| `doctor.ps1` | **34 项**体检：13 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 + 完整性校验；离机目标与本地**同盘时告警**（同盘不算离机）；失败必发运维告警；日档 60 份 + 每月 1 号留 12 份 |
 | 查"谁动过库" | `%ProgramData%\anc\data\audit.log` 每次 CLI 调用留一行（只记命令与目标，不记参数值） |
 | 查"资料是不是被绕过入库" | vault 里出现未跟踪文件、但 1 小时内没有成功的 `ingest apply` 记录 → `doctor` 直接 WARN |
@@ -172,7 +172,7 @@ Windows 主机（7×24）
 
 ## 开发约定
 
-- 文档中文为主；TypeScript + Node 22 LTS，零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
+- 文档中文为主；TypeScript + Node 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0，212/212 通过），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
 - 开发流程：分支 → PR → 验证 → squash merge。
 - 部署：从仓库复制到 `%ProgramData%\anc\`（命令见 REBUILD §3），主机上手改线上文件视为事故。
 - 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/checks/check-public.mjs` 并人工过一遍全量 diff。

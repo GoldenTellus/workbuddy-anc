@@ -147,6 +147,7 @@
       "core",
       "identity",
       "tasks",
+      "executor",
       "delivery",
       "runtime",
       "knowledge",

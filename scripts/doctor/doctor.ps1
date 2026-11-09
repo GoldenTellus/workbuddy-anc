@@ -227,6 +227,9 @@ function Test-DeployLayout([string]$Root, [string]$Src) {
     if ((Test-Path (Join-Path $Root 'interfaces\cli\outbox.ts')) -and -not (Test-Path (Join-Path $Root 'modules\delivery\index.ts'))) {
         $bad += 'modules/delivery: 缺失（outbox 发送的入口依赖）'
     }
+    if ((Test-Path (Join-Path $Root 'service\cli.ts')) -and -not (Test-Path (Join-Path $Root 'modules\executor\index.ts'))) {
+        $bad += 'modules/executor: 缺失（executor 命令组的入口依赖）'
+    }
     if ((Test-Path (Join-Path $Root 'ingest\cli.ts')) -and -not (Test-Path (Join-Path $Root 'modules\knowledge\ingest\cli.ts'))) {
         $bad += 'modules/knowledge/ingest: 缺失（ingest/cli.ts 的入口依赖）'
     }

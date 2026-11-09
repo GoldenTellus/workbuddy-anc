@@ -3,7 +3,7 @@
 // 1) Markdown 相对链接存在（http/https/mailto/# 跳过，docs/archive 跳过）；
 // 2) docs/doc-map.json 里登记的文件存在、类型 banner 匹配；
 // 3) 现行根文档能从 INDEX.md 链到；upstreams 能从 UPSTREAM.md 链到；
-// 4) 12 份模块契约有必需章节。
+// 4) doc-map.json 的 modules.contracts 登记的模块契约（现 13 份）有必需章节。
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 

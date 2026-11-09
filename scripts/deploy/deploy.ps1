@@ -14,7 +14,11 @@ param(
     [string]$Side = 'company',
 
     [string]$Root = '',
-    [switch]$Apply
+    [switch]$Apply,
+    # 2026-11-09 加：恢复最近一次 deploy-<时间戳> 备份。
+    #   文档早先就写了 `deploy.ps1 -Rollback`，但脚本里从来没实现过（GAP-068）。
+    #   语义：按当前仓库的部署清单逐文件还原；备份里没有的文件视为本次新增 → 删除。
+    [switch]$Rollback
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,6 +61,7 @@ $Map = @(
     @{ Target = 'modules\runtime'; Source = 'src\modules\runtime'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'modules\identity'; Source = 'src\modules\identity'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'modules\tasks'; Source = 'src\modules\tasks'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
+    @{ Target = 'modules\executor'; Source = 'src\modules\executor'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'modules\delivery'; Source = 'src\modules\delivery'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'modules\improvement'; Source = 'src\modules\improvement'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'modules\knowledge'; Source = 'src\modules\knowledge'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
@@ -123,6 +128,54 @@ foreach ($g in $grouped) {
 }
 '合计 {0} 个文件，目标根 {1}' -f $plan.Count, $Root
 ''
+
+# ── 回滚：恢复最近一次 deploy-<时间戳> 备份 ───────────────────
+# 判据：备份目录里有的文件 → 原样复制回去；备份里没有的 → 本次部署新增，删掉。
+# 删除前只针对 $plan 里的目标文件，不递归删目录，避免误伤 data/backup/secrets 等运行数据。
+if ($Rollback) {
+    $bakParent = Join-Path $Root 'backup'
+    $baks = @(Get-ChildItem -LiteralPath $bakParent -Directory -Filter 'deploy-*' -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending)
+    if ($baks.Count -eq 0) {
+        # 首次部署没有旧文件可备份：回滚 = 按当前部署清单删除本次铺下去的文件，回到“没装”状态。
+        '没有部署备份（首次部署）：按当前清单删除已部署文件，回到部署前'
+        $removedFirst = 0
+        $firstFail = @()
+        foreach ($p in $plan) {
+            if (-not (Test-Path -LiteralPath $p.Dst)) { continue }
+            try { Remove-Item -LiteralPath $p.Dst -Force -ErrorAction Stop; $removedFirst++ }
+            catch { $firstFail += ($p.Dst + '：' + $_.Exception.Message) }
+        }
+        if ($firstFail.Count -gt 0) {
+            Fail ('首次部署回滚失败 ' + $firstFail.Count + ' 项: ' + ($firstFail -join '; ')) '逐项手工删除上面列出的文件' 1
+        }
+        'OK：首次部署回滚完成，删除 {0} 个文件（data/backup/secrets 未动）' -f $removedFirst
+        exit 0
+    }
+    $srcBak = $baks[0].FullName
+    '回滚源: {0}' -f $srcBak
+    $restored = 0
+    $removed = 0
+    $rbFail = @()
+    foreach ($p in $plan) {
+        $b = Join-Path (Join-Path $srcBak $p.Target) (Split-Path $p.Dst -Leaf)
+        try {
+            if (Test-Path -LiteralPath $b) {
+                Copy-Item -LiteralPath $b -Destination $p.Dst -Force -ErrorAction Stop
+                $restored++
+            } elseif (Test-Path -LiteralPath $p.Dst) {
+                Remove-Item -LiteralPath $p.Dst -Force -ErrorAction Stop
+                $removed++
+            }
+        } catch { $rbFail += ($p.Dst + '：' + $_.Exception.Message) }
+    }
+    if ($rbFail.Count -gt 0) {
+        Fail ('回滚失败 ' + $rbFail.Count + ' 项: ' + ($rbFail -join '; ')) '备份目录未删除；可手工按上面路径恢复' 1
+    }
+    'OK：已回滚到 {0}（恢复 {1} 个，删除新增 {2} 个）' -f $srcBak, $restored, $removed
+    '提示：回滚后 WorkBuddy/任务可能仍在跑旧进程，按 OPS 重启任务或补丁启动器；确认后可再 deploy.ps1 -Apply。'
+    exit 0
+}
 
 if (-not $Apply) {
     'DRY-RUN：以上是计划，加 -Apply 才落盘。'

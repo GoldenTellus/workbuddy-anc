@@ -184,7 +184,7 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 
 约束：
 
-- **preload 路径不能含空白**——`NODE_OPTIONS` 不做引号解析，路径里有空格会把模块名切坏。仓库默认路径 `E:\workbuddy-anc\scripts\workbuddy-patch` 没有空格；换机器时把整个目录复制到类似 `C:\anc\workbuddy-patch` 的位置。
+- **preload 路径不能含空白**——`NODE_OPTIONS` 不做引号解析，路径里有空格会把模块名切坏。本机仓库在 `D:\workbuddy-anc`，即 `D:\workbuddy-anc\scripts\workbuddy-patch`，没有空格；换机器时把整个目录复制到类似 `C:\anc\workbuddy-patch` 的位置。
 - 注入失败时启动器会降级为未打补丁启动（日志里能看到 `ERROR` 与降级提示），保证 bot 不会因为补丁起不来。
 
 **2026-11-06 起，注入结果是可判的**（`VERIFY §86`）：
@@ -201,6 +201,13 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 3. 预期：bot 复述内容以 `[anc:chat=<chatid> from=<userid>]` 开头；同一群多次一致，不同群 chatid 不同。
 4. 反证：用 `restore.ps1` 重启后再发，前缀消失。
 5. 注入没成功时看启动器输出：`[anc] 注入没成功：…` 会直接给出原因（陈旧状态 / runId 不符 / 无 state 文件 / pid 已退出）。
+
+> **本机补丁由 `anc-patch-guard` 自愈拉起，日志不一定在默认位置。** 运行时证据先看
+> `%ProgramData%\anc\data\patch-state.json`（`applied` / `mode` / `pid` / `runId` / `at`；本机 2026-11-09 实测
+> `applied=true mode=hash pid=24140`，进程活着）。`%USERPROFILE%\anc\workbuddy-patch.log` **可能不存在**
+> （本机实测不存在；实际落点与原因**未核实**）——这时 `doctor` 的 `patch` 项是
+> **WARN「没有补丁日志（可能未用启动器）」而不是 FAIL**。判「补丁到底生效没有」以
+> `patch-state.json` + pid 存活为准（运行时版本判断见 §5.3）。
 
 **test-emit 测试入口的两个开关**：`test-emit.flag` 决定下次启动要不要开 17999；
 同目录 `emit-token.txt` 存在时 `/emit` 要求 `X-Anc-Token`（常量时间比对，不建文件则维持「能连本机就能发」）；

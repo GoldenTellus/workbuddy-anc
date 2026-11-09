@@ -159,9 +159,9 @@
 | **`anc-boot-alert`** | 开机 | LOCAL SERVICE | 开机后检查 WorkBuddy 在不在跑，不在就告警（每 10 分钟重试，2 小时后停） | — |
 | **`anc-update-watch`** | 每日 | LOCAL SERVICE | 主动查 WorkBuddy 新版（204=无新版；200=有新版，发运维群，同版本只告警一次） | — |
 | **`anc-cleanup`** | 每日 | SYSTEM | 清媒体缓存 | — |
-| **`anc-workbuddy-launch`** | 登录时 | Administrator | 启动 WorkBuddy（**自愈链第 1 层**） | — |
-| **`anc-patch-guard`** | 每分钟（登录后） | Administrator | 看 WorkBuddy 在跑但补丁对不上 → 触发自愈（**第 2 层**） | — |
-| **`anc-devbot`** | 每日 22:00 | Administrator | 夜间迭代闭环（**需满足三个条件**，见下） | — |
+| **`anc-workbuddy-launch`** | 登录时 | 部署用户（D25/D30） | 启动 WorkBuddy（**自愈链第 1 层**） | — |
+| **`anc-patch-guard`** | 每分钟（登录后） | 部署用户（D25/D30） | 看 WorkBuddy 在跑但补丁对不上 → 触发自愈（**第 2 层**） | — |
+| **`anc-devbot`** | 每日 22:00 | 部署用户（D25/D30） | 夜间迭代闭环（**需满足三个条件**，见下） | — |
 
 ### 自愈链（四层，实测 55–88 秒恢复）
 
@@ -303,15 +303,17 @@ issue
 
 | 能力 | 命令 / 触发 | 说明 |
 |---|---|---|
-| 体检 | `doctor.ps1 -Root <r> -Repo <r> -Json` | **31 项检查**，`ok=True fails=0` 才算好 |
+| 体检 | `doctor.ps1 -Root <r> -Repo <r> -Json` | **34 项检查**，`ok=True fails=0` 才算好 |
 | 部署 | `deploy.ps1 -Side company [-Apply]` | 逐文件对拍 hash，任一失败整体回滚 |
 | 设权限 | `set-acl.ps1 -Root <r> -Apply` | `secrets` 断继承 + 三方授权；`data` 保留继承 |
 | 备份 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 |
 | 重建 | `prepare-wipe.ps1 [-Apply]` | **只改名不删除**，回滚 = 去掉 `-prewipe` 后缀 |
 | 自愈 | `anc-selfheal.ps1 -DryRun / -Apply` | 先 dry-run 看锚点，再决定是否重启 |
-| 故障注入 | `doctor-fault-matrix.mjs` | 30/31 项已注入验证 |
+| 故障注入 | `doctor-fault-matrix.mjs` | 故障矩阵基数已变（34），覆盖待重跑（历史 30/31 只代表旧基数） |
 | 进度台账 | `deploy-state.ps1 -Mark <step> -AsDone/-AsFailed` | **不要手改 JSON** |
 | 程序化测试 | `POST 127.0.0.1:17999/emit` | 模拟"有人 @ 了 bot"，需 `test-emit.flag` |
+
+**本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **137 个文件**；13 个计划任务已注册（12 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
 
 **`prepare-wipe.ps1` 的回滚**：它把目录改名成 `*-prewipe-<时间戳>`，回滚就是把后缀去掉 + `register-tasks.ps1 -Apply` 重注册任务。
 
