@@ -95,7 +95,8 @@
 
 - [x] 员工侧安装 / 技能 / persona / 卸载回滚 —— 用户实测通过（口述）。
 - [x] ACC-02 员工群任务 + 个人数据；ACC-03 同部门请求；ACC-04 跨部门审批；ACC-05 公司/部门群隐私；ACC-06 老板 1:1；ACC-12 两机真实群/任务 —— 用户实测通过（口述，无机器日志）。
-- [ ] 四类群 chatId/webhook 未登记到本机 org（ACC-01 本机侧只验了公司群 + boss_dm）；ACC-08 只有人工对账（公司群，见 §3.5）。
+- [ ] 四类群 chatId/webhook 未登记到本机 org（ACC-01 本机侧只验了公司群 + boss_dm）；ACC-08 只有人工对账（公司群，见 §3.5），员工/部门群未覆盖。
+- [x] **ACC-08 按用户选择 B 记书面例外（D36）**：人工对账公司群差异 0；员工群/部门群未覆盖；无企微成员 API 凭据。不再要求自建应用。
 
 ---
 
@@ -196,7 +197,7 @@
 | GAP | 判定 | 证据 / 说明 |
 |---|---|---|
 | 001 / 002 / 004 | **closed（用户实测通过，口述；无机器日志）** | ACC-05 / ACC-03/04 / ACC-06；用户 2026-11-09 确认员工侧全部测试通过 |
-| 003 | acc | ACC-08 企微成员 API 凭据 |
+| 003 | accepted（人工对账例外，D36） | ACC-08：公司群人工对账差异 0；员工/部门群未覆盖；无 member API；用户选择 B |
 | 005 | trunk-4 | 员工 bot 仍按旧实现；PLAN §3 明示不在主干 0 做 |
 | 006 / 031 / 042 / 050 / 065 | acc | ACC-09 达成；ACC-10 机制验证、03:00 待观察；ACC-08 缺成员 API；031 已由用户口述验收 |
 | 059 | **closed（ACC-11 重启演练通过）** | 真实窗口重启 → recover → host closed / Assignment interrupted / Ticket queued → 新 host 重派；证据 `stage/acc11-*.log` |
@@ -308,6 +309,7 @@
 | 2026-11-09 | 首次身份绑定自动化：bind-member-identity.ps1 + persona/技能流程 | 0.2/0.3 脚本/技能/persona；0.6 部署 138 文件；0.8 员工链路 | 新增并关闭 GAP-074 | 未识别成员第一次 @ 时自动绑定；临时 org 验证两种返回；张佳艺本次为旧会话，人工补绑 |
 | 2026-11-09 | 备份恢复演练 + wake bridge 限制查清 | 0.4 备份恢复；0.8 ACC-09/10 口径；D33 | 新增 GAP-075（wake bridge 不可用，按例外） | 恢复演练后 doctor/verify/verify-org 全绿；wake bridge 不监听，flag 已移除 |
 | 2026-11-09 | 用户实测员工侧全部通过（口述，无机器日志） | 0.3 STATUS §1.7/§3.5；0.8 ACC-02/03/04/05/06/12 记用户验收 | GAP-001/002/004/028/030/041 关闭；003 留 ACC-08 | 用户明确要求按实测通过记账并注明无机器日志 |
+| 2026-11-09 | ACC-08 按用户选择 B 记书面例外（人工对账） | 0.8 ACC-08；0.3 STATUS §3.5；D36 | GAP-003 accepted（例外） | 公司群对账差异 0；员工/部门群未覆盖；不自建应用 |
 | 2026-11-09 | wake bridge 修复（inject 主进程加载 preload）+ ACC-09/10/11 演练 | 0.8 ACC-09/10/11；0.3 WORKBUDDY-PATCH；D34 | GAP-075 关闭 | 18187 监听；new-host 机制成功；真实窗口重启 recover→queued→新 host 重派通过 |
 
 ### 3.5 真实环境验收批次（统一收尾）
@@ -325,7 +327,7 @@
 | ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 | **用户实测通过（2026-11-09，口述；无机器日志）**；本机公司群身份/角色映射已验 |
 | ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 | **用户实测通过（2026-11-09，口述；无机器日志）**；本机 1:1 识别通过，私有群 fallback 不做（D32） |
 | ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 | **达成（本机）**：部署 137 文件、`render deploy --db`、WorkBuddy 重启（补丁 applied）均完成；`deploy.ps1 -Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过；演练后 doctor 34/FAIL=0、deploy-verify ok 4/0/1 |
-| ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 | **部分达成（人工对账）**：公司群成员（3 人 + 公司 bot）与 org 3 人一致、差异 0（据群截图/口述）；无企微成员 API 凭据，员工群/部门群未对账 |
+| ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 | **书面例外接受（用户选择 B，D36）**：人工对账公司群成员（3 人 + 公司 bot）与 org 3 人一致、差异 0；员工群/部门群 chatId 未入账本，未覆盖；无企微成员 API 凭据 |
 | ACC-09 | 公司主机部署 + 13 个任务 | 公司主机管理员 | `deploy.ps1 -Apply` + `register-tasks.ps1 -Apply`；13 个任务 Ready；带补丁重启后 wake bridge 监听 18187 | GAP-006/065 | **达成（本机）**：138 文件 / 13 任务 Ready / `patch-state applied=true` / doctor 34 项 FAIL=0 / wake bridge `127.0.0.1:18187` 监听（GAP-075 已修） |
 | ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | **部分达成**：wake bridge `/new` + bot `host bootstrap` 机制实测成功（host active）；03:00 自动触发待夜间首次观察 |
 | ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | **达成（本机演练）**：真实窗口重启 → `recover` → host closed、Assignment interrupted、Ticket queued → 新 host claim/start/report/end；证据 `stage/acc11-*.log` |
