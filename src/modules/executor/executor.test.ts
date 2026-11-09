@@ -5,6 +5,7 @@ import {
   appendReport,
   claim,
   bootstrapHost,
+  deferCutIfDue,
   closeHostIfIdle,
   createHost,
   createTicket,
@@ -155,5 +156,25 @@ test('executor：bootstrapHost 同日幂等、跨日自动切、不同对话拒�
       () => bootstrapHost(db, { conversationId: 'conv-c', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' }),
       /已有 active host/,
     );
+  } finally { db.close(); }
+});
+test('executor：03:00 无新 host 时 deferred，旧 host 继续接单', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db, 2);
+    const h = createHost(db, { conversationId: 'conv-old', businessDate: '2026-11-09', cutAt: '2026-11-09T00:00:00.000Z' });
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'old', taskDir: 'departments/sales/tasks/t-old' });
+    assert.ok(claim(db, { hostId: h.host_id }));
+    const r = deferCutIfDue(db, '2026-11-10T03:00:00+08:00');
+    assert.equal(r.deferred, true);
+    assert.equal(getHost(db, h.host_id)!.status, 'active');
+    assert.equal(getHost(db, h.host_id)!.cut_deferred, 1);
+    // 兜底期间旧 host 仍能接新 Ticket
+    createTicket(db, { taskId: 2, departmentId: 'ops', title: 'new', taskDir: 'departments/ops/tasks/t-new' });
+    assert.ok(claim(db, { hostId: h.host_id }));
+    // 新对话出现后，bootstrap 仍然切 host
+    const next = bootstrapHost(db, { conversationId: 'conv-new', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
+    assert.equal(next.status, 'active');
+    assert.equal(getHost(db, h.host_id)!.status, 'closing');
   } finally { db.close(); }
 });

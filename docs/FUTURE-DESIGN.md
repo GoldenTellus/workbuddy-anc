@@ -438,6 +438,8 @@ CREATE TABLE IF NOT EXISTS executor_hosts (
   status          TEXT NOT NULL,          -- active | closing | closed
   accepting_new   INTEGER NOT NULL DEFAULT 1,
   cut_at          TEXT NOT NULL,          -- 下一个 03:00
+  cut_deferred    INTEGER NOT NULL DEFAULT 0,
+  cut_deferred_at TEXT,
   started_at      TEXT NOT NULL,
   closed_at       TEXT,
   last_heartbeat_at TEXT

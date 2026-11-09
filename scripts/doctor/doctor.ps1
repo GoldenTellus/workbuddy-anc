@@ -294,6 +294,7 @@ function Get-TaskCoverage([hashtable]$Expected) {
 
 $ExpectedPrincipal = [ordered]@{
     'anc-service'          = 'LOCAL SERVICE'
+    'anc-executor-host-tick' = 'LOCAL SERVICE'
     'anc-backup'           = 'LOCAL SERVICE'
     'anc-boot-alert'       = 'LOCAL SERVICE'
     'anc-cleanup'          = 'SYSTEM'
@@ -394,7 +395,7 @@ if ($cfgProblems.Count -gt 0) { Add-Result 'work-hours' 'FAIL' ('配置有误（
 elseif ($start -and $end) { Add-Result 'work-hours' 'PASS' "$start–$end" '-' }
 else { Add-Result 'work-hours' 'WARN' '未配置工作时段（默认全天）' '需要时 config set work_start/work_end' }
 
-# 4 计划任务：逐项覆盖 $ExpectedPrincipal（现 10 项，含 anc-devbot）
+# 4 计划任务：逐项覆盖 $ExpectedPrincipal（现 11 项，含 anc-devbot / executor-host-tick）
 foreach ($r in @(Get-TaskCoverage $ExpectedPrincipal)) {
     Add-Result ("task-" + $r.name) $r.state $r.detail $r.fix
 }

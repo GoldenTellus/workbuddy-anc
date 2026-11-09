@@ -6,11 +6,12 @@
 
 ## 计划任务
 
-共 10 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
+共 11 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
 
 | 任务 | 触发 | 身份 | 执行 | 作用 |
 |---|---|---|---|---|
 | `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <bin>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
+| `anc-executor-host-tick` | 每天 03:00 | `LOCAL SERVICE` | `executor-host-tick.ps1` | 主干2 自动兜底：没有新 host 时只标 `cut_deferred`，旧 host 继续接单 |
 | `anc-backup` | 每天 02:00 起每 1 小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `backup-anc.ps1 -Destination <第二块盘>` | `VACUUM INTO` 快照 + 完整性校验，保留 14 份并复制到第二块盘；错过 02:00 会自动补 |
 | `anc-boot-alert` | 开机后每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | `boot-alert.ps1` | WorkBuddy 没起来就经运维群 webhook 告警 |
 | `anc-cleanup` | 每天 03:00 | `SYSTEM` | `cleanup-media.ps1 -MediaDir <bot 用户的 TEMP>\workbuddy-wecom-media -Days 7` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM）；遇到 junction / 符号链接一律跳过。**`-MediaDir` 写死了 bot 用户，换运行身份时要同步改** |

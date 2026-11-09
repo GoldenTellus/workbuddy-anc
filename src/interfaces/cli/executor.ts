@@ -57,6 +57,10 @@ export default function executorGroup(ctx: CliContext): void {
       if (!date) fail('缺少 --date');
       if (!cutAt) fail('缺少 --cut-at');
       out({ ok: true, host: executor.bootstrapHost(db, { conversationId, businessDate: date, cutAt }) });
+    } else if (sub === 'tick') {
+      const now = typeof args.now === 'string' ? args.now : new Date().toISOString();
+      const r = executor.deferCutIfDue(db, now);
+      out({ ok: true, ...r });
     } else if (sub === 'cut') {
       const oldHostId = String(args['old-host'] ?? '');
       const newConversationId = String(args['new-conversation-id'] ?? '');

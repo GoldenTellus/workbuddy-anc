@@ -18,6 +18,8 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 如果你在**新对话的首个 turn**，先用当前 conversation id 调 `executor host bootstrap`；它同一天同一对话幂等，跨日会自动把旧 host 置 closing、新 host 置 active。
 
+03:00 新对话尚未出现时，外部 tick 调 `executor host tick`：旧 host 标记 `cut_deferred`，**继续接单**；不要把它当成切失败。
+
 没有 active host：停，回报“执行 host 未注册”，不要猜测或新建对话。
 
 ## 一个 tick

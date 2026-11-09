@@ -31,6 +31,9 @@ export function migrate(db: DatabaseSync): void {
   addCol('outbox', 'requeued_at', 'TEXT');
   addCol('outbox', 'expires_at', 'TEXT');
   addCol('a2a_surveys', 'question_count', 'INTEGER NOT NULL DEFAULT 0');
+  // 主干 2：03:00 没有新 host 时，旧 host 继续接单（自动兜底），标记 deferred
+  addCol('executor_hosts', 'cut_deferred', 'INTEGER NOT NULL DEFAULT 0');
+  addCol('executor_hosts', 'cut_deferred_at', 'TEXT');
 
   // submissions 早期版本用的是 submitter_userid（stash 里那版）。
   // CREATE TABLE IF NOT EXISTS 对已存在的表是空操作，所以新列必须走迁移，

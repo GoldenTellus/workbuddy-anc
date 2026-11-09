@@ -52,6 +52,9 @@ node src/service/cli.ts --json executor host bootstrap `
   --date 2026-11-09 `
   --cut-at "2026-11-10T03:00:00+08:00"
 
+# 03:00 没有新对话：旧 host 继续接单，标记 deferred（自动兜底）
+node src/service/cli.ts --json executor host tick --now "2026-11-10T03:00:00+08:00"
+
 # 或者显式注册当天 host（已有 active host 时拒绝）
 node src/service/cli.ts --json executor host register `
   --conversation-id <WorkBuddy conversation id> `
@@ -194,7 +197,7 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 
 ## 5. 03:00 Host bootstrap
 
-第一版：
+自动兜底：如果 03:00 新对话还没出现，`host tick` 只把旧 host 标成 `cut_deferred=1`，**不切、不停止接单**；旧 host 继续接新 Ticket。等新对话出现后 `host bootstrap` 再切。
 
 - `executor host register` 由人工/启动器在已有对话里注册；
 - `host cut` 由 03:00 定时任务或 Main 触发，负责数据库状态切换；

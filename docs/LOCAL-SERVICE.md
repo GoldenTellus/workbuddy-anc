@@ -53,6 +53,7 @@ npm run service -- bind person-list
 
 # 主干 2：Executor 调度（T2.3，先落 CLI；Runner 仍由 Main 接）
 npm run service -- --json executor host bootstrap --conversation-id <conv-id> --date 2026-11-09 --cut-at "2026-11-10T03:00:00+08:00"
+npm run service -- --json executor host tick --now "2026-11-10T03:00:00+08:00"
 npm run service -- --json executor host register --conversation-id <conv-id> --date 2026-11-09 --cut-at "2026-11-10T03:00:00+08:00"
 npm run service -- --json executor host cut --old-host <host-id> --new-conversation-id <new-conv-id> --date 2026-11-10
 npm run service -- --json executor host status

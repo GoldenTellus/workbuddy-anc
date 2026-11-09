@@ -107,7 +107,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 | 改 `org/members/*.md` 后 `render deploy --db ...` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → org→DB 同步/校验 → 任一失败**整体还原**，不会留"一半新一半旧" |
 | `render verify` | 用指纹 + manifest 检出产物被手改（改过就说明线上与 git 不一致） |
 | 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除、解绑员工群（groups 表停用还没自动化）、open 任务转交新人；**vault 里的档案不动** |
-| `doctor.ps1` | **31 项**体检：10 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
+| `doctor.ps1` | **31 项**体检：11 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 + 完整性校验；离机目标与本地**同盘时告警**（同盘不算离机）；失败必发运维告警；日档 60 份 + 每月 1 号留 12 份 |
 | 查"谁动过库" | `%ProgramData%\anc\data\audit.log` 每次 CLI 调用留一行（只记命令与目标，不记参数值） |
 | 查"资料是不是被绕过入库" | vault 里出现未跟踪文件、但 1 小时内没有成功的 `ingest apply` 记录 → `doctor` 直接 WARN |
@@ -146,7 +146,7 @@ Windows 主机（7×24）
 
 ## 现状
 
-- 13 个模块全部 `current`；`npm test` **202/202**；`npm run check`（模块边界 + 文档检查）通过。
+- 13 个模块全部 `current`；`npm test` **203/203**；`npm run check`（模块边界 + 文档检查）通过。
 - 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。

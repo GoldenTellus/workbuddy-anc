@@ -41,7 +41,7 @@
 - [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
 - [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
 - [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
-- [x] `npm test` **202/202**；`npm run check` 通过。
+- [x] `npm test` **203/203**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ---
@@ -99,7 +99,7 @@
 | GAP-062 | Main ↔ 本地服务的 claim/report 边界未定 | 设计 | S1 | 主干 2 | 否 | 契约已写：MAIN-EXECUTOR.md；实现待做 |
 | GAP-063 | Main 无消息时如何唤醒并 claim 队列未定 | 设计 | S1 | 主干 2 | 是 | 定时任务/自动化/本地提示三选一 |
 | GAP-064 | subagent Report JSON 契约与解析失败策略未定 | 设计 | S1 | 主干 2 | 否 | 契约已写；解析实现待做 |
-| GAP-065 | 03:00 自动创建新 host 对话未定 | 实现 | S1 | 主干 2 | 是 | `host bootstrap` 已幂等；创建新对话仍靠外部调度 |
+| GAP-065 | 03:00 自动创建新 host 对话未定 | 实现 | S1 | 主干 2 | 是 | bootstrap + deferred 兜底已落；创建新对话仍靠外部调度 |
 
 ### 3.2 实现缺口（现状 vs 目标）
 
@@ -163,6 +163,7 @@
 | 2026-11-09 | 日切实测通过：旧任务继续 + 新任务进新对话 | 0.3 FUTURE 2.2；0.6 196/196 | GAP-061 关闭 | 用户实测；跨日切不再是阻塞项 |
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
+| 2026-11-09 | T2.3 自动兜底：03:00 无新 host 旧 host 继续接单 | 0.3 FUTURE/MAIN-EXECUTOR/LOCAL-SERVICE；0.6 203/203 | GAP-065 更新 | cut_deferred；创建新对话仍未解 |
 | 2026-11-09 | T2.3 host bootstrap：同对话幂等/跨日自动切 | 0.3 MAIN-EXECUTOR/LOCAL-SERVICE/PLAN；0.6 202/202 | GAP-065 更新 | 自动创建新对话仍未解 |
 | 2026-11-09 | T2.5 真实 WorkBuddy subagent：Ticket → Agent → Report → outbox | 0.3 PLAN/anc-executor；0.6 201/201 | GAP-031 更新 | 临时库实测；start 在 Agent 完成后补记 |
 | 2026-11-09 | T2.3/T2.4 CLI 端到端：host → ticket → claim → start → report → notify → end | 0.3 LOCAL-SERVICE/interfaces/PLAN；0.6 201/201 | GAP-026/031/053 更新 | 临时库实测通过，outbox 1；真实 Runner 未接 |

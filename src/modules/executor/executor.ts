@@ -28,6 +28,8 @@ export interface ExecutorHost {
   status: HostStatus;
   accepting_new: number;
   cut_at: string;
+  cut_deferred: number;
+  cut_deferred_at: string | null;
   started_at: string;
   closed_at: string | null;
   last_heartbeat_at: string | null;
@@ -161,15 +163,18 @@ export function createHost(db: DatabaseSync, input: CreateHostInput): ExecutorHo
       status: 'active',
       accepting_new: 1,
       cut_at: input.cutAt,
+      cut_deferred: 0,
+      cut_deferred_at: null,
       started_at: at,
       closed_at: null,
       last_heartbeat_at: at,
     };
     db.prepare(`INSERT INTO executor_hosts
-      (host_id, business_date, conversation_id, status, accepting_new, cut_at, started_at, closed_at, last_heartbeat_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      (host_id, business_date, conversation_id, status, accepting_new, cut_at, cut_deferred, cut_deferred_at, started_at, closed_at, last_heartbeat_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(host.host_id, host.business_date, host.conversation_id, host.status,
-        host.accepting_new, host.cut_at, host.started_at, null, host.last_heartbeat_at);
+        host.accepting_new, host.cut_at, host.cut_deferred, host.cut_deferred_at,
+        host.started_at, null, host.last_heartbeat_at);
     return host;
   });
 }
@@ -221,6 +226,20 @@ export function cutHost(db: DatabaseSync, input: { oldHostId: string; newConvers
       startedAt: at,
     });
     return next;
+  });
+}
+
+/** 03:00 没有新 host：不硬切；旧 host 继续接单，标记 deferred。 */
+export function deferCutIfDue(db: DatabaseSync, now: string = nowIso()): { host: ExecutorHost | null; deferred: boolean } {
+  return tx(db, () => {
+    const host = getActiveHost(db);
+    if (!host) return { host: null, deferred: false };
+    const due = new Date(host.cut_at).getTime();
+    if (!Number.isFinite(due) || due > new Date(now).getTime()) return { host, deferred: false };
+    if (host.cut_deferred === 1) return { host, deferred: true };
+    db.prepare('UPDATE executor_hosts SET cut_deferred = 1, cut_deferred_at = ?, last_heartbeat_at = ? WHERE host_id = ?')
+      .run(now, now, host.host_id);
+    return { host: getHost(db, host.host_id), deferred: true };
   });
 }
 
