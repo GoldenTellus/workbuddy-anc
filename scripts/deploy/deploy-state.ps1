@@ -75,7 +75,7 @@ $Stages = if ($Side -eq 'company') {
         @{ id = 'files'; title = '部署运行件（deploy.ps1）' },
         @{ id = 'skills'; title = '部署技能（deploy-skills.ps1）' },
         @{ id = 'patch'; title = '打补丁（patch-guard / selfheal）' },
-        @{ id = 'tasks'; title = '注册 11 个计划任务' },
+        @{ id = 'tasks'; title = '注册 12 个计划任务' },
         @{ id = 'vault'; title = '建 vault 两区（共享/内部）' },
         @{ id = 'org'; title = '写 org 数据（company/members/depts）' },
         @{ id = 'wecom'; title = '配企微（corpid / 群机器人 webhook）' },

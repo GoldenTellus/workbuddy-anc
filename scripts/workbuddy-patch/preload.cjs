@@ -32,6 +32,8 @@ const __ancIsMainProc = (function () {
   }
 })();
 if (__ancIsMainProc) {
+  // 只有显式创建 wb-wake.flag 时才监听；没有 flag 时模块自身 no-op。
+  try { require('./wake-bridge.cjs'); } catch (e) { /* 不阻断 WorkBuddy 启动 */ }
   module.exports = {};
   return;
 }

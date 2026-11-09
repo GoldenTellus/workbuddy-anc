@@ -44,7 +44,7 @@
 | 覆盖率（行 / 分支 / 函数） | **91.80% / 81.44% / 95.14%** | `npm run coverage`（2026-11-08，196 测试；2026-11-09 起 203 测试，覆盖率待重跑） |
 | 测试文件 | **25** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
-| 计划任务 | **11** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
+| 计划任务 | **12** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
 | 技能目录 | **8** 个 | `ls -d light/skills/*/ \| wc -l` |
 | 本地服务命令组 | **16** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |

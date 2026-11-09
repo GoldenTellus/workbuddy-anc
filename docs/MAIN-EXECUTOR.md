@@ -186,12 +186,19 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 
 ## 4. Main 唤醒
 
-第一版只允许两种唤醒：
+两条路：
 
 1. 群消息到达（Main 处理完后顺手 claim 一次）；
-2. WorkBuddy 定时任务/自动化，每分钟触发一次“`executor claim` 并派活”的短 prompt。
+2. `anc-executor-wake` 计划任务每分钟跑一次：先查 `executor ticket list --state queued`，**只有 queued > 0** 才向 `127.0.0.1:18187/wake` 注入一条短 prompt（“只做一个 tick”）。
 
-没有第 2 种时，后台任务不会自己启动；这是 `GAP-063`，不能假装已经解决。
+第 2 条依赖 opt-in 的 WorkBuddy wake bridge：
+
+- `%ProgramData%\anc\data\wb-wake.flag` 存在才启用；
+- token 在 `wb-wake-token`；只监听 loopback；
+- composer 非空时拒绝，不覆盖人的草稿；
+- 不创建新对话，只唤醒当前对话。
+
+没有 flag / bridge 时 `wake-if-queued.ps1` 静默退出；任务仍会落库，等下一次消息或人工唤醒。`GAP-063` 因此是“有自动兜底，但默认关闭”，不是无条件自动。
 
 `claim` 无任务时立即返回，不 sleep，不占住 Main 的回合。
 
@@ -220,7 +227,7 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 | 项 | 归属 |
 |---|---|
 | 自动创建 03:00 新对话 | GAP-065 |
-| 定时唤醒用 WorkBuddy 哪个机制 | GAP-063 |
+| 定时唤醒用 WorkBuddy 哪个机制 | 已落：`anc-executor-wake` + opt-in wake bridge |
 | Report 解析失败后的 Attention 话术 | 主干 3 |
 | 强路径隔离/ACL | GAP-060 |
 | 授权默认值（tools/vault_paths/budget） | GAP-054 |

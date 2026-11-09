@@ -159,7 +159,7 @@
 ## 7. 开工门禁（2026-11-09）
 
 T2.1（表/迁移/仓储/状态机）不依赖 WorkBuddy，可先开工。
-T2.4 / T2.5 开工前必须先定这些接口；2026-11-09 已写 [MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)，Main↔本地服务与 Report 契约已定，唤醒/host bootstrap 仍待做：
+T2.4 / T2.5 开工前必须先定这些接口；2026-11-09 已写 [MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)，Main↔本地服务、Report 契约、host bootstrap 与 opt-in 唤醒兜底已定，自动创建新对话仍待做：
 
 | 门禁 | 要定什么 | 不定会怎样 |
 |---|---|---|

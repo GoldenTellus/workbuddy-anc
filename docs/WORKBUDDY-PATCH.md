@@ -53,6 +53,15 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - **watchdog**：24 小时内 `chatId=false` → 运维群告警；
 - 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
 
+### 7) wake bridge（主干 2，opt-in）
+
+- `wake-bridge.cjs` 在主进程开 `127.0.0.1:18187`；
+- 只有 `%ProgramData%\anc\data\wb-wake.flag` 存在才监听；token 在 `wb-wake-token`；
+- `POST /wake` 只做一件事：当前 composer 为空时 `insertText` 一段短 prompt 并点“发送”；
+- 不创建新对话、不覆盖人的草稿、不执行任意 JS；
+- `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默。
+- **默认关闭**；它是“自动兜底”，不是无条件自动。开启前确认当前窗口就是公司 bot 的 host。
+
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
 - 前缀由代码每轮拼接，**不依赖模型记忆**。
