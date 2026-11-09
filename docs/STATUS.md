@@ -93,7 +93,7 @@
 | GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 是 | 与主干 3 共同定契约 |
 | GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 是 | 定 effect_key 与重试边界 |
 | GAP-058 | 产物/证据保留、清理、权限 | 后续 | S2 | 主干 2 | 否 | 定保留策略 |
-| GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 是 | recoverHost + 迟到 Report 已落；真实重启演练待做 |
+| GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 是 | 跨进程重启 drill 通过；WorkBuddy 窗口重启待做 |
 | GAP-060 | subagent 并发能力、路径隔离、日切交接未验证 | 实现 | S1 | 主干 2 | 是 | 4 并发/日切/目录契约已验证；执行期强 ACL 仍待验证 |
 | GAP-061 | 03:00 日切时旧 host 运行中 subagent 是否继续、新 host 如何接管 | 实现 | S1 | 主干 2 | 否 | 用户实测通过：旧任务继续，新任务进新 host；关闭 |
 | GAP-062 | Main ↔ 本地服务的 claim/report 边界未定 | 设计 | S1 | 主干 2 | 否 | 契约已写：MAIN-EXECUTOR.md；实现待做 |
@@ -164,6 +164,7 @@
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
+| 2026-11-09 | T2.7 跨进程重启 drill：recover → bootstrap → 重新 claim | 0.3 executor/PLAN；0.6 206/206 | GAP-059 收窄 | 旧 host closed，Ticket 回 queued，新 host 完成 |
 | 2026-11-09 | T2.7 recoverHost：旧 host 统一 interrupted + 回 queued | 0.3 executor/LOCAL-SERVICE/MAIN-EXECUTOR/PLAN；0.6 206/206 | GAP-059 更新 | 真实主机重启未做 |
 | 2026-11-09 | T2.7 迟到 Report：旧 Assignment 只留证不覆盖新状态 | 0.3 executor/PLAN；0.6 205/205 | GAP-059 更新 | reports.late；真实重启演练待做 |
 | 2026-11-09 | T2.6 task_dir 收紧：部门 + ticket_id 推导 | 0.3 executor/MAIN-EXECUTOR/LOCAL-SERVICE；0.6 204/204 | GAP-060 收窄 | 跨部门/穿越/自定义拒绝；物理 ACL 未做 |

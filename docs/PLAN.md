@@ -122,7 +122,7 @@
 
 ### T2.7 恢复与审计
 
-- [x] 主机重启/中断：`recoverHost` 将 running/pending → interrupted，Ticket 回 queued，可由新 host 重派。
+- [x] 主机重启/中断：`recoverHost` 将 running/pending → interrupted，Ticket 回 queued，可由新 host 重派；跨进程 drill 通过。
 - [x] 迟到 Report 只记录（`reports.late=1`），不覆盖新 Assignment 状态。
 - [ ] 外部副作用幂等键；outbox 先落库。
 - [ ] 审计：每次 claim/start/report/end 有事件记录。
