@@ -87,8 +87,8 @@
 | GAP-023 | 工作时段/时区/节假日 | 后续 | S3 | 横切 | 否 | 沿用现有 config |
 | GAP-024 | 审计/报告/任务目录保留期 | 后续 | S3 | 横切 | 否 | 定清理策略 |
 | GAP-025 | 审计面板/最小可观测字段 | 后续 | S2 | 横切 | 否 | 定最小字段 |
-| GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 是 | 定三层模型边界与状态转换 |
-| GAP-054 | Ticket 授权范围字段（tools/vault_paths/budget/expires_at/max_attempts） | 设计 | S1 | 主干 2 | 是 | 定字段与默认值 |
+| GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 是 | 2.3 状态机/唯一索引已定；实现待做 |
+| GAP-054 | Ticket 授权范围字段（tools/vault_paths/budget/expires_at/max_attempts） | 设计 | S1 | 主干 2 | 是 | DDL 字段已定；默认值/校验待做 |
 | GAP-055 | Main↔Executor 传输与投递语义（DB+tick 已选方向） | 设计 | S1 | 主干 2 | 是 | 定表/命令/ack/重试 |
 | GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 是 | 与主干 3 共同定契约 |
 | GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 是 | 定 effect_key 与重试边界 |
@@ -101,7 +101,7 @@
 
 | ID | 缺口 | 类型 | 严重度 | 来源 | 阻塞 | 下一步 |
 |---|---|---|---|---|---|---|
-| GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 是 | D1 领域模型 |
+| GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 是 | 2.3 表草案已定；下一步迁移 + 仓储 |
 | GAP-027 | 没有 Main / Executor 运行时 | 实现 | S0 | 主干 2 | 是 | D2 执行器 |
 | GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | people/groups/CLI/render 已完成；真实群配置并入 ACC-01 |
 | GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
@@ -157,6 +157,7 @@
 | 2026-11-09 | 调研 `dsh-superagent` 原型 | 0.3 upstream/2.2；0.6 196/196 | GAP-060 保持 | 借鉴 Ticket/Assignment/worker slot/工具边界；不照搬一 Ticket 一 Session |
 | 2026-11-09 | 定日切规则：03:00 新对话接新任务 | 0.3 FUTURE 2.2/2.3；0.6 196/196 | 新增 GAP-061 | 旧任务继续；新任务进新 host；跨日切待验 |
 | 2026-11-09 | 日切实测通过：旧任务继续 + 新任务进新对话 | 0.3 FUTURE 2.2；0.6 196/196 | GAP-061 关闭 | 用户实测；跨日切不再是阻塞项 |
+| 2026-11-09 | 主干2 表草案/状态机：host + assignment | 0.3 FUTURE 2.3；0.6 196/196 | GAP-026/053/054 更新 | 唯一 active assignment；03:00 日切序列已定 |
 | 2026-11-08 | 文件驱动工作法显式化 | 0.3 AGENTS §3.5、DOC-SYNC、FUTURE 规则 14；0.6/0.8 未变 | 无新增 GAP | 聊天是临时、文件是持久；check 通过 |
 
 ### 3.5 真实环境验收批次（统一收尾）

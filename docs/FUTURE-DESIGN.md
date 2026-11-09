@@ -351,7 +351,7 @@ flowchart LR
 1. Main 接任务，确定 `department_id`、优先级、授权范围、输出目录。
 2. 建 Task/Ticket；Ticket 的部门、基目录、工具/预算不可变。
 3. 调度台看全局空槽；有空位就起一个 subagent，把 Ticket、任务目录、工具边界、Report 格式交给它。
-4. 没空位就排队；P0 可抢占一个槽，同优先级 FIFO。
+4. 没空位就排队；P0 排到队首，但不自动抢占正在跑的 subagent；同优先级 FIFO。
 5. subagent 在自己的任务目录工作，写产物、证据、Report；不直接进群。
 6. 调度台收 Report，更新 Ticket/Assignment，发通知或起下一个任务。
 7. 03:00 日切：新开日对话接新任务；旧对话进入 `closing`，不再接新任务，但运行中的 Assignment 继续写 Report；交接摘要写 `days/<date>.md`。
@@ -426,7 +426,101 @@ flowchart LR
 - `expires_at` / `max_attempts`：过期与重试上限。
 - 没有授权范围的 Ticket 不允许 Executor 启动。
 
+**表草案（主干 2，设计稿，未实现）**
+
+> 只定形状和约束，不代表迁移已写。现有 `tasks` 是人类可读的 Task；`tickets` 是执行单位，不替代 `tasks`。
+
+```sql
+CREATE TABLE IF NOT EXISTS executor_hosts (
+  host_id         TEXT PRIMARY KEY,
+  business_date   TEXT NOT NULL,          -- 03:00 起算的工作日 YYYY-MM-DD
+  conversation_id TEXT NOT NULL,          -- WorkBuddy 日对话 id
+  status          TEXT NOT NULL,          -- active | closing | closed
+  accepting_new   INTEGER NOT NULL DEFAULT 1,
+  cut_at          TEXT NOT NULL,          -- 下一个 03:00
+  started_at      TEXT NOT NULL,
+  closed_at       TEXT,
+  last_heartbeat_at TEXT
+);
+
+-- 全局同一时间只允许一个 active host
+CREATE UNIQUE INDEX IF NOT EXISTS ux_executor_hosts_active
+  ON executor_hosts(status) WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS tickets (
+  ticket_id       TEXT PRIMARY KEY,
+  task_id         INTEGER NOT NULL REFERENCES tasks(id),
+  department_id   TEXT NOT NULL,          -- 部门标签，创建后不可变
+  title           TEXT NOT NULL,
+  state           TEXT NOT NULL,          -- queued | working | waiting_trigger |
+                                          -- waiting_answer | waiting_review | waiting_ack |
+                                          -- blocked | failed | done | cancelled
+  priority        TEXT NOT NULL DEFAULT 'P2',
+  tools_json      TEXT NOT NULL DEFAULT '[]',
+  vault_paths_json TEXT NOT NULL DEFAULT '[]',
+  budget_json     TEXT,
+  expires_at      TEXT,
+  max_attempts    INTEGER NOT NULL DEFAULT 3,
+  latest_report_id TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  ended_at        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_state ON tickets(state, priority, created_at);
+
+CREATE TABLE IF NOT EXISTS assignments (
+  assignment_id   TEXT PRIMARY KEY,
+  ticket_id       TEXT NOT NULL REFERENCES tickets(ticket_id),
+  host_id         TEXT NOT NULL REFERENCES executor_hosts(host_id),
+  subagent_id     TEXT,                   -- WorkBuddy Agent 返回的 id；启动后填
+  department_id   TEXT NOT NULL,
+  task_dir        TEXT NOT NULL,          -- 创建时快照，不随日切改变
+  slot            TEXT NOT NULL DEFAULT 'normal', -- normal | human
+  state           TEXT NOT NULL,          -- pending | running | ended | interrupted | failed | cancelled
+  attempt         INTEGER NOT NULL DEFAULT 1,
+  report_id       TEXT,
+  created_at      TEXT NOT NULL,
+  started_at      TEXT,
+  ended_at        TEXT,
+  end_reason      TEXT
+);
+
+-- 一个 Ticket 同时只能有一个 active Assignment，防止旧/新 host 重复派活
+CREATE UNIQUE INDEX IF NOT EXISTS ux_assignments_active_ticket
+  ON assignments(ticket_id) WHERE state IN ('pending', 'running');
+CREATE INDEX IF NOT EXISTS idx_assignments_host_state ON assignments(host_id, state);
+
+CREATE TABLE IF NOT EXISTS reports (
+  report_id       TEXT PRIMARY KEY,
+  assignment_id   TEXT NOT NULL REFERENCES assignments(assignment_id),
+  ticket_id       TEXT NOT NULL REFERENCES tickets(ticket_id),
+  department_id   TEXT NOT NULL,
+  type            TEXT NOT NULL,          -- progress | waiting | ready | blocked | failed | dropped
+  summary         TEXT NOT NULL,
+  evidence_json   TEXT NOT NULL DEFAULT '[]',
+  next_step       TEXT,
+  created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id, created_at);
+```
+
+**关键不变量**
+
+- `tickets.department_id`、`tickets.task_id` 创建后不可变；改部门/改任务语义 = 新 Ticket。
+- `assignments.host_id`、`assignments.task_dir` 创建后不可变；跨日切只能新建 Assignment，不改旧的。
+- 一个 Ticket 同时只有一个 active Assignment；唯一索引兜底，调度器仍要先查再建。
+- Ticket 的状态由 Report + 人的动作推进；不跟随 host 或 subagent 的存活状态。
+- Report 只追加；`tickets.latest_report_id` 只指向最新一条，旧 Report 不覆盖。
+- 03:00 日切：旧 host `active → closing`，新 host 建为 `active`；旧 host 的 running Assignment 不迁移，仍归旧 host。
+- 新 host 只派 `tickets.state='queued'` 且没有 active Assignment 的 Ticket。
+- 旧 host 超过 grace 仍无法回报：旧 Assignment `running → interrupted`；Ticket 保持/回到 `queued`，由新 host 新建 Assignment 重试。
+- 旧 Assignment 的迟到 Report 只记录，不覆盖新 Assignment 的 Ticket 状态；外部副作用按幂等键去重。
+
 **状态机**
+
+Ticket 的状态由 Report/人的动作推进；Host/Assignment 的状态只影响调度，不反向覆盖 Ticket。
 
 Task（人可见）：`open` → `in_progress` → `waiting_human` / `blocked` → `done` / `cancelled` / `needs_review`
 
@@ -435,18 +529,56 @@ Ticket（执行单元）：
 | 状态 | 含义 |
 |---|---|
 | `queued` | 已授权，等 slot |
-| `working` | Executor 正在跑 |
+| `working` | subagent 正在跑 |
+| `waiting_trigger` | 本轮结束、无待人工事项；等新消息/新 Assignment |
 | `waiting_answer` | 等人回答（Attention） |
 | `waiting_review` | 等人核查结果（ready Report） |
 | `waiting_ack` | 等责任回执（`require_ack`） |
 | `blocked` / `failed` | 执行受阻/失败，等人处理 |
 | `done` / `cancelled` | 结束 |
 
-Assignment：`pending` → `running` → `ended` / `interrupted`
+Assignment：`pending` → `running` → `ended` / `interrupted` / `failed` / `cancelled`
+
+ExecutorHost：`active` → `closing`（03:00）→ `closed`（无 running Assignment）；异常可直接 `closed`
 
 Report：`progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`
 
 Attention：`open` → `answered` / `approved` / `rejected` / `expired` / `cancelled`
+
+Ticket 允许的迁移：
+
+```text
+queued          → working | cancelled
+working         → waiting_trigger | waiting_answer | waiting_review |
+                  waiting_ack | blocked | failed | done | cancelled
+waiting_trigger → working（新消息/新 Assignment）| cancelled
+waiting_answer  → working（人回答）| cancelled
+waiting_review  → working（人续谈/重做）| done | cancelled
+waiting_ack     → working（人回执）| done | cancelled
+blocked/failed  → queued（重试/换 Assignment）| cancelled
+done/cancelled  → 终态
+```
+
+Assignment 允许的迁移：
+
+```text
+pending → running | failed | cancelled
+running → ended | interrupted | failed | cancelled
+ended/interrupted/failed/cancelled → 终态（历史保留）
+```
+
+03:00 日切序列：
+
+```text
+旧 host: active → closing
+新 host: 创建为 active
+新任务: 只进新 host
+旧 running Assignment: 仍归旧 host，继续跑
+旧 host 无 running Assignment → closed
+旧 Assignment 失联超 grace → interrupted → Ticket 回 queued → 新 host 新建 Assignment
+```
+
+Report 到 Ticket 的默认映射：`progress` 不改状态；`waiting` → `waiting_trigger`；`ready` → `waiting_review`；`blocked` → `blocked`；`failed` → `failed`；`dropped` → `done`（记录原因）。
 
 **与主干 3 的边界**
 
@@ -482,7 +614,7 @@ Attention：`open` → `answered` / `approved` / `rejected` / `expired` / `cance
 - **不自动抢占。** 正在跑的 Executor 不会被新来的 P0 任务踢掉。
 - P0 排到队首，等下一个 slot。
 - 老板要立刻腾位置，显式“停掉某个任务”；记审计，不静默杀。
-- 并发上限可配置；**是否预留 1 个“人工续谈”slot 待定**。
+- 并发上限可配置；**固定预留 1 个“人工续谈”slot**；它不接新任务，只接现有 Ticket 的人工回复/续谈。
 - 队列积压时按优先级+截止时间出队；不允许无限重试。
 
 **接单规则**
