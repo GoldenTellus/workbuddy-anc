@@ -98,7 +98,7 @@
 | 1 | 1.4 任务请求与权限 | ✅ | 🟡 | 🟡 | 策略/状态机/CLI/persona/通知链已有；真实群回归待做 |
 | **1** | **主干 1 汇总** | **✅** | **🟡** | **🟡** | 4/4 设计 ✅；实现已落，验收待跑 |
 | 2 | 2.1 Main：入站、判断与派活 | 🟡 | ⬜ | — | 职责/边界已定；入站判断细节待设计 |
-| 2 | 2.2 Executor：会话、工作区与适配器 | 🟡 | ⬜ | — | 会话/工作区已定；WorkBuddy 适配器待定 |
+| 2 | 2.2 Executor：每日对话与任务 subagent | 🟡 | ⬜ | — | 日对话 + 部门标签 + 任务 subagent；并发待验 |
 | 2 | 2.3 工作模型与生命周期 | 🟡 | ⬜ | — | 三层模型已定；Ticket 授权/状态细节待定 |
 | 2 | 2.4 调度与资源控制 | 🟡 | ⬜ | — | 优先级/队列已定；预算/并发待定 |
 | 2 | 2.5 执行安全、恢复与审计 | 🟡 | ⬜ | — | 幂等/恢复原则已定；实现契约待定 |
@@ -305,7 +305,7 @@ Main 是唯一对人说话的层；它决定“这是不是活、要不要接、
 flowchart LR
   A["群消息 / 老板 1:1 / 任务表"] --> B["Main<br/>评估、接单、建 Ticket、派活、通知、回复"]
   B --> C["Ticket<br/>一次被授权的执行单元"]
-  C --> D["Executor<br/>一个 Ticket 一个会话 + 一个目录"]
+  C --> D["当天日对话<br/>调度台 + 任务 subagent"]
   D --> E["Report / Attention"]
   E --> B
   B --> F["群 / 1:1 回复"]
@@ -326,51 +326,75 @@ flowchart LR
 - **不碰执行现场**：不直接改 Executor 的会话/工作文件；Ticket/Assignment 的状态由命令和 Report 驱动。
 - **不做确认解析**：`required_confirmer`、引用/短号/@ 解析属于主干 3；Main 只创建和发出 Attention。
 
-### 2.2 Executor：会话、工作区与适配器｜设计 🟡 · 实现 ⬜
+### 2.2 Executor：每日对话与任务 subagent｜设计 🟡 · 实现 ⬜
 
-**Executor Session**
+**核心模型**
 
-- 一个 Ticket 一个 Session、一个独立目录。
-- 在任务工作区里读文件、跑命令、写产物、做验证。
-- 用 Report 回报：`progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`。
-- 需要人时写 Attention，不自己找人说。
+```text
+一个 WorkBuddy 登录
+└─ 当天对话（调度台）
+   ├─ Task 1 [部门 A] → subagent 1 → departments/A/tasks/<ticket>/
+   ├─ Task 2 [部门 B] → subagent 2 → departments/B/tasks/<ticket>/
+   └─ Task 3 [部门 A] → subagent 3 → departments/A/tasks/<ticket>/
+```
+
+- **一天一条对话**：日对话是调度台，不是任务执行器；每天新开，旧对话只留交接摘要。
+- **一个任务一个 subagent**：不按部门拆 subagent 类型；部门只是任务的标签和输出路由。
+- **任务必须带 `department_id`**：Main 建 Task/Ticket 时写明；subagent 不需要自己判断部门。
+- **产物按部门落盘**：`departments/<dept_id>/tasks/<ticket_id>/`；日对话只收 Report 和摘要。
+- **任务状态在数据库**：日对话是 UI/上下文边界；换对话不丢任务、队列和 Report。
+
+**执行流程**
+
+1. Main 接任务，确定 `department_id`、优先级、授权范围、输出目录。
+2. 建 Task/Ticket；Ticket 的部门、基目录、工具/预算不可变。
+3. 调度台看全局空槽；有空位就起一个 subagent，把 Ticket、任务目录、工具边界、Report 格式交给它。
+4. 没空位就排队；P0 可抢占一个槽，同优先级 FIFO。
+5. subagent 在自己的任务目录工作，写产物、证据、Report；不直接进群。
+6. 调度台收 Report，更新 Ticket/Assignment，发通知或起下一个任务。
+7. 日切：新开日对话，旧对话写 `days/<date>.md`；数据库里的排队/运行中任务继续。
+
+**目录约定**
+
+```text
+<root>/
+├─ departments/
+│  ├─ <dept_id>/
+│  │  ├─ shared/                 # 部门共享资料，任务只读
+│  │  ├─ tasks/<ticket_id>/      # 该任务产物、日志、证据
+│  │  └─ days/<date>.md          # 部门日交接摘要
+│  └─ ...
+└─ vault/                        # 共享只读区
+```
+
+- **一个部门多个任务**：同一部门也走同一个队列和全局并发槽；不需要多开对话。
+- **部门隔离**：靠目录约定 + 工具路径白名单/ACL；不是 OS 强沙箱。
+- **共享文件**：任务默认只读；要改走单独的 ingest/merge 流程，避免两个 subagent 互相覆盖。
+- **一个嘴巴**：subagent 不直接进群、不直接 @ 人；所有对人说话都经 Main。
+
+**并发与恢复**
+
+- 全局并发上限先按 4；每个 subagent 一个任务，不按部门另设 subagent 类型。
+- 并发上限、模型选择、预算、重试上限待定（6.2 #9）。
+- 主机重启后，按 Ticket/Assignment 恢复；subagent 是临时执行体，不把“会话 id”当任务身份。
+- 日对话被关闭/换日不阻塞任务：Report 写回数据库，下一班调度台接管。
 
 **约束**
 
 - **不能直接对人说话**：没有 `ask_user_question`、没有群发、没有 @。
 - **不能改授权/额度/优先级**；只能使用 Ticket 授权的工具、路径和预算。
-- **默认不能开别的 Executor Session**；是否允许子 agent/子会话待定。
-- 交接给人时释放 slot；人回复后，同一 Ticket 恢复。
-
-**双工作区**
-
-| 工作区 | 位置 | 用途 | 生命周期 |
-|---|---|---|---|
-| **群交互工作区** | WorkBuddy 的“助理”文件夹 | Main 处理不同群的对话 | 常驻；按群保存上下文 |
-| **任务执行工作区** | 主机 C 盘某目录（路径待定） | Executor 一个 Ticket 一个目录/对话框 | 随 Ticket 创建；产物保留，按策略清理 |
-
-原则：
-
-- 群交互工作区**不跑长任务**；任务执行工作区**不直接进群**。
-- 任务目录按 Ticket 命名；不同任务的会话、文件、日志互不污染。
-- Main 只读 Executor 的 Report 和约定产物，不直接改它的工作文件。
-- **结果交付**：Report 带摘要、证据路径、未完成项；Main 只发摘要和可访问路径，不把大文件/敏感内容贴群。
-- **一个嘴巴**：Executor 不直接进群、不直接 @ 人；所有对人说话都经 Main。
-
-**适配器契约（待 6.2 #6 定稿）**
-
-- 创建/恢复/停止 Session；Session id 与 Ticket/Assignment 绑定。
-- 超时、并发、slot 释放、进程崩溃后的恢复。
-- WorkBuddy 版本/补丁不匹配时 fail closed，不带着未知补丁跑任务。
+- **不能开新的 WorkBuddy 对话**；任务只在当天调度台里以 subagent 运行。
+- 交接给人时释放槽；人回复后，同一 Ticket 恢复。
 
 ### 2.3 工作模型与生命周期｜设计 🟡 · 实现 ⬜
 
 | 概念 | 定义 | 关键字段 | 谁写 |
 |---|---|---|---|
-| **Task** | 人可见的“要做什么” | `task_id`、标题、交办人、执行人、群、截止时间、优先级、状态 | Main |
-| **Ticket** | 一次被授权的执行单元；一个 Task 可以有多张 Ticket（重做/恢复） | `ticket_id`、`task_id`、授权范围（工具/路径/预算/有效期/最大尝试）、状态、创建原因 | Main |
-| **Assignment** | 一次具体的执行尝试；一个 Ticket 可以有多次 Assignment | `assignment_id`、`ticket_id`、`session_id`、目录、开始/结束、结束原因 | Main / Executor 事实回报 |
-| **Report** | Executor 对一次执行的回报 | `report_id`、`assignment_id`、类型、摘要、证据、下一步 | Executor |
+| **Task** | 人可见的“要做什么” | `task_id`、标题、交办人、执行人、群、`department_id`、截止时间、优先级、状态 | Main |
+| **Ticket** | 一次被授权的执行单元；一个 Task 可以有多张 Ticket（重做/恢复） | `ticket_id`、`task_id`、`department_id`、授权范围（工具/路径/预算/有效期/最大尝试）、状态、创建原因 | Main |
+| **ExecutorHost** | 当天的 WorkBuddy 调度对话 | `host_id`、日期、conversation_id、状态、开始/结束 | Main / runtime |
+| **Assignment** | 一次具体的执行尝试；一个 Ticket 可以有多次 Assignment | `assignment_id`、`ticket_id`、`host_id`、`subagent_id`、`department_id`、任务目录、开始/结束、结束原因 | Main / subagent 事实回报 |
+| **Report** | subagent 对一次执行的回报 | `report_id`、`assignment_id`、`department_id`、类型、摘要、证据、下一步 | subagent |
 | **Attention** | 需要人行动的一条待确认 | `attention_id`、`ticket_id`、目的、问题、选项、`required_confirmer`、状态、回复消息 id | Main |
 | **Notification** | 一条对外通知/回复 | `notification_id`、目标（群/1:1）、目的、关联 Task/Ticket/Attention、状态 | Main |
 | **Thread** | 一个群或 1:1 的会话上下文 | `chat_id`、类型、成员、绑定 | 平台适配层 |
@@ -699,10 +723,10 @@ created_at, answered_at
 
 | # | 问题 | 类型 |
 |---|---|---|
-| 6 | WorkBuddy 怎么创建/恢复/停止 Executor Session；会话 id、目录、并发、超时怎么管 | 阻塞实现 |
-| 7 | 任务工作区 C 盘具体路径、命名、清理、备份、权限 | 阻塞实现 |
+| 6 | 日对话的创建/换日/关闭；subagent 并发、超时、失败重试 | 阻塞实现 |
+| 7 | 部门目录/任务目录的路径、命名、清理、备份、权限 | 阻塞实现 |
 | 8 | `background` 任务自动接还是 Main 评估；谁授权、谁定优先级 | 阻塞设计 |
-| 9 | Executor 并发上限、模型选择、额度/预算、失败重试上限 | 后续 |
+| 9 | 全局 subagent 并发上限、模型选择、额度/预算、重试上限 | 阻塞实现 |
 | 10 | 是否预留 1 个“人工续谈”slot | 后续 |
 | 11 | 主动任务规则：哪些类型允许 `observe` / `auto`，规则变更谁审批、怎么回滚 | 后续 |
 | 26 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 阻塞设计 |

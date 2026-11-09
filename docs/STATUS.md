@@ -67,10 +67,10 @@
 | GAP-003 | 公司大群/部门群成员与 org 同步 | 实现 | S2 | 主干 1 | 否 | org 为准；企微成员校验告警；入群/退群/换号 |
 | GAP-004 | 老板 1:1 真通道 / 私有群 fallback | 验收 | S1 | 主干 1 | 否 | 类型/配置已有；真 1:1 spike 并入 ACC-06 |
 | GAP-005 | 员工群两个 bot 的触发分工 | 实现 | S1 | 主干 4 | 是 | 员工 bot 只服务员工；补丁/移除查库（GAP-037–039） |
-| GAP-006 | WorkBuddy Executor Session 适配 | 实现 | S0 | 主干 2 | 是 | 先做 adapter spike |
-| GAP-007 | 任务工作区路径/命名/清理 | 实现 | S1 | 主干 2 | 是 | 定 C 盘路径与生命周期 |
+| GAP-006 | WorkBuddy 日对话 + 任务 subagent 适配 | 实现 | S0 | 主干 2 | 是 | 先验证 subagent 并发/工具边界/日切 |
+| GAP-007 | 部门/任务目录路径、命名、清理、权限 | 实现 | S1 | 主干 2 | 是 | 定 departments/<dept>/tasks/<ticket> |
 | GAP-008 | `background` 任务接单规则 | 设计 | S1 | 主干 2 | 是 | 自动接 vs Main 评估；谁授权 |
-| GAP-009 | Executor 并发/模型/预算 | 后续 | S2 | 主干 2 | 否 | 定上限与重试 |
+| GAP-009 | subagent 全局并发/模型/预算 | 后续 | S2 | 主干 2 | 否 | 定默认 4 与重试 |
 | GAP-010 | 是否预留人工续谈 slot | 后续 | S3 | 主干 2 | 否 | 压测后定 |
 | GAP-011 | 主动任务 observe/auto 规则 | 后续 | S2 | 主干 0 | 否 | 规则与审批 |
 | GAP-012 | `require_ack` 任务类型与升级 | 设计 | S1 | 主干 3 | 是 | 定义必须回执的类型 |
@@ -94,6 +94,7 @@
 | GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 是 | 定 effect_key 与重试边界 |
 | GAP-058 | 产物/证据保留、清理、权限 | 后续 | S2 | 主干 2 | 否 | 定保留策略 |
 | GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 是 | 定 interrupted/queued 转换 |
+| GAP-060 | subagent 并发能力、路径隔离、日切交接未验证 | 实现 | S1 | 主干 2 | 是 | 先做 2 个并发 + 目录写入 spike |
 
 ### 3.2 实现缺口（现状 vs 目标）
 
@@ -104,7 +105,7 @@
 | GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | people/groups/CLI/render 已完成；真实群配置并入 ACC-01 |
 | GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
 | GAP-030 | 没有 boss/manager/employee 角色模型 | 验收 | S1 | 主干 1 | 否 | people/policy/sync/persona 已完成；真实群接线并入 ACC |
-| GAP-031 | 没有任务工作区 / 会话管理 | 实现 | S1 | 主干 2 | 是 | 每 Ticket 一目录/会话 |
+| GAP-031 | 没有日对话调度 / subagent 管理 | 实现 | S1 | 主干 2 | 是 | 日对话 host + task subagent |
 | GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次通过（当时 191/191），关闭 |
 | GAP-040 | org 角色源未同步到 people/manager_scopes | 实现 | S1 | 主干 1 | 否 | 已解析并同步；文档/边界已收口；关闭 |
 | GAP-041 | 公司 bot persona / skills 未接新角色、群类型、任务请求 | 验收 | S1 | 主干 1 | 否 | persona/anc-task/通知链已完成；真实消息回归并入 ACC |
@@ -150,6 +151,7 @@
 | 2026-11-08 | 完成即更新规则 | 0.3 STATUS §3.6 / FUTURE / DOC-SYNC / AGENTS / skill 同步；0.6 代码测试不变 | 无新增 GAP | 只改代码不算完成；check 通过 |
 | 2026-11-08 | FUTURE-DESIGN 全量审计 + 修复 | 0.3 统一 0.8/三态/树/分支计数/叶子/差距表/D 阶段 | 新增并关闭 GAP-051 | 设计正文已修；代码测试未动 |
 | 2026-11-08 | 全仓文档语义扫描 | 0.3 发现 11 份重大漂移、11 份小问题、15 份当前；0.4/0.8 仅记录 | 新增 GAP-052 | 扫描后已批量修复，GAP-052 关闭 |
+| 2026-11-09 | 主干2 Executor 改为“日对话 + 任务 subagent” | 0.3 FUTURE 2.2/2.3；0.6 196/196 | GAP-006/007/009/031 更新；新增 GAP-060 | 部门只做标签/输出目录；并发待验 |
 | 2026-11-08 | 文件驱动工作法显式化 | 0.3 AGENTS §3.5、DOC-SYNC、FUTURE 规则 14；0.6/0.8 未变 | 无新增 GAP | 聊天是临时、文件是持久；check 通过 |
 
 ### 3.5 真实环境验收批次（统一收尾）
@@ -203,7 +205,7 @@
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | `npm test` 偶发挂起 | 门禁不稳定 | 先单文件定位；必要时拆分/串行化 PowerShell 用例 |
-| WorkBuddy 没有公开的会话管理 API | Executor 无法落地 | 先做 adapter spike，再定 D2 范围 |
+| WorkBuddy subagent 并发/路径隔离未验证 | 多任务吞吐和部门边界受影响 | 先做 2 并发 + 目录写入 spike；必要时降为串行队列 |
 | 企微 1:1 / 入站路由未验证 | 老板控制台和确认链可能不可用 | 在 D3 前做最小实验 |
 | 未来上游许可证不明 | 不能合法二创 | `UPSTREAM.md` 的许可证门禁：不明只学概念 |
 | 文档再次漂移 | 又回到“多份真相” | `DOC-SYNC` + `check:docs` + 主干完成定义 |
