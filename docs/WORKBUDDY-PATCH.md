@@ -54,7 +54,8 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - ⚠ **`from=` 的语义（2026-11-09 实测，GAP-072）**：WorkBuddy 的 AI Bot 把发送者归一成 `wok…` 形式的**会话级 open id**，补丁注入的 `from=` 就是它，**不是企微通讯录账号 userid**。org 的 `member.userid` 必须写这个实际值，`bind actor` 才能匹配到人；采集方法见 `DEPLOY-COMPANY.md §10.4`。
   - 这类 id 是「成员自建机器人」给的外部化 userid（`wo…` 开头，和 external_userid 同形）；企微回调里不提供通讯录 userid，官方社区也有同类提问（[成员自建机器人 userId 为 wo 开头](https://developer.work.weixin.qq.com/community/question/detail?content_id=16861945518233122603)、[如何获取可读 userid](https://developer.work.weixin.qq.com/community/question/detail?content_id=16839204387079593965)）。
   - 因此**身份绑定是「一次性采集」而非可推导**：某人第一次发消息时采集其 `wo…` id 写进 org，之后长期有效；换企微账号/换机器人要重新绑。
-  - **采集已自动化（GAP-074）**：公司 bot 在第一次遇到未识别成员时会请对方回复一次姓名，然后调用 `bin\bind-member-identity.ps1` 写入 org 并重渲染；管理员不用手工读 `patch-in.log`。- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
+  - **采集已自动化（GAP-074）**：公司 bot 在第一次遇到未识别成员时会请对方回复一次姓名，然后调用 `bin\bind-member-identity.ps1` 写入 org 并重渲染；管理员不用手工读 `patch-in.log`。
+- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
 
 ### 7) wake bridge（主干 2，opt-in）
 
@@ -65,6 +66,7 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - 不创建新对话、不覆盖人的草稿、不执行任意 JS；
 - `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默。
 - **默认关闭**；它是“自动兜底”，不是无条件自动。开启前确认当前窗口就是公司 bot 的 host。
+- ⚠ **2026-11-09 本机实测限制（GAP-075）**：`wake-bridge.cjs` 只在 `preload.cjs` 加载于 **Electron 主进程（process.type=browser）** 时启动；当前正式启动路径是 `--inspect-brk` + 运行时给子进程设 `NODE_OPTIONS`，主进程本身不加载 preload，因此**即使 `wb-wake.flag` 存在，18187 也不会监听**（无 `wb-wake.log` / `wb-wake-token`）。已验证：建 flag + 补丁重启后 18187 无监听。要恢复 bridge 需要换“主进程启动时带入 preload”的启动方式（与身份补丁的注入路径冲突，需单独评估），当前收口期按例外接受；`anc-executor-wake` / `new-host` 在 token 不存在时静默跳过。
 
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。

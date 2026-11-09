@@ -400,6 +400,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 - org/群接线：3 成员 + 技术部（管理者 1）+ 公司大群 + boss_dm 1:1 写入本机 org；`render deploy --db` 4 产物、`sync-org` 通过、`bind verify-org` ok；`bind actor` 验证老板/管理者/员工角色正确；公司 persona 已重装并干净重启 WorkBuddy 重新打补丁（applied=true，新 pid）。
 - 真实入站校正：公司群 chatid 与老板 `userid` 以 `patch-in.log` 实际值为准（AI Bot 上报 `wok…` 会话级 id，不是通讯录账号 → GAP-072）；校正后 `bind actor` 在 公司群 与 boss_dm 均返回 boss。员工 sender id 待其发消息后采集。
 - 首次身份绑定自动化（GAP-074）：新增 `bin\bind-member-identity.ps1` + persona/`anc-task` 首次绑定流程；未识别成员第一次 @ 时 bot 请对方回一次姓名并自动写 org → 重渲染 → sync。部署 138 文件，临时 org 验证匹配/未匹配返回。
+- 备份恢复演练通过：强制新建备份 `anc-20261109-171512.db` → 停 DB 任务 → 安全副本 → 用备份替换 `anc.db` → 重启；doctor 34/FAIL=0、deploy-verify ok 4/0/1、org 重渲染 verify-org ok。
+- wake bridge 限制（GAP-075）：当前 `--inspect-brk` 注入只覆盖子进程，Electron 主进程不加载 preload → 18187 不监听；按 D33 收口期接受例外，ACC-09 记 wake bridge 例外、ACC-10/11 不验收。
 - 代码修复后重新 `deploy.ps1 -Apply` 137 文件 hash 全过（备份 `deploy-20261109-155502`）。
 - 证据：`%ProgramData%\anc\stage\elevated-*.log`、`stage\elevated-done.json`、`.workbuddy/verify/deploy/`。
 
@@ -416,13 +418,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 
 | 项 | 缺什么 | 下一步 |
 |---|---|---|
+| ACC-09 | **基本达成 + wake bridge 例外（D33/GAP-075）**：138 文件、13 任务、补丁 applied、doctor FAIL=0；18187 不可用（当前注入路径限制，收口期接受） | 若正式部署要自动 host/wake，需单独立项换启动方式 |
+| ACC-10 / ACC-11 | 依赖 wake bridge / 真实 host 会话；当前 bridge 不可用（GAP-075），host 流未接 | 收口期不验收（D33）；正式部署前评估 |
 | ACC-01 / 05 / 06 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工与 manager_scopes；boss_dm 仅识别、无出站 webhook | 建员工群/部门群并补 chatId；真实群消息回归 |
-| ACC-02 / 03 / 04 | 员工身份链路已通（吴琼 sender id 已绑定，张佳艺待采集）；缺员工群/部门群 | 建员工群（本人+公司 bot+员工 bot）后跑登记/接受/审批 |
+| ACC-02 / 03 / 04 | 员工身份链路已通（吴琼、张佳艺 sender id 均已绑定，首次绑定已自动化）；缺员工群/部门群 | 建员工群（本人+公司 bot+员工 bot）后跑登记/接受/审批 |
 | ACC-08 / 12 | 企微成员 API、第二台电脑 | 用户分配成员 API 凭据；员工机安装 |
-| ACC-09 剩余 | wake bridge 18187（默认关） | 用户确认启用后建 flag/workspace + 补丁重启 |
-| ACC-10 | 真实队列 + 03:00 + bridge | 依赖 ACC-01/09 |
-| ACC-11 | 真实 host 会话 + WorkBuddy 窗口重启 | 依赖 ACC-09/10 |
 | ACC-07 | **达成（本机）**：`-Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过；演练后 doctor 34/FAIL=0、deploy-verify ok 4/0/1 | 证据 `verify/final/acc07-rollback-*.log`；正式部署前再跑一次 |
-| 备份恢复演练 / 独立备份盘 | 恢复演练 + 独立盘/UNC | 用户提供盘后跑 |
+| 独立备份盘 | 恢复演练已通过（`restore-drill-clean-171512.log`）；离机目标仍与本地同物理盘 | 用户提供独立盘/UNC 后改 `-Destination` |
 | GAP-034/053/070 | Task↔Ticket 映射实现、重试/拆分 | 归主干 2 后续 |
 | GAP-009/011/025 等 | 模型/预算、主动任务、审计面板 | 留后续主干 |
