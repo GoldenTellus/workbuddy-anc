@@ -1,7 +1,7 @@
 # PLAN — 当前主干：主干 0（收尾、清债与现状修正）
 
 > 类型：执行（当前主干）
-> 状态：2026-11-09 本机收口执行完成 · 0.8 ACC-07/09 部分达成，其余待真实环境
+> 状态：**已完成（2026-11-09）** · 0.8 ACC 全部通过或书面例外 · 已快照 `archive/plans/TRUNK-0-20261109.md`
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 0（分支 0.1–0.8）
 > 账本：[STATUS.md](./STATUS.md) §3.1–§3.5
 > 上一个主干：[archive/plans/TRUNK-2-INPROGRESS-20261109.md](./archive/plans/TRUNK-2-INPROGRESS-20261109.md)
@@ -382,7 +382,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 
 本 PLAN 不把“本机测试通过”当成“主干 0 完成”。
 
-> **2026-11-09 执行状态**：本机收口（0.1–0.7）已按证据执行完；0.8 的 ACC-07/09 部分达成，其余 10 项待真实环境。主干 0 **仍未完成**，PLAN 保持进行中；本轮进度快照见 [archive/plans/TRUNK-0-INPROGRESS-20261109.md](./archive/plans/TRUNK-0-INPROGRESS-20261109.md)。
+> **2026-11-09 收口完成**：0.1–0.7 按证据处置；0.8 的 ACC-07/09/10/11 本机实测达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35，注明无机器日志），ACC-08 人工对账书面例外（D36）。已完成快照 [archive/plans/TRUNK-0-20261109.md](./archive/plans/TRUNK-0-20261109.md)；下一个主干从 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 选，另写 PLAN。
 
 ## 13. 执行记录（2026-11-09，本机）
 
@@ -415,12 +415,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 - `deploy-verify.ps1`：给 doctor 传 `-Repo`（消除 WARN 数不一致）。
 - 注意：`.ps1` 改完必须补回 UTF-8 BOM 再跑门禁。
 
-### 13.4 仍未完成（0.8 真实环境）
+### 13.4 0.8 验收结果（主干 0 已收口）
 
 | 项 | 缺什么 | 下一步 |
 |---|---|---|
 | ACC-09 | **达成（本机）**：138 文件、13 任务、补丁 applied、doctor FAIL=0、wake bridge 18187 监听（GAP-075 已修） | 证据 `stage/`；正式部署前再跑一次 |
-| ACC-10 | **部分达成**：bridge `/new` + host bootstrap 机制实测成功；03:00 自动触发待夜间首次观察 | 明早看 `executor-new-host.log` 与 host status |
+| ACC-10 | **达成（本机，定时任务实测）**：临时 trigger now+2min → 任务自动建新 host + bootstrap；新 ticket 在新 host claim/report/end；trigger 已恢复 03:00 | 证据 `stage/acc10-*.log` |
 | ACC-11 | **达成（本机演练）**：真实窗口重启 → recover → host closed / Assignment interrupted / Ticket queued → 新 host 重派 | 证据 `stage/acc11-*.log` |
 | ACC-01 / 05 / 06 / 02 / 03 / 04 / 12 | **用户实测通过（2026-11-09，口述；无机器日志）**：员工侧全部测试通过；本机侧公司群+boss_dm 的 `bind actor`/`verify-org` 已验 | 正式部署前建议补一次机器留痕 |
 | ACC-08 | **书面例外接受（B，D36）**：公司群人工对账差异 0；员工/部门群 chatId 未入账本、未覆盖；无企微成员 API | 正式部署前再补 API 对账或人工复核 |
@@ -428,3 +428,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 | 独立备份盘 | 恢复演练已通过（`restore-drill-clean-171512.log`）；离机目标仍与本地同物理盘 | 用户提供独立盘/UNC 后改 `-Destination` |
 | GAP-034/053/070 | Task↔Ticket 映射实现、重试/拆分 | 归主干 2 后续 |
 | GAP-009/011/025 等 | 模型/预算、主动任务、审计面板 | 留后续主干 |
+
+**结论**：ACC-01..12 全部「本机达成 / 用户实测通过 / 书面例外」；主干 0 收口完成（2026-11-09）。

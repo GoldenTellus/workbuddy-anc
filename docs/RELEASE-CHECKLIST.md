@@ -27,9 +27,10 @@
 | 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **138 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP） |
 | 体检 | `doctor` **FAIL=0** | ✅ **34 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
 | 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
-| ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ⚠️ ACC-07/09/11 达成（本机）；ACC-02/03/04/05/06/12 用户实测通过（口述，无机器日志，D35）；ACC-08 人工对账例外（D36）；ACC-10 机制验证、03:00 待观察；备份恢复通过 |
+| ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ✅ ACC-07/09/10/11 本机达成；ACC-02/03/04/05/06/12 用户实测通过（口述，无机器日志，D35）；ACC-08 人工对账书面例外（D36）；备份恢复通过 |
+| 主干 0 收口 | 8 分支设计/实现/验收、ACC 全部通过或书面例外、文档联动、门禁 | ✅ 2026-11-09 收口；快照 `docs/archive/plans/TRUNK-0-20261109.md`；正式对外发布仍由用户决定 |
 
-**发布结论：不满足「ACC 全部通过」。** 主干 0 保持 🟡；本表不放行 1.0 / 主干 0 发布。
+**发布结论（2026-11-09）**：主干 0 已收口（ACC 全部通过或书面例外）；本表面向正式对外发布，仍需用户确认后再放行。**主干 0 已完成，正式发布待定。**
 **不得把未跑写成通过**——`deploy-verify` 的 SKIP 只能记「未验」，验收项的判定以 `STATUS §3.5` 为准。
 
 ---

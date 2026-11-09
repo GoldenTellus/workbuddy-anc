@@ -83,6 +83,7 @@
 - [x] **ACC-09 达成（本机）**：13 任务 Ready + 补丁 `applied=true` + wake bridge `127.0.0.1:18187` 监听。
 - [x] **ACC-10 机制验证**：`bin\new-host.ps1` 经 bridge `/new` 成功新建 host 对话（`executor_hosts` active，`conv-20261109-172231`），bot 在新对话执行 `executor host bootstrap`；03:00 自动触发待夜间首次观察（任务已注册、flag+workspace 已配）。
 - [x] **ACC-11 真实窗口重启演练**：重启 WorkBuddy（新 runId）→ 旧 host 仍 active、Assignment running（重启前状态）→ `executor recover` → host closed、Ticket 回 queued；新 host `bootstrap` 后 claim→start→report→end，Ticket `waiting_review`；证据 `%ProgramData%\anc\stage\acc11-*.log`。
+- [x] **ACC-10 达成（本机，定时任务实测）**：把 `anc-executor-new-host` trigger 临时改到 now+2 分钟后运行 → 任务自动建新 host 对话（workspace `workbuddy-anc`，`conv-20261109-173355`）+ bot `host bootstrap`（约 13s 后 host active）；新 ticket 在新 host claim→start→report→end；trigger 已恢复 Daily 03:00（next 2026-11-10 03:00）；证据 `stage/acc10-scheduled.log`、`stage/acc10-result.log`。
 - [x] 员工 @ 已打通：用户调整企微智能机器人「可使用范围」后，16:55 收到吴琼在群里的真实消息（`patch-in.log` 有入站）；按实际 sender id 更新 `member.userid`（`wok…` 会话级 id），`bind actor` → 吴琼 / employee，`verify-org` ok。**GAP-073 关闭**（新成员仍需在企微后台分配/领用，见 DEPLOY-COMPANY §11.1）。
 - [x] **首次身份绑定已自动化（GAP-074）**：新增 `bin\bind-member-identity.ps1`（按姓名/ID 把 sender id 写进 org → 重渲染 → sync），persona 与 `anc-task` 技能已加「首次绑定」流程：未识别成员第一次 @ 时，bot 请对方回复一次姓名（若消息自带姓名则直接绑），随后自动写 org，下一条消息即识别。已部署（138 文件）、临时 org 验证匹配/未匹配两种返回；`deploy-persona` + `deploy-skills` 已更新（新会话生效）。
 - [x] 张佳艺已绑定：17:09 收到她「我是张佳艺」入站，已按实际 sender id 写入 org（manager / tech / scopes=tech），`bind actor` 通过；同时清理了 groups 表里一条旧公司群 chatid 残留。自动绑定流程（GAP-074）尚待在**新会话**（`/new` 后）首次触发验证——本次消息发生在旧会话，脚本未自动执行，属人工补绑。
@@ -104,7 +105,7 @@
 
 | 事项 | 状态 | 证据 / 下一步 |
 |---|---|---|
-| 主干 0 | 本机收口完成；员工侧用户实测通过；ACC-10 待 03:00 观察 | [PLAN.md](./PLAN.md)；0.1–0.7 已按证据处置；ACC-07/09/11 达成，ACC-02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账部分 |
+| 主干 0 | **已收口（2026-11-09）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；见 [PLAN.md](./PLAN.md) 与快照 |
 | 主干 1/2 本机 | 已收口 | 见 §1.4；待两机 ACC |
 | 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
@@ -199,7 +200,7 @@
 | 001 / 002 / 004 | **closed（用户实测通过，口述；无机器日志）** | ACC-05 / ACC-03/04 / ACC-06；用户 2026-11-09 确认员工侧全部测试通过 |
 | 003 | accepted（人工对账例外，D36） | ACC-08：公司群人工对账差异 0；员工/部门群未覆盖；无 member API；用户选择 B |
 | 005 | trunk-4 | 员工 bot 仍按旧实现；PLAN §3 明示不在主干 0 做 |
-| 006 / 031 / 042 / 050 / 065 | acc | ACC-09 达成；ACC-10 机制验证、03:00 待观察；ACC-08 缺成员 API；031 已由用户口述验收 |
+| 006 / 031 / 042 / 050 / 065 | **closed（本机达成 + 用户验收 + 书面例外）** | 006/031/065 随 ACC-09/10 达成；042/050 由用户实测（D35）+ ACC-08 例外（D36）收口 |
 | 059 | **closed（ACC-11 重启演练通过）** | 真实窗口重启 → recover → host closed / Assignment interrupted / Ticket queued → 新 host 重派；证据 `stage/acc11-*.log` |
 | 041 | **closed（用户实测通过，口述；无机器日志）** | persona / 真实群消息回归由用户验收 |
 | 007 | **closed** | `executor.ts` 的 task_dir 由部门 + ticket_id 推导；测试覆盖；`MAIN-EXECUTOR.md` |
@@ -310,6 +311,7 @@
 | 2026-11-09 | 备份恢复演练 + wake bridge 限制查清 | 0.4 备份恢复；0.8 ACC-09/10 口径；D33 | 新增 GAP-075（wake bridge 不可用，按例外） | 恢复演练后 doctor/verify/verify-org 全绿；wake bridge 不监听，flag 已移除 |
 | 2026-11-09 | 用户实测员工侧全部通过（口述，无机器日志） | 0.3 STATUS §1.7/§3.5；0.8 ACC-02/03/04/05/06/12 记用户验收 | GAP-001/002/004/028/030/041 关闭；003 留 ACC-08 | 用户明确要求按实测通过记账并注明无机器日志 |
 | 2026-11-09 | ACC-08 按用户选择 B 记书面例外（人工对账） | 0.8 ACC-08；0.3 STATUS §3.5；D36 | GAP-003 accepted（例外） | 公司群对账差异 0；员工/部门群未覆盖；不自建应用 |
+| 2026-11-09 | ACC-10 定时任务实测达成；主干 0 收口 | 0.8 ACC-10；FUTURE 主干 0 全分支；PLAN 快照 | GAP-006/031/042/050/065 关闭；主干 0 ✅ | trigger 临时改 now+2min 实测后恢复 03:00；文档全量同步 |
 | 2026-11-09 | wake bridge 修复（inject 主进程加载 preload）+ ACC-09/10/11 演练 | 0.8 ACC-09/10/11；0.3 WORKBUDDY-PATCH；D34 | GAP-075 关闭 | 18187 监听；new-host 机制成功；真实窗口重启 recover→queued→新 host 重派通过 |
 
 ### 3.5 真实环境验收批次（统一收尾）
@@ -329,7 +331,7 @@
 | ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 | **达成（本机）**：部署 137 文件、`render deploy --db`、WorkBuddy 重启（补丁 applied）均完成；`deploy.ps1 -Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过；演练后 doctor 34/FAIL=0、deploy-verify ok 4/0/1 |
 | ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 | **书面例外接受（用户选择 B，D36）**：人工对账公司群成员（3 人 + 公司 bot）与 org 3 人一致、差异 0；员工群/部门群 chatId 未入账本，未覆盖；无企微成员 API 凭据 |
 | ACC-09 | 公司主机部署 + 13 个任务 | 公司主机管理员 | `deploy.ps1 -Apply` + `register-tasks.ps1 -Apply`；13 个任务 Ready；带补丁重启后 wake bridge 监听 18187 | GAP-006/065 | **达成（本机）**：138 文件 / 13 任务 Ready / `patch-state applied=true` / doctor 34 项 FAIL=0 / wake bridge `127.0.0.1:18187` 监听（GAP-075 已修） |
-| ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | **部分达成**：wake bridge `/new` + bot `host bootstrap` 机制实测成功（host active）；03:00 自动触发待夜间首次观察 |
+| ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | **达成（本机，定时任务实测）**：临时 trigger now+2min → 任务自动建新 host（`conv-20261109-173355`）+ bootstrap；新 ticket 在新 host claim/report/end；trigger 已恢复 03:00 |
 | ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | **达成（本机演练）**：真实窗口重启 → `recover` → host closed、Assignment interrupted、Ticket queued → 新 host claim/start/report/end；证据 `stage/acc11-*.log` |
 | ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | **用户实测通过（2026-11-09，口述；无机器日志）** |
 
@@ -364,6 +366,7 @@
 | 2026-11-09 | 主干 2 第一批收口：表/CLI/恢复/审计 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ |
 | 2026-11-09 | 全量文档/部署计数：13 任务、17 CLI、8 技能、212 测试 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 2026-11-09 | 主干 0 本机收口 + 公司侧部署 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
+| 2026-11-09 | **主干 0 收口完成**（8 分支 + ACC-01..12 通过或书面例外） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 待填 | 主干 2 完成 |  |  |  |  |  |  |  |  |  |  |  |
 
 ---
