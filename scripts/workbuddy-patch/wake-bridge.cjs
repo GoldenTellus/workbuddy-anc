@@ -115,7 +115,9 @@ async function start() {
       const focused = await wc.executeJavaScript(`(() => {
         const el = document.querySelector('[contenteditable="true"],[role="textbox"]');
         if (!el) return { ok: false, reason: 'composer-missing' };
-        if ((el.innerText || '').trim()) return { ok: false, reason: 'composer-not-empty' };
+        const text = (el.innerText || '').replace(/[\\uFEFF\\u200B]/g, '').trim();
+        const empty = !text || !!el.querySelector('[data-slate-placeholder="true"]') || !!el.querySelector('[data-cb-empty-leaf="true"]');
+        if (!empty) return { ok: false, reason: 'composer-not-empty' };
         el.focus();
         return { ok: true };
       })()`, true);

@@ -200,6 +200,8 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 
 没有 flag / bridge 时 `wake-if-queued.ps1` 静默退出；任务仍会落库，等下一次消息或人工唤醒。`GAP-063` 因此是“有自动兜底，但默认关闭”，不是无条件自动。
 
+**2026-11-09 实测**：在当前 WorkBuddy 窗口注入 `[wake-test] 请只回复 WAKE_OK`，消息出现在对话中、composer 清空；同时修正 Slate placeholder 被误判为“composer 非空”的问题。
+
 `claim` 无任务时立即返回，不 sleep，不占住 Main 的回合。
 
 ## 5. 03:00 Host bootstrap
