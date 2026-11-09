@@ -6,6 +6,8 @@ import {
   claim,
   bootstrapHost,
   recoverHost,
+  listExecutorEvents,
+  sweepStaleAssignments,
   deferCutIfDue,
   closeHostIfIdle,
   createHost,
@@ -70,6 +72,10 @@ test('executor：host/ticket/assignment/report 生命周期', () => {
     const ended = endAssignment(db, { assignmentId: c!.assignment.assignment_id });
     assert.equal(ended.state, 'ended');
     assert.equal(getHost(db, h.host_id)!.status, 'active');
+    const kinds = listExecutorEvents(db, { ticketId: t.ticket_id, limit: 20 }).map((e) => e.kind);
+    for (const k of ['ticket_created', 'assignment_claimed', 'assignment_started', 'report_appended', 'assignment_ended']) {
+      assert.equal(kinds.includes(k), true, '缺事件 ' + k);
+    }
   } finally { db.close(); }
 });
 
@@ -244,5 +250,55 @@ test('executor：recoverHost 将旧 host 的 running 统一 interrupted 并回 q
     // 新 host 可重新派同一 Ticket
     const h2 = bootstrapHost(db, { conversationId: 'conv-next', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
     assert.ok(claim(db, { hostId: h2.host_id }));
+  } finally { db.close(); }
+});
+test('executor：队列按 P0 → 截止时间 → FIFO', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db, 4);
+    const h = host(db);
+    const p2 = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'p2', priority: 'P2', dueAt: '2026-11-10T00:00:00Z' });
+    const p0late = createTicket(db, { taskId: 2, departmentId: 'sales', title: 'p0-late', priority: 'P0', dueAt: '2026-11-12T00:00:00Z' });
+    const p0early = createTicket(db, { taskId: 3, departmentId: 'sales', title: 'p0-early', priority: 'P0', dueAt: '2026-11-11T00:00:00Z' });
+    const p1 = createTicket(db, { taskId: 4, departmentId: 'sales', title: 'p1', priority: 'P1' });
+    assert.equal(claim(db, { hostId: h.host_id })!.ticket.ticket_id, p0early.ticket_id);
+    assert.equal(claim(db, { hostId: h.host_id })!.ticket.ticket_id, p0late.ticket_id);
+    assert.equal(claim(db, { hostId: h.host_id })!.ticket.ticket_id, p1.ticket_id);
+    assert.equal(claim(db, { hostId: h.host_id })!.ticket.ticket_id, p2.ticket_id);
+  } finally { db.close(); }
+});
+
+test('executor：human slot 只接等待人工的 Ticket', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'human', });
+    const a = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-1' });
+    appendReport(db, { assignmentId: a.assignment.assignment_id, type: 'ready', summary: 'review me' });
+    endAssignment(db, { assignmentId: a.assignment.assignment_id });
+    assert.equal(claim(db, { hostId: h.host_id }), null);
+    const human = claim(db, { hostId: h.host_id, slot: 'human' })!;
+    assert.equal(human.ticket.ticket_id, t.ticket_id);
+    assert.equal(human.assignment.slot, 'human');
+  } finally { db.close(); }
+});
+
+test('executor：旧 host 超 grace 自动 sweep 中断并关闭', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db, 2);
+    const h1 = host(db, '2026-11-09');
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'stale', });
+    const a = claim(db, { hostId: h1.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-old' });
+    db.prepare("UPDATE assignments SET started_at = '2026-11-09T00:00:00.000Z' WHERE assignment_id = ?").run(a.assignment.assignment_id);
+    cutHost(db, { oldHostId: h1.host_id, newConversationId: 'conv-new', businessDate: '2026-11-10' });
+    const r = sweepStaleAssignments(db, { now: '2026-11-10T03:00:00+08:00', graceMinutes: 10 });
+    assert.equal(r.interrupted, 1);
+    assert.equal(r.hostsClosed, 1);
+    assert.equal(getHost(db, h1.host_id)!.status, 'closed');
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'queued');
   } finally { db.close(); }
 });

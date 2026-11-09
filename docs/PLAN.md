@@ -91,7 +91,7 @@
 
 - [x] Host：`active / closing / closed`；只允许一个 active。
 - [x] 03:00：旧 host `active → closing`，新 host `active`；旧任务继续，新任务进新 host。
-- [ ] 旧 host 无 running Assignment → `closed`；失联超 grace → Assignment `interrupted`。
+- [x] 旧 host 无 running Assignment → `closed`；失联超 grace → `sweepStaleAssignments` 中断。
 - [x] 测试：日切序列、旧任务继续、新任务不重复派活。
 - [x] 真实 host bootstrap：`host bootstrap` 同对话幂等、跨日自动切。
 - [x] 03:00 无新 host 时 `host tick` 标 deferred，旧 host 继续接单（自动兜底）。
@@ -99,10 +99,10 @@
 
 ### T2.4 调度器与并发
 
-- [ ] 队列：按优先级 + 截止时间 + FIFO；P0 排队首，不抢占。
-- [ ] 4 个 normal slot + 1 个 human slot；human 不接新任务。
+- [x] 队列：按优先级 + 截止时间 + FIFO；P0 排队首，不抢占（测试覆盖）。
+- [x] 4 个 normal slot + 1 个 human slot；human 不接新任务（测试覆盖）。
 - [x] FakeExecutor 端到端：Task → Ticket → Assignment → Report → outbox（CLI 临时库实测，outbox 1 条）。
-- [ ] 测试：slot 满时 queued；human 续谈不被新任务挤掉；重复 claim 被唯一索引挡住。
+- [x] 测试：slot 满时 queued；human 续谈不被新任务挤掉；重复 claim 被唯一索引挡住。
 
 ### T2.5 WorkBuddy subagent 适配
 
@@ -124,8 +124,8 @@
 
 - [x] 主机重启/中断：`recoverHost` 将 running/pending → interrupted，Ticket 回 queued，可由新 host 重派；跨进程 drill 通过。
 - [x] 迟到 Report 只记录（`reports.late=1`），不覆盖新 Assignment 状态。
-- [ ] 外部副作用幂等键；outbox 先落库。
-- [ ] 审计：每次 claim/start/report/end 有事件记录。
+- [ ] 外部副作用幂等键；outbox 先落库（outbox 已先落库，executor_events 已审计；effect key 待做）。
+- [x] 审计：`executor_events` 记录 claim/start/report/end/interrupt/recover。
 
 ### T2.8 文档同步与收尾
 
@@ -140,7 +140,7 @@
 - [ ] 03:00 日切：旧任务继续，新任务进新 host，不重复派活。
 - [ ] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
 - [ ] human slot 不被新任务占用；P0 不抢占。
-- [ ] `npm test` 206/206 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
+- [ ] `npm test` 209/209 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
 - [ ] `npm run check` 通过。
 - [ ] WorkBuddy 真实 subagent spike 有明确结论；做不成的部分登记 GAP，不静默降级。
 

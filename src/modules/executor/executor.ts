@@ -111,6 +111,16 @@ export interface ClaimResult {
   assignment: Assignment;
 }
 
+export interface ExecutorEvent {
+  id: number;
+  kind: string;
+  host_id: string | null;
+  ticket_id: string | null;
+  assignment_id: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
 const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 function execError(code: string, message: string): Error {
@@ -134,6 +144,28 @@ function assertTaskDir(taskDir: string, departmentId: string, ticketId: string):
     throw execError('EXEC_BAD_TASK_DIR', 'task_dir 必须是 ' + expected);
   }
   return expected;
+}
+
+function recordEvent(db: DatabaseSync, kind: string, ids: { hostId?: string | null; ticketId?: string | null; assignmentId?: string | null }, detail?: unknown): void {
+  db.prepare(`INSERT INTO executor_events (kind, host_id, ticket_id, assignment_id, detail, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)`).run(
+    kind,
+    ids.hostId ?? null,
+    ids.ticketId ?? null,
+    ids.assignmentId ?? null,
+    detail === undefined ? null : JSON.stringify(detail),
+    nowIso(),
+  );
+}
+
+export function listExecutorEvents(db: DatabaseSync, opts: { ticketId?: string; hostId?: string; limit?: number } = {}): ExecutorEvent[] {
+  const where: string[] = [];
+  const args: string[] = [];
+  if (opts.ticketId) { where.push('ticket_id = ?'); args.push(opts.ticketId); }
+  if (opts.hostId) { where.push('host_id = ?'); args.push(opts.hostId); }
+  const sql = 'SELECT * FROM executor_events' + (where.length ? ' WHERE ' + where.join(' AND ') : '') + ' ORDER BY id DESC LIMIT ?';
+  args.push(String(Math.max(1, Math.min(500, opts.limit ?? 50))));
+  return db.prepare(sql).all(...(args as never[])) as unknown as ExecutorEvent[];
 }
 
 function validatePriority(p: string): Priority {
@@ -186,6 +218,7 @@ export function createHost(db: DatabaseSync, input: CreateHostInput): ExecutorHo
       .run(host.host_id, host.business_date, host.conversation_id, host.status,
         host.accepting_new, host.cut_at, host.cut_deferred, host.cut_deferred_at,
         host.started_at, null, host.last_heartbeat_at);
+    recordEvent(db, 'host_created', { hostId: host.host_id }, { date: host.business_date });
     return host;
   });
 }
@@ -236,6 +269,7 @@ export function cutHost(db: DatabaseSync, input: { oldHostId: string; newConvers
       cutAt: input.cutAt ?? at,
       startedAt: at,
     });
+    recordEvent(db, 'host_cut', { hostId: old.host_id }, { old_host: old.host_id, new_host: next.host_id });
     return next;
   });
 }
@@ -250,6 +284,7 @@ export function deferCutIfDue(db: DatabaseSync, now: string = nowIso()): { host:
     if (host.cut_deferred === 1) return { host, deferred: true };
     db.prepare('UPDATE executor_hosts SET cut_deferred = 1, cut_deferred_at = ?, last_heartbeat_at = ? WHERE host_id = ?')
       .run(now, now, host.host_id);
+    recordEvent(db, 'host_cut_deferred', { hostId: host.host_id }, { at: now });
     return { host: getHost(db, host.host_id), deferred: true };
   });
 }
@@ -264,6 +299,7 @@ export function closeHostIfIdle(db: DatabaseSync, hostId: string): boolean {
     if (Number(active.n) > 0) return false;
     db.prepare("UPDATE executor_hosts SET status = 'closed', accepting_new = 0, closed_at = ? WHERE host_id = ?")
       .run(nowIso(), hostId);
+    recordEvent(db, 'host_closed', { hostId });
     return true;
   });
 }
@@ -304,6 +340,7 @@ export function createTicket(db: DatabaseSync, input: CreateTicketInput): Ticket
       ticket.priority, ticket.due_at, ticket.task_dir, ticket.tools_json, ticket.vault_paths_json,
       ticket.budget_json, ticket.expires_at, ticket.max_attempts, null, ticket.created_at,
       ticket.updated_at, null);
+  recordEvent(db, 'ticket_created', { ticketId: ticket.ticket_id }, { department_id: ticket.department_id });
   return ticket;
 }
 
@@ -381,6 +418,7 @@ export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal'
       .run(assignment.assignment_id, assignment.ticket_id, assignment.host_id, null,
         assignment.department_id, assignment.task_dir, assignment.slot, assignment.state,
         assignment.attempt, null, assignment.created_at, null, null, null);
+    recordEvent(db, 'assignment_claimed', { hostId: host.host_id, ticketId: ticket.ticket_id, assignmentId: assignment.assignment_id }, { slot });
     return { ticket, assignment };
   });
 }
@@ -397,6 +435,7 @@ export function startAssignment(db: DatabaseSync, input: { assignmentId: string;
       .run(input.subagentId, at, a.assignment_id);
     db.prepare("UPDATE tickets SET state = 'working', updated_at = ? WHERE ticket_id = ?")
       .run(at, a.ticket_id);
+    recordEvent(db, 'assignment_started', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { subagent_id: input.subagentId });
     return getAssignment(db, a.assignment_id)!;
   });
 }
@@ -431,6 +470,7 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
       .run(report.report_id, report.assignment_id, report.ticket_id, report.department_id,
         report.type, report.summary, report.evidence_json, report.next_step, report.late, report.created_at);
     db.prepare('UPDATE assignments SET report_id = ? WHERE assignment_id = ?').run(report.report_id, a.assignment_id);
+    recordEvent(db, 'report_appended', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { type, late });
     if (late) return report;
     const nextState = mapReportState(type);
     if (nextState) {
@@ -455,6 +495,7 @@ export function endAssignment(db: DatabaseSync, input: { assignmentId: string; r
     }
     db.prepare("UPDATE assignments SET state = 'ended', ended_at = ?, end_reason = ? WHERE assignment_id = ?")
       .run(nowIso(), input.reason ?? 'completed', a.assignment_id);
+    recordEvent(db, 'assignment_ended', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { reason: input.reason ?? 'completed' });
     return getAssignment(db, a.assignment_id)!;
   });
 }
@@ -475,9 +516,41 @@ export function recoverHost(db: DatabaseSync, input: { hostId: string; reason?: 
       if (ticket && ticket.state === 'working') {
         db.prepare("UPDATE tickets SET state = 'queued', updated_at = ? WHERE ticket_id = ?").run(at, a.ticket_id);
       }
+      recordEvent(db, 'assignment_interrupted', { hostId: host.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { reason: input.reason ?? 'host-restart' });
     }
+    recordEvent(db, 'host_recovered', { hostId: host.host_id }, { recovered: rows.length, reason: input.reason ?? 'host-restart' });
     closeHostIfIdle(db, host.host_id);
     return { host: getHost(db, host.host_id)!, recovered: rows.length };
+  });
+}
+
+/** 旧 host 的 Assignment 超过 grace 仍未回报：定时扫描并中断。 */
+export function sweepStaleAssignments(db: DatabaseSync, input: { now: string; graceMinutes?: number }): { interrupted: number; hostsClosed: number } {
+  const grace = Math.max(1, Math.floor(input.graceMinutes ?? 10));
+  const cutoff = new Date(new Date(input.now).getTime() - grace * 60_000).toISOString();
+  return tx(db, () => {
+    const rows = db.prepare(`
+      SELECT a.* FROM assignments a
+      JOIN executor_hosts h ON h.host_id = a.host_id
+      WHERE a.state IN ('pending', 'running')
+        AND h.status IN ('closing', 'closed')
+        AND COALESCE(a.started_at, a.created_at) <= ?
+    `).all(cutoff) as Assignment[];
+    const hosts = new Set<string>();
+    for (const a of rows) {
+      const at = input.now;
+      db.prepare("UPDATE assignments SET state = 'interrupted', ended_at = ?, end_reason = ? WHERE assignment_id = ?")
+        .run(at, 'grace-timeout', a.assignment_id);
+      const ticket = getTicket(db, a.ticket_id);
+      if (ticket && ticket.state === 'working') {
+        db.prepare("UPDATE tickets SET state = 'queued', updated_at = ? WHERE ticket_id = ?").run(at, a.ticket_id);
+      }
+      recordEvent(db, 'assignment_interrupted', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { reason: 'grace-timeout' });
+      hosts.add(a.host_id);
+    }
+    let hostsClosed = 0;
+    for (const hostId of hosts) if (closeHostIfIdle(db, hostId)) hostsClosed += 1;
+    return { interrupted: rows.length, hostsClosed };
   });
 }
 
@@ -495,6 +568,7 @@ export function interruptAssignment(db: DatabaseSync, input: { assignmentId: str
     if (ticket && ticket.state === 'working') {
       db.prepare("UPDATE tickets SET state = 'queued', updated_at = ? WHERE ticket_id = ?").run(at, a.ticket_id);
     }
+    recordEvent(db, 'assignment_interrupted', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { reason: input.reason ?? 'host-cut' });
     return getAssignment(db, a.assignment_id)!;
   });
 }

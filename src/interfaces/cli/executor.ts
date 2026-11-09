@@ -129,6 +129,13 @@ export default function executorGroup(ctx: CliContext): void {
     return;
   }
 
+  if (cmd === 'sweep') {
+    const now = typeof args.now === 'string' ? args.now : new Date().toISOString();
+    const grace = numArg(args['grace-minutes'], 10, 1, 1440);
+    out({ ok: true, ...executor.sweepStaleAssignments(db, { now, graceMinutes: grace }) });
+    return;
+  }
+
   if (cmd === 'recover') {
     const hostId = String(args['host-id'] ?? '');
     if (!hostId) fail('缺少 --host-id');

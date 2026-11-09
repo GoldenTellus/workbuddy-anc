@@ -41,7 +41,7 @@
 - [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
 - [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
 - [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
-- [x] `npm test` **206/206**；`npm run check` 通过。
+- [x] `npm test` **209/209**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ---
@@ -91,9 +91,9 @@
 | GAP-054 | Ticket 授权范围字段（tools/vault_paths/budget/expires_at/max_attempts） | 设计 | S1 | 主干 2 | 是 | DDL 字段已定；默认值/校验待做 |
 | GAP-055 | Main↔Executor 传输与投递语义（DB+tick 已选方向） | 设计 | S1 | 主干 2 | 是 | 定表/命令/ack/重试 |
 | GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 是 | 与主干 3 共同定契约 |
-| GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 是 | 定 effect_key 与重试边界 |
+| GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 是 | outbox dedupe + executor_events 已落；effect_key 待定 |
 | GAP-058 | 产物/证据保留、清理、权限 | 后续 | S2 | 主干 2 | 否 | 定保留策略 |
-| GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 是 | 跨进程重启 drill 通过；WorkBuddy 窗口重启待做 |
+| GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 是 | 跨进程 drill + sweep 通过；WorkBuddy 窗口重启待做 |
 | GAP-060 | subagent 并发能力、路径隔离、日切交接未验证 | 实现 | S1 | 主干 2 | 否 | D28 接受逻辑隔离；强 ACL 改为部署选项 |
 | GAP-061 | 03:00 日切时旧 host 运行中 subagent 是否继续、新 host 如何接管 | 实现 | S1 | 主干 2 | 否 | 用户实测通过：旧任务继续，新任务进新 host；关闭 |
 | GAP-062 | Main ↔ 本地服务的 claim/report 边界未定 | 设计 | S1 | 主干 2 | 否 | 契约已写：MAIN-EXECUTOR.md；实现待做 |
@@ -164,6 +164,7 @@
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
+| 2026-11-09 | T2.3/T2.4/T2.7 补测：sweep、队列顺序、human slot、审计事件 | 0.3 executor/PLAN/模块契约；0.6 209/209 | GAP-057/059 更新 | effect_key 仍待做 |
 | 2026-11-09 | GAP-065 真实新建对话：`/new` → workbuddy-anc → NEW_OK | 0.3 WORKBUDDY-PATCH/MAIN-EXECUTOR/OPS；0.6 206/206 | GAP-065 收窄 | 新 host 任务脚本已加，未 -Apply 注册 |
 | 2026-11-09 | 路径隔离选 A：接受逻辑隔离，不做专用账号/ACL | 0.3 DECISIONS/D28、FUTURE 2.2、PLAN；0.6 206/206 | GAP-060 接受风险 | 不需要重启；以后可重评 B |
 | 2026-11-09 | T2.7 跨进程重启 drill：recover → bootstrap → 重新 claim | 0.3 executor/PLAN；0.6 206/206 | GAP-059 收窄 | 旧 host closed，Ticket 回 queued，新 host 完成 |

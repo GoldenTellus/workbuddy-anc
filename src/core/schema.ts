@@ -307,4 +307,18 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 
 CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id, created_at);
+
+-- 主干 2 审计：host / ticket / assignment / report 的关键动作只追加。
+CREATE TABLE IF NOT EXISTS executor_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind          TEXT NOT NULL,
+  host_id       TEXT,
+  ticket_id     TEXT,
+  assignment_id TEXT,
+  detail        TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_executor_events_ticket ON executor_events(ticket_id, id);
+CREATE INDEX IF NOT EXISTS idx_executor_events_host ON executor_events(host_id, id);
 `;

@@ -64,6 +64,7 @@ npm run service -- --json executor start --assignment-id <id> --subagent-id <age
 npm run service -- --json executor report --assignment-id <id> --json-file <report.json>
 npm run service -- --json executor report --assignment-id <id> --type ready --summary "完成"
 npm run service -- --json executor notify --chat-id <chatid> --text "结果摘要" [--dedupe-key <key>]
+npm run service -- --json executor sweep --now "2026-11-10T03:00:00+08:00" --grace-minutes 10
 npm run service -- --json executor recover --host-id <old-host> --reason host-restart
 npm run service -- --json executor end --assignment-id <id> --reason completed
 

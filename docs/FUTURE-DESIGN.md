@@ -508,6 +508,13 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 
 CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id, created_at);
+
+CREATE TABLE IF NOT EXISTS executor_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  host_id TEXT, ticket_id TEXT, assignment_id TEXT,
+  detail TEXT, created_at TEXT NOT NULL
+);
 ```
 
 **关键不变量**

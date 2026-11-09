@@ -26,6 +26,8 @@
 - `appendReport({assignmentId, type, summary, evidence, nextStep})`
 - `endAssignment({assignmentId, reason})`
 - `recoverHost({hostId, reason})`：把旧 host 的 pending/running 全部中断并回 queued
+- `sweepStaleAssignments({now, graceMinutes})`：旧 host 超 grace 的 Assignment 自动中断
+- `listExecutorEvents({ticketId, hostId, limit})`：审计查询
 - `interruptAssignment({assignmentId, reason})`
 
 ## 不变量
