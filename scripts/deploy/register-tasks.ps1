@@ -241,7 +241,7 @@ $failed = @()
 foreach ($d in $defs) {
     try {
         Register-ScheduledTask -TaskName $d.Name -Description $d.Desc -Trigger $d.Triggers `
-            -Action $d.Action -Principal $d.Principal -Settings $d.Settings -Force | Out-Null
+            -Action $d.Action -Principal $d.Principal -Settings $d.Settings -Force -ErrorAction Stop | Out-Null
         'OK   ' + $d.Name
     } catch {
         $failed += ($d.Name + ': ' + $_.Exception.Message)
