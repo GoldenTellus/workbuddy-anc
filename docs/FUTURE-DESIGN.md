@@ -382,6 +382,7 @@ flowchart LR
 - 旧 host 写 `days/<date>.md` 交接摘要：未完成任务、排队任务、运行中 Assignment、产物路径。
 - 如果旧对话被关闭/平台无法让它继续运行：超过 grace（默认 10 分钟）后把 Assignment 标为 `interrupted`；新 host 用同一 Ticket、同一任务目录、上次 Report 重新起 subagent，不重复已完成的外部动作。
 - 新任务只进新 host；旧 host 只负责收尾，不接新活。
+- **2026-11-09 用户实测通过**：日切后旧对话运行中的任务继续，新对话同时接新任务；不再需要把“旧 host 是否继续”当阻塞项。
 
 **并发与恢复**
 
