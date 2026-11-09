@@ -1,10 +1,11 @@
 # PLAN — 当前主干：主干 3（between us：Attention / 确认 / 通知）
 
 > 类型：执行（当前主干）
-> 状态：**实现已落本机（2026-11-09）· ACC-13/14/15 待真实群**
+> 状态：**已完成（2026-11-09）· ACC-13/14/15 真实群通过**
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 3（3.1–3.5）
 > 账本：[STATUS.md](./STATUS.md) §3.1 / §3.3 / §3.5
 > 决策：[DECISIONS.md](./DECISIONS.md) D40–D44
+> 快照：[archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)
 > 上一个主干：[archive/plans/TRUNK-0-20261109.md](./archive/plans/TRUNK-0-20261109.md)
 > 完成后：快照到 `archive/plans/TRUNK-3-<日期>.md`
 
@@ -407,13 +408,16 @@ node scripts/checks/check-public.mjs
 | T3.3 通知/降噪 | 按 purpose 定人、私密优先、中性短号、老板兜底；静默/上限/2h/8h/24h；`wake-if-queued.ps1` 每分钟 `sweep --apply` | `attention-notify.ts`；5 项测试 |
 | T3.4 执行器接线 | `question` Report；`claim --ticket-id`；human 不计 `max_attempts`；close/expire 收口；旧 reports 表迁移 | `executor.ts` / `migrate.ts`；schema+attention 测试 |
 | T3.5 技能/persona | `anc-task` / `anc-executor` / `subagent.md` / 公司 persona 同步 | `light/skills`、`light/personas`、`light/templates` |
-| T3.6 文档/门禁 | `npm test` **237/237**；`npm run check` 通过；`check-public` 待发布前跑 | `STATUS` §1.8/§3.4；`FUTURE` 3.x；模块/接口/产品/运维 |
+| T3.6 文档/门禁 | `npm test` **237/237**；`npm run check` 通过；`check-public` 已跑 0 | `STATUS` §1.8/§3.4；`FUTURE` 3.x；模块/接口/产品/运维 |
 | 部署 | 142 文件 hash 全过；线上 DB 迁移通过；13 任务 Ready；doctor FAIL=0 WARN=3 | `deploy.ps1 -Apply`；`register-tasks.ps1 -Apply -BackupDestination D:\anc-backup`；doctor |
-| ACC-13/14/15 本机 | A2 approve → Ticket/Task done；A3 answer → human slot → working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计；真实群回复/提醒待新会话 |
+| ACC-13/14/15 本机 | A2 approve → Ticket/Task done；A3 answer → human slot → working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计 |
+| ACC-13/14/15 真实群 | A6 `A6可以` → Task #10 done；A7 `120000` → human slot → Task #11 done；A8 `A8收到` → Task #12 done；A9 `A9收到` 代张佳艺 + 2h 催办 outbox #5 sent → Task #13 done | 线上 DB 审计 + `anc测试群` 截图 |
 
-未完成（保持 🟡）：
+**收口（2026-11-09）**：主干 3 完成，快照见 [archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)。
 
-- **ACC-13/14/15 真实群**：本机 CLI 链路已通过；真实群回复/提醒需新会话加载新技能/persona 后再跑。
+遗留（非阻塞，不挡主干 3）：
+
 - **GAP-079**：补丁 `msgId`/quote 文本增强 spike；短号主路径不受影响。
 - **GAP-080**：webhook `mentioned_list` 真 userid 验证；v1 不 @，私密群/中性短号不依赖它。
+- **GAP-084**：CLI 中文提问编码；真实群 A6/A7/A8 用 ASCII 提问，中文参数仍待复测。
 - **T3.0**：协议 spike 未做；不阻塞。

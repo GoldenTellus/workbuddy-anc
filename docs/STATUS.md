@@ -102,8 +102,9 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [ ] 四类群 chatId/webhook 未登记到本机 org（ACC-01 本机侧只验了公司群 + boss_dm）；ACC-08 只有人工对账（公司群，见 §3.5），员工/部门群未覆盖。
 - [x] **ACC-08 按用户选择 B 记书面例外（D36）**：人工对账公司群差异 0；员工群/部门群未覆盖；无企微成员 API 凭据。不再要求自建应用。
 
-### 1.8 主干 3 设计拍板（2026-11-09）
+### 1.8 主干 3：设计、实现与真实群验收（2026-11-09）
 
+- [x] **主干 3 已收口**：T3.1–T3.6 + ACC-13/14/15 真实群通过；快照 [archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)。
 - [x] 确认协议：短号 `A12` 为主，引用文本增强；必须 @；匹配顺序/歧义规则定稿（D40）。
 - [x] 通知通道：Attention 通知走 outbox 群机器人，`attention_id` 关联，不新建 Notification 表（D41）。
 - [x] `require_ack`：默认关；责任转给具体人 / 跨部门 / 对外财务生产三类开；2h/8h/24h 升级，不自动转移（D42）。
@@ -115,7 +116,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **T3.3 通知路由/降噪（2026-11-09）**：按 purpose 定人、私密优先、原群中性短号、老板兜底；outbox `attention_id`；22–08 静默、每日 10 条、2h/8h/24h 升级；`anc-executor-wake` 每分钟 `attention sweep --apply`；5 项测试；`npm test` **233/233**。
 - [x] **T3.4 执行器接线（2026-11-09）**：`question` Report → `waiting_answer`；`claim --slot human --ticket-id`；human 不计 `max_attempts`；close/expire 收口 Attention；旧 reports 表迁移；`npm test` **237/237**。
 - [x] **T3.5 技能/persona（2026-11-09）**：`anc-task` 加短号确认/回执/待办；`anc-executor` 加三类 Attention 与 human 恢复；`subagent.md` 加 `question`；公司 persona 与模板同步。
-- [x] **T3.6 文档/门禁/部署（2026-11-09）**：`npm test` **237/237**、`npm run check`、`check-public` 0；`deploy.ps1 -Apply` 142 文件 hash 全过，线上 DB 已迁 `attentions`/`outbox.attention_id`/`reports.question`；13 个计划任务 Ready，doctor **FAIL=0 WARN=3**；ACC-13/14/15 待真实群。
+- [x] **T3.6 文档/门禁/部署（2026-11-09）**：`npm test` **237/237**、`npm run check`、`check-public` 0；`deploy.ps1 -Apply` 142 文件 hash 全过，线上 DB 已迁 `attentions`/`outbox.attention_id`/`reports.question`；13 个计划任务 Ready，doctor **FAIL=0 WARN=3**。
+- [x] **ACC-13/14/15 真实群（2026-11-09）**：A6 `A6可以` → Task #10 done；A7 `120000` → human slot → Task #11 done；A8 `A8收到` → Task #12 done；A9 `A9收到` 代张佳艺确认 + 2h 催办 outbox #5 sent → Task #13 done。
 
 ---
 
@@ -125,7 +127,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 |---|---|---|
 | 主干 0 | **已收口（2026-11-09）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；见 [PLAN.md](./PLAN.md) 与快照 |
 | 主干 1/2 本机 | 已收口 | 见 §1.4；待两机 ACC |
-| 主干 3 | **实现已落本机（T3.1–T3.6），验收 🟡** | 见 §1.8；237/237、142 文件部署、13 任务 Ready、doctor FAIL=0；ACC-13/14/15 本机链路通过，真实群待跑 |
+| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；237/237；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；遗留 GAP-079/080/084 非阻塞 |
 | 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
 
@@ -219,7 +221,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-081 | 计划任务注册 | 2026-11-09 部署后 doctor 只有 3 个 `anc-*` 任务；`register-tasks.ps1 -Apply` 在当前非提权会话被 UAC 拒绝（脚本仍打印 OK，GAP-082） | 用管理员 PowerShell 重跑 `-Apply`；doctor 13 项任务 Ready | 主干 3 部署 | 否 | closed：管理员会话 `-Apply -BackupDestination D:\anc-backup` 成功；doctor 13 任务 Ready、FAIL=0 |
 | GAP-082 | `register-tasks.ps1` 失败仍打印 OK | `Register-ScheduledTask` 抛 `拒绝访问` 后脚本继续打印 `OK <task>` 并汇总“已注册 13 个任务” | 捕获异常并以非 0 退出；失败任务不得计入“已注册” | 主干 3 部署 | 否 | closed：加 `-ErrorAction Stop`，非提权实测 exit=1、只报 ERROR/FIX |
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
-| GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实验收前用新会话复测；乱码就走文件/包装 |
+| GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实群 A6/A7/A8 问题为 ASCII，中文提问仍未复测；乱码就走文件/包装 |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -374,9 +376,9 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | **达成（本机，定时任务实测）**：临时 trigger now+2min → 任务自动建新 host（`conv-20261109-173355`）+ bootstrap；新 ticket 在新 host claim/report/end；trigger 已恢复 03:00 |
 | ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | **达成（本机演练）**：真实窗口重启 → `recover` → host closed、Assignment interrupted、Ticket queued → 新 host claim/start/report/end；证据 `stage/acc11-*.log` |
 | ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | **用户实测通过（2026-11-09，口述；无机器日志）** |
-| ACC-13 | 群回复 review 确认 | Attention 已发、短号可识别 | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 | GAP-029/036 | **本机 CLI 链路通过（2026-11-09）**：A2 approve → Ticket/Task done；真实群回复待新会话/员工 |
-| ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | **本机 CLI 链路通过（2026-11-09）**：A3 answer → waiting_answer → human slot 恢复 working；真实群待跑 |
-| ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | **ack + 升级计算通过（2026-11-09）**：A4 ack → Ticket done；A5 9h → level 2 manager；真实群提醒待跑 |
+| ACC-13 | 群回复 review 确认 | Attention 已发、短号可识别 | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 | GAP-029/036 | **真实群通过（2026-11-09）**：郭帅回 `@公司bot A6可以` → A6 approved、Task #10 done；非确认人拒绝由 policy.test 覆盖（真实群未复测） |
+| ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | **真实群通过（2026-11-09）**：郭帅回 `@公司bot A7 120000` → A7 answered；human slot 续谈 → Task #11 done |
+| ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | **真实群通过（2026-11-09）**：A8 `A8收到` → Task #12 done；A9 回拨 2h → outbox #5 sent（群催办）；郭帅代张佳艺 ack（`on_behalf_of=zhangjiayi`）→ Task #13 done |
 
 ### 3.6 完成时的更新清单
 
@@ -411,6 +413,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | 主干 0 本机收口 + 公司侧部署 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | **主干 0 收口完成**（8 分支 + ACC-01..12 通过或书面例外） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | 状态/文档一致性收口（STATUS/FUTURE/模块/部署/计数） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
+| 2026-11-09 | **主干 3 收口完成**（T3.1–T3.6 + ACC-13/14/15 真实群通过） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ | ◎ | ✅ | ◎ |
 | 待填 | 主干 2 完成 |  |  |  |  |  |  |  |  |  |  |  |
 
 ---
