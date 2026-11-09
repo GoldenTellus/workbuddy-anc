@@ -154,7 +154,21 @@
 | subagent 并发不可控 | 先 4 并发 spike；失败降为串行队列，不假装并发 |
 | DSH 参考模型比我们强 | 明确不照搬 per-ticket Session；只借模型/规则，不把差异藏起来 |
 
-## 7. 完成定义
+## 7. 开工门禁（2026-11-09）
+
+T2.1（表/迁移/仓储/状态机）不依赖 WorkBuddy，可先开工。
+T2.4 / T2.5 开工前必须先定这三项：
+
+| 门禁 | 要定什么 | 不定会怎样 |
+|---|---|---|
+| **Main ↔ 本地服务** | 谁 claim、谁起 subagent、谁写 Report；建议 Main 通过 CLI 调 `claim/report`，本地服务只存状态，不直接调 WorkBuddy Agent | 本地服务无法创建 WorkBuddy subagent；实现会卡在适配层 |
+| **Main 唤醒/claim 循环** | 无群消息时，谁让 Main 去看队列；用 WorkBuddy 定时任务/自动化，还是本地服务发提示 | 后台任务永远不启动，只有人来消息才跑 |
+| **Report 契约** | subagent 返回的 JSON 字段、终态、解析失败怎么办 | 文本无法稳定落库，Ticket 状态会漂 |
+| **Host bootstrap** | 03:00 新对话由谁创建；自动/人工/已注册 host | 7×24 无人值守会断在日切 |
+
+建议先补一页 `Main ↔ Executor` 契约，再开 T2.4/T2.5；T2.1 现在可以开始。
+
+## 8. 完成定义
 
 - 分支 2.1–2.5：设计 ✅ + 实现 ✅ + 验收 ✅。
 - 至少一条真实 WorkBuddy 日对话 + 4 并发 subagent + 03:00 日切回归通过。
