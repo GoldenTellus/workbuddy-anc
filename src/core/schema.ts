@@ -321,4 +321,17 @@ CREATE TABLE IF NOT EXISTS executor_events (
 
 CREATE INDEX IF NOT EXISTS idx_executor_events_ticket ON executor_events(ticket_id, id);
 CREATE INDEX IF NOT EXISTS idx_executor_events_host ON executor_events(host_id, id);
+
+-- Main 对 background 候选的评估记录（D29）：不自动接，每次判断都留证。
+CREATE TABLE IF NOT EXISTS executor_evaluations (
+  evaluation_id TEXT PRIMARY KEY,
+  task_id       INTEGER NOT NULL,
+  decision      TEXT NOT NULL CHECK (decision IN ('accept', 'defer', 'ask', 'reject')),
+  reason        TEXT NOT NULL,
+  priority      TEXT,
+  ticket_id     TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_executor_evaluations_task ON executor_evaluations(task_id, created_at);
 `;

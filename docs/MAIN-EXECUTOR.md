@@ -83,7 +83,7 @@ task 行（title / requester_id / assignee_id / dept_id / due_at / kind=backgrou
 
 ### 当前实现边界
 
-评估流程目前是 Main 技能里的行为约定，还没有独立的评估记录表；`GAP-008` 设计已定，评估器实现待做。
+评估流程是 Main 技能行为；每次判断用 `executor evaluate` 落 `executor_evaluations`，形成可追溯记录。`GAP-008` 设计已定，评估记录已落；自动评估器仍未做。
 
 ## 1. Main 的一个 tick
 

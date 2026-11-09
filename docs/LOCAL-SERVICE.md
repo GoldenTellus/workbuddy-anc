@@ -25,6 +25,7 @@
 | `assignments` | 一次 subagent 尝试 | 一个 Ticket 同时只能有一个 `pending/running` |
 | `reports` | subagent 回报 | 只追加；`late=1` 表示旧 Assignment 迟到回报 |
 | `executor_events` | 执行审计 | 只追加：claim/start/report/end/interrupt/recover |
+| `executor_evaluations` | Main 评估记录 | accept/defer/ask/reject、理由、优先级、关联 Ticket |
 | `a2a_messages` | 交回的信封 | 按 `message_id` 去重；文件归档在内部区 `surveys/<survey_id>/` |
 
 原则（§5.5）：
@@ -69,6 +70,8 @@ npm run service -- --json executor start --assignment-id <id> --subagent-id <age
 npm run service -- --json executor report --assignment-id <id> --json-file <report.json>
 npm run service -- --json executor report --assignment-id <id> --type ready --summary "完成"
 npm run service -- --json executor notify --chat-id <chatid> --text "结果摘要" [--dedupe-key <key>]
+npm run service -- --json executor evaluate --task-id <n> --decision accept --reason "<理由>" [--priority P1] [--ticket-id <ticket>]
+npm run service -- --json executor evaluations --task-id <n>
 npm run service -- --json executor sweep --now "2026-11-10T03:00:00+08:00" --grace-minutes 10
 npm run service -- --json executor recover --host-id <old-host> --reason host-restart
 npm run service -- --json executor end --assignment-id <id> --reason completed

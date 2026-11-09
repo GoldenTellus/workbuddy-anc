@@ -7,6 +7,8 @@ import {
   bootstrapHost,
   recoverHost,
   listExecutorEvents,
+  listEvaluations,
+  recordEvaluation,
   sweepStaleAssignments,
   deferCutIfDue,
   closeHostIfIdle,
@@ -300,5 +302,21 @@ test('executor：旧 host 超 grace 自动 sweep 中断并关闭', () => {
     assert.equal(r.hostsClosed, 1);
     assert.equal(getHost(db, h1.host_id)!.status, 'closed');
     assert.equal(getTicket(db, t.ticket_id)!.state, 'queued');
+  } finally { db.close(); }
+});
+test('executor：Main 评估记录 accept/defer/ask/reject 可追溯', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const e = recordEvaluation(db, { taskId: 1, decision: 'accept', reason: '有交付物且授权足够', priority: 'P1', ticketId: 't-eval' });
+    assert.equal(e.decision, 'accept');
+    assert.equal(e.priority, 'P1');
+    const list = listEvaluations(db, { taskId: 1 });
+    assert.equal(list.length, 1);
+    assert.equal(list[0].evaluation_id, e.evaluation_id);
+    assert.throws(
+      () => recordEvaluation(db, { taskId: 1, decision: 'auto' as never, reason: 'x' }),
+      /decision 必须是/,
+    );
   } finally { db.close(); }
 });

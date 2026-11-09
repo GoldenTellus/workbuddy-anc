@@ -143,6 +143,31 @@ export default function executorGroup(ctx: CliContext): void {
     return;
   }
 
+  if (cmd === 'evaluate') {
+    const taskId = Number(args['task-id']);
+    const decision = String(args.decision ?? '');
+    const reason = String(args.reason ?? '');
+    if (!Number.isInteger(taskId) || taskId <= 0) fail('缺少或非法 --task-id');
+    if (!['accept', 'defer', 'ask', 'reject'].includes(decision)) fail('--decision 必须是 accept/defer/ask/reject');
+    if (!reason.trim()) fail('缺少 --reason');
+    const priority = typeof args.priority === 'string' ? args.priority : undefined;
+    out({ ok: true, evaluation: executor.recordEvaluation(db, {
+      taskId,
+      decision: decision as 'accept' | 'defer' | 'ask' | 'reject',
+      reason,
+      priority,
+      ticketId: typeof args['ticket-id'] === 'string' ? args['ticket-id'] : null,
+    }) });
+    return;
+  }
+
+  if (cmd === 'evaluations') {
+    const taskId = typeof args['task-id'] === 'string' ? Number(args['task-id']) : undefined;
+    const limit = numArg(args.limit, 50, 1, 500);
+    out({ ok: true, evaluations: executor.listEvaluations(db, { taskId, limit }) });
+    return;
+  }
+
   if (cmd === 'notify') {
     const chatId = String(args['chat-id'] ?? '');
     const text = String(args.text ?? '');

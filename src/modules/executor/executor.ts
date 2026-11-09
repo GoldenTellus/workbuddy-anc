@@ -111,6 +111,16 @@ export interface ClaimResult {
   assignment: Assignment;
 }
 
+export interface ExecutorEvaluation {
+  evaluation_id: string;
+  task_id: number;
+  decision: 'accept' | 'defer' | 'ask' | 'reject';
+  reason: string;
+  priority: string | null;
+  ticket_id: string | null;
+  created_at: string;
+}
+
 export interface ExecutorEvent {
   id: number;
   kind: string;
@@ -156,6 +166,32 @@ function recordEvent(db: DatabaseSync, kind: string, ids: { hostId?: string | nu
     detail === undefined ? null : JSON.stringify(detail),
     nowIso(),
   );
+}
+
+export function recordEvaluation(db: DatabaseSync, input: { taskId: number; decision: ExecutorEvaluation['decision']; reason: string; priority?: string; ticketId?: string | null }): ExecutorEvaluation {
+  if (!input.reason || !input.reason.trim()) throw execError('EXEC_BAD_EVALUATION', 'reason 必填');
+  if (!['accept', 'defer', 'ask', 'reject'].includes(input.decision)) throw execError('EXEC_BAD_EVALUATION', 'decision 必须是 accept/defer/ask/reject');
+  const at = nowIso();
+  const e: ExecutorEvaluation = {
+    evaluation_id: 'e-' + randomUUID(),
+    task_id: input.taskId,
+    decision: input.decision,
+    reason: input.reason.trim(),
+    priority: input.priority ?? null,
+    ticket_id: input.ticketId ?? null,
+    created_at: at,
+  };
+  db.prepare(`INSERT INTO executor_evaluations (evaluation_id, task_id, decision, reason, priority, ticket_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(e.evaluation_id, e.task_id, e.decision, e.reason, e.priority, e.ticket_id, e.created_at);
+  recordEvent(db, 'background_evaluated', { ticketId: e.ticket_id }, { task_id: e.task_id, decision: e.decision });
+  return e;
+}
+
+export function listEvaluations(db: DatabaseSync, opts: { taskId?: number; limit?: number } = {}): ExecutorEvaluation[] {
+  const where = opts.taskId === undefined ? '' : 'WHERE task_id = ?';
+  const args: number[] = opts.taskId === undefined ? [] : [opts.taskId];
+  const limit = Math.max(1, Math.min(500, opts.limit ?? 50));
+  return db.prepare(`SELECT * FROM executor_evaluations ${where} ORDER BY created_at DESC, evaluation_id DESC LIMIT ${limit}`).all(...(args as never[])) as unknown as ExecutorEvaluation[];
 }
 
 export function listExecutorEvents(db: DatabaseSync, opts: { ticketId?: string; hostId?: string; limit?: number } = {}): ExecutorEvent[] {

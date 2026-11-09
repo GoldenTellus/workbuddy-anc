@@ -140,7 +140,7 @@
 - [x] 03:00 日切：旧任务继续，新任务进新 host，不重复派活（用户实测）。
 - [x] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
 - [x] human slot 不被新任务占用；P0 不抢占（测试覆盖）。
-- [x] `npm test` 209/209 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
+- [x] `npm test` 210/210 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
 - [x] `npm run check` 通过。
 - [x] WorkBuddy 真实 subagent spike 有明确结论；未做的强 ACL/真实重启已登记 GAP。
 
@@ -191,7 +191,7 @@ T2.4 / T2.5 开工前必须先定这些接口；2026-11-09 已写 [MAIN-EXECUTOR
 
 | 主干 | 本地已有证据 | 留给两机 |
 |---|---|---|
-| 主干 1 | T1.3 群类型/org→DB resolver、T1.7 boss_dm 类型/`resolvePrivateChat`、T1.11 render/deploy groups 均有测试；209/209 | ACC-01/06/08：真实群、真 1:1、企微成员 API |
+| 主干 1 | T1.3 群类型/org→DB resolver、T1.7 boss_dm 类型/`resolvePrivateChat`、T1.11 render/deploy groups 均有测试；210/210 | ACC-01/06/08：真实群、真 1:1、企微成员 API |
 | 主干 2 | executor 表/CLI/状态机/recover/审计/sweep、真实 subagent、wake/new 测试 | ACC-09/10/11/12：部署、03:00、窗口重启、两机群 |
 
 **规则**：
