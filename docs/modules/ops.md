@@ -15,7 +15,7 @@
 | 数据/文件 | 说明 |
 |---|---|
 | `%ProgramData%\anc\` 布局 | `service/ingest/render/shared/bin/patch/data/secrets/inbox` |
-| 10 个计划任务 | 见 `docs/OPS.md`；principal 与触发器是契约 |
+| 13 个计划任务 | 见 `docs/OPS.md`；principal 与触发器是契约 |
 | ACL | `secrets` 断继承；`data` 保留继承；vault 对 bot 只读 |
 | 备份 | `VACUUM INTO` 快照、保留策略、离机复制、同盘告警 |
 | 日志轮转 | `loop.log` / `http.log` >5 MB 转 `.1`，只留一份 |

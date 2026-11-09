@@ -2,7 +2,7 @@
 // O-2：证明 doctor 的每一项在该 FAIL 时都会 FAIL。
 //
 // 为什么按组注入：doctor 一次要 ~17 秒，30 项逐项两轮就是十几次 × 17 秒。
-// 把同类项一次性弄坏（比如同时禁用 10 个任务），一次 doctor 就能验 10 项，
+// 把同类项一次性弄坏（比如同时禁用 13 个任务），一次 doctor 就能验 13 项，
 // 断言"坏的这几项都应 FAIL，其他的仍 PASS"。
 //
 // 每组都是注入 → 验 → 恢复 → 验，恢复失败会立刻报出来。
@@ -93,16 +93,16 @@ function restore(bak, file) {
 
 // ─────────────────────────── 组定义 ───────────────────────────
 const GROUPS = {
-  // 1) 10 个计划任务：同时禁用
+  // 1) 13 个计划任务：同时禁用
   tasks: {
-    title: '10 个计划任务被禁用',
+    title: '13 个计划任务被禁用',
     items: {
       // 注意：anc-http 不在这里——Disable 不会停掉运行中的实例，它会一直是 Running/PASS。
       // 它由 http 组覆盖（那里会真停进程）。
       'task-anc-backup': 'FAIL', 'task-anc-boot-alert': 'FAIL', 'task-anc-cleanup': 'FAIL',
       'task-anc-patch-guard': 'FAIL', 'task-anc-service': 'FAIL',
       'task-anc-update-watch': 'FAIL', 'task-anc-watchdog': 'FAIL', 'task-anc-workbuddy-launch': 'FAIL',
-      // 2026-11-05 新增的检查项，原来没有任何组注入过它（doctor 有 10 项、这里只有 8 项）
+      // 2026-11-05 新增的检查项，原来没有任何组注入过它（doctor 有 13 项、这里只有 8 项）
       'task-anc-devbot': 'FAIL',
     },
     // 注意：items 的 key 是 doctor 的**检查项名**（task-anc-backup），

@@ -115,7 +115,7 @@ wscript.exe //B //Nologo run-hidden.vbs "<某个 .cmd>"
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor\doctor.ps1              # 只读体检（31 项）：部署账号（D25 用管理员账号）、进程 owner、10 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor\doctor.ps1              # 只读体检（31 项）：部署账号（D25 用管理员账号）、进程 owner、13 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
 powershell -File scripts\doctor\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产
 powershell -File scripts\doctor\doctor.ps1 -BotUser X   # 换专用用户名（默认 anc-bot）
 powershell -File scripts\selfheal\watchdog.ps1            # 手动跑一次看有没有要告警的

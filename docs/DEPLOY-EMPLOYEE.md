@@ -658,10 +658,10 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDo
 |---|---|---|
 | 部署根 | `%ProgramData%\anc` | **`%LOCALAPPDATA%\anc`** |
 | 管理员权限 | 必需 | 不需要 |
-| 计划任务 | 10 个 | **0 个** |
+| 计划任务 | 13 个 | **0 个** |
 | 补丁 | 要装（群身份注入） | **不装**（除非认不出主人） |
 | vault | **建**两区 | 只**读**共享区 |
 | persona | 渲染公司 bot 的 | 接收**本人**的 |
 | org 数据 | 写 | 不写 |
 | 阶段数 | 11 | **7** |
-| 自证 | doctor + 群回应 + 任务落库 + 10 个任务 | bot 在线 + 能被 @ + 能读 vault |
+| 自证 | doctor + 群回应 + 任务落库 + 13 个任务 | bot 在线 + 能被 @ + 能读 vault |

@@ -40,13 +40,13 @@
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **196 / 196 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
-| 覆盖率（行 / 分支 / 函数） | **91.80% / 81.44% / 95.14%** | `npm run coverage`（2026-11-08，196 测试；2026-11-09 起 212 测试，覆盖率待重跑） |
+| 测试 | **212 / 212 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
+| 覆盖率（行 / 分支 / 函数） | **91.80% / 81.44% / 95.14%** | `npm run coverage`（2026-11-08 旧基线；2026-11-09 起 212 测试，覆盖率待重跑） |
 | 测试文件 | **25** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
 | 计划任务 | **13** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
 | 技能目录 | **8** 个 | `ls -d light/skills/*/ \| wc -l` |
-| 本地服务命令组 | **16** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
+| 本地服务命令组 | **17** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
 | Node | **v22.22.2** | `node -v`（`node:sqlite` 与类型剥离默认可用） |
@@ -71,7 +71,7 @@
 | `docs/upstreams/` | 每个来源一份记录 | URL / 许可证 / 固定版本 / 用了什么 |
 | `src/core/` | 平台底座：库/schema/迁移/事务、原子写、配置、审计、出站扫描、备份 | 11 个文件；`db.ts` 只留 `openDb` + 时间函数 |
 | `src/interfaces/` | service CLI 的 17 组命令 + 注册表 + HTTP 门面 | 26 个文件；`src/service/cli.ts` 是入口薄壳 |
-| `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`improvement`、`knowledge`、`org` | 49 个文件；每个模块有 `index.ts` 公开入口 |
+| `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`executor`、`improvement`、`knowledge`、`org` | 52 个文件；每个模块有 `index.ts` 公开入口 |
 | `src/service/` | 只剩入口薄壳（`cli.ts` / `loop.ts`）与集成测试 | 8 个文件；部署时只复制 3 个 |
 | `src/render/` | 只剩 `cli.ts` 薄壳与渲染器测试 | 8 个文件；部署时只复制 2 个 |
 | `src/ingest/` | 只剩 `cli.ts` 薄壳与入库测试 | 3 个文件；部署时只复制 2 个 |

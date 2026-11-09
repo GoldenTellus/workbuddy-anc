@@ -24,7 +24,7 @@
 | [5](#5-files部署运行件) | `files` | 部署运行件 + 渲染 | 30 秒 |
 | [6](#6-skills装技能) | `skills` | 装 8 个技能（9 个文件，第 9 个是 .anc-backup） | 10 秒 |
 | [7](#7-patch装补丁) | `patch` | 打 WorkBuddy 补丁 | 1–3 分钟 |
-| [8](#8-tasks注册计划任务) | `tasks` | 注册 10 个任务 | 10 秒 |
+| [8](#8-tasks注册计划任务) | `tasks` | 注册 13 个任务 | 10 秒 |
 | [9](#9-vault建两区) | `vault` | 建两区 vault | 30 秒 |
 | [10](#10-org写-org-数据) | `org` | 写 org 数据 | 5–10 分钟 |
 | [11](#11-wecom配企微) | `wecom` | 配企微（要人给值） | 5 分钟 + 等人 |
@@ -47,7 +47,7 @@ D:\anc\                    vault + org + build
 装完的状态：
 
 - **公司 bot 在企微群里能回话**
-- **10 个计划任务在跑**
+- **13 个计划任务在跑**
 - **`doctor` 31 项 FAIL=0**
 - **能登记任务、能到点提醒、能入库**
 
@@ -75,6 +75,8 @@ D:\anc\                    vault + org + build
 | 10 | **每个员工的员工群 chatId** | 员工群绑定 | 建群后从群设置里拿；**32 字符，不要截断** | 见 §10 |
 | 10b | **部门群 / 公司大群 / 老板 1:1 的 chatId + webhook 文件名** | org 群配置 | 企微群设置；`boss_dm` 真 1:1 不可用时用私有群 | 见 §10 |
 | 11 | **老板自己的 userid** | `boss_dm` / 全局权限 | 企微通讯录 | `________________` |
+| 12 | **主干2 host 工作区名**（可选） | `new-host.ps1` 新建对话 | 问人；不启用自动建 host 就留空 | `workbuddy-anc` / 空 |
+| 13 | **是否开启 wake bridge**（可选） | 有 queued 时唤醒当前对话 | 问人；默认关闭 | ☐ 开 / ☑ 关 |
 
 **填不全时的行为**：
 
@@ -405,7 +407,7 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark patch -AsDo
 **做什么**：
 
 ```powershell
-# dry-run：列出 10 个任务和它们的 principal，先看
+# dry-run：列出 13 个任务和它们的 principal，先看
 powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps1" -Root $Root
 
 # 落盘
@@ -425,11 +427,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps
 > **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\bin\`），不是仓库里的。
 > 部署目录那份运行时路径正确（§5 已经把它复制过去了）。
 
-**这 10 个是什么**：
+**这 13 个是什么**：
 
 | 任务 | 干什么 | 频率 |
 |---|---|---|
 | `anc-service` | 本地小服务（tick） | 每分钟 |
+| `anc-executor-new-host` | 主干2 自动创建新 host 对话（可选） | 每天 03:00 |
+| `anc-executor-host-tick` | 主干2 无新 host 时旧 host 继续接单 | 每天 03:00 |
+| `anc-executor-wake` | 有 queued Ticket 时唤醒当前对话（需 wake bridge） | 每分钟 |
 | `anc-http` | HTTP 面（只绑 127.0.0.1） | 每分钟 + 开机 |
 | `anc-watchdog` | 心跳/积压/进程告警 | 每 10 分钟 |
 | `anc-backup` | SQLite + vault 备份 | 每小时（02:00 起） |
@@ -440,11 +445,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\bin\register-tasks.ps
 | `anc-patch-guard` | 补丁自愈 | 每分钟 |
 | `anc-devbot` | devbot 自动启动 | 22:00 起每 30 分钟 × 8h |
 
+**主干 2 自动 host（可选，先问用户是否开启）**：
+
+```text
+# 不开启时不要建 wb-wake.flag；new-host / wake 任务存在但会静默跳过
+$data = Join-Path $Root 'data'
+New-Item -ItemType File -Force (Join-Path $data 'wb-wake.flag') | Out-Null
+Set-Content -Path (Join-Path $data 'wb-wake-workspace.txt') -Value '<§1 第 12 项的工作区名>' -Encoding utf8
+# token 由 wake bridge 首次启动时生成；不要手写
+```
+
+> 建完 flag 后**用补丁启动器重启 WorkBuddy**，bridge 才会监听 `127.0.0.1:18187`。
+> 没有 flag / 没重启时：`new-host` 与 `wake` 静默跳过，`anc-executor-host-tick` 仍会把旧 host 标 deferred，旧 host 继续接单。
+
 **成功判据**：
 
 ```powershell
 $t = @(Get-ScheduledTask -TaskName 'anc-*')
-if ($t.Count -ne 10) { throw "应该是 10 个，实际 $($t.Count)" }
+if ($t.Count -ne 13) { throw "应该是 13 个，实际 $($t.Count)" }
 $bad = $t | Where-Object { $_.State -notin @('Ready','Running') }
 if ($bad) { throw ('这些任务状态不对: ' + (($bad | ForEach-Object { $_.TaskName + '=' + $_.State }) -join ', ')) }
 ```
@@ -854,7 +872,7 @@ database       PASS  库存在: C:\ProgramData\anc\data\anc.db
 doctor         PASS  FAIL=0 WARN=3（31 项）
 task-write     PASS  task #68 写进去了，查得回来
 bot-reply      SKIP  还没有实例引用（需先在群里收到一条真实消息）
-tasks          PASS  10 个任务全部 Ready/Running
+tasks          PASS  13 个任务全部 Ready/Running
 
 结果  PASS=4  FAIL=0  SKIP=1
 NEXT  有 1 项没验（bot-reply），原因见 detail。
@@ -864,7 +882,7 @@ NEXT  有 1 项没验（bot-reply），原因见 detail。
 #    vault-ingest-audit（3 个未跟踪文件，1 小时内无入库记录）。三个都是设计内的，不是缺陷。
 #  · bot-reply 在「干净的机器上」通常是 SKIP 而不是 PASS —— 409 表示还没有实例引用，
 #    即 bot 还没收到过任何真实群消息。这不是故障（VERIFY §62.5）。
-#  · 任务数是 10 不是 9。
+#  · 任务数是 13 不是 12。
 ```
 
 **每一项什么意思**：
@@ -875,7 +893,7 @@ NEXT  有 1 项没验（bot-reply），原因见 detail。
 | `doctor` | 31 项体检全过 | 有具体项坏了，看 detail |
 | `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
 | `bot-reply` | 注入一条消息 | 409（还没有实例引用）是 SKIP 不是 FAIL；端口没监听也是 SKIP；只有真正注入失败才 FAIL。**「没等到回复」仍是 PASS**（回复慢是模型行为） |
-| `tasks` | 10 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
+| `tasks` | 13 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
 
 **`SKIP` 不是通过**——它是"没验"。常见 SKIP：
 

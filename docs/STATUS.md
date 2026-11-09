@@ -15,7 +15,7 @@
 - [x] 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 201/201；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 212/212；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run 125 个文件；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -239,6 +239,7 @@
 | 2026-11-07 | 文档分层重组 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 2026-11-09 | 主干 2 PLAN 切换 + dsh-superagent 复核 | ✅ | ✅ | ✅ | ◎ | ◎ | ◎ | ✅ | ◎ | ✅ | ◎ | ✅ |
 | 2026-11-09 | 主干 2 第一批收口：表/CLI/恢复/审计 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ |
+| 2026-11-09 | 全量文档/部署计数：13 任务、17 CLI、8 技能、212 测试 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 待填 | 主干 2 完成 |  |  |  |  |  |  |  |  |  |  |  |
 
 ---
