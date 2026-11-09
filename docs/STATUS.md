@@ -1,7 +1,7 @@
 # 状态与缺口
 
 > 类型：账本（已完成 / 进行中 / 缺口 / 风险）
-> 最后更新：2026-11-08
+> 最后更新：2026-11-09
 >
 > 规则：这里只记**事实和证据**。计划和排期在 [PLAN.md](./PLAN.md)；设计意图在 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)。
 > 每个缺口都有 `GAP-###`，主干完成时必须逐条处理：修掉、进主干 0、或明确接受不修。
@@ -44,15 +44,23 @@
 - [x] `npm test` **212/212**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
+### 1.4 主干 1/2 本机收口（2026-11-09）
+
+- [x] 主干 1 本地：T1.3 群类型/org→DB resolver、T1.7 `boss_dm` 类型/`resolvePrivateChat`、T1.11 render/deploy groups 均有测试。
+- [x] 主干 2 本地：executor 四表 + evaluations/events、host bootstrap/cut/deferred、claim/start/report/end/recover/sweep/expire、4+1 slot、队列顺序、human slot、迟到 Report、scope、Main 评估记录。
+- [x] 真实 WorkBuddy：单条 subagent、4 并发、wake bridge、`/new` 新建 host；跨进程 recover drill。
+- [x] `npm test` **212/212**；`check` 通过；13 个计划任务、17 组 CLI、8 个技能、13 个模块。
+- [ ] 真实群/1:1/成员 API、部署、03:00、窗口重启、两机群 → ACC-01..12。
+
 ---
 
 ## 2. 进行中
 
 | 事项 | 状态 | 证据 / 下一步 |
 |---|---|---|
-| 主干 1 的 PLAN | 草案 | [PLAN.md](./PLAN.md) |
-| 主干 0 的缺口清理 | 常驻 | 见 §3；按严重度进批次 |
-| 文档联动检查 | 规则已建 | [DOC-SYNC.md](./DOC-SYNC.md)；待主干 2 首次审计 |
+| 主干 0 | 执行中 | [PLAN.md](./PLAN.md)；按 0.1–0.8 收口 |
+| 主干 1/2 本机 | 已收口 | 见 §1.4；待两机 ACC |
+| 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 审计行 |
 
 ---
 
@@ -170,6 +178,7 @@
 | 2026-11-09 | GAP-008 决策：background 由 Main 评估后接 | 0.3 DECISIONS/D29、MAIN-EXECUTOR、anc-executor；0.6 209/209 | GAP-008 设计关闭 | 不自动接；评估器实现待做 |
 | 2026-11-09 | T1 本地收口核对：T1.3/T1.7/T1.11 本地部分已有测试 | 0.3 PLAN/STATUS；0.6 209/209 | GAP-003/004/028 更新 | 真实群/1:1/成员 API 仍留 ACC-01/06/08 |
 | 2026-11-09 | 主干0复检（本机收口后） | 0.1–0.8 | 0.1/0.2/0.4/0.5/0.6 无新增；0.3/0.7 已同步；0.8 待 ACC-09..12 | 本机不关 ACC |
+| 2026-11-09 | PLAN 切主干 0：全量收尾 + 两机验收 | 0.3 PLAN 重写/归档 TRUNK-2；0.6 212/212 | 主干 0 成为当前 PLAN | ACC-01..12 未跑 |
 | 2026-11-09 | 收口方式定为：本机收口 → 主干0回馈 → 两机验收 | 0.3 PLAN/STATUS §3.5；0.6 209/209 | 新增 ACC-09..12 | 本机不关 ACC；两机前主干保持 🟡 |
 | 2026-11-09 | T2 收口批次：sweep/队列/human slot/审计 | 0.3 PLAN、executor 契约；0.6 209/209 | GAP-057/059 更新；验收项大部分勾选 | 真实部署/窗口重启/强 ACL 仍留 |
 | 2026-11-09 | T2.3/T2.4/T2.7 补测：sweep、队列顺序、human slot、审计事件 | 0.3 executor/PLAN/模块契约；0.6 209/209 | GAP-057/059 更新 | effect_key 仍待做 |
