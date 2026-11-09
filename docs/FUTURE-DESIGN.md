@@ -2,7 +2,7 @@
 
 > 类型：方向（master，设计树）
 
-> 状态：设计 v0.8 · 2026-11-09（主干 0/1/2/3 已收口；主干 3 ACC-13/14/15 真实群通过）
+> 状态：设计 v0.8 · 2026-11-10（主干 0/1/2/3 已收口；主干 2 ACC-16、主干 3 ACC-13/14/15 真实群通过）
 >
 > **这份文档描述“要建成什么”，不是“现在已经有什么”。** 现状以 [ARCHITECTURE.md](./ARCHITECTURE.md)、[module-map.json](../module-map.json) 和 [modules/](./modules/) 为准；状态以 [STATUS.md](./STATUS.md) 为准；两者冲突时，先改设计/账本，再改代码。
 >
@@ -103,7 +103,7 @@
 | 2 | 2.3 工作模型与生命周期 | ✅ | ✅ | — | Task↔Ticket 单向终止（D38）、failed 自动重试至 max_attempts；拆分不做 |
 | 2 | 2.4 调度与资源控制 | ✅ | ✅ | — | 4+1 slot/队列/EDF；默认 30m/3/default；超预算中断（D39） |
 | 2 | 2.5 执行安全、恢复与审计 | ✅ | ✅ | ✅ | 幂等/恢复/审计已落；ACC-11 真实窗口重启 recover 通过 |
-| **2** | **主干 2 汇总** | **✅** | **✅** | **🟡** | 5/5 分支设计+实现收口；ACC-09/10/11 本机达成，真实 Main 群回归待两机 |
+| **2** | **主干 2 汇总** | **✅** | **✅** | **✅** | 5/5 分支设计+实现收口；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（2026-11-10） |
 | 3 | 3.1 三种需要人的情况 | ✅ | ✅ | — | 已定；入口/状态映射见 D43 |
 | 3 | 3.2 群回复确认协议 | ✅ | ✅ | — | 短号为主 + 引用文本增强（D40） |
 | 3 | 3.3 谁确认、责任怎么交 | ✅ | ✅ | — | 严格 required_confirmer + 老板；`require_ack` 三类开（D40/D42） |
@@ -292,7 +292,7 @@ flowchart TB
 - 旧 `chat_bindings` 的长期策略：兼容层保留多久、何时只读/清理（回填工具已有）。
 - 员工 bot 的补丁/移除查库是主干 4 的依赖（GAP-037–039）。
 
-## 2. 主干 2：公司 bot 是 super-agent，自己看任务、自己干｜设计 ✅ · 实现 ✅ · 验收 🟡
+## 2. 主干 2：公司 bot 是 super-agent，自己看任务、自己干｜设计 ✅ · 实现 ✅ · 验收 ✅（2026-11-10）
 
 > **你的原话（转述）**：公司 bot 像 DSH 的 super-agent，自己看到有任务，自己去干。比如任务表里有一条 background 任务 → bot 自己发现 → 自己排期 → 自己去干 → 干完报。
 >
@@ -905,7 +905,7 @@ boss_dm 私有群 fallback → D32 用真 1:1
 | 6 | Attention 与主干 3 的接口：谁存、谁发、谁确认 | 主干 3；主干 2 只留占位 |
 | 7 | 其他外部副作用的幂等键（当前只有结果通知） | 接受范围；未来副作用按 `effect_key` 补 |
 | 8 | Ticket 拆分 | 明确不做；需要拆分时新建 Ticket |
-| 9 | 真实群里的 Main 入站回归 | 两机 ACC；本机只有 brief/evaluate 和技能 |
+| 9 | 真实群里的 Main 入站回归 | 已通过（2026-11-10，ACC-16）：Main 只建 Ticket → wake `/new` host → subagent → review → done |
 | 10 | 模型选择/金额预算 | 默认 model=default、max_minutes=30、max_attempts=3（D37）；金额预算未设 |
 
 已关闭/已接受：
@@ -953,7 +953,7 @@ Task↔Ticket 映射、failed 自动重试 → D38
 | 能力 | 现在已有什么 | 仍缺 |
 |---|---|---|
 | 任务 | `tasks` 两阶段 + executor Ticket/Assignment/Report/evaluations + D38 映射/重试 | Attention/Notification 归主干 3；拆分不做 |
-| 调度 | host/tick/claim、4+1 slot、队列/EDF、30m/3/default、超预算中断 | 真实 Main 群回归；模型/金额预算未细化 |
+| 调度 | host/tick/claim、4+1 slot、队列/EDF、30m/3/default、超预算中断 | 真实 Main 群回归已过（ACC-16）；模型/金额预算未细化 |
 | 执行 | executor + 真实 WorkBuddy subagent + 任务目录/恢复 | 员工 bot handoff 归主干 4 |
 | 群 | 四类群 + render/sync + D35 用户实测 | 本机 org 只登记公司群/boss_dm；ACC-08 例外 |
 | 通知 | outbox + 提醒 + dedupe | 设计已定（D41/D44）；Attention/确认全链路实现归主干 3 |
@@ -970,16 +970,16 @@ Task↔Ticket 映射、failed 自动重试 → D38
 |---|---|---|
 | D0 设计定稿 | ✅ | 主干 1/2 的分支决定已拍板；主干 3/4 仍有叶子 |
 | D1 领域模型 | ✅ | Task/Ticket/Assignment/Report/evaluations 已落 |
-| D2 执行器 | ✅ 本机 | 日 host + 临时 subagent + 目录/Report；ACC-09/10/11 |
-| D3 群与确认 | 🟡 | 四类群已验；确认解析归主干 3 |
+| D2 执行器 | ✅ | 日 host + `/new` 临时 host + 临时 subagent + 目录/Report；ACC-09/10/11/16 |
+| D3 群与确认 | ✅ | 四类群已验；ACC-13/14/15/16 真实群通过 |
 | D4 排期与权限 | ✅ 本机 | 4+1 slot、队列、默认预算、D38/D39 |
 | D5 员工 bot 与知识边界 | ⬜ | 归主干 4 |
 
 下一步顺序：
 
 ```text
-1. 两机补一次真实 Main 群回归（ACC-09..12 的现场部分）
-2. 主干 3：实现 Attention / 确认协议 / 通知（设计已拍板 D40–D44）
+1. 主干 2 已收口（ACC-16，2026-11-10）
+2. 主干 3 已收口（ACC-13/14/15，2026-11-09）
 3. 主干 4：员工 bot handoff / 本地执行
 4. 主干 0 常驻复检：有新缺口再开批次
 ```

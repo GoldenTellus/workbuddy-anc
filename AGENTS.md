@@ -1,6 +1,6 @@
 # workbuddy-anc — 项目指引
 
-> 类型：agent 规则（canonical）· 最后整理：2026-11-08
+> 类型：agent 规则（canonical）· 最后整理：2026-11-10
 >
 > 本文件是 agent 开工前的最小必读。`CLAUDE.md` 只是指向本文件的短指针，不再维护第二份正文。
 
@@ -11,7 +11,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- 主干 3 已收口（2026-11-09）：Attention 短号确认/通知/回执；ACC-13/14/15 真实群通过；下一个主干待选。
+- 主干 0/1/2/3 已收口（2026-11-10）：主干 2 真实 Main 群全链路（ACC-16）、主干 3 Attention 短号确认；下一个主干待选。
 - `npm test` **238/238**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。

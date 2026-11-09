@@ -1,7 +1,7 @@
 # 状态与缺口
 
 > 类型：账本（已完成 / 进行中 / 缺口 / 风险）
-> 最后更新：2026-11-09
+> 最后更新：2026-11-10
 >
 > 规则：这里只记**事实和证据**。计划和排期在 [PLAN.md](./PLAN.md)；设计意图在 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)。
 > 每个缺口都有 `GAP-###`，主干完成时必须逐条处理：修掉、进主干 0、或明确接受不修。
@@ -119,6 +119,12 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **T3.6 文档/门禁/部署（2026-11-09）**：`npm test` **237/237**、`npm run check`、`check-public` 0；`deploy.ps1 -Apply` 142 文件 hash 全过，线上 DB 已迁 `attentions`/`outbox.attention_id`/`reports.question`；13 个计划任务 Ready，doctor **FAIL=0 WARN=3**。
 - [x] **ACC-13/14/15 真实群（2026-11-09）**：A6 `A6可以` → Task #10 done；A7 `120000` → human slot → Task #11 done；A8 `A8收到` → Task #12 done；A9 `A9收到` 代张佳艺确认 + 2h 催办 outbox #5 sent → Task #13 done。
 
+### 1.9 主干 2 真实 Main 群全链路（2026-11-10）
+
+- [x] 公司群 Main 只建 Ticket：Task #18 / `t-b6b53f83…`，状态 `queued`，未 claim、未执行。
+- [x] `anc-executor-wake` 自动 `/new` 建 Agent host（session `c208fb40…`，`mode=craft`）。
+- [x] Host claim/start，真实 subagent `agent-15b76a26…` 写 `hello5.md`；report `ready`；review Attention `A10`；郭帅 `A10 可以` → Ticket/Task #18 `done`。
+
 ---
 
 ## 2. 进行中
@@ -127,7 +133,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 |---|---|---|
 | 主干 0 | **已收口（2026-11-09）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；见 [PLAN.md](./PLAN.md) 与快照 |
 | 主干 1 | **已收口（2026-11-09）** | 4/4 分支；D35 用户实测、D36 例外；员工 bot 旧 1.0 归主干 4 |
-| 主干 2 | **本机收口，验收 🟡** | 5/5 分支；ACC-09/10/11 本机达成；真实 Main 群回归待两机 |
+| 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10） |
 | 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；238/238；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；遗留 GAP-079/080/084 非阻塞 |
 | 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
@@ -224,7 +230,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
 | GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实群 A6/A7/A8 问题为 ASCII，中文提问仍未复测；乱码就走文件/包装 |
 | GAP-085 | Main 真实群回归的 subagent 隔离 | 2026-11-09 真实群 Task #14：bot 用 `subagent_id=main` 自己写 `hello.md`，没有起独立 subagent；功能链路通，但违反“一 Ticket 一 subagent” | `startAssignment` 拒绝 main/self/company-bot；技能明确必须用 Agent tool 返回 id；重跑真实群 | 主干 2 | 否 | closed：host 侧真实 Agent id `agent-634568e4…` 跑通，`hello2.md` 落盘，Task #15 done |
-| GAP-086 | Claw Main 没有 Agent tool | 公司群 bot 是 Main（Claw 会话），没有 Agent 工具；`anc-executor-wake` 的 `/wake` 又落到当前窗口（2026-11-10 落到 dev 窗口），不是 host | Main 只建 Ticket + 定向唤醒 host；host（Agent 模式）claim/start/subagent；加角色守卫/定向 wake 或 `/new` 专用 host | 主干 2 | 是 | wake 已改 `/new` 并跑通 Task #17；剩余 Main 只建 Ticket 的角色守卫复测（新会话） |
+| GAP-086 | Claw Main 没有 Agent tool | 公司群 bot 是 Main（Claw 会话），没有 Agent 工具；`anc-executor-wake` 的 `/wake` 又落到当前窗口（2026-11-10 落到 dev 窗口），不是 host | Main 只建 Ticket + 定向唤醒 host；host（Agent 模式）claim/start/subagent；加角色守卫/定向 wake 或 `/new` 专用 host | 主干 2 | 否 | closed：wake 改 `/new`；Task #18 真实群全链路通过（`c208fb40…` host、`agent-15b76a26…`、A10 approved） |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -361,6 +367,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | 主干 2 真实群回归发现 GAP-085 | Task #14 功能链路通；但 `subagent_id=main`，Main 自己写 `hello.md` | 加 `startAssignment` 守卫（拒绝 main/self/company-bot）+ 技能写明必须 Agent id；238/238 | 待重跑 Task #15 |
 | 2026-11-10 | wake 落在 dev 窗口；host tick 真实跑通 | 手动/定时 wake 落到当前窗口而非 host；host 侧 claim t-88e…、`agent-19d61bd4…` 写 `hello3.md`、Task #16 done | GAP-085 关闭；GAP-086 更新为“wake 定向”；Main 角色守卫已写 | 下一步：wake 定向 host 或 `/new` 专用 host |
 | 2026-11-10 | wake 改 `/new`；host 自动执行 | `/new` 新会话 `mode=craft`；host claim t-3e7…、`agent-fa2f39eb…` 写 `hello4.md`、report ready、Task #17 done | GAP-086 只剩 Main 角色守卫复测（新会话） | 下一步：公司群只建 Ticket 复测 |
+| 2026-11-10 | **主干 2 真实 Main 群全链路** | 公司群 Main 只建 Ticket #18；wake `/new` host `c208fb40…`；`agent-15b76a26…` 写 `hello5.md`；A10 approved → Task #18 done | ACC-16 通过；GAP-086 关闭；主干 2 可标 ✅ | 主干 2 收口 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -385,6 +392,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ACC-13 | 群回复 review 确认 | Attention 已发、短号可识别 | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 | GAP-029/036 | **真实群通过（2026-11-09）**：郭帅回 `@公司bot A6可以` → A6 approved、Task #10 done；非确认人拒绝由 policy.test 覆盖（真实群未复测） |
 | ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | **真实群通过（2026-11-09）**：郭帅回 `@公司bot A7 120000` → A7 answered；human slot 续谈 → Task #11 done |
 | ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | **真实群通过（2026-11-09）**：A8 `A8收到` → Task #12 done；A9 回拨 2h → outbox #5 sent（群催办）；郭帅代张佳艺 ack（`on_behalf_of=zhangjiayi`）→ Task #13 done |
+| ACC-16 | 真实 Main 群全链路 | 公司群 Main 无 Agent；wake 可用 | Main 只建 Ticket；wake 自动建 Agent host；host 起真实 subagent；review 后 Task done | GAP-086 | **通过（2026-11-10）**：Task #18 → `t-b6b53f83…` queued；wake `/new` host `c208fb40…`；`agent-15b76a26…` 写 `hello5.md`；A10 approved → Task #18 done |
 
 ### 3.6 完成时的更新清单
 
@@ -420,6 +428,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | **主干 0 收口完成**（8 分支 + ACC-01..12 通过或书面例外） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | 状态/文档一致性收口（STATUS/FUTURE/模块/部署/计数） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | **主干 3 收口完成**（T3.1–T3.6 + ACC-13/14/15 真实群通过） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ | ◎ | ✅ | ◎ |
+| 2026-11-10 | **主干 2 收口完成**（真实 Main 群全链路 + ACC-16） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ | ◎ | ✅ | ◎ |
 | 待填 | 主干 2 完成 |  |  |  |  |  |  |  |  |  |  |  |
 
 ---
