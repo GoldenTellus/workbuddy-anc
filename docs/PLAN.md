@@ -62,7 +62,7 @@ CLI：17 组               技能：8
 doctor：34 项 FAIL=0 WARN=3
 deploy-verify：ok:true pass=4 fail=0 skip=1（bot-reply 无群 SKIP）
 补丁：applied=true mode=hash pid=24140 活着
-覆盖率：行 90.85 / 分支 80.43 / 函数 94.99（干净树 0ed1938）
+覆盖率：行 90.83 / 分支 80.43 / 函数 94.99（干净树 0ed1938）
 ```
 
 ## 3. 两侧职责
@@ -388,7 +388,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 
 ### 13.1 代码 / 门禁
 
-- `npm test` 212/212 ×3（干净树 `0ed1938`：39.5/39.1/38.8s），`npm run check` 通过，`check-public` 零输出，`scan-catch` 空吞 0，`check-modules --strict-deep` 通过，`doctor -SelfTest` ALL PASS，coverage 90.85/80.43/94.99。
+- `npm test` 212/212 ×3（干净树 `0ed1938`：39.5/39.1/38.8s），`npm run check` 通过，`check-public` 零输出，`scan-catch` 空吞 0，`check-modules --strict-deep` 通过，`doctor -SelfTest` ALL PASS，coverage 90.83/80.43/94.99。
 - 提交：`0ed1938 feat(deploy): 主干0 本机收口——公司侧部署 11/11 + 文档/GAP 同步`（29 文件）。
 - 证据：`.workbuddy/verify/baseline/SUMMARY.md` + 13 个日志（gitignored）。
 
