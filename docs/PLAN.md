@@ -422,9 +422,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 | ACC-09 | **达成（本机）**：138 文件、13 任务、补丁 applied、doctor FAIL=0、wake bridge 18187 监听（GAP-075 已修） | 证据 `stage/`；正式部署前再跑一次 |
 | ACC-10 | **部分达成**：bridge `/new` + host bootstrap 机制实测成功；03:00 自动触发待夜间首次观察 | 明早看 `executor-new-host.log` 与 host status |
 | ACC-11 | **达成（本机演练）**：真实窗口重启 → recover → host closed / Assignment interrupted / Ticket queued → 新 host 重派 | 证据 `stage/acc11-*.log` |
-| ACC-01 / 05 / 06 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工与 manager_scopes；boss_dm 仅识别、无出站 webhook | 建员工群/部门群并补 chatId；真实群消息回归 |
-| ACC-02 / 03 / 04 | 员工身份链路已通（吴琼、张佳艺 sender id 均已绑定，首次绑定已自动化）；缺员工群/部门群 | 建员工群（本人+公司 bot+员工 bot）后跑登记/接受/审批 |
-| ACC-08 / 12 | 企微成员 API、第二台电脑 | 用户分配成员 API 凭据；员工机安装 |
+| ACC-01 / 05 / 06 / 02 / 03 / 04 / 12 | **用户实测通过（2026-11-09，口述；无机器日志）**：员工侧全部测试通过；本机侧公司群+boss_dm 的 `bind actor`/`verify-org` 已验 | 正式部署前建议补一次机器留痕 |
+| ACC-08 | **部分达成（人工对账）**：公司群成员（3 人 + 公司 bot）与 org 3 人一致、差异 0（据截图/口述）；无企微成员 API 凭据，员工/部门群未对账 | 需要 corpid/secret，或按例外接受 |
 | ACC-07 | **达成（本机）**：`-Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过；演练后 doctor 34/FAIL=0、deploy-verify ok 4/0/1 | 证据 `verify/final/acc07-rollback-*.log`；正式部署前再跑一次 |
 | 独立备份盘 | 恢复演练已通过（`restore-drill-clean-171512.log`）；离机目标仍与本地同物理盘 | 用户提供独立盘/UNC 后改 `-Destination` |
 | GAP-034/053/070 | Task↔Ticket 映射实现、重试/拆分 | 归主干 2 后续 |
