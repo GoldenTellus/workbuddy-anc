@@ -69,6 +69,16 @@
 - [x] 提交 `0ed1938`（29 文件）；**干净树最终门禁**：`npm test` **212/212 ×3**（39.5/39.1/38.8s）、`npm run check`、coverage **90.85/80.43/94.99**、`check-public` 零输出、`doctor -SelfTest` ALL PASS、`doctor` 34 项 FAIL=0 WARN=3、`deploy-verify` `ok:true pass=4 fail=0 skip=1`、`deploy-state` 11/11。
 - [ ] 真实两机群 / 员工数据 / 03:00 日切 / 窗口重启恢复 / 生产回滚窗口 → 仍归 ACC（本机无真实群、无员工名单、无第二台电脑）。
 
+### 1.6 org 与真实群接线（2026-11-09，本机）
+
+- [x] org 真相写入 `D:\anc\org`：company（boss + 公司大群 + boss_dm 1:1）、1 个部门（技术部，管理者 1 人）、3 个成员（老板 1 / 管理者 1 / 员工 1）、3 个角色（owner / manager / employee）。真实姓名、userid、chatid 只在本机 org，不进仓库。
+- [x] `render deploy --db`：4 个产物对拍通过，`sync-org` 同步 people/groups/manager_scopes 并校验通过；`bind verify-org` → `ok:true checked=5`。
+- [x] `bind actor` 验证（公司大群）：老板 → boss；技术部管理者 → manager（scopes=tech）；员工 → employee；`boss_dm` 1:1 → 老板。身份映射链路通。
+- [x] 公司 persona 重新渲染并部署到 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`（含公司名/四类群规则/隐私路由）；WorkBuddy 已干净重启并重新打补丁（`applied=true`，新 pid；runId 变化）。
+- [ ] 员工群（每人一个：本人 + 公司 bot + 员工 bot）与部门群 chatId 未建 → `chat_bindings` 仍为空，员工侧 @ 链路待建群。
+- [ ] `boss_dm` 只登记 1:1 chatId 做识别（1:1 无群机器人 webhook，主动通知不发；需要时建老板私有群再补 webhook）。
+- [ ] 真实群消息回归：需老板/员工在群里 `@公司 bot` 验证新 persona（新会话生效；旧会话需 `/new`）。
+
 ---
 
 ## 2. 进行中
@@ -267,6 +277,7 @@
 | 2026-11-09 | 主干2 表草案/状态机：host + assignment | 0.3 FUTURE 2.3；0.6 196/196 | GAP-026/053/054 更新 | 唯一 active assignment；03:00 日切序列已定 |
 | 2026-11-08 | 文件驱动工作法显式化 | 0.3 AGENTS §3.5、DOC-SYNC、FUTURE 规则 14；0.6/0.8 未变 | 无新增 GAP | 聊天是临时、文件是持久；check 通过 |
 | 2026-11-09 | 公司侧部署收口 + 主干 0 处置 | 0.1–0.7 按证据处置；0.6 212/212×3、覆盖率 90.85/80.43/94.99（干净树 0ed1938）；0.4 部署/13 任务/补丁/备份/回滚演练 | 新增并关闭 GAP-066/067/068/069/070；关闭/接受 007/008/010/023/026/027/032/035/054/055/057/060/062/063/064 等；034/053 残留归 GAP-070，实现对齐项 GAP-071 | 0.8 ACC-07/09 部分达成；其余 10 项未跑（缺真实群/员工/第二台电脑） |
+| 2026-11-09 | org 与真实群接线（公司大群 + boss_dm + 3 成员/技术部） | 0.3 STATUS §1.6/§3.5、PLAN §13；0.8 真实群接线推进 | 无新增 GAP；ACC-01/05/06 转「部分达成」 | 员工群/部门群/成员 API 仍缺；需真实群消息回归 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -276,12 +287,12 @@
 
 | 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP | 2026-11-09 本机结果 |
 |---|---|---|---|---|---|
-| ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 | 未达成：org 只有 company.md，groups=0、chat_bindings=0 |
+| ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工角色与 manager_scopes 正确、`verify-org` 通过；员工群/部门群 chatId 未建 |
 | ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 | 未达成：无员工名单/员工群 |
 | ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 | 未达成：无真实员工群 |
 | ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 | 未达成：无部门群/管理者 |
-| ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 | 未达成：无真实群 |
-| ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 | 未达成：无老板 userid/1:1 |
+| ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 | **部分达成**：公司群身份/角色映射可用；真实隐私路由需员工请求与部门群 |
+| ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 | **部分达成**：1:1 chatId 已登记做识别（`bind actor` → boss）；无出站 webhook，主动通知暂不发 |
 | ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 | **部分达成**：部署 137 文件、render deploy --db、WorkBuddy 重启（补丁）均完成；回滚只在临时根演练，未做生产回滚窗口 |
 | ACC-08 | 企微成员对账 | 可读群成员的企微应用凭据 | org 成员与企微群成员一致；差异有清单 | GAP-003 | 未达成：无企微成员 API 凭据 |
 | ACC-09 | 公司主机部署 + 13 个任务 | 公司主机管理员 | `deploy.ps1 -Apply` + `register-tasks.ps1 -Apply`；13 个任务 Ready；带补丁重启后 wake bridge 监听 18187 | GAP-006/065 | **基本达成、按标准未达成**：137 文件 / 13 任务 Ready / `patch-state applied=true pid 24140` / doctor 34 项 FAIL=0；wake bridge 未启用（18187 不监听，默认关） |

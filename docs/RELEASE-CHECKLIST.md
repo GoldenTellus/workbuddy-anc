@@ -27,7 +27,7 @@
 | 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **137 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP） |
 | 体检 | `doctor` **FAIL=0** | ✅ **34 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
 | 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
-| ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ⚠️ 仅 ACC-09 基本达成（差 wake bridge 18187）；ACC-07 部分达成（回滚未演练）；其余未达成 |
+| ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ⚠️ ACC-01/05/06 部分达成（公司群+boss_dm+身份映射已验；员工群/部门群缺）；ACC-09 基本达成（差 wake bridge 18187）；ACC-07 部分达成（生产回滚未演练）；其余未达成 |
 
 **发布结论：不满足「ACC 全部通过」。** 主干 0 保持 🟡；本表不放行 1.0 / 主干 0 发布。
 **不得把未跑写成通过**——`deploy-verify` 的 SKIP 只能记「未验」，验收项的判定以 `STATUS §3.5` 为准。

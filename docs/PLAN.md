@@ -397,6 +397,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 - `deploy.ps1 -Apply` 137 文件（hash 全过）；`deploy-skills.ps1 -Apply` 8 技能；`register-tasks.ps1 -Apply` 13 任务 Ready；补丁 `applied=true pid=24140`；vault 两区 + SMB；org（新未来/公司bot，0 成员）+ persona；secrets 4 文件；`backup-anc.ps1` 跑通；`deploy.ps1 -Rollback` 临时根演练（首次/升级）。
 - `doctor` 34 项 FAIL=0 WARN=3（canary 在 15:38 收到首条真实消息后 PASS）；`deploy-verify` `ok:true pass=4 fail=0 skip=1`（bot-reply 无群）。
 - 真实消息验证：补丁在真实企微入站消息上注入群身份（canary 三项 true），说明补丁链路在真实路径生效；仍无群绑定，`bot-reply` SKIP。
+- org/群接线：3 成员 + 技术部（管理者 1）+ 公司大群 + boss_dm 1:1 写入本机 org；`render deploy --db` 4 产物、`sync-org` 通过、`bind verify-org` ok；`bind actor` 验证老板/管理者/员工角色正确；公司 persona 已重装并干净重启 WorkBuddy 重新打补丁（applied=true，新 pid）。
 - 代码修复后重新 `deploy.ps1 -Apply` 137 文件 hash 全过（备份 `deploy-20261109-155502`）。
 - 证据：`%ProgramData%\anc\stage\elevated-*.log`、`stage\elevated-done.json`、`.workbuddy/verify/deploy/`。
 
@@ -413,7 +414,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 
 | 项 | 缺什么 | 下一步 |
 |---|---|---|
-| ACC-01..06 / 08 / 12 | 四类群 chatid + webhook、员工名单/userid/部门、老板 userid、企微成员 API、第二台电脑 | 用户补数据后按 DEPLOY-COMPANY §10–§12 跑 |
+| ACC-01 / 05 / 06 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工与 manager_scopes；boss_dm 仅识别、无出站 webhook | 建员工群/部门群并补 chatId；真实群消息回归 |
+| ACC-02 / 03 / 04 / 08 / 12 | 缺员工群、部门群、企微成员 API、第二台电脑 | 用户补数据后按 DEPLOY-COMPANY §10–§12 跑 |
 | ACC-09 剩余 | wake bridge 18187（默认关） | 用户确认启用后建 flag/workspace + 补丁重启 |
 | ACC-10 | 真实队列 + 03:00 + bridge | 依赖 ACC-01/09 |
 | ACC-11 | 真实 host 会话 + WorkBuddy 窗口重启 | 依赖 ACC-09/10 |
