@@ -219,6 +219,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-081 | 计划任务注册 | 2026-11-09 部署后 doctor 只有 3 个 `anc-*` 任务；`register-tasks.ps1 -Apply` 在当前非提权会话被 UAC 拒绝（脚本仍打印 OK，GAP-082） | 用管理员 PowerShell 重跑 `-Apply`；doctor 13 项任务 Ready | 主干 3 部署 | 否 | closed：管理员会话 `-Apply -BackupDestination D:\anc-backup` 成功；doctor 13 任务 Ready、FAIL=0 |
 | GAP-082 | `register-tasks.ps1` 失败仍打印 OK | `Register-ScheduledTask` 抛 `拒绝访问` 后脚本继续打印 `OK <task>` 并汇总“已注册 13 个任务” | 捕获异常并以非 0 退出；失败任务不得计入“已注册” | 主干 3 部署 | 否 | closed：加 `-ErrorAction Stop`，非提权实测 exit=1、只报 ERROR/FIX |
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
+| GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实验收前用新会话复测；乱码就走文件/包装 |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -351,6 +352,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | 主干 3 T3.5/T3.6 技能、文档、门禁 | 0.6 237/237；modules/content；PRODUCT/INDEX/FUTURE/PLAN | GAP-012 关闭；技能/persona 同步；文档计数 237 | GAP-079/080 与 ACC-13/14/15 保持开放；部署与真实群待跑 |
 | 2026-11-09 | 主干 3 部署（公司主机） | deploy 142 文件 hash 全过；备份 `deploy-20261109-193745`/`194024`；线上 DB 迁移 `attentions`/`outbox.attention_id`/`reports.question` 通过 | 管理员会话重跑 `register-tasks -Apply`：13 任务 Ready；doctor **FAIL=0 WARN=3**；GAP-081/082/083 关闭 | ACC-13/14/15 本机 CLI 链路已跑；真实群待跑 |
 | 2026-11-09 | ACC-13/14/15 本机链路 | A2 approve → Ticket/Task done；A3 answer → human slot 恢复 working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计：`attention_answered` / `ticket_closed` / human slot；真实群回复与提醒待跑 | 需新会话加载新技能/persona 后再跑真实群 |
+| 2026-11-09 | CLI 中文参数编码复现 | PowerShell 5.1 直传中文出现乱码；`task add` 中文标题此前正常 | 新增 GAP-084；本机验收改用 ASCII；真实群前用新会话复测 | 若复现，`attention create` 加 `--json-file`/UTF-8 包装 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
