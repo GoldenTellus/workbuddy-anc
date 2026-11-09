@@ -43,9 +43,9 @@ test('executor：host/ticket/assignment/report 生命周期', () => {
       taskId: 1,
       departmentId: 'sales',
       title: '整理报价',
-      taskDir: 'departments/sales/tasks/t-1',
     });
     assert.equal(t.state, 'queued');
+    assert.equal(t.task_dir, `departments/sales/tasks/${t.ticket_id}`);
 
     const c = claim(db, { hostId: h.host_id });
     assert.ok(c);
@@ -60,7 +60,7 @@ test('executor：host/ticket/assignment/report 生命周期', () => {
       assignmentId: c!.assignment.assignment_id,
       type: 'ready',
       summary: 'done',
-      evidence: ['departments/sales/tasks/t-1/out.md'],
+      evidence: [t.task_dir + '/out.md'],
     });
     assert.equal(r.type, 'ready');
     assert.equal(getTicket(db, t.ticket_id)!.state, 'waiting_review');
@@ -77,7 +77,7 @@ test('executor：一个 Ticket 只能有一个 active Assignment', () => {
   try {
     seedTask(db);
     const h = host(db);
-    createTicket(db, { taskId: 1, departmentId: 'sales', title: 't', taskDir: 'departments/sales/tasks/t-1' });
+    createTicket(db, { taskId: 1, departmentId: 'sales', title: 't' });
     const a = claim(db, { hostId: h.host_id })!;
     assert.ok(a);
     assert.equal(claim(db, { hostId: h.host_id }), null);
@@ -95,7 +95,7 @@ test('executor：normal slot 上限为 4，human slot 不接新任务', () => {
     seedTask(db, 5);
     const h = host(db);
     for (let i = 0; i < 5; i++) {
-      createTicket(db, { taskId: i + 1, departmentId: 'sales', title: 't' + i, taskDir: `departments/sales/tasks/t-${i}` });
+      createTicket(db, { taskId: i + 1, departmentId: 'sales', title: 't' + i });
     }
     for (let i = 0; i < 4; i++) assert.ok(claim(db, { hostId: h.host_id }));
     assert.equal(claim(db, { hostId: h.host_id }), null);
@@ -108,7 +108,7 @@ test('executor：03:00 host 日切，旧 assignment 不迁移，新 host 只接�
   try {
     seedTask(db, 2);
     const h1 = host(db, '2026-11-09');
-    const t1 = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'old', taskDir: 'departments/sales/tasks/t-1' });
+    const t1 = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'old' });
     const a1 = claim(db, { hostId: h1.host_id })!;
     startAssignment(db, { assignmentId: a1.assignment.assignment_id, subagentId: 'agent-old' });
 
@@ -119,7 +119,7 @@ test('executor：03:00 host 日切，旧 assignment 不迁移，新 host 只接�
     assert.equal(getTicket(db, t1.ticket_id)!.state, 'working');
     assert.equal(closeHostIfIdle(db, h1.host_id), false);
 
-    const t2 = createTicket(db, { taskId: 2, departmentId: 'ops', title: 'new', taskDir: 'departments/ops/tasks/t-2' });
+    const t2 = createTicket(db, { taskId: 2, departmentId: 'ops', title: 'new' });
     const a2 = claim(db, { hostId: h2.host_id })!;
     assert.equal(a2.ticket.ticket_id, t2.ticket_id);
     assert.throws(() => claim(db, { hostId: h1.host_id }), /host 不在接单状态/);
@@ -134,7 +134,7 @@ test('executor：interrupted 后 Ticket 回 queued，可重新派', () => {
   try {
     seedTask(db);
     const h = host(db);
-    createTicket(db, { taskId: 1, departmentId: 'sales', title: 't', taskDir: 'departments/sales/tasks/t-1' });
+    createTicket(db, { taskId: 1, departmentId: 'sales', title: 't' });
     const a = claim(db, { hostId: h.host_id })!;
     startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-1' });
     const i = interruptAssignment(db, { assignmentId: a.assignment.assignment_id, reason: 'host-cut' });
@@ -163,18 +163,38 @@ test('executor：03:00 无新 host 时 deferred，旧 host 继续接单', () => 
   try {
     seedTask(db, 2);
     const h = createHost(db, { conversationId: 'conv-old', businessDate: '2026-11-09', cutAt: '2026-11-09T00:00:00.000Z' });
-    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'old', taskDir: 'departments/sales/tasks/t-old' });
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'old' });
     assert.ok(claim(db, { hostId: h.host_id }));
     const r = deferCutIfDue(db, '2026-11-10T03:00:00+08:00');
     assert.equal(r.deferred, true);
     assert.equal(getHost(db, h.host_id)!.status, 'active');
     assert.equal(getHost(db, h.host_id)!.cut_deferred, 1);
     // 兜底期间旧 host 仍能接新 Ticket
-    createTicket(db, { taskId: 2, departmentId: 'ops', title: 'new', taskDir: 'departments/ops/tasks/t-new' });
+    createTicket(db, { taskId: 2, departmentId: 'ops', title: 'new' });
     assert.ok(claim(db, { hostId: h.host_id }));
     // 新对话出现后，bootstrap 仍然切 host
     const next = bootstrapHost(db, { conversationId: 'conv-new', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
     assert.equal(next.status, 'active');
     assert.equal(getHost(db, h.host_id)!.status, 'closing');
+  } finally { db.close(); }
+});
+test('executor：task_dir 必须由部门 + ticket_id 推导，拒绝跨部门/穿越/自定义', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'path', });
+    assert.equal(t.task_dir, `departments/sales/tasks/${t.ticket_id}`);
+    assert.throws(
+      () => createTicket(db, { taskId: 1, departmentId: 'sales', title: 'x', taskDir: 'departments/ops/tasks/t-x' }),
+      /task_dir 必须是/,
+    );
+    assert.throws(
+      () => createTicket(db, { taskId: 1, departmentId: 'sales', title: 'x', taskDir: 'departments/sales/tasks/../ops' }),
+      /task_dir 必须是/,
+    );
+    assert.throws(
+      () => createTicket(db, { taskId: 1, departmentId: 'sales', title: 'x', taskDir: 'departments/sales/tasks/t-custom' }),
+      /task_dir 必须是/,
+    );
   } finally { db.close(); }
 });

@@ -35,7 +35,7 @@
 - `tickets` 状态不跟随 host/subagent 存活；Report/人的动作推进状态。
 - Report 只追加；`latest_report_id` 只指向最新一条。
 - `cancel`/`done` 不删除历史 Assignment/Report。
-- 任务目录必须是 `departments/<dept>/tasks/<ticket>/` 下的相对路径。
+- 任务目录必须等于服务端推导的 `departments/<dept_id>/tasks/<ticket_id>/`；跨部门、`..`、自定义路径都拒绝。
 - normal slot 上限 4；human slot 上限 1，human 不接新 Ticket。
 
 ## 失败模式

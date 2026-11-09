@@ -41,7 +41,7 @@
 - [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
 - [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
 - [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
-- [x] `npm test` **203/203**；`npm run check` 通过。
+- [x] `npm test` **204/204**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ---
@@ -94,7 +94,7 @@
 | GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 是 | 定 effect_key 与重试边界 |
 | GAP-058 | 产物/证据保留、清理、权限 | 后续 | S2 | 主干 2 | 否 | 定保留策略 |
 | GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 是 | 定 interrupted/queued 转换 |
-| GAP-060 | subagent 并发能力、路径隔离、日切交接未验证 | 实现 | S1 | 主干 2 | 是 | 4 并发/日切已验证；强路径隔离仍待验证 |
+| GAP-060 | subagent 并发能力、路径隔离、日切交接未验证 | 实现 | S1 | 主干 2 | 是 | 4 并发/日切/目录契约已验证；执行期强 ACL 仍待验证 |
 | GAP-061 | 03:00 日切时旧 host 运行中 subagent 是否继续、新 host 如何接管 | 实现 | S1 | 主干 2 | 否 | 用户实测通过：旧任务继续，新任务进新 host；关闭 |
 | GAP-062 | Main ↔ 本地服务的 claim/report 边界未定 | 设计 | S1 | 主干 2 | 否 | 契约已写：MAIN-EXECUTOR.md；实现待做 |
 | GAP-063 | Main 无消息时如何唤醒并 claim 队列未定 | 设计 | S1 | 主干 2 | 否 | 真实窗口注入通过；opt-in wake bridge，默认关闭 |
@@ -164,6 +164,7 @@
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
+| 2026-11-09 | T2.6 task_dir 收紧：部门 + ticket_id 推导 | 0.3 executor/MAIN-EXECUTOR/LOCAL-SERVICE；0.6 204/204 | GAP-060 收窄 | 跨部门/穿越/自定义拒绝；物理 ACL 未做 |
 | 2026-11-09 | T2.3 wake bridge 真实窗口注入：composer 清空/消息可见 | 0.3 MAIN-EXECUTOR/WORKBUDDY-PATCH；0.6 203/203 | GAP-063 更新 | Slate placeholder 误判已修；默认 flag 控制 |
 | 2026-11-09 | T2.3 自动唤醒兜底：每分钟查 queued，有任务才唤醒 | 0.3 OPS/PRODUCT/MAIN-EXECUTOR/WORKBUDDY-PATCH；0.6 203/203 | GAP-063 设计关闭 | wake bridge opt-in；无 flag 时静默 |
 | 2026-11-09 | T2.3 自动兜底：03:00 无新 host 旧 host 继续接单 | 0.3 FUTURE/MAIN-EXECUTOR/LOCAL-SERVICE；0.6 203/203 | GAP-065 更新 | cut_deferred；创建新对话仍未解 |

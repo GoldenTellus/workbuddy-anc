@@ -220,7 +220,7 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 - Main 是唯一 live host；subagent 只在当前 host 的对话里运行。
 - 一个 Ticket 同时只能有一个 active Assignment。
 - Ticket 状态不跟随 host/subagent 存活；Report/人的动作推进状态。
-- 任务目录 `departments/<dept_id>/tasks/<ticket_id>/` 创建后不改。
+- 任务目录 `departments/<dept_id>/tasks/<ticket_id>/` 由服务端从部门 + ticket_id 推导，创建后不改；传自定义 `task-dir` 会被拒绝。
 - subagent 不直接进群、不 @ 人、不开新对话；所有对外说话经 Main。
 - 先写 Assignment/Report/outbox，再做外部动作。
 

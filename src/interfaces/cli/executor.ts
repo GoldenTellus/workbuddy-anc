@@ -84,10 +84,9 @@ export default function executorGroup(ctx: CliContext): void {
       if (!Number.isInteger(taskId) || taskId <= 0) fail('缺少或非法 --task-id');
       const departmentId = String(args['department-id'] ?? '');
       const title = String(args.title ?? '');
-      const taskDir = String(args['task-dir'] ?? '');
+      const taskDir = typeof args['task-dir'] === 'string' ? args['task-dir'] : undefined;
       if (!departmentId) fail('缺少 --department-id');
       if (!title) fail('缺少 --title');
-      if (!taskDir) fail('缺少 --task-dir');
       out({ ok: true, ticket: executor.createTicket(db, {
         taskId,
         departmentId,

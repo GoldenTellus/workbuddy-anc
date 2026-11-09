@@ -95,7 +95,7 @@ export interface CreateTicketInput {
   taskId: number;
   departmentId: string;
   title: string;
-  taskDir: string;
+  taskDir?: string;
   priority?: Priority;
   dueAt?: string;
   tools?: string[];
@@ -118,11 +118,21 @@ function execError(code: string, message: string): Error {
   return e;
 }
 
-function assertSafeTaskDir(taskDir: string): void {
-  const p = taskDir.replace(/\\/g, '/');
-  if (!p.startsWith('departments/') || p.includes('..') || p.startsWith('/') || /^[A-Za-z]:/.test(p)) {
-    throw execError('EXEC_BAD_TASK_DIR', 'task_dir 必须是 departments/ 下的相对路径');
+function canonicalTaskDir(departmentId: string, ticketId: string): string {
+  const dept = departmentId.trim();
+  if (!dept || dept === '.' || dept === '..' || /[\\/]/.test(dept)) {
+    throw execError('EXEC_BAD_DEPARTMENT', 'department_id 不能为空或包含路径分隔符');
   }
+  return `departments/${dept}/tasks/${ticketId}`;
+}
+
+function assertTaskDir(taskDir: string, departmentId: string, ticketId: string): string {
+  const p = taskDir.replace(/\\/g, '/');
+  const expected = canonicalTaskDir(departmentId, ticketId);
+  if (p !== expected || p.includes('..') || p.startsWith('/') || /^[A-Za-z]:/.test(p)) {
+    throw execError('EXEC_BAD_TASK_DIR', 'task_dir 必须是 ' + expected);
+  }
+  return expected;
 }
 
 function validatePriority(p: string): Priority {
@@ -258,18 +268,21 @@ export function closeHostIfIdle(db: DatabaseSync, hostId: string): boolean {
 }
 
 export function createTicket(db: DatabaseSync, input: CreateTicketInput): Ticket {
-  assertSafeTaskDir(input.taskDir);
   const priority = validatePriority(input.priority ?? 'P2');
   const at = nowIso();
+  const ticketId = 't-' + randomUUID();
+  const taskDir = input.taskDir === undefined
+    ? canonicalTaskDir(input.departmentId, ticketId)
+    : assertTaskDir(input.taskDir, input.departmentId, ticketId);
   const ticket: Ticket = {
-    ticket_id: 't-' + randomUUID(),
+    ticket_id: ticketId,
     task_id: input.taskId,
     department_id: input.departmentId,
     title: input.title.trim(),
     state: 'queued',
     priority,
     due_at: input.dueAt ?? null,
-    task_dir: input.taskDir,
+    task_dir: taskDir,
     tools_json: JSON.stringify(input.tools ?? []),
     vault_paths_json: JSON.stringify(input.vaultPaths ?? []),
     budget_json: input.budget ? JSON.stringify(input.budget) : null,

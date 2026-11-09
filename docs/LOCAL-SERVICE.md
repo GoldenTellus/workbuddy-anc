@@ -57,7 +57,7 @@ npm run service -- --json executor host tick --now "2026-11-10T03:00:00+08:00"
 npm run service -- --json executor host register --conversation-id <conv-id> --date 2026-11-09 --cut-at "2026-11-10T03:00:00+08:00"
 npm run service -- --json executor host cut --old-host <host-id> --new-conversation-id <new-conv-id> --date 2026-11-10
 npm run service -- --json executor host status
-npm run service -- --json executor ticket create --task-id <n> --department-id sales --title "整理报价" --task-dir departments/sales/tasks/<ticket>
+npm run service -- --json executor ticket create --task-id <n> --department-id sales --title "整理报价"
 npm run service -- --json executor ticket list [--state queued]
 npm run service -- --json executor claim --host-id <host-id> [--slot human] [--limit 1]
 npm run service -- --json executor start --assignment-id <id> --subagent-id <agent-id>
