@@ -35,6 +35,7 @@
 - `getTicketScope(ticketId)`：只返回 task_dir/allowed_roots/tools/vault_paths/group_access=false
 - `expireTickets({now})`：过期 Ticket 中断 Assignment 并转 failed
 - `closeTicket({ticketId, decision})`：人工收口 done/cancelled；CLI 负责同步 Task
+- `expireAssignmentsByBudget({now})`：超 budget.max_minutes 中断 Assignment 并 block Ticket
 - `interruptAssignment({assignmentId, reason})`
 
 ## 不变量

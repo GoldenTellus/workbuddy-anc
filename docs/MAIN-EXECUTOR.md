@@ -85,6 +85,16 @@ task 行（title / requester_id / assignee_id / dept_id / due_at / kind=backgrou
 
 评估流程是 Main 技能行为；每次判断用 `executor evaluate` 落 `executor_evaluations`，形成可追溯记录。`GAP-008` 设计已定，评估记录已落；自动评估器仍未做。
 
+## 0.2 Main brief
+
+Main 每轮先跑：
+
+```text
+node src/service/cli.ts --json executor brief
+```
+
+返回 active host、queued、waiting_review、blocked、background 候选；再按 §0.1 评估。`brief` 只提供事实，不替 Main 做判断。
+
 ## 1. Main 的一个 tick
 
 ```text

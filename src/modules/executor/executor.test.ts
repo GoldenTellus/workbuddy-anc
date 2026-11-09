@@ -11,6 +11,7 @@ import {
   recordEvaluation,
   getTicketScope,
   expireTickets,
+  expireAssignmentsByBudget,
   sweepStaleAssignments,
   deferCutIfDue,
   closeHostIfIdle,
@@ -389,5 +390,20 @@ test('executor：failed Report 在 max_attempts 内自动回 queued，超限才 
     endAssignment(db, { assignmentId: a3.assignment.assignment_id });
     assert.equal(getTicket(db, t.ticket_id)!.state, 'failed');
     assert.equal(claim(db, { hostId: h.host_id }), null);
+  } finally { db.close(); }
+});
+test('executor：超过 budget.max_minutes 自动中断并 block Ticket', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'budget', budget: { max_minutes: 1 } });
+    const a = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-budget' });
+    db.prepare("UPDATE assignments SET started_at = '2026-11-09T00:00:00.000Z' WHERE assignment_id = ?").run(a.assignment.assignment_id);
+    const r = expireAssignmentsByBudget(db, { now: '2026-11-09T00:02:00.000Z' });
+    assert.equal(r.expired, 1);
+    assert.equal(getAssignment(db, a.assignment.assignment_id)!.state, 'interrupted');
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'blocked');
   } finally { db.close(); }
 });

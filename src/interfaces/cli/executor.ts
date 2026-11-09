@@ -88,6 +88,9 @@ export default function executorGroup(ctx: CliContext): void {
       const taskDir = typeof args['task-dir'] === 'string' ? args['task-dir'] : undefined;
       if (!departmentId) fail('缺少 --department-id');
       if (!title) fail('缺少 --title');
+      const tools = typeof args.tools === 'string' ? JSON.parse(args.tools) as string[] : undefined;
+      const vaultPaths = typeof args['vault-paths'] === 'string' ? JSON.parse(args['vault-paths']) as string[] : undefined;
+      const budget = typeof args.budget === 'string' ? JSON.parse(args.budget) as Record<string, unknown> : undefined;
       out({ ok: true, ticket: executor.createTicket(db, {
         taskId,
         departmentId,
@@ -95,6 +98,11 @@ export default function executorGroup(ctx: CliContext): void {
         taskDir,
         priority: typeof args.priority === 'string' ? args.priority as never : undefined,
         dueAt: typeof args['due-at'] === 'string' ? args['due-at'] : undefined,
+        tools,
+        vaultPaths,
+        budget,
+        expiresAt: typeof args['expires-at'] === 'string' ? args['expires-at'] : undefined,
+        maxAttempts: args['max-attempts'] === undefined ? undefined : numArg(args['max-attempts'], 3, 1, 20),
       }) });
     } else if (sub === 'list') {
       out({ ok: true, tickets: executor.listTickets(db, typeof args.state === 'string' ? args.state as never : undefined) });
@@ -160,7 +168,20 @@ export default function executorGroup(ctx: CliContext): void {
 
   if (cmd === 'expire') {
     const now = typeof args.now === 'string' ? args.now : new Date().toISOString();
-    out({ ok: true, ...executor.expireTickets(db, { now }) });
+    out({ ok: true, tickets: executor.expireTickets(db, { now }), assignments: executor.expireAssignmentsByBudget(db, { now }) });
+    return;
+  }
+
+  if (cmd === 'brief') {
+    const host = executor.getActiveHost(db);
+    out({
+      ok: true,
+      host,
+      queued: executor.listTickets(db, 'queued'),
+      reviews: executor.listTickets(db, 'waiting_review'),
+      blocked: executor.listTickets(db, 'blocked'),
+      candidates: tasks.listTasks(db, { status: 'open', kind: 'background' }),
+    });
     return;
   }
 

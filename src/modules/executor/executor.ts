@@ -642,6 +642,35 @@ export function expireTickets(db: DatabaseSync, input: { now: string }): { expir
   });
 }
 
+/** 运行中的 Assignment 超过 Ticket 的 budget.max_minutes：中断并 block Ticket。 */
+export function expireAssignmentsByBudget(db: DatabaseSync, input: { now: string }): { expired: number } {
+  return tx(db, () => {
+    const rows = db.prepare(`
+      SELECT a.*, t.budget_json FROM assignments a
+      JOIN tickets t ON t.ticket_id = a.ticket_id
+      WHERE a.state = 'running' AND a.started_at IS NOT NULL AND t.budget_json IS NOT NULL
+    `).all() as Array<Assignment & { budget_json: string }>;
+    let expired = 0;
+    for (const a of rows) {
+      let maxMinutes = 0;
+      try {
+        const b = JSON.parse(a.budget_json) as { max_minutes?: unknown };
+        maxMinutes = Number(b.max_minutes ?? 0);
+      } catch (_) { continue; }
+      if (!Number.isFinite(maxMinutes) || maxMinutes <= 0) continue;
+      const ends = new Date(a.started_at!).getTime() + maxMinutes * 60_000;
+      if (ends > new Date(input.now).getTime()) continue;
+      db.prepare("UPDATE assignments SET state = 'interrupted', ended_at = ?, end_reason = 'budget-timeout' WHERE assignment_id = ?")
+        .run(input.now, a.assignment_id);
+      db.prepare("UPDATE tickets SET state = 'blocked', updated_at = ? WHERE ticket_id = ?")
+        .run(input.now, a.ticket_id);
+      recordEvent(db, 'budget_exceeded', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { max_minutes: maxMinutes });
+      expired += 1;
+    }
+    return { expired };
+  });
+}
+
 /** 旧 host 的 Assignment 超过 grace 仍未回报：定时扫描并中断。 */
 export function sweepStaleAssignments(db: DatabaseSync, input: { now: string; graceMinutes?: number }): { interrupted: number; hostsClosed: number } {
   const grace = Math.max(1, Math.floor(input.graceMinutes ?? 10));

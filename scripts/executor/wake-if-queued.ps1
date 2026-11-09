@@ -7,8 +7,10 @@ $node = 'C:\Program Files\nodejs\node.exe'
 $tokenFile = Join-Path $root 'data\wb-wake-token'
 $lastFile = Join-Path $root 'data\executor-wake-last.txt'
 if (-not (Test-Path $node)) { exit 0 }
-if (-not (Test-Path $tokenFile)) { exit 0 }
 if (-not (Test-Path $db)) { exit 0 }
+# 预算/过期扫描独立于 wake bridge：没有 flag/token 也要跑
+try { & $node --no-warnings (Join-Path $root 'service\cli.ts') executor expire --db $db --json 2>$null | Out-Null } catch { }
+if (-not (Test-Path $tokenFile)) { exit 0 }
 # 60 秒节流：计划任务每分钟一次，避免重叠运行刷消息
 if (Test-Path $lastFile) {
     try {
