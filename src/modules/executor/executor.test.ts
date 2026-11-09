@@ -4,6 +4,7 @@ import { openDb } from '../../core/index.ts';
 import {
   appendReport,
   claim,
+  bootstrapHost,
   closeHostIfIdle,
   createHost,
   createTicket,
@@ -139,5 +140,20 @@ test('executor：interrupted 后 Ticket 回 queued，可重新派', () => {
     assert.equal(i.state, 'interrupted');
     assert.equal(getTicket(db, a.ticket.ticket_id)!.state, 'queued');
     assert.ok(claim(db, { hostId: h.host_id }));
+  } finally { db.close(); }
+});
+test('executor：bootstrapHost 同日幂等、跨日自动切、不同对话拒绝', () => {
+  const db = openDb(':memory:');
+  try {
+    const a = bootstrapHost(db, { conversationId: 'conv-a', businessDate: '2026-11-09', cutAt: '2026-11-10T03:00:00+08:00' });
+    const again = bootstrapHost(db, { conversationId: 'conv-a', businessDate: '2026-11-09', cutAt: '2026-11-10T03:00:00+08:00' });
+    assert.equal(again.host_id, a.host_id);
+    const b = bootstrapHost(db, { conversationId: 'conv-b', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
+    assert.notEqual(b.host_id, a.host_id);
+    assert.equal(getHost(db, a.host_id)!.status, 'closing');
+    assert.throws(
+      () => bootstrapHost(db, { conversationId: 'conv-c', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' }),
+      /已有 active host/,
+    );
   } finally { db.close(); }
 });

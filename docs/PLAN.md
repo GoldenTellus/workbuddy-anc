@@ -93,7 +93,7 @@
 - [x] 03:00：旧 host `active → closing`，新 host `active`；旧任务继续，新任务进新 host。
 - [ ] 旧 host 无 running Assignment → `closed`；失联超 grace → Assignment `interrupted`。
 - [x] 测试：日切序列、旧任务继续、新任务不重复派活。
-- [ ] 真实 host bootstrap：先支持“注册已有对话 id”；自动开新对话留 spike。
+- [x] 真实 host bootstrap：`host bootstrap` 同对话幂等、跨日自动切；自动“创建新对话”仍留外部 spike。
 
 ### T2.4 调度器与并发
 
@@ -138,7 +138,7 @@
 - [ ] 03:00 日切：旧任务继续，新任务进新 host，不重复派活。
 - [ ] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
 - [ ] human slot 不被新任务占用；P0 不抢占。
-- [ ] `npm test` 201/201 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
+- [ ] `npm test` 202/202 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
 - [ ] `npm run check` 通过。
 - [ ] WorkBuddy 真实 subagent spike 有明确结论；做不成的部分登记 GAP，不静默降级。
 

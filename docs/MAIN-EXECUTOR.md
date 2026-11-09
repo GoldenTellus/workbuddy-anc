@@ -46,7 +46,13 @@ Main 用 WorkBuddy Agent tool 起 subagent
 ### 2.1 Host
 
 ```powershell
-# 注册当天 host（第一版：已有对话，手动/启动器注册）
+# 新对话首个 turn：幂等注册/日切（推荐）
+node src/service/cli.ts --json executor host bootstrap `
+  --conversation-id <WorkBuddy conversation id> `
+  --date 2026-11-09 `
+  --cut-at "2026-11-10T03:00:00+08:00"
+
+# 或者显式注册当天 host（已有 active host 时拒绝）
 node src/service/cli.ts --json executor host register `
   --conversation-id <WorkBuddy conversation id> `
   --date 2026-11-09 `

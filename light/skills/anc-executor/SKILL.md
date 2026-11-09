@@ -16,6 +16,8 @@ description: 公司 bot 的 Main 派发执行任务。发现队列里有 Ticket 
 node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor host status
 ```
 
+如果你在**新对话的首个 turn**，先用当前 conversation id 调 `executor host bootstrap`；它同一天同一对话幂等，跨日会自动把旧 host 置 closing、新 host 置 active。
+
 没有 active host：停，回报“执行 host 未注册”，不要猜测或新建对话。
 
 ## 一个 tick

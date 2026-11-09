@@ -49,6 +49,14 @@ export default function executorGroup(ctx: CliContext): void {
       if (!date) fail('缺少 --date');
       if (!cutAt) fail('缺少 --cut-at');
       out({ ok: true, host: executor.createHost(db, { conversationId, businessDate: date, cutAt }) });
+    } else if (sub === 'bootstrap') {
+      const conversationId = String(args['conversation-id'] ?? '');
+      const date = String(args.date ?? '');
+      const cutAt = String(args['cut-at'] ?? '');
+      if (!conversationId) fail('缺少 --conversation-id');
+      if (!date) fail('缺少 --date');
+      if (!cutAt) fail('缺少 --cut-at');
+      out({ ok: true, host: executor.bootstrapHost(db, { conversationId, businessDate: date, cutAt }) });
     } else if (sub === 'cut') {
       const oldHostId = String(args['old-host'] ?? '');
       const newConversationId = String(args['new-conversation-id'] ?? '');

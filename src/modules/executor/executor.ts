@@ -182,6 +182,30 @@ export function listHosts(db: DatabaseSync): ExecutorHost[] {
   return db.prepare('SELECT * FROM executor_hosts ORDER BY started_at DESC').all() as ExecutorHost[];
 }
 
+export function getActiveHost(db: DatabaseSync): ExecutorHost | null {
+  return (db.prepare("SELECT * FROM executor_hosts WHERE status = 'active' LIMIT 1").get() as ExecutorHost | undefined) ?? null;
+}
+
+/** 新对话首个 turn 调用：没有 active 就建；同一天同一对话幂等；跨日自动切 host。 */
+export function bootstrapHost(db: DatabaseSync, input: { conversationId: string; businessDate: string; cutAt: string }): ExecutorHost {
+  return tx(db, () => {
+    const active = getActiveHost(db);
+    if (!active) return createHost(db, { ...input, startedAt: nowIso() });
+    if (active.status === 'active' && active.business_date === input.businessDate && active.conversation_id === input.conversationId) {
+      return active;
+    }
+    if (active.status === 'active' && active.business_date < input.businessDate) {
+      return cutHost(db, {
+        oldHostId: active.host_id,
+        newConversationId: input.conversationId,
+        businessDate: input.businessDate,
+        cutAt: input.cutAt,
+      });
+    }
+    throw execError('EXEC_HOST_ACTIVE', '已有 active host，且不是同日同对话: ' + active.host_id);
+  });
+}
+
 export function cutHost(db: DatabaseSync, input: { oldHostId: string; newConversationId: string; businessDate: string; cutAt?: string }): ExecutorHost {
   const at = input.cutAt ?? nowIso();
   return tx(db, () => {
