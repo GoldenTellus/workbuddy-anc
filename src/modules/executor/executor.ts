@@ -81,6 +81,7 @@ export interface Report {
   summary: string;
   evidence_json: string;
   next_step: string | null;
+  late: number;
   created_at: string;
 }
 
@@ -406,11 +407,11 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
   return tx(db, () => {
     const a = getAssignment(db, input.assignmentId);
     if (!a) throw execError('EXEC_ASSIGNMENT_NOT_FOUND', 'assignment 不存在');
-    if (a.state !== 'running' && a.state !== 'pending') {
-      throw execError('EXEC_ASSIGNMENT_BAD_STATE', 'assignment 已结束，拒绝 Report');
-    }
     const ticket = getTicket(db, a.ticket_id);
     if (!ticket) throw execError('EXEC_TICKET_NOT_FOUND', 'ticket 不存在');
+    // 旧 Assignment（已中断/结束）的迟到 Report 只留证，不推进 Ticket；
+    // 新 Assignment 可能已经在跑，不能被旧回报覆盖。
+    const late = a.state !== 'running' && a.state !== 'pending';
     const at = nowIso();
     const report: Report = {
       report_id: 'r-' + randomUUID(),
@@ -421,14 +422,16 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
       summary: input.summary.trim(),
       evidence_json: JSON.stringify(input.evidence ?? []),
       next_step: input.nextStep ?? null,
+      late: late ? 1 : 0,
       created_at: at,
     };
     db.prepare(`INSERT INTO reports
-      (report_id, assignment_id, ticket_id, department_id, type, summary, evidence_json, next_step, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      (report_id, assignment_id, ticket_id, department_id, type, summary, evidence_json, next_step, late, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(report.report_id, report.assignment_id, report.ticket_id, report.department_id,
-        report.type, report.summary, report.evidence_json, report.next_step, report.created_at);
+        report.type, report.summary, report.evidence_json, report.next_step, report.late, report.created_at);
     db.prepare('UPDATE assignments SET report_id = ? WHERE assignment_id = ?').run(report.report_id, a.assignment_id);
+    if (late) return report;
     const nextState = mapReportState(type);
     if (nextState) {
       const ended = nextState === 'done' ? at : null;

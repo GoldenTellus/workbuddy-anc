@@ -11,7 +11,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- `npm test` **204/204**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
+- `npm test` **205/205**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
 

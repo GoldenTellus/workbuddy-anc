@@ -122,8 +122,8 @@
 
 ### T2.7 恢复与审计
 
-- [ ] 主机重启：running Assignment → interrupted；新 host 按 Ticket/目录/Report 重派。
-- [ ] 迟到 Report 只记录，不覆盖新 Assignment 状态。
+- [x] 主机重启/中断：running Assignment → interrupted；Ticket 回 queued，可重新派（领域层测试）。
+- [x] 迟到 Report 只记录（`reports.late=1`），不覆盖新 Assignment 状态。
 - [ ] 外部副作用幂等键；outbox 先落库。
 - [ ] 审计：每次 claim/start/report/end 有事件记录。
 
@@ -140,7 +140,7 @@
 - [ ] 03:00 日切：旧任务继续，新任务进新 host，不重复派活。
 - [ ] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
 - [ ] human slot 不被新任务占用；P0 不抢占。
-- [ ] `npm test` 204/204 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
+- [ ] `npm test` 205/205 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
 - [ ] `npm run check` 通过。
 - [ ] WorkBuddy 真实 subagent spike 有明确结论；做不成的部分登记 GAP，不静默降级。
 

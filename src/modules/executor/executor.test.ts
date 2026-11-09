@@ -198,3 +198,32 @@ test('executor：task_dir 必须由部门 + ticket_id 推导，拒绝跨部门/�
     );
   } finally { db.close(); }
 });
+test('executor：旧 Assignment 的迟到 Report 只记录，不覆盖新 Assignment', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'late', });
+    const a1 = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a1.assignment.assignment_id, subagentId: 'agent-old' });
+    interruptAssignment(db, { assignmentId: a1.assignment.assignment_id, reason: 'host-cut' });
+    const a2 = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a2.assignment.assignment_id, subagentId: 'agent-new' });
+
+    const late = appendReport(db, {
+      assignmentId: a1.assignment.assignment_id,
+      type: 'ready',
+      summary: 'old finished late',
+    });
+    assert.equal(late.late, 1);
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'working');
+
+    const fresh = appendReport(db, {
+      assignmentId: a2.assignment.assignment_id,
+      type: 'ready',
+      summary: 'new finished',
+    });
+    assert.equal(fresh.late, 0);
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'waiting_review');
+  } finally { db.close(); }
+});
