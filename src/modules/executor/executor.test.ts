@@ -5,6 +5,7 @@ import {
   appendReport,
   claim,
   bootstrapHost,
+  recoverHost,
   deferCutIfDue,
   closeHostIfIdle,
   createHost,
@@ -225,5 +226,23 @@ test('executor：旧 Assignment 的迟到 Report 只记录，不覆盖新 Assign
     });
     assert.equal(fresh.late, 0);
     assert.equal(getTicket(db, t.ticket_id)!.state, 'waiting_review');
+  } finally { db.close(); }
+});
+test('executor：recoverHost 将旧 host 的 running 统一 interrupted 并回 queued', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db, 2);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'recover', });
+    const a = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-old' });
+    const r = recoverHost(db, { hostId: h.host_id, reason: 'process-restart' });
+    assert.equal(r.recovered, 1);
+    assert.equal(getHost(db, h.host_id)!.status, 'closed');
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'queued');
+    assert.throws(() => claim(db, { hostId: h.host_id }), /host 不在接单状态/);
+    // 新 host 可重新派同一 Ticket
+    const h2 = bootstrapHost(db, { conversationId: 'conv-next', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
+    assert.ok(claim(db, { hostId: h2.host_id }));
   } finally { db.close(); }
 });

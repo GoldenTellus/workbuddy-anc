@@ -25,6 +25,7 @@
 - `startAssignment({assignmentId, subagentId})`
 - `appendReport({assignmentId, type, summary, evidence, nextStep})`
 - `endAssignment({assignmentId, reason})`
+- `recoverHost({hostId, reason})`：把旧 host 的 pending/running 全部中断并回 queued
 - `interruptAssignment({assignmentId, reason})`
 
 ## 不变量

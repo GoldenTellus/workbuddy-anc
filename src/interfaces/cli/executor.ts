@@ -129,6 +129,13 @@ export default function executorGroup(ctx: CliContext): void {
     return;
   }
 
+  if (cmd === 'recover') {
+    const hostId = String(args['host-id'] ?? '');
+    if (!hostId) fail('缺少 --host-id');
+    out({ ok: true, ...executor.recoverHost(db, { hostId, reason: typeof args.reason === 'string' ? args.reason : 'host-restart' }) });
+    return;
+  }
+
   if (cmd === 'notify') {
     const chatId = String(args['chat-id'] ?? '');
     const text = String(args.text ?? '');

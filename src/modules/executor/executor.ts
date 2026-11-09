@@ -459,6 +459,28 @@ export function endAssignment(db: DatabaseSync, input: { assignmentId: string; r
   });
 }
 
+/** 进程重启/旧 host 失联：把该 host 所有 pending/running 统一中断并放回队列。 */
+export function recoverHost(db: DatabaseSync, input: { hostId: string; reason?: string }): { host: ExecutorHost; recovered: number } {
+  return tx(db, () => {
+    const host = getHost(db, input.hostId);
+    if (!host) throw execError('EXEC_HOST_NOT_FOUND', 'host 不存在');
+    const rows = db.prepare(
+      "SELECT * FROM assignments WHERE host_id = ? AND state IN ('pending', 'running')",
+    ).all(host.host_id) as Assignment[];
+    const at = nowIso();
+    for (const a of rows) {
+      db.prepare("UPDATE assignments SET state = 'interrupted', ended_at = ?, end_reason = ? WHERE assignment_id = ?")
+        .run(at, input.reason ?? 'host-restart', a.assignment_id);
+      const ticket = getTicket(db, a.ticket_id);
+      if (ticket && ticket.state === 'working') {
+        db.prepare("UPDATE tickets SET state = 'queued', updated_at = ? WHERE ticket_id = ?").run(at, a.ticket_id);
+      }
+    }
+    closeHostIfIdle(db, host.host_id);
+    return { host: getHost(db, host.host_id)!, recovered: rows.length };
+  });
+}
+
 export function interruptAssignment(db: DatabaseSync, input: { assignmentId: string; reason?: string }): Assignment {
   return tx(db, () => {
     const a = getAssignment(db, input.assignmentId);
