@@ -398,6 +398,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 - `doctor` 34 项 FAIL=0 WARN=3（canary 在 15:38 收到首条真实消息后 PASS）；`deploy-verify` `ok:true pass=4 fail=0 skip=1`（bot-reply 无群）。
 - 真实消息验证：补丁在真实企微入站消息上注入群身份（canary 三项 true），说明补丁链路在真实路径生效；仍无群绑定，`bot-reply` SKIP。
 - org/群接线：3 成员 + 技术部（管理者 1）+ 公司大群 + boss_dm 1:1 写入本机 org；`render deploy --db` 4 产物、`sync-org` 通过、`bind verify-org` ok；`bind actor` 验证老板/管理者/员工角色正确；公司 persona 已重装并干净重启 WorkBuddy 重新打补丁（applied=true，新 pid）。
+- 真实入站校正：公司群 chatid 与老板 `userid` 以 `patch-in.log` 实际值为准（AI Bot 上报 `wok…` 会话级 id，不是通讯录账号 → GAP-072）；校正后 `bind actor` 在 公司群 与 boss_dm 均返回 boss。员工 sender id 待其发消息后采集。
 - 代码修复后重新 `deploy.ps1 -Apply` 137 文件 hash 全过（备份 `deploy-20261109-155502`）。
 - 证据：`%ProgramData%\anc\stage\elevated-*.log`、`stage\elevated-done.json`、`.workbuddy/verify/deploy/`。
 

@@ -706,6 +706,12 @@ webhook_file: zhangsan-bot.txt   # secrets 目录下的文件名（不是路径�
 - 拼错字段名 → **报错**（`skill` 少个 `s` 就会被拒）
 - `webhook_file` 写成路径 → **报错**（只能是文件名）
 
+> ⚠ **`userid` 用哪个值（2026-11-09 实测校正，GAP-072）**：WorkBuddy 的企微 AI Bot 把发送者归一成 `wok…` 形式的**会话级 open id**，补丁注入到消息前缀的 `from=` 就是这个值，**不是企微通讯录里的账号 userid**。`bind actor` 按 `member.userid` 精确匹配，所以：
+> 1. 先让本人在目标群发一条消息（或私聊 bot），从 `%ProgramData%\anc\data\patch-in.log` 读实际 `from=`；
+> 2. 把 `member.userid` 写成这个实际值（通讯录账号仅作人工对照，不要写进去）；
+> 3. 重跑 `render deploy --db` + `bind verify-org`，再用 `bind actor` 验证。
+> 通讯录账号在员工机侧/人工沟通里仍有意义，但公司侧的入站身份以 AI Bot 上报值为准。
+
 ### 10.5 webhook 文件（每个群一个）
 
 ```powershell

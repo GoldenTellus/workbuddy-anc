@@ -74,6 +74,7 @@
 - [x] org 真相写入 `D:\anc\org`：company（boss + 公司大群 + boss_dm 1:1）、1 个部门（技术部，管理者 1 人）、3 个成员（老板 1 / 管理者 1 / 员工 1）、3 个角色（owner / manager / employee）。真实姓名、userid、chatid 只在本机 org，不进仓库。
 - [x] `render deploy --db`：4 个产物对拍通过，`sync-org` 同步 people/groups/manager_scopes 并校验通过；`bind verify-org` → `ok:true checked=5`。
 - [x] `bind actor` 验证（公司大群）：老板 → boss；技术部管理者 → manager（scopes=tech）；员工 → employee；`boss_dm` 1:1 → 老板。身份映射链路通。
+- [x] 校正项：公司群 chatid 与老板的 `userid` 以**真实入站消息**为准 —— 企微 AI Bot 上报的发送者是 `wok…` 形式的**会话级 id**，不是通讯录账号；org 的 `member.userid` 写实际上报值后 `bind actor` 才匹配到人（GAP-072；真实 id/姓名只在本机 org）。
 - [x] 公司 persona 重新渲染并部署到 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`（含公司名/四类群规则/隐私路由）；WorkBuddy 已干净重启并重新打补丁（`applied=true`，新 pid；runId 变化）。
 - [ ] 员工群（每人一个：本人 + 公司 bot + 员工 bot）与部门群 chatId 未建 → `chat_bindings` 仍为空，员工侧 @ 链路待建群。
 - [ ] `boss_dm` 只登记 1:1 chatId 做识别（1:1 无群机器人 webhook，主动通知不发；需要时建老板私有群再补 webhook）。
@@ -219,6 +220,7 @@
 | GAP-069 | DEPLOY-EMPLOYEE 卸载清单缺 `anc-executor` | 本轮改文档，关闭 |
 | GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 文档写明归主干 2 后续；主干 0 接受暂不实现 |
 | GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 归主干 2 后续；已在 `MAIN-EXECUTOR.md` §7 标「待补」，不阻塞主干 0 |
+| GAP-072 | 企微 AI Bot 上报的发送者 id 是会话级 open id（`wok…`），不是通讯录 userid；org 的 `member.userid` 必须写实际上报值，否则 `bind actor` 找不到人 | 已按真实入站消息校正老板映射并写进 WORKBUDDY-PATCH / DEPLOY-COMPANY；员工 id 待其发消息后采集，关闭前保持登记 |
 
 ---
 

@@ -51,7 +51,7 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - 每次 `emitMessage` 被调用，补丁会写 `%ProgramData%\anc\data\patch-canary.json`：`{at, chatId, user, contentStr}`；
 - **doctor**：`chatId=false` → FAIL（上游字段可能改名）；超过 72 小时没更新 → WARN；
 - **watchdog**：24 小时内 `chatId=false` → 运维群告警；
-- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
+- ⚠ **`from=` 的语义（2026-11-09 实测，GAP-072）**：WorkBuddy 的 AI Bot 把发送者归一成 `wok…` 形式的**会话级 open id**，补丁注入的 `from=` 就是它，**不是企微通讯录账号 userid**。org 的 `member.userid` 必须写这个实际值，`bind actor` 才能匹配到人；采集方法见 `DEPLOY-COMPANY.md §10.4`。- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
 
 ### 7) wake bridge（主干 2，opt-in）
 
