@@ -61,6 +61,7 @@ npm run service -- --json executor claim --host-id <host-id> [--slot human] [--l
 npm run service -- --json executor start --assignment-id <id> --subagent-id <agent-id>
 npm run service -- --json executor report --assignment-id <id> --json-file <report.json>
 npm run service -- --json executor report --assignment-id <id> --type ready --summary "完成"
+npm run service -- --json executor notify --chat-id <chatid> --text "结果摘要" [--dedupe-key <key>]
 npm run service -- --json executor end --assignment-id <id> --reason completed
 
 # 本地摘要（D19/C13）：正文不出本机。只读文件、按规则抽要点，不调模型、不发网络请求

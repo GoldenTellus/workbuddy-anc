@@ -115,6 +115,9 @@ node src/service/cli.ts --json executor report `
   --assignment-id <assignment_id> `
   --json-file D:\anc\reports\<assignment>.json
 
+node src/service/cli.ts --json executor notify `
+  --chat-id <chatid> --text "<result summary>" [--dedupe-key <key>]
+
 node src/service/cli.ts --json executor end `
   --assignment-id <assignment_id> --reason completed
 ```

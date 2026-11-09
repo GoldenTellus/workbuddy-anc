@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import * as executor from '../../modules/executor/index.ts';
+import * as delivery from '../../modules/delivery/index.ts';
 import type { ReportType } from '../../modules/executor/index.ts';
 import type { CliContext } from './context.ts';
 
@@ -114,6 +115,20 @@ export default function executorGroup(ctx: CliContext): void {
     if (!assignmentId) fail('缺少 --assignment-id');
     const report = readReport(args, fail);
     out({ ok: true, report: executor.appendReport(db, { assignmentId, ...report }) });
+    return;
+  }
+
+  if (cmd === 'notify') {
+    const chatId = String(args['chat-id'] ?? '');
+    const text = String(args.text ?? '');
+    if (!chatId) fail('缺少 --chat-id');
+    if (!text.trim()) fail('缺少 --text');
+    const q = delivery.enqueue(db, {
+      chatId,
+      text,
+      dedupeKey: typeof args['dedupe-key'] === 'string' ? args['dedupe-key'] : null,
+    });
+    out({ ok: true, enqueued: q });
     return;
   }
 

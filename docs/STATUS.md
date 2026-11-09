@@ -163,7 +163,7 @@
 | 2026-11-09 | 日切实测通过：旧任务继续 + 新任务进新对话 | 0.3 FUTURE 2.2；0.6 196/196 | GAP-061 关闭 | 用户实测；跨日切不再是阻塞项 |
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
-| 2026-11-09 | T2.3/T2.4 CLI 端到端：host → ticket → claim → start → report → end | 0.3 LOCAL-SERVICE/interfaces/PLAN；0.6 201/201 | GAP-026/031/053 更新 | 临时库实测通过；真实 Runner 未接 |
+| 2026-11-09 | T2.3/T2.4 CLI 端到端：host → ticket → claim → start → report → notify → end | 0.3 LOCAL-SERVICE/interfaces/PLAN；0.6 201/201 | GAP-026/031/053 更新 | 临时库实测通过，outbox 1；真实 Runner 未接 |
 | 2026-11-09 | T2.1/T2.2 领域层：executor 四表 + 仓储 | 0.3 ARCHITECTURE/modules/executor/PLAN；0.6 201/201 | GAP-026/053/031 更新 | 表/唯一索引/状态机/日切仓库；未接 CLI/WorkBuddy |
 | 2026-11-09 | 写定 Main↔Executor 契约 | 0.3 MAIN-EXECUTOR；0.6 196/196 | GAP-062/064 设计关闭；063/065 保持 | 实现未动 |
 | 2026-11-09 | 主干2 开工门禁审计 | 0.3 PLAN；0.6 196/196 | 新增 GAP-062..065 | T2.1 可开工；T2.4/2.5 等待契约 |

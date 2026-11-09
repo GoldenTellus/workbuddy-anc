@@ -99,7 +99,7 @@
 
 - [ ] 队列：按优先级 + 截止时间 + FIFO；P0 排队首，不抢占。
 - [ ] 4 个 normal slot + 1 个 human slot；human 不接新任务。
-- [ ] FakeExecutor 端到端：Task → Ticket → Assignment → Report → outbox（CLI 临时库已跑前四段；outbox 未接）。
+- [x] FakeExecutor 端到端：Task → Ticket → Assignment → Report → outbox（CLI 临时库实测，outbox 1 条）。
 - [ ] 测试：slot 满时 queued；human 续谈不被新任务挤掉；重复 claim 被唯一索引挡住。
 
 ### T2.5 WorkBuddy subagent 适配
