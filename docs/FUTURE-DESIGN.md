@@ -344,6 +344,8 @@ flowchart LR
 - **产物按部门落盘**：`departments/<dept_id>/tasks/<ticket_id>/`；日对话只收 Report 和摘要。
 - **任务状态在数据库**：日对话是 UI/上下文边界；换对话不丢任务、队列和 Report。
 
+> **参考 `upstream:dsh-superagent`**：它用“一 Ticket 一 Executor Session + 一个目录”做隔离，并用 worker slots 控制并发。我们的 WorkBuddy 路线无法稳定维持多个 live 会话，所以改为“日对话 + 临时 subagent”；仍沿用 Ticket/Assignment/Report、worker slot、工具边界和“先落库再动作”，不照搬它的 Session 实现。
+
 **执行流程**
 
 1. Main 接任务，确定 `department_id`、优先级、授权范围、输出目录。
