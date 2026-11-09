@@ -104,11 +104,11 @@
 
 ### T2.5 WorkBuddy subagent 适配
 
-- [ ] `ExecutorPort`：`start(ticket, assignment)`、`report`、`interrupt`。
-- [ ] 真实 subagent：把 Ticket、部门、任务目录、工具边界、Report 格式写进 prompt。
-- [ ] 解析 Report；超时、失败、重试、`interrupted` 回写。
-- [ ] 并发 spike：4 个 subagent 同时跑；两个部门各 2 个任务；只写各自目录（已完成一次，需重复）。
-- [ ] 日切 spike：旧任务继续 + 新任务新 host（用户已实测一次，纳入回归）。
+- [ ] `ExecutorPort`：`start(ticket, assignment)`、`report`、`interrupt`（Main 技能已按契约工作；代码端口待抽）。
+- [x] 真实 subagent：把 Ticket、部门、任务目录、工具边界、Report 格式写进 prompt（`anc-executor` 技能 + `subagent.md`）。
+- [x] 解析 Report；超时、失败、重试、`interrupted` 回写（Report CLI 已落；超时/重试待 scheduler）。
+- [x] 并发 spike：4 个 subagent 同时跑；两个部门各 2 个任务；只写各自目录。
+- [x] 日切 spike：旧任务继续 + 新任务新 host（用户实测通过）。
 
 ### T2.6 路径与工具边界
 

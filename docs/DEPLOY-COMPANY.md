@@ -22,7 +22,7 @@
 | [3](#3-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
 | [4](#4-dirs建目录) | `dirs` | 建 20 个目录 | 5 秒 |
 | [5](#5-files部署运行件) | `files` | 部署运行件 + 渲染 | 30 秒 |
-| [6](#6-skills装技能) | `skills` | 装 7 个技能（8 个文件，第 8 个是 .anc-backup） | 10 秒 |
+| [6](#6-skills装技能) | `skills` | 装 8 个技能（9 个文件，第 9 个是 .anc-backup） | 10 秒 |
 | [7](#7-patch装补丁) | `patch` | 打 WorkBuddy 补丁 | 1–3 分钟 |
 | [8](#8-tasks注册计划任务) | `tasks` | 注册 10 个任务 | 10 秒 |
 | [9](#9-vault建两区) | `vault` | 建两区 vault | 30 秒 |
@@ -205,7 +205,8 @@ $VaultRoot = 'D:\anc'   # 按 §1 第 6 项填的值
 
 # vault 目录：**至少 5**，不是「正好 5」。
 # 运行时还会多出这些，它们不是建错了：
-#   render        —— 渲染产物（§10.6 的 --out 指到 %ProgramData%ancender，
+#   render        —— 渲染产物（§10.6 的 --out 指到 %ProgramData%anc
+ender，
 #                    但 vault 根下也可能有一个历史遗留的 render）
 #   _acl-verify   —— D24 验 ACL 时的测试目录（可以删）
 #   inbox/_originals 等运行时目录
@@ -314,7 +315,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills
 **成功判据**：
 
 ```powershell
-# 应该是 7 个技能：anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-vault-read / anc-wb-patch
+# 应该是 8 个技能：anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-executor / anc-vault-read / anc-wb-patch
 # 另外还会有 1 个 .anc-backup 目录（deploy-skills 的备份），它不是技能，别算进来。
 # 早先这里写「8 个」，是把 .anc-backup 当成技能了 —— 照它做会一直以为少装了一个（VERIFY §55 P9）。
 # 所以下面这条数目录的判据是 >= 7 且有 .anc-backup 之外的 7 个 SKILL.md：

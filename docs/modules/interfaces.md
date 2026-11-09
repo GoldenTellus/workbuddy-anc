@@ -21,10 +21,10 @@
 
 ## 公开契约
 
-**16 个命令组**（help 必须全部列出，`cli.smoke.test.ts` 有断言）：
+**17 个命令组**（help 必须全部列出，`cli.smoke.test.ts` 有断言）：
 
 ```
-summary  bind  task  reminder  outbox  a2a  submission  issue
+summary  bind  task  executor  reminder  outbox  a2a  submission  issue
 patch    dayend  eval  backup  config  project  serve  loop
 ```
 
@@ -34,6 +34,7 @@ patch    dayend  eval  backup  config  project  serve  loop
 - `bind actor --chat-id --userid`：一次返回 `group` / `person` / `manager_scopes`；查不到退出 1
 - `bind sync-org` / `verify-org` / `backfill` / `group-set` / `group-list` / `person-list`：主干 1 的群/人/角色接口
 - `task request` / `approve` / `accept` / `reject`：两阶段任务请求；拒绝必须带 `--reason`
+- `executor host|ticket|claim|start|report|notify|end`：主干 2 日对话/任务 subagent 的本地状态机
 
 **HTTP**：
 

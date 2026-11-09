@@ -57,7 +57,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 | `interfaces` | 服务接口 | 17 组 CLI + 3 条 HTTP 路由 + 审计包装 + ERROR/FIX 格式 | 无 | 能力模块（含 executor） + runtime + org（仅 `bind sync-org`） |
 | `workbuddy` | WorkBuddy 适配 | 群身份注入、旁白过滤、升级拦截、补丁状态、canary、test-emit | `scripts/workbuddy-patch/*`、`patch-*.json/log` | 无（只写状态文件） |
 | `ops` | 主机运维 | 部署、体检、备份、自愈、重建、账号、计划任务 | `%ProgramData%\anc\` 布局、任务、ACL、备份 | 无（只走 CLI/文件） |
-| `content` | 业务内容 | 7 个技能、2 个 persona、模板、eval 用例、vault 模板 | `light/`、`org.example/` | 无代码依赖；依赖 CLI 契约 |
+| `content` | 业务内容 | 8 个技能、2 个 persona、模板、eval 用例、vault 模板 | `light/`、`org.example/` | 无代码依赖；依赖 CLI 契约 |
 
 **不是模块**：`docs/`（地图本身）、`reference/upstream/`（历史参考）、`_research/`（本地敏感，不入库）。
 

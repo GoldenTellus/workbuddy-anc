@@ -2,7 +2,7 @@
 
 > 类型：运维手册（员工侧部署）
 
-> **当前文档描述的是 1.0 员工 bot 旧实现**：仍装 7 个技能（含 `anc-vault-read`），员工 bot 仍会查公司库。主干 4 已决定“员工 bot 不查公司库、改用 handoff”（见 `FUTURE-DESIGN` 4.3、`GAP-037–039`），但代码/技能还没返工。**在 GAP-037–039 关闭前，按本文装；不要以为新设计已经生效。**
+> **当前文档描述的是 1.0 员工 bot 旧实现**：仍装 8 个技能（含 `anc-vault-read`、`anc-executor`；后者公司侧用，员工侧不触发），员工 bot 仍会查公司库。主干 4 已决定“员工 bot 不查公司库、改用 handoff”（见 `FUTURE-DESIGN` 4.3、`GAP-037–039`），但代码/技能还没返工。**在 GAP-037–039 关闭前，按本文装；不要以为新设计已经生效。**
 
 > **设计修正（2026-11-07）**：目标设计要求员工侧也打补丁，用于 handoff 时识别资料归属；当前部署步骤仍按“员工侧不装补丁”执行，差异见 `STATUS` 的 `GAP-038`。`GAP-038` 关闭前以本文当前步骤为准，不要把目标当成现状。
 
@@ -24,7 +24,7 @@
 | [2](#2-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
 | [3](#3-workbuddy确认-workbuddy-已登录) | `workbuddy` | 确认 WorkBuddy 在 | 1 分钟 |
 | [4](#4-files部署运行件) | `files` | 部署运行件 | 30 秒 |
-| [5](#5-skills装技能) | `skills` | 装 7 个技能（8 个文件） | 10 秒 |
+| [5](#5-skills装技能) | `skills` | 装 8 个技能（9 个文件） | 10 秒 |
 | [6](#6-persona部署个人-persona) | `persona` | 部署个人 persona | 1 分钟 |
 | [7](#7-bind绑定本人的群) | `bind` | 绑定群 | 1 分钟 |
 | [8](#8-verify自证) | `verify` | 自证 | 30 秒 |
@@ -243,7 +243,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills
 
 ```powershell
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
-# 期望 7：light/skills 下有 7 个技能、8 个文件，第 8 个是 .anc-backup 备份目录，不是技能。
+# 期望 8：light/skills 下有 8 个技能、9 个文件，第 9 个是 .anc-backup 备份目录，不是技能。
 # 原来写「≥ 1」太松：漏装 6 个也能过。低于 7 就回去看 deploy-skills.ps1 的输出。
 ```
 

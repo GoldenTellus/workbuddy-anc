@@ -4,7 +4,7 @@
 
 > 状态：现行
 > 代码：`light/`
-> 入口：`light/skills/`（7 个技能）
+> 入口：`light/skills/`（8 个技能）
 
 ## 职责
 
@@ -14,7 +14,7 @@
 
 | 数据/文件 | 说明 |
 |---|---|
-| `light/skills/` | 7 个技能：anc-task / anc-dayend / anc-feedback / anc-ingest-company / anc-interview / anc-vault-read / anc-wb-patch |
+| `light/skills/` | 8 个技能：anc-task / anc-dayend / anc-feedback / anc-ingest-company / anc-interview / anc-vault-read / anc-wb-patch / anc-executor |
 | `light/skill-cards/` | 员工侧名片：anc-handoff / anc-vault-read |
 | `light/personas/` | 公司 bot、devbot 的手写 persona（与模板必须一致） |
 | `light/templates/` | 公司/个人 persona 模板、vault 模板 |

@@ -45,7 +45,7 @@
 | 测试文件 | **25** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
 | 计划任务 | **10** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
-| 技能目录 | **7** 个 | `ls -d light/skills/*/ \| wc -l` |
+| 技能目录 | **8** 个 | `ls -d light/skills/*/ \| wc -l` |
 | 本地服务命令组 | **16** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
@@ -78,7 +78,7 @@
 | `src/shared/` | 只剩 summarize 测试与 package | 3 个文件；运行代码已迁 `modules/knowledge` |
 | `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 50 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
 | `scripts/workbuddy-patch/` | WorkBuddy 补丁体、启动器、注入测试口 | 见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
-| `light/` | 技能名片、persona、模板、eval 用例 | 7 个技能目录 |
+| `light/` | 技能名片、persona、模板、eval 用例 | 8 个技能目录 |
 | `reference/upstream/` | 上游原样文档与未合并分支 | **不参与构建**；来源登记见 [UPSTREAM.md](./UPSTREAM.md) |
 | `org.example/` | org 真相源的示例结构 | 渲染器输入样例 |
 | `docs/archive/` | 历史计划、验收、实测、交接 | 见 [archive/README.md](./archive/README.md) |

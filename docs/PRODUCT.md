@@ -20,15 +20,15 @@
 
 | 层 | 谁 | 在哪用 | 能力来源 |
 |---|---|---|---|
-| **① 群里的对话能力** | 员工 | 企微群里 @ bot | **7 个技能**（`light/skills/`） |
-| **② 命令行能力** | 管理员 / 脚本 | 主机上 `node service\cli.ts` | **16 个命令组** |
+| **① 群里的对话能力** | 员工 | 企微群里 @ bot | **8 个技能**（`light/skills/`） |
+| **② 命令行能力** | 管理员 / 脚本 | 主机上 `node service\cli.ts` | **17 个命令组** |
 | **③ 自动运行能力** | 没人 | 主机后台 | **10 个计划任务** |
 
 **三层是叠加的**：技能内部调 CLI，CLI 写 SQLite，计划任务读 SQLite 并做时间驱动的事。
 
 ---
 
-## 2. ① 群里的对话能力 —— 7 个技能
+## 2. ① 群里的对话能力 —— 8 个技能
 
 **每个技能 = 一类能被自然语言触发的动作。** 触发词由技能的 `description` 声明，模型按语义匹配（不是关键词硬匹配）。
 
@@ -113,13 +113,14 @@
 
 ---
 
-## 3. ② 命令行能力 —— 16 个命令组
+## 3. ② 命令行能力 —— 17 个命令组
 
 **入口**：`node C:\ProgramData\anc\service\cli.ts --db <db> <组> <子命令> [参数]`
 
 | 命令组 | 子命令 | 能做什么 |
 |---|---|---|
 | **`task`** | `add` `list` `get` `done` `start` `reassign` `cancel` `review` `request` `approve` `accept` `reject` | 任务生命周期 + 两阶段请求：同部门待接受，跨部门先审批；拒绝必须带原因 |
+| **`executor`** | `host` `ticket` `claim` `start` `report` `notify` `end` | 主干 2 日对话/Ticket/Assignment/Report；4+1 slot 与 03:00 日切 |
 | **`reminder`** | `add` `due` `sent` | 计时提醒的入队与发送记录 |
 | **`outbox`** | `list` `flush` `create` `submit` `status` | 出站消息队列。**真正的发送通道**，所有提醒都经它 |
 | **`submission`** | `add` `list` `set-status` | 员工报的问题（原始记录） |
