@@ -48,7 +48,7 @@
 | org | org → persona、部署与回滚 | [org.md](./org.md) |
 | improvement | submission → issue → patch → eval | [improvement.md](./improvement.md) |
 | runtime | 一次 tick 的编排 | [runtime.md](./runtime.md) |
-| interfaces | 16 组 CLI + HTTP 面 | [interfaces.md](./interfaces.md) |
+| interfaces | 17 组 CLI + HTTP 面 | [interfaces.md](./interfaces.md) |
 | workbuddy | 唯一碰 WorkBuddy 本体的层 | [workbuddy.md](./workbuddy.md) |
 | ops | 部署、体检、备份、重建 | [ops.md](./ops.md) |
 | content | 技能、persona、模板、用例 | [content.md](./content.md) |

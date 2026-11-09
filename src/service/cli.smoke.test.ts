@@ -147,10 +147,10 @@ test('ingest CLI 冒烟：未知命令与非服务身份的 apply 都在写 vaul
   });
 });
 
-test('service CLI 冒烟：用法列全 16 组、布尔 flag 不被后续 token 吞掉、limit 有界', async () => {
+test('service CLI 冒烟：用法列全 17 组、布尔 flag 不被后续 token 吞掉、limit 有界', async () => {
   await inSandbox(async (sb) => {
     const usage = await runCli(serviceCli, ['--db', sb.db], sb);
-    for (const g of ['summary', 'bind', 'task', 'reminder', 'outbox', 'a2a', 'config', 'backup',
+    for (const g of ['summary', 'bind', 'task', 'executor', 'reminder', 'outbox', 'a2a', 'config', 'backup',
                      'project', 'loop', 'serve', 'submission', 'issue', 'patch', 'dayend', 'eval']) {
       assert.match(usage.stderr, new RegExp('\\b' + g + '\\b'), '用法里不该漏掉命令组 ' + g);
     }

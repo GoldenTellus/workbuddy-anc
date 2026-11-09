@@ -129,7 +129,7 @@
         "src/interfaces/",
         "src/service/cli.ts"
       ],
-      "dependsOn": ["core", "identity", "tasks", "delivery", "knowledge", "improvement", "runtime", "org"],
+      "dependsOn": ["core", "identity", "tasks", "executor", "delivery", "knowledge", "improvement", "runtime", "org"],
       "owns": ["service CLI 命令面", "HTTP 路由", "退出码与 ERROR/FIX 格式"]
     },
     {

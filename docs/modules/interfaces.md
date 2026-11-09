@@ -2,13 +2,13 @@
 
 > 类型：模块契约
 
-> 状态：现行（P2 已把 16 组命令与 HTTP 面都迁入 interfaces）
+> 状态：现行（P2 已把 CLI 与 HTTP 面都迁入 interfaces；2026-11-09 加 executor 组，17 组）
 > 代码：`src/interfaces/cli/*`、`src/interfaces/http.ts`、`src/interfaces/index.ts`
 > 入口：`src/interfaces/index.ts`；**稳定调用入口仍是 `src/service/cli.ts`（薄壳）**
 
 ## 职责
 
-对外契约层：16 组 CLI 命令、3 条 HTTP 路由、审计包装、统一 `ERROR` / `FIX` 格式与退出码。**只做参数解析、调用、输出**；业务在能力模块。
+对外契约层：17 组 CLI 命令、3 条 HTTP 路由、审计包装、统一 `ERROR` / `FIX` 格式与退出码。**只做参数解析、调用、输出**；业务在能力模块。
 
 ## 拥有
 
@@ -63,17 +63,17 @@ patch    dayend  eval  backup  config  project  serve  loop
 
 ## 依赖
 
-- 允许：core、identity、tasks、delivery、knowledge、improvement、runtime、org
+- 允许：core、identity、tasks、executor、delivery、knowledge、improvement、runtime、org
 - 禁止：workbuddy / ops（它们有各自入口）
 - 说明：本模块是**组合根**，允许 import 能力模块；`org` 只用于 `bind sync-org` 的 org→DB 同步，不反向依赖。能力模块不许反向 import 它。
 
 ## 测试
 
-`npm run test:service` 里的 `cli.smoke`（16 组、help、退出码）与 `http.test`（token/路由）；`deploy-verify` 在真机上再验一遍。
+`npm run test:service` 里的 `cli.smoke`（17 组、help、退出码）与 `http.test`（token/路由）；`deploy-verify` 在真机上再验一遍。
 
 ## 改动指南
 
-- 加命令组：新建 `src/interfaces/cli/<group>.ts` + `registry.ts` 的 `order`/`handlers` + `cli.smoke` 的 16 组断言 + `docs/LOCAL-SERVICE.md` + 对应技能。
+- 加命令组：新建 `src/interfaces/cli/<group>.ts` + `registry.ts` 的 `order`/`handlers` + `cli.smoke` 的 17 组断言 + `docs/LOCAL-SERVICE.md` + 对应技能。
 - 改输出字段：先查 `light/skills/*` 有没有解析它；有就同步改。
 - 改 HTTP：同步 `docs/LOCAL-SERVICE.md`、`scripts/selfheal/watchdog.ps1`、`scripts/deploy/deploy-verify.ps1`。
 
@@ -84,3 +84,4 @@ patch    dayend  eval  backup  config  project  serve  loop
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P2 拆分 CLI 与 HTTP；P4 依赖改为 modules 入口 | 模块化 |
 | 2026-11-07 | `bind sync-org` 组合 org + identity；interfaces 允许 import org | 主干 1 |
+| 2026-11-09 | 加 `executor` 命令组；依赖加 executor | 主干 2 T2.3 |

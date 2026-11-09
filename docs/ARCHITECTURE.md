@@ -15,7 +15,7 @@
 
 P0 前能跑，但"改一处要读半个仓库"：
 
-- `src/service/cli.ts` **627 行**，16 组命令在一个 if/else 里；
+- `src/service/cli.ts` **627 行**，17 组命令在一个 if/else 里；
 - `src/service/loop.ts` **367 行**，一次 tick 干 6 件事；
 - `src/render/index.ts` **324 行**，渲染 + 事务部署 + 回滚 + 孤儿清理混在一起；
 - 48 个脚本平铺在 `scripts/`；
@@ -54,7 +54,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 | `org` | 组织与渲染 | org 解析、persona/接入包、`groups.json`、事务部署与回滚 | org 输入、render 产物、manifest | core |
 | `improvement` | 自我改进 | submission → issue → patch draft → eval；dayend；devbot 契约 | `submissions`/`issues`/`patch_drafts`/`eval_runs`/`dayend` | core |
 | `runtime` | 运行编排 | 一次 tick：回收、顺延、提醒、升级、发送、超时、投影 | 无表；读各能力模块 | core · identity · tasks · delivery · knowledge |
-| `interfaces` | 服务接口 | 16 组 CLI + 3 条 HTTP 路由 + 审计包装 + ERROR/FIX 格式 | 无 | 能力模块 + runtime + org（仅 `bind sync-org`） |
+| `interfaces` | 服务接口 | 17 组 CLI + 3 条 HTTP 路由 + 审计包装 + ERROR/FIX 格式 | 无 | 能力模块（含 executor） + runtime + org（仅 `bind sync-org`） |
 | `workbuddy` | WorkBuddy 适配 | 群身份注入、旁白过滤、升级拦截、补丁状态、canary、test-emit | `scripts/workbuddy-patch/*`、`patch-*.json/log` | 无（只写状态文件） |
 | `ops` | 主机运维 | 部署、体检、备份、自愈、重建、账号、计划任务 | `%ProgramData%\anc\` 布局、任务、ACL、备份 | 无（只走 CLI/文件） |
 | `content` | 业务内容 | 7 个技能、2 个 persona、模板、eval 用例、vault 模板 | `light/`、`org.example/` | 无代码依赖；依赖 CLI 契约 |
@@ -109,7 +109,7 @@ content     独立：只依赖 CLI 命令契约
 | 源码 | 部署位置 | 说明 |
 |---|---|---|
 | `src/service/cli.ts`（薄壳） | `%ProgramData%\anc\service\cli.ts` | 稳定入口，技能/persona 引用 |
-| `src/interfaces/cli/*` | `%ProgramData%\anc\interfaces\cli\*` | 16 组命令实现 |
+| `src/interfaces/cli/*` | `%ProgramData%\anc\interfaces\cli\*` | 17 组命令实现 |
 | `src/modules/*` | `%ProgramData%\anc\modules\*` | 能力模块 |
 | `src/core/*` | `%ProgramData%\anc\core\*` | 底座 |
 | `src/render/cli.ts`（薄壳） | `%ProgramData%\anc\render\cli.ts` | 稳定入口 |
@@ -140,7 +140,7 @@ content     独立：只依赖 CLI 命令契约
 
 | 文件 | 行数 | 问题 | 目标 |
 |---|---:|---|---|
-| `src/service/cli.ts` | 2 | P2 已拆：16 组在 `interfaces/cli/`，这里只剩转发 | 保持薄壳；超过 ~30 行就是业务写回来了 |
+| `src/service/cli.ts` | 2 | P2 已拆：17 组在 `interfaces/cli/`，这里只剩转发 | 保持薄壳；超过 ~30 行就是业务写回来了 |
 | `src/service/loop.ts` | 2 | P3 已拆：tick/run/carry/escalation/guard 在 `modules/runtime/`，sendPending 在 `modules/delivery/` | 保持薄壳；P4 后删 |
 | `src/service/patch-drafts.ts` | 356 | diff 生成 + 模板插入 + prune 混在一起 | `improvement/patch/{draft,insert,prune}.ts` |
 | `src/render/index.ts` | 324 | 渲染 + 事务部署 + 回滚 + 孤儿清理 | `org/{render,deploy,rollback}.ts` |

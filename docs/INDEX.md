@@ -70,7 +70,7 @@
 | `docs/UPSTREAM.md` | 上游/参考来源政策与索引 | 一项目一文件，见 `docs/upstreams/` |
 | `docs/upstreams/` | 每个来源一份记录 | URL / 许可证 / 固定版本 / 用了什么 |
 | `src/core/` | 平台底座：库/schema/迁移/事务、原子写、配置、审计、出站扫描、备份 | 11 个文件；`db.ts` 只留 `openDb` + 时间函数 |
-| `src/interfaces/` | service CLI 的 16 组命令 + 注册表 + HTTP 门面 | 25 个文件；`src/service/cli.ts` 是入口薄壳 |
+| `src/interfaces/` | service CLI 的 17 组命令 + 注册表 + HTTP 门面 | 26 个文件；`src/service/cli.ts` 是入口薄壳 |
 | `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`improvement`、`knowledge`、`org` | 49 个文件；每个模块有 `index.ts` 公开入口 |
 | `src/service/` | 只剩入口薄壳（`cli.ts` / `loop.ts`）与集成测试 | 8 个文件；部署时只复制 3 个 |
 | `src/render/` | 只剩 `cli.ts` 薄壳与渲染器测试 | 8 个文件；部署时只复制 2 个 |

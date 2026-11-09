@@ -4,6 +4,7 @@ import type { Handler } from './context.ts';
 import summary from './summary.ts';
 import bind from './bind.ts';
 import task from './task.ts';
+import executorGroup from './executor.ts';
 import reminder from './reminder.ts';
 import outbox from './outbox.ts';
 import a2a from './a2a.ts';
@@ -19,7 +20,7 @@ import dayend from './dayend.ts';
 import evalGroup from './eval.ts';
 
 export const order = [
-  'summary', 'bind', 'task', 'reminder', 'outbox', 'a2a', 'config', 'backup',
+  'summary', 'bind', 'task', 'executor', 'reminder', 'outbox', 'a2a', 'config', 'backup',
   'project', 'loop', 'serve', 'submission', 'issue', 'patch', 'dayend', 'eval',
 ];
 
@@ -27,6 +28,7 @@ export const handlers: Record<string, Handler> = {
   summary,
   bind,
   task,
+  executor: executorGroup,
   reminder,
   outbox,
   a2a,

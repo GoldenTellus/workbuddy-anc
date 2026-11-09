@@ -87,7 +87,7 @@
 | GAP-023 | 工作时段/时区/节假日 | 后续 | S3 | 横切 | 否 | 沿用现有 config |
 | GAP-024 | 审计/报告/任务目录保留期 | 后续 | S3 | 横切 | 否 | 定清理策略 |
 | GAP-025 | 审计面板/最小可观测字段 | 后续 | S2 | 横切 | 否 | 定最小字段 |
-| GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 是 | 状态机/唯一索引已落；重试/拆分 CLI 待做 |
+| GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 是 | 状态机/唯一索引/claim-start-report-end 已落；重试/拆分待做 |
 | GAP-054 | Ticket 授权范围字段（tools/vault_paths/budget/expires_at/max_attempts） | 设计 | S1 | 主干 2 | 是 | DDL 字段已定；默认值/校验待做 |
 | GAP-055 | Main↔Executor 传输与投递语义（DB+tick 已选方向） | 设计 | S1 | 主干 2 | 是 | 定表/命令/ack/重试 |
 | GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 是 | 与主干 3 共同定契约 |
@@ -105,12 +105,12 @@
 
 | ID | 缺口 | 类型 | 严重度 | 来源 | 阻塞 | 下一步 |
 |---|---|---|---|---|---|---|
-| GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 是 | executor 四表 + 仓储已落；Attention/Notification 未落 |
+| GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 是 | 四表 + 仓储 + CLI 已落；Attention/Notification 未落 |
 | GAP-027 | 没有 Main / Executor 运行时 | 实现 | S0 | 主干 2 | 是 | D2 执行器 |
 | GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | people/groups/CLI/render 已完成；真实群配置并入 ACC-01 |
 | GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
 | GAP-030 | 没有 boss/manager/employee 角色模型 | 验收 | S1 | 主干 1 | 否 | people/policy/sync/persona 已完成；真实群接线并入 ACC |
-| GAP-031 | 没有日对话调度 / subagent 管理 | 实现 | S1 | 主干 2 | 是 | host/ticket/assignment 领域层已落；调度 CLI/真实 subagent 未接 |
+| GAP-031 | 没有日对话调度 / subagent 管理 | 实现 | S1 | 主干 2 | 是 | host/ticket/assignment + CLI 已落；真实 subagent/唤醒未接 |
 | GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次通过（当时 191/191），关闭 |
 | GAP-040 | org 角色源未同步到 people/manager_scopes | 实现 | S1 | 主干 1 | 否 | 已解析并同步；文档/边界已收口；关闭 |
 | GAP-041 | 公司 bot persona / skills 未接新角色、群类型、任务请求 | 验收 | S1 | 主干 1 | 否 | persona/anc-task/通知链已完成；真实消息回归并入 ACC |
@@ -163,6 +163,7 @@
 | 2026-11-09 | 日切实测通过：旧任务继续 + 新任务进新对话 | 0.3 FUTURE 2.2；0.6 196/196 | GAP-061 关闭 | 用户实测；跨日切不再是阻塞项 |
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
+| 2026-11-09 | T2.3/T2.4 CLI 端到端：host → ticket → claim → start → report → end | 0.3 LOCAL-SERVICE/interfaces/PLAN；0.6 201/201 | GAP-026/031/053 更新 | 临时库实测通过；真实 Runner 未接 |
 | 2026-11-09 | T2.1/T2.2 领域层：executor 四表 + 仓储 | 0.3 ARCHITECTURE/modules/executor/PLAN；0.6 201/201 | GAP-026/053/031 更新 | 表/唯一索引/状态机/日切仓库；未接 CLI/WorkBuddy |
 | 2026-11-09 | 写定 Main↔Executor 契约 | 0.3 MAIN-EXECUTOR；0.6 196/196 | GAP-062/064 设计关闭；063/065 保持 | 实现未动 |
 | 2026-11-09 | 主干2 开工门禁审计 | 0.3 PLAN；0.6 196/196 | 新增 GAP-062..065 | T2.1 可开工；T2.4/2.5 等待契约 |

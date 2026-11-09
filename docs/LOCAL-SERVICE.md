@@ -4,7 +4,7 @@
 
 对应 [DECISIONS.md](./DECISIONS.md) §5.5 与 D10/D11。目标是把 WorkBuddy 里没有、又必须确定性的部分接过来：任务状态、提醒、outbox、群绑定。
 
-**当前已落地**：SQLite 真相源、16 组命令、HTTP 面（`serve`）、任务投影（`project`）、常驻 `loop`、A2A 访谈归档、迭代闭环。**没有** Windows 服务形态（用计划任务 `anc-service` 每分钟跑 `loop --once`）；发送队列的多进程协调靠 SQLite 领取，不靠进程间锁。
+**当前已落地**：SQLite 真相源、17 组命令、HTTP 面（`serve`）、任务投影（`project`）、常驻 `loop`、A2A 访谈归档、迭代闭环。**没有** Windows 服务形态（用计划任务 `anc-service` 每分钟跑 `loop --once`）；发送队列的多进程协调靠 SQLite 领取，不靠进程间锁。
 
 ## 数据模型（SQLite）
 
@@ -50,6 +50,18 @@ npm run service -- bind group-set --chat-id <chatid> --type department --dept-id
 npm run service -- bind group-set --chat-id <chatid> --type boss_dm --name 老板1:1 --webhook-file hook-boss.txt
 npm run service -- bind group-list [--type department]
 npm run service -- bind person-list
+
+# 主干 2：Executor 调度（T2.3，先落 CLI；Runner 仍由 Main 接）
+npm run service -- --json executor host register --conversation-id <conv-id> --date 2026-11-09 --cut-at "2026-11-10T03:00:00+08:00"
+npm run service -- --json executor host cut --old-host <host-id> --new-conversation-id <new-conv-id> --date 2026-11-10
+npm run service -- --json executor host status
+npm run service -- --json executor ticket create --task-id <n> --department-id sales --title "整理报价" --task-dir departments/sales/tasks/<ticket>
+npm run service -- --json executor ticket list [--state queued]
+npm run service -- --json executor claim --host-id <host-id> [--slot human] [--limit 1]
+npm run service -- --json executor start --assignment-id <id> --subagent-id <agent-id>
+npm run service -- --json executor report --assignment-id <id> --json-file <report.json>
+npm run service -- --json executor report --assignment-id <id> --type ready --summary "完成"
+npm run service -- --json executor end --assignment-id <id> --reason completed
 
 # 本地摘要（D19/C13）：正文不出本机。只读文件、按规则抽要点，不调模型、不发网络请求
 npm run service -- --json summary --path <vault 里的 .md> [--max-lines 8] [--max-chars 160]
