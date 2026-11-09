@@ -16,6 +16,7 @@ description: 公司 bot 的 Main 派发执行任务。发现队列里有 Ticket 
 ## 前置
 
 - 当前 host 必须已经由部署/启动器注册为 `active`；不要自己编 `conversation_id`。
+- 如果 prompt 已经给了 `active host=<id>` 并说“不要 host bootstrap”，直接用这个 id claim；**不要**再 bootstrap。
 - 先查：
 
 ```powershell
@@ -52,6 +53,7 @@ prompt: <subagent.md 填充后的内容>
 ```
 
 - 一个 Ticket 一个 subagent；不要按部门拆 subagent 类型。
+- 给 subagent 的任务目录用绝对路径：`D:\anc\<task_dir>`；不要依赖当前会话 cwd（可能是 `D:\workbuddy-anc`）。
 - `--subagent-id` 必须是 **Agent tool 返回的 id**；禁止写 `main` / `self` / `company-bot`——CLI 会拒绝。Main 不自己写任务产物；Agent tool 起不来就 `report blocked`，不要代写。
 - 当前会话没有 Agent tool（Claw 会话常见）时，不要假装能派活：保持候选、回“当前会话没有 Agent 工具”，提示切到 Agent 模式或由专用 Executor host 接单。
 - subagent 只做当前 Ticket；不直接进群、不 @ 人、不新开对话。

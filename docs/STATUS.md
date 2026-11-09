@@ -224,7 +224,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
 | GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实群 A6/A7/A8 问题为 ASCII，中文提问仍未复测；乱码就走文件/包装 |
 | GAP-085 | Main 真实群回归的 subagent 隔离 | 2026-11-09 真实群 Task #14：bot 用 `subagent_id=main` 自己写 `hello.md`，没有起独立 subagent；功能链路通，但违反“一 Ticket 一 subagent” | `startAssignment` 拒绝 main/self/company-bot；技能明确必须用 Agent tool 返回 id；重跑真实群 | 主干 2 | 否 | closed：host 侧真实 Agent id `agent-634568e4…` 跑通，`hello2.md` 落盘，Task #15 done |
-| GAP-086 | Claw Main 没有 Agent tool | 公司群 bot 是 Main（Claw 会话），没有 Agent 工具；`anc-executor-wake` 的 `/wake` 又落到当前窗口（2026-11-10 落到 dev 窗口），不是 host | Main 只建 Ticket + 定向唤醒 host；host（Agent 模式）claim/start/subagent；加角色守卫/定向 wake 或 `/new` 专用 host | 主干 2 | 是 | host tick 已用真实 Agent id 跑通；剩余 wake 定向 |
+| GAP-086 | Claw Main 没有 Agent tool | 公司群 bot 是 Main（Claw 会话），没有 Agent 工具；`anc-executor-wake` 的 `/wake` 又落到当前窗口（2026-11-10 落到 dev 窗口），不是 host | Main 只建 Ticket + 定向唤醒 host；host（Agent 模式）claim/start/subagent；加角色守卫/定向 wake 或 `/new` 专用 host | 主干 2 | 是 | wake 已改 `/new` 并跑通 Task #17；剩余 Main 只建 Ticket 的角色守卫复测（新会话） |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -360,6 +360,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | CLI 中文参数编码复现 | PowerShell 5.1 直传中文出现乱码；`task add` 中文标题此前正常 | 新增 GAP-084；本机验收改用 ASCII；真实群前用新会话复测 | 若复现，`attention create` 加 `--json-file`/UTF-8 包装 |
 | 2026-11-09 | 主干 2 真实群回归发现 GAP-085 | Task #14 功能链路通；但 `subagent_id=main`，Main 自己写 `hello.md` | 加 `startAssignment` 守卫（拒绝 main/self/company-bot）+ 技能写明必须 Agent id；238/238 | 待重跑 Task #15 |
 | 2026-11-10 | wake 落在 dev 窗口；host tick 真实跑通 | 手动/定时 wake 落到当前窗口而非 host；host 侧 claim t-88e…、`agent-19d61bd4…` 写 `hello3.md`、Task #16 done | GAP-085 关闭；GAP-086 更新为“wake 定向”；Main 角色守卫已写 | 下一步：wake 定向 host 或 `/new` 专用 host |
+| 2026-11-10 | wake 改 `/new`；host 自动执行 | `/new` 新会话 `mode=craft`；host claim t-3e7…、`agent-fa2f39eb…` 写 `hello4.md`、report ready、Task #17 done | GAP-086 只剩 Main 角色守卫复测（新会话） | 下一步：公司群只建 Ticket 复测 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 

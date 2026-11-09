@@ -5,6 +5,7 @@ $root = Join-Path $env:ProgramData 'anc'
 $db = Join-Path $root 'data\anc.db'
 $node = 'C:\Program Files\nodejs\node.exe'
 $tokenFile = Join-Path $root 'data\wb-wake-token'
+$workspaceFile = Join-Path $root 'data\wb-wake-workspace.txt'
 $lastFile = Join-Path $root 'data\executor-wake-last.txt'
 if (-not (Test-Path $node)) { exit 0 }
 if (-not (Test-Path $db)) { exit 0 }
@@ -25,14 +26,26 @@ try {
     $count = @($queued.tickets).Count
     if ($count -le 0) { exit 0 }
     $hosts = & $node --no-warnings (Join-Path $root 'service\cli.ts') executor host status --db $db --json 2>$null | ConvertFrom-Json
-    $active = @($hosts.hosts | Where-Object { $_.status -eq 'active' }).Count
-    if ($active -le 0) { exit 0 }
+    $activeHost = @($hosts.hosts | Where-Object { $_.status -eq 'active' })[0]
+    if (-not $activeHost) { exit 0 }
     $token = (Get-Content $tokenFile -Raw).Trim()
-    $prompt = "[anc-executor] 队列有 $count 个 Ticket。请只做一个 tick：executor claim，按 anc-executor 技能派 subagent；没有空槽就停止，不要回复用户。"
-    $body = @{ prompt = $prompt } | ConvertTo-Json -Compress
-    Invoke-RestMethod -Uri 'http://127.0.0.1:18187/wake' -Method Post `
-        -Headers @{ 'X-Anc-Token' = $token } -ContentType 'application/json; charset=utf-8' `
-        -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 5 | Out-Null
+    # 当前窗口不可靠（可能是群聊/dev 窗口）：用 /new 建一个 Agent 模式 host 任务，
+    # 明确复用已注册的 active host，不 bootstrap、不抢 host 身份。
+    $workspace = ''
+    if (Test-Path $workspaceFile) { $workspace = (Get-Content $workspaceFile -Raw).Trim() }
+    if ($workspace) {
+        $prompt = "[anc-executor] 队列有 $count 个 Ticket；active host=$($activeHost.host_id)。请只做一个 tick：executor claim --host-id $($activeHost.host_id) --limit 1；不要 host bootstrap；按 anc-executor 技能用 Agent tool 起 subagent；任务目录根是 D:\anc；没有空槽就停止；不要回复用户。"
+        $body = @{ prompt = $prompt; workspace = $workspace } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Uri 'http://127.0.0.1:18187/new' -Method Post `
+            -Headers @{ 'X-Anc-Token' = $token } -ContentType 'application/json; charset=utf-8' `
+            -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 20 | Out-Null
+    } else {
+        $prompt = "[anc-executor] 队列有 $count 个 Ticket。请只做一个 tick：executor claim --host-id $($activeHost.host_id) --limit 1；按 anc-executor 技能派 subagent；没有空槽就停止，不要回复用户。"
+        $body = @{ prompt = $prompt } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Uri 'http://127.0.0.1:18187/wake' -Method Post `
+            -Headers @{ 'X-Anc-Token' = $token } -ContentType 'application/json; charset=utf-8' `
+            -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 5 | Out-Null
+    }
     (Get-Date).ToString('o') | Set-Content -Path $lastFile -Encoding utf8
 } catch {
     # bridge 未启用/窗口不在，静默；由下一次 tick 或人来消息兜底

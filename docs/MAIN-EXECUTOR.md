@@ -328,23 +328,29 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 - Main 检测到该失败后决定重试（重新起 subagent）或降级（发 Attention / 人工处理）；不猜测成功，不把自由文本当 `ready`；
 - Main 可发 Attention，但不直接改 Ticket。
 
-## 4. Main 唤醒
+## 4. Main 唤醒（Main / Host 分工）
 
-两条路：
+**角色分工**：
 
-1. 群消息到达（Main 处理完后顺手 claim 一次）；
-2. `anc-executor-wake` 计划任务每分钟跑一次：先查 `executor ticket list --state queued`，**只有 queued > 0** 才向 `127.0.0.1:18187/wake` 注入一条短 prompt（“只做一个 tick”）。
+- **Main**（公司群 / 老板 1:1，Claw 会话，通常没有 Agent tool）：只做 `brief` / `evaluate` / `ticket create` / 通知；**不 claim/start，不自己写产物**。
+- **Host**（每日或 `/new` 新建的 Agent 模式会话，有 Agent tool）：才做 `claim/start` + Agent tool 起 subagent。
 
-第 2 条依赖 opt-in 的 WorkBuddy wake bridge：
+两条唤醒路：
+
+1. 群消息到达（Main 处理完后建 Ticket，交给 wake）；
+2. `anc-executor-wake` 计划任务每分钟跑一次：先查 `executor ticket list --state queued`，**只有 queued > 0** 才唤醒 Host：
+   - 有 `%ProgramData%\anc\data\wb-wake-workspace.txt`：调 `POST /new`，在该 workspace 新建一个 Agent 会话，prompt 带 `active host=<host_id>`，要求“不要 host bootstrap、用这个 host id claim、只做一个 tick”；
+   - 没有 workspace 文件：回退 `POST /wake` 注入当前会话（仅兼容旧部署）。
+
+依赖 opt-in 的 WorkBuddy wake bridge：
 
 - `%ProgramData%\anc\data\wb-wake.flag` 存在才启用；
 - token 在 `wb-wake-token`；只监听 loopback；
-- composer 非空时拒绝，不覆盖人的草稿；
-- 不创建新对话，只唤醒当前对话。
+- `/wake` 的 composer 非空时拒绝，不覆盖人的草稿；`/new` 新建任务，不碰当前草稿。
 
-没有 flag / bridge 时 `wake-if-queued.ps1` 静默退出；任务仍会落库，等下一次消息或人工唤醒。`GAP-063` 因此是“有自动兜底，但默认关闭”，不是无条件自动。
+没有 flag / bridge 时 `wake-if-queued.ps1` 静默退出；任务仍会落库，等下一次消息或人工唤醒。
 
-**2026-11-09 实测**：在当前 WorkBuddy 窗口注入 `[wake-test] 请只回复 WAKE_OK`，消息出现在对话中、composer 清空；同时修正 Slate placeholder 被误判为“composer 非空”的问题。
+**2026-11-10 实测**：`/new` 新会话 `mode=craft`、`cwd=D:/workbuddy-anc`，Agent tool 可用；host tick 用真实 `agent-19d61bd4…` 写 `hello3.md`，Task #16 done。`/wake` 仍会落到“当前窗口”，所以生产默认走 `/new`。
 
 `claim` 无任务时立即返回，不 sleep，不占住 Main 的回合。
 
