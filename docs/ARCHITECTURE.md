@@ -48,7 +48,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 | `core` | 平台底座 | 库、迁移、事务、时间、配置、审计、出站扫描、备份 | `meta`/`config` 表、schema、`audit.log` 格式 | 无 |
 | `identity` | 身份与群绑定 | chatid ↔ 群类型 ↔ 人/角色/部门 ↔ webhook | `people`/`groups`/`manager_scopes`；`chat_bindings` 兼容 | core |
 | `tasks` | 任务与提醒 | 任务生命周期、提醒排期、后台任务超时、离职转交；两阶段请求 | `tasks`/`task_events`/`reminders` | core · delivery |
-| `executor` | 执行调度 | 03:00 host、Ticket、Assignment、Report、4+1 slot | `executor_hosts`/`tickets`/`assignments`/`reports`；`executor_events`/`executor_evaluations` | core |
+| `executor` | 执行调度 | 03:00 host、Ticket、Assignment、Report、4+1 slot、Attention | `executor_hosts`/`tickets`/`assignments`/`reports`；`executor_events`/`executor_evaluations`/`attentions` | core |
 | `delivery` | 出站投递 | 队列、去重、领取、退避、过期、按群选 webhook、发送 | `outbox` | core · identity |
 | `knowledge` | 知识与入库 | 入库校验/写入/锁/归档；本地检索与摘要；A2A 归档 | vault 两区文件、ingest 锁、`a2a_*` 表 | core |
 | `org` | 组织与渲染 | org 解析、persona/接入包、`groups.json`、事务部署与回滚 | org 输入、render 产物、manifest | core |
@@ -208,7 +208,7 @@ content     独立：只依赖 CLI 命令契约
 不涉及部署：
 
 ```powershell
-npm test                       # 217/217，不得少
+npm test                       # 237/237，不得少
 npm run check:modules          # 0 违规
 ```
 
@@ -272,3 +272,4 @@ powershell -File scripts\doctor\doctor.ps1 -Repo <仓库> -Json            # FAI
 |---|---|---|
 | 2026-11-06 | 建档：12 个模块、依赖规则、源码/部署布局、P0–P7 迁移路线 | fork 阶段收口，后续按块迭代 |
 | 2026-11-09 | executor 的 owns 补 `executor_events`/`executor_evaluations`；§11 补 executor 行；§5 补部署实测 137 文件 | 主干 0 文档收口（GAP-066，13 模块现状对齐） |
+| 2026-11-09 | executor 增加 `attentions` 表与 Attention API | 主干 3 T3.1 数据层 |

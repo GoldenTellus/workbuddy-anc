@@ -1,2 +1,3 @@
 // executor 的公开入口。跨模块只 import 这里。
 export * from './executor.ts';
+export * from './attention.ts';

@@ -17,8 +17,8 @@
 | `tasks` | 任务 | `status`: open / pending_approval / pending_acceptance / done / cancelled / rejected / needs_review；完成/取消都写 `task_events` |
 | `task_events` | 事件流 | 只追加，不修改 |
 | `reminders` | 提醒 | 一个任务同时只有一条 `pending`；同日按 `repeat_minutes` 续，跨天停 |
-| `outbox` | 出站消息 | `dedupe_key` 唯一；入队前过凭据扫描 |
-| `config` | 工作时段/节假日 | `work_start` / `work_end` / `weekdays`（1–7）/ `holidays`（逗号分隔日期）；默认全天 |
+| `outbox` | 出站消息 | `dedupe_key` 唯一；入队前过凭据扫描；`attention_id` 关联 Attention（主干 3） |
+| `config` | 工作时段/节假日/通知 | `work_start` / `work_end` / `weekdays`（1–7）/ `holidays`（逗号分隔日期）；`notify_quiet_start` / `notify_quiet_end`（默认 22:00–08:00）/ `notify_daily_cap`（默认 10）；默认全天 |
 | `a2a_surveys` | 调查（访谈） | `rule_version` + `rule_hash` 冻结规则；`expected` 是应交回的人员 |
 | `executor_hosts` | 03:00 日切 host | 全库只能一个 `active`；`cut_deferred` 是兜底标记 |
 | `tickets` | 执行单元 | `task_dir` 由部门 + ticket_id 推导；状态由 Report/人的动作推进 |
@@ -26,6 +26,7 @@
 | `reports` | subagent 回报 | 只追加；`late=1` 表示旧 Assignment 迟到回报 |
 | `executor_events` | 执行审计 | 只追加：claim/start/report/end/interrupt/recover |
 | `executor_evaluations` | Main 评估记录 | accept/defer/ask/reject、理由、优先级、关联 Ticket |
+| `attentions` | 人在环路里的待确认 | `short_code` 全局唯一；`purpose`: answer/review/responsibility；`open` 才进提醒扫描 |
 | `a2a_messages` | 交回的信封 | 按 `message_id` 去重；文件归档在内部区 `surveys/<survey_id>/` |
 
 **Task ↔ Ticket（GAP-034）**：`tickets.task_id → tasks.id`（外键）；Ticket 状态机**不反向覆盖** Task 状态，Task 沿用现行 `tasks.status`。完整映射/迁移归主干 2 后续，见 [MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md) §2.2.1。
@@ -67,7 +68,7 @@ npm run service -- --json executor host cut --old-host <host-id> --new-conversat
 npm run service -- --json executor host status
 npm run service -- --json executor ticket create --task-id <n> --department-id sales --title "整理报价"
 npm run service -- --json executor ticket list [--state queued]
-npm run service -- --json executor claim --host-id <host-id> [--slot human] [--limit 1]
+npm run service -- --json executor claim --host-id <host-id> [--slot human] [--limit 1] [--ticket-id <ticket>]
 npm run service -- --json executor start --assignment-id <id> --subagent-id <agent-id>
 npm run service -- --json executor report --assignment-id <id> --json-file <report.json>
 npm run service -- --json executor report --assignment-id <id> --type ready --summary "完成"
@@ -77,6 +78,15 @@ npm run service -- --json executor evaluations --task-id <n>
 npm run service -- --json executor brief
 npm run service -- --json executor close --ticket-id <ticket> --decision done
 npm run service -- --json executor scope --ticket-id <ticket>
+# 主干 3：Attention（executor 的子命令，不新增命令组）
+npm run service -- --json executor attention create --purpose answer --question "<问题>" --required-confirmer <person-id> [--ticket-id <id>] [--require-ack]
+npm run service -- --json executor attention list [--status open] [--confirmer <person-id>] [--ticket-id <id>]
+npm run service -- --json executor attention show --id <id> | --code A12
+npm run service -- --json executor attention match --chat-id <chatid> --userid <userid> --text "<消息>" [--quote-text "<引用文本>"]
+npm run service -- --json executor attention answer --code A12 --chat-id <chatid> --userid <userid> --action approve|reject|answer|ack [--text "<内容>"]
+npm run service -- --json executor attention cancel --code A12 [--reason "<原因>"]
+npm run service -- --json executor attention context --ticket-id <id>
+npm run service -- --json executor attention sweep [--apply] [--now "<iso>"]
 npm run service -- --json executor expire --now "2026-11-10T00:00:00+08:00"
 npm run service -- --json executor sweep --now "2026-11-10T03:00:00+08:00" --grace-minutes 10
 npm run service -- --json executor recover --host-id <old-host> --reason host-restart
@@ -171,7 +181,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 217/217 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 237/237 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

@@ -35,6 +35,8 @@ export function migrate(db: DatabaseSync): void {
   addCol('executor_hosts', 'cut_deferred', 'INTEGER NOT NULL DEFAULT 0');
   addCol('executor_hosts', 'cut_deferred_at', 'TEXT');
   addCol('reports', 'late', 'INTEGER NOT NULL DEFAULT 0');
+  // 主干 3：通知与 Attention 的账本关联；不建外键，避免旧库升级时重建 outbox。
+  addCol('outbox', 'attention_id', 'TEXT');
 
   // submissions 早期版本用的是 submitter_userid（stash 里那版）。
   // CREATE TABLE IF NOT EXISTS 对已存在的表是空操作，所以新列必须走迁移，
@@ -42,6 +44,36 @@ export function migrate(db: DatabaseSync): void {
   addCol('submissions', 'userid', 'TEXT');
   addCol('submissions', 'file_hash', 'TEXT');
   addCol('submissions', 'issue_id', 'INTEGER');
+
+  // 主干 3：reports.type 增加 question。SQLite 不能改 CHECK，只能重建表。
+  // 旧库的 reports 没有 question，新 Report 一插入就会被 CHECK 拒绝。
+  const reportSql = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reports'",
+  ).get() as { sql: string } | undefined;
+  if (reportSql && !reportSql.sql.includes("'question'")) {
+    tx(db, () => {
+      db.exec('DROP TABLE IF EXISTS reports_new');
+      db.exec(`CREATE TABLE reports_new (
+        report_id     TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES assignments(assignment_id),
+        ticket_id     TEXT NOT NULL REFERENCES tickets(ticket_id),
+        department_id TEXT NOT NULL,
+        type          TEXT NOT NULL CHECK (type IN ('progress', 'waiting', 'question', 'ready', 'blocked', 'failed', 'dropped')),
+        summary       TEXT NOT NULL,
+        evidence_json TEXT NOT NULL DEFAULT '[]',
+        next_step     TEXT,
+        late          INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL
+      )`);
+      db.exec(`INSERT INTO reports_new
+        (report_id, assignment_id, ticket_id, department_id, type, summary, evidence_json, next_step, late, created_at)
+        SELECT report_id, assignment_id, ticket_id, department_id, type, summary, evidence_json, next_step, late, created_at
+        FROM reports`);
+      db.exec('DROP TABLE reports');
+      db.exec('ALTER TABLE reports_new RENAME TO reports');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id, created_at)');
+    });
+  }
 
   // a2a_messages 早期以 message_id 单列为主键：每场访谈都用 q1..qN，第二场会被当成重复丢掉。
   // 改为 (survey_id, message_id) 复合主键；旧数据原样搬过去。

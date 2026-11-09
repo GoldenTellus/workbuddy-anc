@@ -19,12 +19,13 @@
 | `reports` 表 | 只追加：`progress / waiting / ready / blocked / failed / dropped` |
 | `executor_events` 表 | 只追加审计：claim / start / report / end / interrupt / recover |
 | `executor_evaluations` 表 | Main 对 background 候选的评估记录（accept/defer/ask/reject） |
+| `attentions` 表 | 人在环路里的待确认：answer/review/responsibility；短号、确认人、回执、提醒/升级状态（主干 3） |
 
 ## 公开契约
 
 - `createHost` / `getHost` / `listHosts` / `cutHost` / `closeHostIfIdle`
 - `createTicket` / `getTicket` / `listTickets`
-- `claim({hostId, slot, limit})` → `{ticket, assignment}` / `null`
+- `claim({hostId, slot, limit, ticketId?})` → `{ticket, assignment}` / `null`；human slot 带 `ticketId` 时只领该 Ticket，并校验已有 answered/rejected Attention
 - `startAssignment({assignmentId, subagentId})`
 - `appendReport({assignmentId, type, summary, evidence, nextStep})`
 - `endAssignment({assignmentId, reason})`
@@ -37,6 +38,12 @@
 - `closeTicket({ticketId, decision})`：人工收口 done/cancelled；CLI 负责同步 Task
 - `expireAssignmentsByBudget({now})`：超 budget.max_minutes 中断 Assignment 并 block Ticket
 - `interruptAssignment({assignmentId, reason})`
+- `createAttention({purpose, question, requiredConfirmerId, ticketId?, taskId?, ...})`：建 Attention，并按 purpose 推进 Ticket 状态（answer→waiting_answer、review 校验 waiting_review、require_ack→waiting_ack）
+- `getAttention` / `getAttentionByCode` / `listAttentions` / `attentionContext`
+- `answerAttention({attentionId, action, answeredBy, text?, onBehalfOf?})`：answer/approve/reject/ack；幂等；approve/ack 收口 Ticket，reject 回 queued
+- `cancelAttention` / `closeAttentionsForTicket`
+- `listDueAttentions({now})`：只算 2h/8h/24h 到期与级别，不发消息
+- `markAttentionNotified` / `markAttentionReminded`
 
 ## 不变量
 
@@ -48,6 +55,12 @@
 - `cancel`/`done` 不删除历史 Assignment/Report。
 - 任务目录必须等于服务端推导的 `departments/<dept_id>/tasks/<ticket_id>/`；跨部门、`..`、自定义路径都拒绝。
 - normal slot 上限 4；human slot 上限 1，human 不接新 Ticket。
+- Attention 短号 `A<seq>` 全局单调、不复用；只有 `open` 进提醒扫描。
+- Attention 状态：`open` → `answered` / `approved` / `rejected` / `acked` / `notified` / `expired` / `cancelled`；`notified` 是无需回执的责任终态。
+- `answer` 只从 `working` / `waiting_trigger` 进入 `waiting_answer`；`review` 只在 `waiting_review` 建；`require_ack` 只从 `waiting_review` / `working` 进入 `waiting_ack`。
+- `answerAttention` 幂等：同一人、同一动作、同一内容重复投递返回当前状态。
+- Report `question` → Ticket `waiting_answer`；human-slot Assignment 不计入 `max_attempts`（D43）。
+- `closeTicket` / `expireTickets` 会把该 Ticket 还挂着的 `open`/`notified` Attention 置 `cancelled`/`expired`。
 
 ## 失败模式
 
@@ -62,6 +75,14 @@
 | `EXEC_ASSIGNMENT_BAD_STATE` | Assignment 状态不允许该动作 |
 | `EXEC_TICKET_NOT_FOUND` | ticket 不存在 |
 | `EXEC_BAD_REPORT_TYPE` | 未知 Report 类型 |
+| `EXEC_HUMAN_NO_INPUT` | human 定向领取前没有 answered/rejected Attention |
+| `EXEC_BAD_ATTENTION` | Attention 必填字段缺失或 options 非法 |
+| `EXEC_BAD_ATTENTION_PURPOSE` | 未知 Attention purpose |
+| `EXEC_ATTENTION_NOT_FOUND` | Attention 不存在 |
+| `EXEC_ATTENTION_BAD_STATE` | Ticket 当前状态不能建该 purpose 的 Attention |
+| `EXEC_ATTENTION_BAD_ACTION` | action 与 purpose 不匹配 |
+| `EXEC_ATTENTION_NOT_OPEN` | Attention 已不是 open，不能再处理 |
+| `EXEC_ATTENTION_ALREADY_ANSWERED` | 已被他人/其他内容处理 |
 
 ## 依赖
 
@@ -71,7 +92,7 @@
 
 ## 测试
 
-`npm run test:executor`：schema 索引、host 生命周期、唯一 active assignment、slot 上限、03:00 日切、interrupt 重派。
+`npm run test:executor`：schema 索引、host 生命周期、唯一 active assignment、slot 上限、03:00 日切、interrupt 重派；Attention 短号/入口/回答/回执/到期扫描。
 
 ## 改动指南
 
@@ -85,3 +106,5 @@
 |---|---|---|
 | 2026-11-09 | 建档；加 host/ticket/assignment/report 与 slot/日切 | 主干 2 T2.1/T2.2 |
 | 2026-11-09 | 「拥有」补 `executor_events` / `executor_evaluations`；补部署目标 | 契约与实现（`schema.ts` 6 表）对齐 |
+| 2026-11-09 | 加 `attentions` 表与 Attention API/不变量/错误码；短号、status、入口状态 | 主干 3 T3.1 数据层 |
+| 2026-11-09 | 加 `question` Report、human slot 定向领取、human 不计 `max_attempts`、收口 Attention | 主干 3 T3.4 执行器接线 |

@@ -22,7 +22,7 @@
 - 只写任务目录；共享区只读。
 - 不修改其他部门的目录，不读取其他 Ticket 的产物。
 - 不直接进群、不 @ 人、不开新对话、不启动新的 subagent。
-- 不做授权、额度、优先级变更；需要人时在 Report 里写 `blocked`/`waiting`。
+- 不做授权、额度、优先级变更；需要人时在 Report 里写 `question`/`blocked`。
 - 外部副作用前先检查任务目录里是否已有完成标记，避免重复执行。
 
 ## 工作方式
@@ -40,12 +40,24 @@
 }
 ```
 
+需要人回答才能继续时，用 `question`，把问题写清楚、只问一件事：
+
+```json
+{
+  "type": "question",
+  "summary": "需要 Q3 成本数才能继续",
+  "evidence": ["departments/<dept>/tasks/<ticket>/<file>"],
+  "next_step": "请提供 Q3 报价的成本数（含税/不含税）"
+}
+```
+
 `type` 只能是：
 
 - `progress`：只报进展，不结束
 - `waiting`：本轮完成但没有待人工事项
+- `question`：需要人回答才能继续；Main 会建 Attention 并停下等你
 - `ready`：产物可交付，等核查
-- `blocked`：缺授权/信息/外部依赖
+- `blocked`：缺授权/信息/外部依赖，但不是一句可回答的问题
 - `failed`：执行失败
 - `dropped`：无需处理
 

@@ -17,6 +17,8 @@ export interface EnqueueInput {
   text: string;
   chatId?: string | null;
   dedupeKey?: string | null;
+  /** 关联的 Attention（主干 3）；只做账本关联，不改变发送语义 */
+  attentionId?: string | null;
   /** 要 @ 的企微 userid（T3 已实测：mentioned_list 可 @ 到人） */
   mentions?: string[];
   /** 入队时间（测试用逻辑时间）；默认当前时间。也是最早可发时间（next_attempt_at） */
@@ -32,11 +34,11 @@ export function enqueue(db: DatabaseSync, input: EnqueueInput): { inserted: bool
   const t = nowIso();
   const at = toIso(input.at ?? t);
   const r = db.prepare(
-    `INSERT INTO outbox (dedupe_key, chat_id, payload, status, created_at, updated_at, next_attempt_at, expires_at)
-     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+    `INSERT INTO outbox (dedupe_key, chat_id, payload, status, created_at, updated_at, next_attempt_at, expires_at, attention_id)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)
      ON CONFLICT(dedupe_key) DO NOTHING`
   ).run(input.dedupeKey ?? null, input.chatId ?? null, JSON.stringify({ text: safeText, mentions }), t, t, at,
-    input.expiresAt ? toIso(input.expiresAt) : null);
+    input.expiresAt ? toIso(input.expiresAt) : null, input.attentionId ?? null);
   const changes = Number(r.changes ?? 0);
   return { inserted: changes > 0, id: changes > 0 ? Number(r.lastInsertRowid) : null };
 }

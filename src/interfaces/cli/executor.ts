@@ -4,6 +4,7 @@ import * as delivery from '../../modules/delivery/index.ts';
 import * as tasks from '../../modules/tasks/index.ts';
 import type { ReportType } from '../../modules/executor/index.ts';
 import type { CliContext } from './context.ts';
+import attentionGroup from './attention.ts';
 
 function readReport(args: CliContext['args'], fail: CliContext['fail']): { type: ReportType; summary: string; evidence: string[]; nextStep: string | null } {
   if (typeof args['json-file'] === 'string') {
@@ -40,6 +41,7 @@ function readReport(args: CliContext['args'], fail: CliContext['fail']): { type:
 
 export default function executorGroup(ctx: CliContext): void {
   const { db, args, cmd, out, fail, numArg } = ctx;
+  if (cmd === 'attention') { attentionGroup(ctx); return; }
   if (cmd === 'host') {
     const sub = args._[2];
     if (sub === 'register') {
@@ -117,7 +119,8 @@ export default function executorGroup(ctx: CliContext): void {
     if (!hostId) fail('缺少 --host-id');
     const slot = args.slot === 'human' ? 'human' : 'normal';
     const limit = numArg(args.limit, 1, 1, 4);
-    out({ ok: true, data: executor.claim(db, { hostId, slot, limit }) });
+    const ticketId = typeof args['ticket-id'] === 'string' ? args['ticket-id'] : undefined;
+    out({ ok: true, data: executor.claim(db, { hostId, slot, limit, ticketId }) });
     return;
   }
 

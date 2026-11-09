@@ -228,6 +228,7 @@ node src/service/cli.ts --json executor end `
 ```text
 report progress → Ticket state 不变
 report waiting  → waiting_trigger
+report question → waiting_answer
 report ready    → waiting_review
 report blocked  → blocked
 report failed   → failed
@@ -248,11 +249,42 @@ report dropped  → done
 
 ```powershell
 node src/service/cli.ts --json executor claim `
-  --host-id <host_id> --slot human --limit 1
+  --host-id <host_id> --slot human --limit 1 [--ticket-id <ticket>]
 ```
 
 - human slot 只 claim **已有 Ticket** 的人工回复/续谈，不接新 Ticket。
+- 带 `--ticket-id` 时只领这一条，并要求该 Ticket 已有 `answered` / `rejected` 的 Attention；没有就报 `EXEC_HUMAN_NO_INPUT`。
+- human-slot Assignment 不计入 `max_attempts`；三轮问答不会把 Ticket 跑成 `failed`。
 - 新任务只走 normal slot；human slot 空闲也不能被新任务占用。
+
+## 2.5 Attention（主干 3）
+
+```powershell
+# 建：Main 判断需要人回答/核查/接手时
+node src/service/cli.ts --json executor attention create `
+  --purpose answer|review|responsibility `
+  --question "<一句话问题>" `
+  --required-confirmer <person_id> `
+  [--ticket-id <ticket>] [--origin-chat <chatid>] [--require-ack]
+
+# 群消息到达：先匹配，不执行
+node src/service/cli.ts --json executor attention match `
+  --chat-id <chatid> --userid <userid> --text "<消息>" [--quote-text "<引用文本>"]
+
+# 匹配到唯一一条且 allowed=true 才执行
+node src/service/cli.ts --json executor attention answer `
+  --code A12 --chat-id <chatid> --userid <userid> `
+  --action answer|approve|reject|ack [--text "<内容>"]
+
+# 恢复同一 Ticket 前取上下文
+node src/service/cli.ts --json executor attention context --ticket-id <ticket>
+```
+
+- `match` 只做确定性匹配：正文短号 > 引用文本短号 > 当前人当前群唯一 open；多条返回 `ambiguous:true`，Main 只反问一次，不猜。
+- `allowed=false` 时不要执行：`not-confirmer` 回“这条需要 XX 确认”；`not-in-chat` 回“要在原会话确认”。
+- 老板可代确认；CLI 记 `on_behalf_of`，并给原确认人非阻塞通知。
+- review `approve` / responsibility `ack` 会收口 Ticket 并同步 Task；`reject` 把 Ticket 回 `queued`，下一次 claim 带退回意见。
+- `attention sweep` 默认只算到期/升级级别；带 `--apply` 才入 outbox。生产由 `anc-executor-wake` 每分钟跑 `--apply`，Main 不直接发群。
 
 ## 3. Subagent Report JSON
 
@@ -267,14 +299,27 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 }
 ```
 
+需要人回答才能继续时用 `question`：
+
+```json
+{
+  "type": "question",
+  "summary": "需要 Q3 成本数才能继续",
+  "evidence": ["departments/sales/tasks/t-.../quote.md"],
+  "next_step": "请提供 Q3 报价的成本数（含税/不含税）"
+}
+```
+
+`question` 会推进 Ticket `waiting_answer`；Main 随后建 `purpose=answer` 的 Attention，回答后走 human slot 定向恢复。
+
 约束：
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `type` | 是 | `progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped` |
+| `type` | 是 | `progress` / `waiting` / `question` / `ready` / `blocked` / `failed` / `dropped` |
 | `summary` | 是 | 一句结果，不超过 2000 字 |
 | `evidence` | 否 | 相对任务目录的路径数组；不能是绝对路径 |
-| `next_step` | 否 | `waiting/blocked` 时说明需要什么 |
+| `next_step` | 否 | `question` / `waiting` / `blocked` 时说明需要什么 |
 
 解析失败（GAP-064：契约与实现对齐，已接受的偏差）：
 

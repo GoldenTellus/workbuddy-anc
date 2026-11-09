@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS reports (
   assignment_id TEXT NOT NULL REFERENCES assignments(assignment_id),
   ticket_id     TEXT NOT NULL REFERENCES tickets(ticket_id),
   department_id TEXT NOT NULL,
-  type          TEXT NOT NULL CHECK (type IN ('progress', 'waiting', 'ready', 'blocked', 'failed', 'dropped')),
+  type          TEXT NOT NULL CHECK (type IN ('progress', 'waiting', 'question', 'ready', 'blocked', 'failed', 'dropped')),
   summary       TEXT NOT NULL,
   evidence_json TEXT NOT NULL DEFAULT '[]',
   next_step     TEXT,
@@ -334,4 +334,44 @@ CREATE TABLE IF NOT EXISTS executor_evaluations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_executor_evaluations_task ON executor_evaluations(task_id, created_at);
+
+-- 主干 3：人在环路里的待确认。status 的终态由人/调度器推进；open 才进提醒扫描。
+CREATE TABLE IF NOT EXISTS attentions (
+  attention_id   TEXT PRIMARY KEY,
+  short_code     TEXT NOT NULL UNIQUE,          -- A1, A2, ... 全局单调、不复用
+  ticket_id      TEXT REFERENCES tickets(ticket_id),
+  task_id        INTEGER REFERENCES tasks(id),
+  department_id  TEXT,
+  purpose        TEXT NOT NULL
+                 CHECK (purpose IN ('answer', 'review', 'responsibility')),
+  question       TEXT NOT NULL,
+  options_json   TEXT NOT NULL DEFAULT '[]',
+  required_confirmer_id TEXT NOT NULL,
+  require_ack    INTEGER NOT NULL DEFAULT 0,
+  origin_chat_id TEXT,
+  status         TEXT NOT NULL DEFAULT 'open'
+                 CHECK (status IN ('open', 'answered', 'approved', 'rejected',
+                                   'acked', 'notified', 'expired', 'cancelled')),
+  answer_text    TEXT,
+  answered_by    TEXT,
+  on_behalf_of   TEXT,
+  answer_message_id TEXT,
+  notified_chat_id TEXT,
+  notified_outbox_id INTEGER,
+  remind_day     TEXT,
+  remind_count_today INTEGER NOT NULL DEFAULT 0,
+  remind_count   INTEGER NOT NULL DEFAULT 0,
+  last_reminded_at TEXT,
+  escalate_level INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL,
+  answered_at    TEXT,
+  expires_at     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_attentions_open
+  ON attentions(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_attentions_ticket
+  ON attentions(ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_attentions_confirmer
+  ON attentions(required_confirmer_id, status);
 `;

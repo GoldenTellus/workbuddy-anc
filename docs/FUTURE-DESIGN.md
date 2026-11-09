@@ -2,7 +2,7 @@
 
 > 类型：方向（master，设计树）
 
-> 状态：设计 v0.6 · 2026-11-09（主干 0/1/2 已收口；主干 2 验收待两机）
+> 状态：设计 v0.8 · 2026-11-09（主干 0/1/2 已收口；主干 3 实现已落本机，ACC-13/14/15 待真实群）
 >
 > **这份文档描述“要建成什么”，不是“现在已经有什么”。** 现状以 [ARCHITECTURE.md](./ARCHITECTURE.md)、[module-map.json](../module-map.json) 和 [modules/](./modules/) 为准；状态以 [STATUS.md](./STATUS.md) 为准；两者冲突时，先改设计/账本，再改代码。
 >
@@ -20,6 +20,7 @@
 - 已定：两层结构、Task/Ticket/Assignment、确认协议、老板唯一/管理者按部门、四类群、公司大群可答公司级+部门级、P0/P1/P2/P3 排期、只有 Main 对人说话；executor 本机实现已落。
 - 常驻：主干 0 本批已收口（2026-11-09）；零缺口且 ACC 通过才 ✅，新缺口自动重开。
 - 已定：老板 1:1 用真 1:1（D32，不建私有群）；公司群/老板 1:1 已验（D35）；员工群/部门群 chatId 未入本机账本，ACC-08 按 D36 书面例外。
+- 已定（主干 3，D40–D44）：确认走短号 `A12` 为主、引用文本增强；Attention 通知走 outbox；`require_ack` 默认关 + 三类开；2h/8h/24h 升级；通知按 purpose 找人、优先私密。
 - 待设计：员工 bot 的本地执行 / 离线行为、handoff（归主干 4）；WorkBuddy 执行器适配已落本机。
 
 ## 设计树总览
@@ -103,12 +104,12 @@
 | 2 | 2.4 调度与资源控制 | ✅ | ✅ | — | 4+1 slot/队列/EDF；默认 30m/3/default；超预算中断（D39） |
 | 2 | 2.5 执行安全、恢复与审计 | ✅ | ✅ | ✅ | 幂等/恢复/审计已落；ACC-11 真实窗口重启 recover 通过 |
 | **2** | **主干 2 汇总** | **✅** | **✅** | **🟡** | 5/5 分支设计+实现收口；ACC-09/10/11 本机达成，真实 Main 群回归待两机 |
-| 3 | 3.1 三种需要人的情况 | ✅ | ⬜ | — | 已定 |
-| 3 | 3.2 群回复确认协议 | ✅ | ⬜ | — | 已定 |
-| 3 | 3.3 谁确认、责任怎么交 | 🟡 | ⬜ | — | `require_ack` 待定 |
-| 3 | 3.4 通知谁 | 🟡 | ⬜ | — | 按事件类型细分待定 |
-| 3 | 3.5 完整示例 | ✅ | ⬜ | — | 示例已写，不是实现 |
-| **3** | **主干 3 汇总** | **🟡** | **⬜** | **—** | 3/5 分支设计 ✅ |
+| 3 | 3.1 三种需要人的情况 | ✅ | ✅ | — | 已定；入口/状态映射见 D43 |
+| 3 | 3.2 群回复确认协议 | ✅ | ✅ | — | 短号为主 + 引用文本增强（D40） |
+| 3 | 3.3 谁确认、责任怎么交 | ✅ | ✅ | — | 严格 required_confirmer + 老板；`require_ack` 三类开（D40/D42） |
+| 3 | 3.4 通知谁 | ✅ | ✅ | — | 按 purpose 找人 + 私密优先（D44） |
+| 3 | 3.5 完整示例 | ✅ | ✅ | — | 示例已按 A12 / human slot 更新 |
+| **3** | **主干 3 汇总** | **✅** | **✅** | **🟡** | 5/5 设计+实现；ACC-13/14/15 待真实群 |
 | 4 | 4.1 群与对话边界 | ✅ | ⬜ | — | 只在员工群；只有员工本人对话 |
 | 4 | 4.2 身份与补丁 | ✅ | ⬜ | — | 员工侧要打补丁，保证交接归属 |
 | 4 | 4.3 职责范围 | 🟡 | ⬜ | — | 本地资料/交接；不查公司库 |
@@ -408,7 +409,7 @@ flowchart LR
 | **ExecutorHost** | 当天的 WorkBuddy 调度对话；03:00 日切 | `host_id`、日期、conversation_id、状态（active/closing/closed）、`cut_at`、`accepting_new`、开始/结束 | Main / runtime |
 | **Assignment** | 一次具体的执行尝试；一个 Ticket 可以有多次 Assignment | `assignment_id`、`ticket_id`、`host_id`、`subagent_id`、`department_id`、任务目录、开始/结束、结束原因 | Main / subagent 事实回报 |
 | **Report** | subagent 对一次执行的回报 | `report_id`、`assignment_id`、`department_id`、类型、摘要、证据、下一步 | subagent |
-| **Attention** | 需要人行动的一条待确认 | `attention_id`、`ticket_id`、目的、问题、选项、`required_confirmer`、状态、回复消息 id | Main |
+| **Attention** | 需要人行动的一条待确认 | `attention_id`、`short_code`、`ticket_id`、目的、问题、选项、`required_confirmer_id`、`require_ack`、状态、回复消息 id | Main |
 | **Notification** | 一条对外通知/回复 | `notification_id`、目标（群/1:1）、目的、关联 Task/Ticket/Attention、状态 | Main |
 | **Thread** | 一个群或 1:1 的会话上下文 | `chat_id`、类型、成员、绑定 | 平台适配层 |
 
@@ -552,9 +553,9 @@ Assignment：`pending` → `running` → `ended` / `interrupted` / `failed` / `c
 
 ExecutorHost：`active` → `closing`（03:00）→ `closed`（无 running Assignment）；异常可直接 `closed`
 
-Report：`progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`
+Report：`progress` / `waiting` / `question` / `ready` / `blocked` / `failed` / `dropped`
 
-Attention：`open` → `answered` / `approved` / `rejected` / `expired` / `cancelled`
+Attention：`open` → `answered` / `approved` / `rejected` / `acked` / `notified` / `expired` / `cancelled`
 
 Ticket 允许的迁移：
 
@@ -589,12 +590,14 @@ ended/interrupted/failed/cancelled → 终态（历史保留）
 旧 Assignment 失联超 grace → interrupted → Ticket 回 queued → 新 host 新建 Assignment
 ```
 
-Report 到 Ticket 的默认映射：`progress` 不改状态；`waiting` → `waiting_trigger`；`ready` → `waiting_review`；`blocked` → `blocked`；`failed` → `failed`；`dropped` → `done`（记录原因）。
+Report 到 Ticket 的默认映射：`progress` 不改状态；`waiting` → `waiting_trigger`；`question` → `waiting_answer`；`ready` → `waiting_review`；`blocked` → `blocked`；`failed` → `failed`；`dropped` → `done`（记录原因）。
+
+**attention 入口（D43）**：`attention create --purpose answer` 允许从 `working | waiting_trigger | waiting_answer` 推进 `waiting_answer`；`--purpose responsibility --require-ack` 允许从 `waiting_review | working` 推进 `waiting_ack`。`claim --slot human` 支持 `--ticket-id` 定向领取，human-slot Assignment 不计入 `max_attempts`。
 
 **与主干 3 的边界**
 
-- 主干 2 负责：Attention 的创建、存储、发出，`required_confirmer` 字段，回复消息 id 回写。
-- 主干 3 负责：确认人校验、引用/短号/@ 解析、代确认 `on_behalf_of`、确认后的状态推进。
+- 主干 2 负责：Attention 的创建、存储、发出，`required_confirmer` 字段，回复消息 id 回写（有则记）。
+- 主干 3 负责：确认人校验、短号/引用文本/@ 解析、代确认 `on_behalf_of`、确认后的状态推进。
 - 主干 2 不实现“谁有资格确认”的 UI/话术；只提供数据和命令。
 
 ### 2.4 调度与资源控制｜设计 ✅ · 实现 ✅（D37/D39）
@@ -681,7 +684,7 @@ Report 到 Ticket 的默认映射：`progress` 不改状态；`waiting` → `wai
 - 产物/证据的保留、清理、权限（6.2 #31）。
 - 主机重启后 Assignment/Ticket 的恢复语义（6.2 #32）。
 
-## 3. 主干 3：between us，先自主完成，再通知人｜设计 🟡 · 实现 ⬜ · 验收 —
+## 3. 主干 3：between us，先自主完成，再通知人｜设计 ✅ · 实现 ⬜ · 验收 —
 
 > **你的原话（转述）**：公司 bot 会先自主完成可处理的任务，再通知人类。通知目的分两类：一是让人类核查任务是否有误，二是将责任同步给人类。公司 bot 把自己能做的做完，遇到需要通知人类的地方去通知人类；通知完确认完再接着干活。公司 bot 要找对的人通知，通知谁才是对的、有效的。
 
@@ -699,62 +702,75 @@ DSH 的哲学是“take as little human attention as possible, and give as much 
 
 **为什么 responsibility 默认不阻塞**：通知的目的可能只是“这件事我做了/我交给谁了”，不需要对方立刻拍板；但标了 `require_ack` 的，必须回“收到/我接手”才算责任转移。
 
+**入口与状态（D43）**：`answer` 由 Report `question` 进入 `waiting_answer`；`review` 由 `ready` 进入 `waiting_review`；`responsibility` 默认不改 Ticket（`notified`），标 `require_ack` 时由 `attention create` 推进 `waiting_ack`。`question` 是新 Report 类型，`MAIN-EXECUTOR` / `subagent.md` 同步。
+
 ### 3.2 群回复确认协议｜设计 ✅ · 实现 ⬜
 
 前提：**必须 @ 公司 bot**。
 
-按优先级识别：
+**主路径是短号**（D40）：`@公司bot A12 可以` / `A12 不行，原因是…` / `A12 收到`。短号 `A<seq>` 全局单调、不复用。
 
-1. **引用回复 + @ + 自然语言**（首选）
-   引用 bot 的那条待确认，回 `@公司bot 可以，提交吧`。用被引用消息 id 找到 Attention。
-2. **@ + 短号 + 意图**（没引用时）
-   `@公司bot A12 确认` / `A12 不对，原因是…`
-3. **@ + 任务名/员工名 + 意图**（最后）
-   只在唯一匹配时执行；匹配到多个就反问，不猜。
+识别顺序：
+
+1. **正文里的短号**（首选，零依赖）：`A12` → 唯一 Attention；
+2. **引用文本里的短号**（增强）：用户引用一条带 `A12` 的通知，回 `@公司bot 可以`；从引用文本抠 `A12`，不依赖消息 id；
+3. **当前人 + 当前群的唯一 open**：没短号、没引用时，只有一条 open 才执行；多条不猜。
+
+`quote` 的消息 id 不作为主路径：补丁当前只注入 `chat/from`，文本引用的字段形状未实测，出站 webhook 也不保存消息 id（GAP-079）。T3.0 只做增强 spike，失败不阻塞。
 
 每条 Attention 必须落库：
 
 ```text
-attention_id, ticket_id, purpose,
-question, options,
-required_confirmer,
-status, answer_message_id,
-created_at, answered_at
+attention_id, short_code, ticket_id, task_id, department_id,
+purpose, question, options_json,
+required_confirmer_id, require_ack, origin_chat_id,
+status, answer_text, answered_by, on_behalf_of,
+answer_message_id, notified_outbox_id,
+remind_day, remind_count_today, remind_count, last_reminded_at, escalate_level,
+created_at, answered_at, expires_at
 ```
 
-**歧义处理**：多条 Attention 同时匹配时，bot 不发散、不猜，只问一句“你指的是 A12 报销，还是 A13 采购？”。超时规则待定。
+**意图映射**：Main 把自然语言映射成 `answer|approve|reject|ack`，CLI 校验 purpose/action/state；`review` 的“可以/通过”= approve，“不行/重做”= reject，模糊就反问；`responsibility` 的“收到/我接手”= ack。
 
-### 3.3 谁有资格确认、责任怎么交｜设计 🟡 · 实现 ⬜
+**歧义处理**：多条同时匹配时，bot 不发散、不猜，只问一句“你指的是 A12 报销，还是 A13 采购？”，最多列 3 条；用户下一条带短号再执行。原 Attention 继续按 2h/8h/24h 升级，不因反问而暂停。
 
-- 每条 Attention 带 `required_confirmer`：交办人 / 执行人 / 老板 / 某角色。
-- 不是该确认的人 @ 了，bot 只回一句“这条需要 XX 确认”，不执行。
-- **老板最高权限**：可确认任何 Attention；记录 `confirmed_by=boss`、`on_behalf_of=员工`，并给员工发非阻塞通知。
-- 老板在 1:1 的确认等同于最高权限；在公司大群的确认同样有效，但默认不把个人数据贴到群里。
+### 3.3 谁有资格确认、责任怎么交｜设计 ✅ · 实现 ⬜
 
-**责任回执（默认方案，待确认）**
+- 每条 Attention 带 `required_confirmer_id`，必须落到具体人；角色在创建时解析成人，不存“某角色”。
+- **只有 `required_confirmer` 或老板能确认**；本部门管理者不再代确认（D40；改 `canConfirmAttention`）。管理者可见、可催办，但 @ 了也只回“这条需要 XX 确认”。
+- **老板最高权限**：可确认任何 Attention；记录 `answered_by=boss`、`on_behalf_of=<原确认人>`，并给原确认人发非阻塞通知。
+- 老板在 1:1 的确认等同最高权限；在公司大群的确认同样有效，但默认不把个人数据贴到群里；结果按数据级别发回原群/私密。
 
-- 默认“通知即记录”，不阻塞。
-- 任务标了 `require_ack` 的，必须回“收到/我接手”才算责任转移。
-- 没回执时责任仍算在公司 bot 这边，按超时升级。
+**责任回执（D42）**
 
-### 3.4 通知谁才是对的｜设计 🟡 · 实现 ⬜
+- 默认 `require_ack=0`：通知即记录，Attention 直接 `notified`，不进待办、不阻塞。
+- 三类必须 `require_ack=1`：① 责任从公司 bot 转给具体人（接手人 ≠ 交办人）；② 跨部门交接；③ 对外/财务/生产变更。老板可显式覆盖。
+- 标了 `require_ack` 的，必须回“收到/我接手”才算责任转移；Ticket 停在 `waiting_ack`，回执后 `done`。
+- 没回执时责任仍算公司 bot：2h 提醒本人 → 8h 提醒本人部门管理者 → 24h 提醒老板；只提醒，不自动拒绝/转移；夜里顺延到工作时段。升级给管理者/老板的是**催办通知**，不是转移确认权；确认仍只认 `required_confirmer` / 老板。
 
-候选顺序：
+### 3.4 通知谁才是对的｜设计 ✅ · 实现 ⬜
 
-1. Task 的交办人；
-2. Task 的执行人；
-3. 该职责/部门的 owner；
-4. 老板；
-5. 原群（@ 具体人，不泛泛发群）。
+**按 purpose 定人（D44）**：
 
-“有效”的最低要求：目标人有权限、能在当前渠道行动、能看懂这条通知要什么。找不到合格的人时，升级给老板，而不是在群里刷屏。
+| purpose | 第一收件人 | 兜底 |
+|---|---|---|
+| review | Task 交办人 | 老板 |
+| answer | `required_confirmer`（Main 创建时指定，通常是最懂这个事实的人） | 交办人 → 老板 |
+| responsibility | 接手人 | 老板 |
+| progress | 不发，只进 `executor brief` | — |
 
-**但“通知谁”要按事件类型细分（待确认）**：
+“有效”的最低要求：目标人在职、有可用渠道、能看懂这条通知要什么、有权限行动。找不到合格的人时升级老板，不在群里刷屏。
 
-- review → 交办人 / 老板；
-- answer → 能回答的人（可能是执行人/员工）；
-- responsibility → 接手人 / 老板；
-- progress → 执行人 / 原群（或不发）。
+**频道**：
+
+- 优先私密：员工群（`resolvePrivateChat`）/ 老板 1:1（`boss_dm`）；
+- 私密不可用 → 原群，只发短号 + 中性一句（如“A12 有一条待确认”），不带内容；内容仍走私密；
+- 连原群都没有 → 升级老板，不群发；
+- 老板的 review：公司/部门级可在原群发中性短号，细节留 1:1；内部级只发 1:1（D32：无主动推送，等老板看或问“待办”）。
+
+**@ 提醒（GAP-080）**：webhook `mentioned_list` 依赖真 userid；当前 `people.userid` 是会话级 `wok…`（GAP-072），不一定 @ 得到。拿不到真 userid 时，优先走私密员工群（无需 @），原群只发中性短号不 @。
+
+**通知落库**：走 outbox（D41），`attention_id` 关联；去重键 `attention:<id>:ask|remind:<n>|escalate:<level>|result`。
 
 ### 3.5 一条完整的链（示例）｜设计 ✅ · 实现 ⬜
 
@@ -765,11 +781,11 @@ created_at, answered_at
 1. **Main**：交办人=老板、执行人=张三、截止=周五 → 建 Task（P0）+ Ticket。
 2. **调度**：有空 slot → 建 Assignment；Executor 在任务工作区干。
 3. **Executor**：读 vault、整理报价、写产物；Report `ready`，带摘要、证据路径、未完成项。
-4. **Main**：建 Attention（purpose=review、`required_confirmer`=老板），发到老板 1:1 或公司大群（按 3.4 的可见性），带短号 `A12`。
-5. **老板**：引用那条消息，回 `@公司bot 可以`。
-6. **Main**：验明是老板、是 A12 的 required_confirmer → `approved`；把结果发到原群/1:1；Ticket `done`，Task `done`；审计记录确认消息 id。
+4. **Main**：建 Attention（purpose=review、`required_confirmer`=老板），走 outbox 发到老板 1:1，带短号 `A12`；公司/部门级可在原群发中性短号，细节留 1:1。
+5. **老板**：回 `@公司bot A12 可以`（引用那条带 A12 的消息也认，但不是主路径）。
+6. **Main**：验明是老板、是 A12 的 required_confirmer → `approved`；`executor close --decision done` 收口；把结果发到原群/1:1；Ticket `done`，Task `done`；审计记录确认消息 id（有则记）。
 
-如果第 3 步发现“报价缺一个成本数，只有张三知道”，Executor 写 Attention（purpose=answer、`required_confirmer`=张三），Main 发到员工群；张三回复后，同一 Ticket 恢复，不重开任务。
+如果第 3 步发现“报价缺一个成本数，只有张三知道”，subagent 报 `question` → Ticket `waiting_answer`；Main 建 Attention（purpose=answer、`required_confirmer`=张三，短号 `A13`），发到员工群；张三回 `@公司bot A13 成本是 …` → Attention `answered`；Main 用 `executor claim --slot human --ticket-id <id>` 定向领取 → `start` → 同一 Ticket 继续，不重开任务。
 
 ### 未定项（叶子，不计入分支）
 
@@ -903,12 +919,14 @@ Task↔Ticket 映射、failed 自动重试 → D38
 
 ### 6.3 主干 3
 
+> 原有叶子已全部关闭（2026-11-09 设计拍板）；本节保留结论，不再作为开放项。
+
 | # | 问题 | 状态 |
 |---|---|---|
-| 12 | 哪些任务类型必须 `require_ack`；没回执多久升级、升级给谁 | 设计待定 |
-| 13 | 通知对象是否按事件类型区分；找不到合格的人时落到哪里 | 设计待定 |
-| 14 | 多条 Attention 同时匹配的反问格式与超时 | 设计待定 |
-| 15 | 通知频率与合并：同类通知是否合并、静默时段/每日上限 | 设计待定 |
+| 12 | 哪些任务类型必须 `require_ack`；没回执多久升级、升级给谁 | **已定（D42）**：默认关；责任转给具体人 / 跨部门 / 对外财务生产三类开；2h 本人 → 8h 部门管理者 → 24h 老板；不自动转移 |
+| 13 | 通知对象是否按事件类型区分；找不到合格的人时落到哪里 | **已定（D44）**：按 purpose 定人；review→交办人、answer→required_confirmer、responsibility→接手人；兜底老板 |
+| 14 | 多条 Attention 同时匹配的反问格式与超时 | **已定（D40）**：短号优先；多条只反问一次、最多列 3 条；原 Attention 继续按 2h/8h/24h 升级 |
+| 15 | 通知频率与合并：同类通知是否合并、静默时段/每日上限 | **已定（D41/D44）**：22:00–08:00 静默；每人每日 10 条；同一 Attention 每天最多 3 次提醒；v1 不做合并/日报 |
 
 ### 6.4 主干 4
 
@@ -938,7 +956,7 @@ Task↔Ticket 映射、failed 自动重试 → D38
 | 调度 | host/tick/claim、4+1 slot、队列/EDF、30m/3/default、超预算中断 | 真实 Main 群回归；模型/金额预算未细化 |
 | 执行 | executor + 真实 WorkBuddy subagent + 任务目录/恢复 | 员工 bot handoff 归主干 4 |
 | 群 | 四类群 + render/sync + D35 用户实测 | 本机 org 只登记公司群/boss_dm；ACC-08 例外 |
-| 通知 | outbox + 提醒 + dedupe | Attention/确认全链路（主干 3） |
+| 通知 | outbox + 提醒 + dedupe | 设计已定（D41/D44）；Attention/确认全链路实现归主干 3 |
 | 权限 | people/policy/privacy router + D28 逻辑隔离 | 代确认、强 ACL 留选项 |
 | 工作区 | `%ProgramData%` 公司 / `%LOCALAPPDATA%` 员工 + task_dir | 员工本地执行/离线 |
 | 员工 bot | 旧 1.0 已部署；D35 用户实测 | 主干 4 设计/实现 |
@@ -961,7 +979,7 @@ Task↔Ticket 映射、failed 自动重试 → D38
 
 ```text
 1. 两机补一次真实 Main 群回归（ACC-09..12 的现场部分）
-2. 主干 3：Attention / 确认协议 / 通知
+2. 主干 3：实现 Attention / 确认协议 / 通知（设计已拍板 D40–D44）
 3. 主干 4：员工 bot handoff / 本地执行
 4. 主干 0 常驻复检：有新缺口再开批次
 ```
@@ -983,6 +1001,8 @@ Task↔Ticket 映射、failed 自动重试 → D38
 | Company group | 公司大群：老板 + 所有员工 + 公司 bot |
 | Boss 1:1 | 老板与公司 bot 的私聊，或退化的私有群 |
 | `required_confirmer` | 这条 Attention 该谁确认 |
+| 短号 | Attention 的 `A<seq>` 编号；群里确认的主路径 |
+| `question` | Report 类型：需要人回答才能继续；→ `waiting_answer` |
 | `on_behalf_of` | 老板代确认时，实际责任归属 |
 | `require_ack` | 责任同步是否必须回执 |
 

@@ -36,6 +36,40 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 目标人用 `bind person-list` 按姓名/ID 找；同名或找不到就先问，不要猜。
 
+## 确认 / 回执（Attention）
+
+消息里出现 `A12` 这类短号，或引用了一条带短号的通知时，先匹配，不要直接执行：
+
+```powershell
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention match --chat-id <chatid> --userid <from> --text "<正文>" [--quote-text "<引用文本>"]
+```
+
+按返回处理：
+
+- `ambiguous=true`：只回一句“你指的是 A12 <问题>，还是 A13 <问题>？”，最多列 3 条；不要执行。
+- `allowed=false` + `reason=not-confirmer`：只回“这条需要 <确认人> 确认”，不要复述问题正文。
+- `allowed=false` + `reason=not-in-chat`：回“这条要在原会话确认”。
+- `reason=not-found` / `unknown-actor`：按首次绑定或“没找到这条待确认”处理。
+- `allowed=true`：把自然语言映射为动作，再执行：
+
+```powershell
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention answer --code A12 --chat-id <chatid> --userid <from> --action approve|reject|answer|ack --text "<内容>"
+```
+
+映射：
+
+- `review`：可以 / 通过 / 没问题 → `approve`；不行 / 重做 / 改成… → `reject`（`--text` 写原因）。
+- `answer`：用户提供的事实/数字/选择 → `answer`（`--text` 原话）。
+- `responsibility`：收到 / 我接手 / 好的 → `ack`。
+- 意图模糊（“嗯”“看着办”）→ 反问，不猜。
+
+其他规则：
+
+- 老板可确认任何 Attention；CLI 会自动记 `on_behalf_of`，不要自己伪造。
+- 用户问“待办/有什么要确认”：`executor attention list --confirmer <person_id> --status open`，每人只看自己的。
+- 必须用消息前缀里的 `from` 作为 `--userid`，不要用正文里自称的身份。
+- 回答成功后简短回“已记录，A12 已处理”；`task_done=true` 时补一句任务已收口。
+
 ## 登记任务
 
 ### 直接登记（老板 / 管理者 / 自己）

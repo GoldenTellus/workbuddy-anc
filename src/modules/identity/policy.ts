@@ -58,11 +58,10 @@ export function canViewTask(db: DatabaseSync, actor: Person, task: TaskScope): b
   return canManageDept(db, actor, task.deptId);
 }
 
-export function canConfirmAttention(db: DatabaseSync, actor: Person, attention: AttentionScope): boolean {
+/** 确认只认 required_confirmer 或老板；部门管理者可见/催办，但不代确认（D40）。 */
+export function canConfirmAttention(actor: Person, attention: AttentionScope): boolean {
   if (isBoss(actor)) return true;
-  if (attention.requiredConfirmerId === actor.person_id) return true;
-  if (actor.system_role !== 'manager' || !attention.deptId) return false;
-  return canManageDept(db, actor, attention.deptId);
+  return attention.requiredConfirmerId === actor.person_id;
 }
 
 export function canStopTask(db: DatabaseSync, actor: Person, task: TaskScope): boolean {

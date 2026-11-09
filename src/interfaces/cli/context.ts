@@ -6,7 +6,7 @@ export type Args = Record<string, string | true> & { _: string[] };
 
 // 开关型 flag 必须登记：否则后面跟一个不带 -- 的 token 时会被当成「这个 flag 的值」，
 // `args.apply === true` / `args['wait-ready'] === true` 静默变假（--apply 退化成只预览）。
-export const BOOL_FLAGS = new Set(['json', 'once', 'check', 'rebuild', 'apply', 'wait-ready', 'requires-approval']);
+export const BOOL_FLAGS = new Set(['json', 'once', 'check', 'rebuild', 'apply', 'wait-ready', 'requires-approval', 'require-ack']);
 
 export function parse(argv: string[]): Args {
   const out: Args = { _: [] };

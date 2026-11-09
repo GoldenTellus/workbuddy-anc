@@ -14,6 +14,14 @@ export const DEFAULT_RULES: WorkRules = {
   holidays: [],
 };
 
+export interface QuietRules {
+  start: string; // "HH:mm"，静默开始
+  end: string;   // "HH:mm"，静默结束
+}
+
+export const DEFAULT_QUIET: QuietRules = { start: '22:00', end: '08:00' };
+export const DEFAULT_NOTIFY_DAILY_CAP = 10;
+
 export function getConfig(db: DatabaseSync, key: string): string | null {
   const row = db.prepare('SELECT value FROM config WHERE key = ?').get(key) as { value: string } | undefined;
   return row ? row.value : null;
@@ -58,6 +66,10 @@ export function validateConfig(key: string, value: string): void {
   const v = String(value ?? '').trim();
   if (key === 'work_start' || key === 'work_end') {
     if (!HHMM.test(v)) throw new Error(`${key} 必须是 HH:mm（00:00–23:59），收到: ${value}`);
+  } else if (key === 'notify_quiet_start' || key === 'notify_quiet_end') {
+    if (!HHMM.test(v)) throw new Error(`${key} 必须是 HH:mm（00:00–23:59），收到: ${value}`);
+  } else if (key === 'notify_daily_cap') {
+    if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > 100) throw new Error('notify_daily_cap 必须是 1–100 的整数');
   } else if (key === 'weekdays') {
     if (!v.split(',').every((p) => /^\s*[1-7](\s*-\s*[1-7])?\s*$/.test(p))) throw new Error('weekdays 只能是 1–7 的列表或区间，如 1-5 或 1,2,3');
   } else if (key === 'timezone') {
@@ -80,6 +92,13 @@ export function configProblems(db: DatabaseSync): string[] {
   if (s !== null && !HHMM.test(s)) out.push('work_start 格式无效，已按默认处理: ' + s);
   if (e !== null && !HHMM.test(e)) out.push('work_end 格式无效，已按默认处理: ' + e);
   if (s !== null && e !== null && HHMM.test(s) && HHMM.test(e) && s === e) out.push('work_start 与 work_end 相同，已按默认处理');
+  const qs = getConfig(db, 'notify_quiet_start');
+  const qe = getConfig(db, 'notify_quiet_end');
+  if (qs !== null && !HHMM.test(qs)) out.push('notify_quiet_start 格式无效，已按默认处理: ' + qs);
+  if (qe !== null && !HHMM.test(qe)) out.push('notify_quiet_end 格式无效，已按默认处理: ' + qe);
+  if (qs !== null && qe !== null && HHMM.test(qs) && HHMM.test(qe) && qs === qe) out.push('notify_quiet_start 与 notify_quiet_end 相同，已按默认处理');
+  const cap = getConfig(db, 'notify_daily_cap');
+  if (cap !== null && (!/^\d+$/.test(cap) || Number(cap) < 1 || Number(cap) > 100)) out.push('notify_daily_cap 无效，已按默认处理: ' + cap);
   const tz = getConfig(db, 'timezone');
   if (tz !== null && (!/^[A-Za-z][A-Za-z0-9 _+\-]{2,63}$/.test(tz) || tz.indexOf('/') !== -1)) out.push('timezone 格式无效（要 Windows 时区 Id）: ' + tz);
   return out;
@@ -153,4 +172,38 @@ export function nextWorkStart(d: Date, rules: WorkRules): Date {
   const fallback = new Date(d);
   fallback.setDate(fallback.getDate() + 1);
   return fallback;
+}
+
+export function loadQuietRules(db: DatabaseSync): QuietRules {
+  const start = getConfig(db, 'notify_quiet_start') ?? DEFAULT_QUIET.start;
+  const end = getConfig(db, 'notify_quiet_end') ?? DEFAULT_QUIET.end;
+  // 坏配置不能让通知全停：退回默认，由 doctor/configProblems 报出来。
+  if (!HHMM.test(start) || !HHMM.test(end) || start === end) return DEFAULT_QUIET;
+  return { start, end };
+}
+
+/** 静默窗口：支持跨零点（22:00–08:00）。 */
+export function isQuietTime(d: Date, rules: QuietRules): boolean {
+  const cur = d.getHours() * 60 + d.getMinutes();
+  const start = minutes(rules.start);
+  const end = minutes(rules.end);
+  if (start < end) return cur >= start && cur < end;
+  return cur >= start || cur < end;
+}
+
+/** 当前处于静默时，返回静默结束时刻；不在静默时返回 null。 */
+export function nextQuietEnd(d: Date, rules: QuietRules): Date | null {
+  if (!isQuietTime(d, rules)) return null;
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  out.setMinutes(minutes(rules.end));
+  if (out.getTime() <= d.getTime()) out.setDate(out.getDate() + 1);
+  return out;
+}
+
+export function loadNotifyDailyCap(db: DatabaseSync): number {
+  const raw = getConfig(db, 'notify_daily_cap');
+  if (!raw || !/^\d+$/.test(raw)) return DEFAULT_NOTIFY_DAILY_CAP;
+  const n = Number(raw);
+  return n >= 1 && n <= 100 ? Math.floor(n) : DEFAULT_NOTIFY_DAILY_CAP;
 }

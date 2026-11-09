@@ -58,11 +58,11 @@ test('policy：任务可见 / 确认 / 停止按范围', () => {
     assert.equal(canViewTask(db, emp, salesTask), true);
     assert.equal(canViewTask(db, other, salesTask), false);
 
-    assert.equal(canConfirmAttention(db, boss, { requiredConfirmerId: 'other', deptId: 'engineering' }), true);
-    assert.equal(canConfirmAttention(db, mgr, { requiredConfirmerId: 'emp', deptId: 'sales' }), true);
-    assert.equal(canConfirmAttention(db, mgr, { requiredConfirmerId: 'other', deptId: 'engineering' }), false);
-    assert.equal(canConfirmAttention(db, emp, { requiredConfirmerId: 'emp' }), true);
-    assert.equal(canConfirmAttention(db, emp, { requiredConfirmerId: 'other' }), false);
+    assert.equal(canConfirmAttention(boss, { requiredConfirmerId: 'other', deptId: 'engineering' }), true);
+    assert.equal(canConfirmAttention(mgr, { requiredConfirmerId: 'emp', deptId: 'sales' }), false, '管理者不代确认，只可见/催办');
+    assert.equal(canConfirmAttention(mgr, { requiredConfirmerId: 'other', deptId: 'engineering' }), false);
+    assert.equal(canConfirmAttention(emp, { requiredConfirmerId: 'emp' }), true);
+    assert.equal(canConfirmAttention(emp, { requiredConfirmerId: 'other' }), false);
 
     assert.equal(canStopTask(db, mgr, salesTask), true);
     assert.equal(canStopTask(db, emp, salesTask), true);

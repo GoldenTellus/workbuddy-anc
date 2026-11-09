@@ -34,6 +34,7 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 - `data: null`：队列空，本轮结束，不 sleep。
 - 有返回：拿 `ticket` 和 `assignment`，不要绕过 assignment 自己找 Ticket。
+- 人工回答/退回后续谈：`claim --slot human --ticket-id <ticket>`，只领这一条；先跑 `attention context` 把问答带进 prompt。
 
 ## 起 subagent
 
@@ -68,6 +69,27 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 ```
 
 需要对外发结果时，先 `executor notify --chat-id <原请求 chat> --text "<摘要>" --dedupe-key "exec:<ticket_id>"`，再 end；不要贴大文件/敏感内容。
+
+## 需要人时建 Attention
+
+`report` 之后按类型建 Attention；不要只发一条群消息就算通知。
+
+```powershell
+# ready → 交办人核查
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention create --purpose review --ticket-id <ticket> --required-confirmer <交办人 person_id> --question "<一句话：结果是否可以>"
+
+# question → 能回答的人
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention create --purpose answer --ticket-id <ticket> --required-confirmer <能回答的人 person_id> --question "<next_step 里的问题>"
+
+# 责任交接：默认只通知；三类才加 --require-ack
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention create --purpose responsibility --ticket-id <ticket> --required-confirmer <接手人 person_id> --question "<交接说明>" [--require-ack]
+```
+
+- `review`：`ready` 默认要人核查；低风险自用任务可以直接 `executor close --decision done` 并记理由，不硬造 Attention。交办人用 `task get --id <task_id>` 取 `requester_id`。
+- `answer`：`question` Report 后建；`required-confirmer` 选最懂这个事实的人，不要默认发给老板。
+- `responsibility`：默认 `require_ack=0`；责任从 bot 转给具体人、跨部门交接、对外/财务/生产变更时才加 `--require-ack`。
+- 老板可直接确认任何 Attention；CLI 自动记 `on_behalf_of`。
+- 人回答后：`executor attention context --ticket-id <ticket>` → `claim --slot human --ticket-id <ticket>` → 起 subagent，把问答放进 prompt。
 
 ## 边界
 

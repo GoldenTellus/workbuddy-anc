@@ -22,7 +22,7 @@ export type TicketState =
   | 'done'
   | 'cancelled';
 export type AssignmentState = 'pending' | 'running' | 'ended' | 'interrupted' | 'failed' | 'cancelled';
-export type ReportType = 'progress' | 'waiting' | 'ready' | 'blocked' | 'failed' | 'dropped';
+export type ReportType = 'progress' | 'waiting' | 'question' | 'ready' | 'blocked' | 'failed' | 'dropped';
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 
 export interface ExecutorHost {
@@ -225,7 +225,7 @@ function validatePriority(p: string): Priority {
 }
 
 function validateReportType(t: string): ReportType {
-  if (!['progress', 'waiting', 'ready', 'blocked', 'failed', 'dropped'].includes(t)) {
+  if (!['progress', 'waiting', 'question', 'ready', 'blocked', 'failed', 'dropped'].includes(t)) {
     throw execError('EXEC_BAD_REPORT_TYPE', '未知 Report type: ' + t);
   }
   return t as ReportType;
@@ -235,6 +235,7 @@ function mapReportState(type: ReportType): TicketState | null {
   switch (type) {
     case 'progress': return null;
     case 'waiting': return 'waiting_trigger';
+    case 'question': return 'waiting_answer';
     case 'ready': return 'waiting_review';
     case 'blocked': return 'blocked';
     case 'failed': return 'failed';
@@ -431,13 +432,19 @@ function assignmentCount(db: DatabaseSync, ticketId: string): number {
   return Number(row.n);
 }
 
+/** max_attempts 只数 normal 尝试；human 的问答续谈不能把 Ticket 跑成 failed（D43）。 */
+function normalAssignmentCount(db: DatabaseSync, ticketId: string): number {
+  const row = db.prepare("SELECT COUNT(*) AS n FROM assignments WHERE ticket_id = ? AND slot = 'normal'").get(ticketId) as { n: number };
+  return Number(row.n);
+}
+
 function activeAssignmentForTicket(db: DatabaseSync, ticketId: string): Assignment | null {
   return (db.prepare(
     "SELECT * FROM assignments WHERE ticket_id = ? AND state IN ('pending', 'running') LIMIT 1",
   ).get(ticketId) as Assignment | undefined) ?? null;
 }
 
-export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal' | 'human'; limit?: number }): ClaimResult | null {
+export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal' | 'human'; limit?: number; ticketId?: string }): ClaimResult | null {
   const slot = input.slot ?? 'normal';
   const limit = Math.max(1, Math.min(4, Math.floor(input.limit ?? 1)));
   return tx(db, () => {
@@ -451,19 +458,27 @@ export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal'
     const stateFilter = slot === 'human'
       ? "t.state IN ('waiting_answer', 'waiting_review', 'waiting_ack', 'blocked', 'failed')"
       : "t.state = 'queued'";
+    const ticketFilter = input.ticketId ? ' AND t.ticket_id = ?' : '';
     const rows = db.prepare(`
       SELECT t.* FROM tickets t
-      WHERE ${stateFilter}
+      WHERE ${stateFilter}${ticketFilter}
         AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.ticket_id = t.ticket_id AND a.state IN ('pending', 'running'))
       ORDER BY CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
                CASE WHEN t.due_at IS NULL THEN 1 ELSE 0 END, t.due_at, t.created_at
       LIMIT ?
-    `).all(limit) as Ticket[];
+    `).all(...(input.ticketId ? [input.ticketId] : []), limit) as Ticket[];
     if (!rows.length) return null;
 
     const ticket = rows[0];
+    // human 定向恢复必须有可用的回答/退回意见，否则不让它空跑一次。
+    if (slot === 'human' && input.ticketId) {
+      const hasInput = db.prepare(
+        "SELECT 1 FROM attentions WHERE ticket_id = ? AND status IN ('answered', 'rejected') LIMIT 1",
+      ).get(ticket.ticket_id);
+      if (!hasInput) throw execError('EXEC_HUMAN_NO_INPUT', 'human claim 需要先有 answered/rejected 的 Attention');
+    }
     const nextAttempt = assignmentCount(db, ticket.ticket_id) + 1;
-    if (nextAttempt > ticket.max_attempts) {
+    if (slot === 'normal' && normalAssignmentCount(db, ticket.ticket_id) >= ticket.max_attempts) {
       db.prepare("UPDATE tickets SET state = 'failed', updated_at = ? WHERE ticket_id = ?").run(nowIso(), ticket.ticket_id);
       recordEvent(db, 'ticket_failed', { ticketId: ticket.ticket_id }, { reason: 'max-attempts' });
       return null;
@@ -547,7 +562,7 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
     if (late) return report;
     const nextState = mapReportState(type);
     if (nextState === 'failed') {
-      const attempts = assignmentCount(db, a.ticket_id);
+      const attempts = normalAssignmentCount(db, a.ticket_id);
       const ticketNow = getTicket(db, a.ticket_id)!;
       if (attempts < ticketNow.max_attempts) {
         db.prepare("UPDATE tickets SET state = 'queued', latest_report_id = ?, updated_at = ? WHERE ticket_id = ?")
@@ -562,6 +577,7 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
       const ended = nextState === 'done' ? at : null;
       db.prepare('UPDATE tickets SET state = ?, latest_report_id = ?, updated_at = ?, ended_at = COALESCE(ended_at, ?) WHERE ticket_id = ?')
         .run(nextState, report.report_id, at, ended, a.ticket_id);
+      if (nextState === 'done') closeTicketAttentions(db, a.ticket_id, 'cancelled', 'ticket-done', at);
     } else {
       db.prepare('UPDATE tickets SET latest_report_id = ?, updated_at = ? WHERE ticket_id = ?')
         .run(report.report_id, at, a.ticket_id);
@@ -571,14 +587,40 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
 }
 
 /** 人工/核查关闭 Ticket：done 或 cancelled；只做状态收敛，不碰 Assignment 历史。 */
+/** Ticket 收口时把还挂着的人确认一起关掉；已 answered/approved/... 的不动。 */
+function closeTicketAttentions(
+  db: DatabaseSync,
+  ticketId: string,
+  status: 'cancelled' | 'expired',
+  reason: string,
+  at: string,
+): number {
+  const rows = db.prepare(
+    "SELECT attention_id, short_code FROM attentions WHERE ticket_id = ? AND status IN ('open', 'notified')",
+  ).all(ticketId) as Array<{ attention_id: string; short_code: string }>;
+  const kind = status === 'expired' ? 'attention_expired' : 'attention_cancelled';
+  for (const a of rows) {
+    db.prepare('UPDATE attentions SET status = ? WHERE attention_id = ?').run(status, a.attention_id);
+    db.prepare(`INSERT INTO executor_events (kind, host_id, ticket_id, assignment_id, detail, created_at)
+      VALUES (?, NULL, ?, NULL, ?, ?)`).run(
+      kind, ticketId, JSON.stringify({ attention_id: a.attention_id, short_code: a.short_code, reason }), at,
+    );
+  }
+  return rows.length;
+}
+
 export function closeTicket(db: DatabaseSync, input: { ticketId: string; decision: 'done' | 'cancelled' }): Ticket {
   return tx(db, () => {
     const t = getTicket(db, input.ticketId);
     if (!t) throw execError('EXEC_TICKET_NOT_FOUND', 'ticket 不存在');
-    if (t.state === 'done' || t.state === 'cancelled') return t;
+    if (t.state === 'done' || t.state === 'cancelled') {
+      closeTicketAttentions(db, t.ticket_id, 'cancelled', 'ticket-already-closed', nowIso());
+      return t;
+    }
     const at = nowIso();
     db.prepare('UPDATE tickets SET state = ?, ended_at = ?, updated_at = ? WHERE ticket_id = ?')
       .run(input.decision, at, at, t.ticket_id);
+    closeTicketAttentions(db, t.ticket_id, 'cancelled', 'ticket-' + input.decision, at);
     recordEvent(db, 'ticket_closed', { ticketId: t.ticket_id }, { decision: input.decision });
     return getTicket(db, t.ticket_id)!;
   });
@@ -636,6 +678,7 @@ export function expireTickets(db: DatabaseSync, input: { now: string }): { expir
         .run(input.now, t.ticket_id);
       db.prepare("UPDATE tickets SET state = 'failed', ended_at = ?, updated_at = ? WHERE ticket_id = ?")
         .run(input.now, input.now, t.ticket_id);
+      closeTicketAttentions(db, t.ticket_id, 'expired', 'ticket-expired', input.now);
       recordEvent(db, 'ticket_expired', { ticketId: t.ticket_id }, { expires_at: t.expires_at });
     }
     return { expired: rows.length };

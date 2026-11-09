@@ -15,7 +15,7 @@
 - [x] 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 217/217；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 237/237；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run **138 个文件**（早期基线 125；最终含 bind-member-identity）；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -102,6 +102,21 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [ ] 四类群 chatId/webhook 未登记到本机 org（ACC-01 本机侧只验了公司群 + boss_dm）；ACC-08 只有人工对账（公司群，见 §3.5），员工/部门群未覆盖。
 - [x] **ACC-08 按用户选择 B 记书面例外（D36）**：人工对账公司群差异 0；员工群/部门群未覆盖；无企微成员 API 凭据。不再要求自建应用。
 
+### 1.8 主干 3 设计拍板（2026-11-09）
+
+- [x] 确认协议：短号 `A12` 为主，引用文本增强；必须 @；匹配顺序/歧义规则定稿（D40）。
+- [x] 通知通道：Attention 通知走 outbox 群机器人，`attention_id` 关联，不新建 Notification 表（D41）。
+- [x] `require_ack`：默认关；责任转给具体人 / 跨部门 / 对外财务生产三类开；2h/8h/24h 升级，不自动转移（D42）。
+- [x] 状态机接线：新增 `question` report → `waiting_answer`；human slot 定向领取；human 尝试不计入 `max_attempts`（D43）。
+- [x] 通知对象/频道：按 purpose 定人，优先私密，兜底老板；老板 review 的公司群/1:1 规则（D44）。
+- [x] 结论只落文档，代码未动；下一步 `PLAN` 切主干 3，按 T3.0–T3.6 执行。
+- [x] **T3.1 数据层（2026-11-09）**：`attentions` 表 + `outbox.attention_id` 迁移；短号 `A<seq>`、三类入口、answer/approve/reject/ack、到期扫描；7 项测试，`npm test` **224/224**。
+- [x] **T3.2 CLI/资格（2026-11-09）**：`executor attention create/list/show/match/answer/cancel/context/sweep`；`canConfirmAttention` 收紧为 `required_confirmer` + 老板；match 4 项测试；`npm test` **228/228**。
+- [x] **T3.3 通知路由/降噪（2026-11-09）**：按 purpose 定人、私密优先、原群中性短号、老板兜底；outbox `attention_id`；22–08 静默、每日 10 条、2h/8h/24h 升级；`anc-executor-wake` 每分钟 `attention sweep --apply`；5 项测试；`npm test` **233/233**。
+- [x] **T3.4 执行器接线（2026-11-09）**：`question` Report → `waiting_answer`；`claim --slot human --ticket-id`；human 不计 `max_attempts`；close/expire 收口 Attention；旧 reports 表迁移；`npm test` **237/237**。
+- [x] **T3.5 技能/persona（2026-11-09）**：`anc-task` 加短号确认/回执/待办；`anc-executor` 加三类 Attention 与 human 恢复；`subagent.md` 加 `question`；公司 persona 与模板同步。
+- [x] **T3.6 文档/门禁（2026-11-09）**：模块/接口/产品/运维/计数同步；`npm test` **237/237**、`npm run check` 通过；`check-public` 发布前跑；ACC-13/14/15 待真实群。
+
 ---
 
 ## 2. 进行中
@@ -110,6 +125,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 |---|---|---|
 | 主干 0 | **已收口（2026-11-09）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；见 [PLAN.md](./PLAN.md) 与快照 |
 | 主干 1/2 本机 | 已收口 | 见 §1.4；待两机 ACC |
+| 主干 3 | 设计已拍板（D40–D44），实现待开工 | 见 §1.8；执行按 `PLAN.md` T3.0–T3.6 |
 | 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
 
@@ -134,10 +150,10 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-009 | subagent 全局并发/模型/预算 | 后续 | S2 | 主干 2 | 否 | closed：4+1 slot + 30m/3/default（D37/D39）；金额预算未设 |
 | GAP-010 | 是否预留人工续谈 slot | 后续 | S3 | 主干 2 | 否 | 压测后定 |
 | GAP-011 | 主动任务 observe/auto 规则 | 后续 | S2 | 主干 0 | 否 | 规则与审批 |
-| GAP-012 | `require_ack` 任务类型与升级 | 设计 | S1 | 主干 3 | 是 | 定义必须回执的类型 |
-| GAP-013 | 通知对象按事件类型细分 | 设计 | S1 | 主干 3 | 是 | review/answer/responsibility 分别定 |
-| GAP-014 | 多条 Attention 歧义/超时 | 实现 | S2 | 主干 3 | 否 | 反问格式与超时 |
-| GAP-015 | 通知频率/合并/静默时段 | 后续 | S2 | 主干 3 | 否 | 定上限与合并规则 |
+| GAP-012 | `require_ack` 任务类型与升级 | 设计 | S1 | 主干 3 | 否 | closed：代码支持 `--require-ack` + ack；skill 编码三类开；2h/8h/24h 已落 |
+| GAP-013 | 通知对象按事件类型细分 | 设计 | S1 | 主干 3 | 否 | closed（D44）：review/answer/responsibility 按 purpose 定人；兜底老板；T3.3 已落 `resolveAttentionTarget` + 私密优先 + 中性短号 |
+| GAP-014 | 多条 Attention 歧义/超时 | 实现 | S2 | 主干 3 | 否 | closed（D40）：短号优先；多条只反问一次，最多列 3 条；T3.2 `matchAttention` 已落 |
+| GAP-015 | 通知频率/合并/静默时段 | 后续 | S2 | 主干 3 | 否 | closed（D41/D44）：22–08 静默、每人每日 10 条、每 Attention 每天 3 次提醒；T3.3 已落；合并/日报 v1 不做 |
 | GAP-016 | 员工 bot 本地执行/离线行为 | 设计 | S1 | 主干 4 | 是 | 本地任务队列？离线怎么恢复？ |
 | GAP-017 | 员工 bot handoff 协议/补丁实现 | 设计 | S1 | 主干 4 | 是 | 员工 bot 发什么、公司 bot 怎么确认归属 |
 | GAP-018 | 入站消息路由（两个 bot） | 实现 | S1 | 横切 | 是 | 定义谁接收哪条 |
@@ -169,7 +185,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 否 | 主干 0 部分 closed：四表已落；Attention 归主干 3 |
 | GAP-027 | 没有 Main / Executor 运行时 | 实现 | S0 | 主干 2 | 否 | closed：executor + CLI + Main 技能 |
 | GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | 本地群模型/CLI/render/测试已完成；真实群配置并入 ACC-01 |
-| GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
+| GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 否 | closed：T3.1–T3.4 已落表/短号/CLI/match/通知/question/human slot；ACC-13/14 待真实群 |
 | GAP-030 | 没有 boss/manager/employee 角色模型 | 验收 | S1 | 主干 1 | 否 | people/policy/sync/persona 已完成；真实群接线并入 ACC |
 | GAP-031 | 没有日对话调度 / subagent 管理 | 实现 | S1 | 主干 2 | 否 | closed：真实 subagent + wake/new-host + ACC-10/11 |
 | GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次通过（当时 191/191），关闭 |
@@ -191,10 +207,15 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-033 | 文档 / 身份契约 | 文档把“一人一群”写成完整模型 | 员工群 + 部门群 + 公司大群 + 老板 1:1 + 角色 | 主干 1 | 否 | 已同步 README/AGENTS/PRODUCT/DECISIONS/部署/契约；关闭 |
 | GAP-034 | `tasks` 状态 | open / done / cancelled / needs_review | Task + Ticket / Assignment 状态 | 主干 2 | 否 | closed：D38 单向终止，Ticket done/dropped → Task done；失败不改 Task |
 | GAP-035 | `runtime` tick | 只做提醒 / 超时 / 投影 | Main / Executor 分层；tick 只做通知与调度 | 主干 2 | 是 | 在 D2 拆边界，保留旧行为兼容 |
-| GAP-036 | outbox / 通知 | 单向消息 | Attention / 确认 / 回执 | 主干 3 | 是 | 不覆盖旧 outbox；新增 Attention 层 |
+| GAP-036 | outbox / 通知 | 单向消息 | Attention / 确认 / 回执 | 主干 3 | 是 | closed（D41）：outbox + `attention_id`；T3.3 已落初始通知/提醒/升级；结果回执归 T3.4 |
 | GAP-037 | 员工 bot 技能集 | 现有员工侧 `anc-vault-read` 卡片 | 移除；员工查库直接 @ 公司 bot | 主干 4 | 是 | 改 member persona / skill cards / DEPLOY-EMPLOYEE |
 | GAP-038 | 员工侧补丁 | 现有员工侧不装补丁 | 员工侧打补丁，保证 handoff 归属 | 主干 4 | 是 | 补丁方案、版本绑定、回归测试 |
 | GAP-039 | 员工 bot 文档/职责 | 现有 `member-bot` 职责含“查公司知识库” | 本机资料 + handoff；不查公司库 | 主干 4 | 是 | 改模板与部署文档，加回归；0.7 的文档警告已补 |
+| GAP-076 | Ticket 状态机 / Report 类型 | 6 类 Report 没有 `question`；`waiting_answer` / `waiting_ack` 无入口 | 加 `question → waiting_answer`；`waiting_ack` 由 `attention create` 推进；同步 2.3 / MAIN-EXECUTOR / subagent | 主干 3 | 否 | closed：`question` 已落，`waiting_ack` 由 attention create 进；T3.4 |
+| GAP-077 | human slot / claim | `claim --slot human` 不能定向；human Assignment 计入 `max_attempts` | 加 `--ticket-id`；human 不计入 `max_attempts`；answer 进下一次 prompt | 主干 3 | 否 | closed：`claim --ticket-id` + normal-only 计数；`attention context` 已提供；T3.4 |
+| GAP-078 | `canConfirmAttention` | 本部门管理者可代确认 | 仅 `required_confirmer` + 老板；管理者可见/催办不代确认 | 主干 3 | 否 | closed：policy 收紧 + `policy.test` 覆盖；T3.2 |
+| GAP-079 | WorkBuddy 补丁 / 确认协议 | 只注入 `chat/from`；引用文本/消息 id 不可用 | 短号为主；T3.0 spike 带 `msgId` / quote 文本做增强；不改主路径 | 主干 3 | 否 | T3.0 spike |
+| GAP-080 | 通知 @ 的 userid | `people.userid` 是 GAP-072 的会话级 `wok…` id；webhook `mentioned_list` 不一定能 @ 到通讯录人员 | org 增加/采集通讯录 userid（`mention_userid`）；拿不到时回退私密员工群（无需 @）或原群中性短号不 @ | 主干 3 | 否 | T3.0/T3.3 用真实群验证；不通过就按回退方案 |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -319,6 +340,12 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | ACC-08 按用户选择 B 记书面例外（人工对账） | 0.8 ACC-08；0.3 STATUS §3.5；D36 | GAP-003 accepted（例外） | 公司群对账差异 0；员工/部门群未覆盖；不自建应用 |
 | 2026-11-09 | ACC-10 定时任务实测达成；主干 0 收口 | 0.8 ACC-10；FUTURE 主干 0 全分支；PLAN 快照 | GAP-006/031/042/050/065 关闭；主干 0 ✅ | trigger 临时改 now+2min 实测后恢复 03:00；文档全量同步 |
 | 2026-11-09 | wake bridge 修复（inject 主进程加载 preload）+ ACC-09/10/11 演练 | 0.8 ACC-09/10/11；0.3 WORKBUDDY-PATCH；D34 | GAP-075 关闭 | 18187 监听；new-host 机制成功；真实窗口重启 recover→queued→新 host 重派通过 |
+| 2026-11-09 | 主干 3 设计拍板（确认协议/通知/回执/超时） | 0.3 FUTURE 3.1–3.5、6.3、9；0.7 新增 GAP-076–080 | GAP-012/013 设计关闭；GAP-014/015 设计已定、实现随 GAP-029/036；新增 GAP-076/077/078/079/080 | 代码未动；下一步 PLAN 切主干 3，开 T3.0 |
+| 2026-11-09 | 主干 3 T3.1 Attention 数据层 | 0.6 224/224；executor 模块契约；LOCAL-SERVICE/ARCHITECTURE 表清单 | 新增 `attentions` 表、短号、三类入口、回答/回执、到期扫描 | 代码已落；CLI/路由/接线归 T3.2–T3.4 |
+| 2026-11-09 | 主干 3 T3.2 Attention CLI 与资格 | 0.6 228/228；LOCAL-SERVICE/MAIN-EXECUTOR 命令面；STATUS GAP-078 | `executor attention` 8 个子命令；确认资格收紧；match 4 项测试 | 通知路由/接线归 T3.3/T3.4 |
+| 2026-11-09 | 主干 3 T3.3 通知路由/降噪 | 0.6 233/233；LOCAL-SERVICE 配置/命令；OPS 唤醒任务；MAIN-EXECUTOR | GAP-013/014/015/036 关闭；outbox `attention_id`；静默/上限/升级 | 执行器接线归 T3.4；GAP-080 真 userid 待实测 |
+| 2026-11-09 | 主干 3 T3.4 执行器接线 | 0.6 237/237；modules/executor、MAIN-EXECUTOR、LOCAL-SERVICE；schema 迁移 | GAP-029/076/077 关闭；`question` Report；human 定向恢复；close/expire 收口 | 技能/persona 归 T3.5；真实群 ACC 待 T3.6 |
+| 2026-11-09 | 主干 3 T3.5/T3.6 技能、文档、门禁 | 0.6 237/237；modules/content；PRODUCT/INDEX/FUTURE/PLAN | GAP-012 关闭；技能/persona 同步；文档计数 237 | GAP-079/080 与 ACC-13/14/15 保持开放；部署与真实群待跑 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -340,6 +367,9 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | **达成（本机，定时任务实测）**：临时 trigger now+2min → 任务自动建新 host（`conv-20261109-173355`）+ bootstrap；新 ticket 在新 host claim/report/end；trigger 已恢复 03:00 |
 | ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | **达成（本机演练）**：真实窗口重启 → `recover` → host closed、Assignment interrupted、Ticket queued → 新 host claim/start/report/end；证据 `stage/acc11-*.log` |
 | ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | **用户实测通过（2026-11-09，口述；无机器日志）** |
+| ACC-13 | 群回复 review 确认 | Attention 已发、短号可识别 | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 | GAP-029/036 | 待跑（主干 3） |
+| ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | 待跑（主干 3） |
+| ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | 待跑（主干 3） |
 
 ### 3.6 完成时的更新清单
 

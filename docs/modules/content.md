@@ -67,3 +67,4 @@
 |---|---|---|
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P6 文档收口；无代码变化 | 模块化 |
+| 2026-11-09 | `anc-task` / `anc-executor` / `subagent.md` / 公司 persona 加 Attention 短号确认、question Report、三类通知 | 主干 3 T3.5 |
