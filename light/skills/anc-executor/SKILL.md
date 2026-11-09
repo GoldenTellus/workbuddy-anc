@@ -22,6 +22,10 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 没有 active host：停，回报“执行 host 未注册”，不要猜测或新建对话。
 
+## background 任务
+
+background 任务不自动接。先由 Main 评估：谁要求的、是否在本部门授权范围内、优先级、预算；评估通过后再 `executor ticket create`。没有评估就不建 Ticket。
+
 ## 一个 tick
 
 ```powershell

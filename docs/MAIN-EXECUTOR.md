@@ -21,6 +21,10 @@ Main 用 WorkBuddy Agent tool 起 subagent
 
 **一句话**：本地服务是账本和调度器，Main 是唯一执行者；subagent 由 Main 用 Agent tool 启动，不由本地服务启动。
 
+## 0.1 background 任务
+
+background 任务**不自动接单**。候选先由 Main 评估，决定是否建 Ticket、优先级和授权；`executor` 只接收已经授权的 Ticket。夜里没有消息时由 wake 触发 Main 评估，不绕过 Main 直接派活。
+
 ## 1. Main 的一个 tick
 
 ```text
