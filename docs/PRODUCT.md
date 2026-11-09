@@ -22,7 +22,7 @@
 |---|---|---|---|
 | **① 群里的对话能力** | 员工 | 企微群里 @ bot | **8 个技能**（`light/skills/`） |
 | **② 命令行能力** | 管理员 / 脚本 | 主机上 `node service\cli.ts` | **17 个命令组** |
-| **③ 自动运行能力** | 没人 | 主机后台 | **12 个计划任务** |
+| **③ 自动运行能力** | 没人 | 主机后台 | **13 个计划任务** |
 
 **三层是叠加的**：技能内部调 CLI，CLI 写 SQLite，计划任务读 SQLite 并做时间驱动的事。
 
@@ -145,11 +145,12 @@
 
 ---
 
-## 4. ③ 自动运行能力 —— 12 个计划任务
+## 4. ③ 自动运行能力 —— 13 个计划任务
 
 | 任务 | 频率 | 运行身份 | 干什么 | 失败时 |
 |---|---|---|---|---|
 | **`anc-service`** | 每日 + 开机 | LOCAL SERVICE | 主服务（状态、提醒、完成判定） | — |
+| **`anc-executor-new-host`** | 每天 03:00 | LOCAL SERVICE | 自动创建新 host 对话；失败由 host-tick 兜底 | — |
 | **`anc-executor-host-tick`** | 每天 03:00 | LOCAL SERVICE | 主干2 host 兜底：无新对话时旧 host 继续接单 | — |
 | **`anc-executor-wake`** | 每分钟 | LOCAL SERVICE | 有 queued Ticket 时唤醒当前对话（需开启 wake bridge） | — |
 | **`anc-http`** | 每日 + 开机 | LOCAL SERVICE | 定时触发 `loop` 跑一轮（发到点的提醒） | — |

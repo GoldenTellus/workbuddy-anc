@@ -57,7 +57,8 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 
 - `wake-bridge.cjs` 在主进程开 `127.0.0.1:18187`；
 - 只有 `%ProgramData%\anc\data\wb-wake.flag` 存在才监听；token 在 `wb-wake-token`；
-- `POST /wake` 只做一件事：当前 composer 为空时 `insertText` 一段短 prompt 并点“发送”；
+- `POST /wake`：当前 composer 为空时 `insertText` 一段短 prompt 并点“发送”；
+- `POST /new`：点“新建任务”→ 选择 `workspace` → 输入 prompt → 发送；用于 03:00 自动开新 host；
 - 不创建新对话、不覆盖人的草稿、不执行任意 JS；
 - `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默。
 - **默认关闭**；它是“自动兜底”，不是无条件自动。开启前确认当前窗口就是公司 bot 的 host。

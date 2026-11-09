@@ -1,4 +1,4 @@
-﻿# 注册/修复 12 个计划任务（OPS.md「计划任务」表的可执行版本）
+﻿# 注册/修复 13 个计划任务（OPS.md「计划任务」表的可执行版本）
 # 默认 dry-run；-Apply 才落盘。已存在同名任务会被覆盖（Register-ScheduledTask -Force）。
 #
 # 注意：两个交互类任务（anc-workbuddy-launch / anc-patch-guard）的 principal 是 -BotUser，
@@ -105,6 +105,13 @@ $defs = @(
         Action = (New-PsAction 'wake-if-queued.ps1')
         Principal = (New-ServicePrincipal )
         Settings = (New-Settings 'PT1M')
+    },
+    @{
+        Name = 'anc-executor-new-host'; Desc = '主干2 03:00 自动创建新 host 对话；失败由 host-tick 兜底'
+        Triggers = @((New-ScheduledTaskTrigger -Daily -At '03:00'))
+        Action = (New-PsAction 'new-host.ps1')
+        Principal = (New-ServicePrincipal )
+        Settings = (New-Settings 'PT5M')
     },
     @{
         Name = 'anc-executor-host-tick'; Desc = '主干2 03:00 host 自动兜底：无新对话时只标 deferred'

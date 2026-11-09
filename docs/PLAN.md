@@ -95,7 +95,7 @@
 - [x] 测试：日切序列、旧任务继续、新任务不重复派活。
 - [x] 真实 host bootstrap：`host bootstrap` 同对话幂等、跨日自动切。
 - [x] 03:00 无新 host 时 `host tick` 标 deferred，旧 host 继续接单（自动兜底）。
-- [ ] 自动“创建新对话”仍留外部 spike。
+- [x] 自动“创建新对话”：`anc-executor-new-host` + wake bridge `/new`（真实测试通过；部署后生效）。
 
 ### T2.4 调度器与并发
 

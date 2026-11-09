@@ -104,6 +104,54 @@ async function start() {
         return json(res, 200, { ok: true, pid: process.pid, port: PORT });
       }
       if (!equal(req.headers['x-anc-token'], token)) return json(res, 401, { ok: false, error: 'X-Anc-Token mismatch' });
+      if (req.method === 'POST' && req.url === '/new') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const prompt = String(body.prompt || '').trim();
+        const workspace = String(body.workspace || '').trim();
+        if (!prompt) return json(res, 400, { ok: false, error: 'prompt required' });
+        if (prompt.length > 4000) return json(res, 413, { ok: false, error: 'prompt too long' });
+        const win = getWindow(BrowserWindow);
+        if (!win) return json(res, 503, { ok: false, error: 'no live WorkBuddy window' });
+        const wc = win.webContents;
+        const opened = await wc.executeJavaScript(`(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const textOf = (el) => (el.innerText || '').replace(/\\s+/g, ' ').trim();
+          const find = (needle) => Array.from(document.querySelectorAll('button,[role="tab"],[role="button"]')).find((el) => textOf(el) === needle) || null;
+          const tab = find('新建任务');
+          if (!tab) return { ok: false, reason: 'new-task-button-missing' };
+          tab.click();
+          await sleep(900);
+          if (${JSON.stringify(workspace)}) {
+            let opt = Array.from(document.querySelectorAll('li.wb-dropdown__item, [role="menuitem"], [role="option"]'))
+              .find((el) => textOf(el) === ${JSON.stringify(workspace)});
+            if (!opt) {
+              const ws = document.querySelector('.cr-workspace-picker');
+              if (!ws) return { ok: false, reason: 'workspace-button-missing' };
+              ws.click();
+              await sleep(700);
+              opt = Array.from(document.querySelectorAll('li.wb-dropdown__item, [role="menuitem"], [role="option"]'))
+                .find((el) => textOf(el) === ${JSON.stringify(workspace)});
+            }
+            if (!opt) return { ok: false, reason: 'workspace-option-missing' };
+            opt.click();
+            await sleep(600);
+          }
+          const el = document.querySelector('[contenteditable="true"],[role="textbox"]');
+          if (!el) return { ok: false, reason: 'composer-missing' };
+          el.focus();
+          return { ok: true };
+        })()`, true);
+        if (!opened || !opened.ok) return json(res, 409, { ok: false, error: opened && opened.reason || 'new-task-failed' });
+        wc.insertText(prompt);
+        await new Promise((r) => setTimeout(r, 400));
+        const sent = await wc.executeJavaScript(`(() => {
+          const b = Array.from(document.querySelectorAll('button')).find(x => x.getAttribute('aria-label') === '发送');
+          if (!b || b.disabled) return false;
+          b.click();
+          return true;
+        })()`, true);
+        return json(res, sent ? 200 : 409, { ok: !!sent, error: sent ? null : 'send-button-unavailable' });
+      }
       if (req.method !== 'POST' || req.url !== '/wake') return json(res, 404, { ok: false, error: 'not found' });
       const body = JSON.parse((await readBody(req)) || '{}');
       const prompt = String(body.prompt || '').trim();

@@ -6,11 +6,12 @@
 
 ## 计划任务
 
-共 12 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
+共 13 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
 
 | 任务 | 触发 | 身份 | 执行 | 作用 |
 |---|---|---|---|---|
 | `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <bin>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
+| `anc-executor-new-host` | 每天 03:00 | `LOCAL SERVICE` | `new-host.ps1` | 主干2 自动创建新 host 对话；失败由 `anc-executor-host-tick` 标 deferred，旧 host 继续接单 |
 | `anc-executor-host-tick` | 每天 03:00 | `LOCAL SERVICE` | `executor-host-tick.ps1` | 主干2 自动兜底：没有新 host 时只标 `cut_deferred`，旧 host 继续接单 |
 | `anc-executor-wake` | 每分钟 | `LOCAL SERVICE` | `wake-if-queued.ps1` | 有 queued Ticket 时调用 opt-in wake bridge，向当前对话注入一个 executor tick；没有队列或 bridge 未启用时静默 |
 | `anc-backup` | 每天 02:00 起每 1 小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `backup-anc.ps1 -Destination <第二块盘>` | `VACUUM INTO` 快照 + 完整性校验，保留 14 份并复制到第二块盘；错过 02:00 会自动补 |

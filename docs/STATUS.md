@@ -99,7 +99,7 @@
 | GAP-062 | Main ↔ 本地服务的 claim/report 边界未定 | 设计 | S1 | 主干 2 | 否 | 契约已写：MAIN-EXECUTOR.md；实现待做 |
 | GAP-063 | Main 无消息时如何唤醒并 claim 队列未定 | 设计 | S1 | 主干 2 | 否 | 真实窗口注入通过；opt-in wake bridge，默认关闭 |
 | GAP-064 | subagent Report JSON 契约与解析失败策略未定 | 设计 | S1 | 主干 2 | 否 | 契约已写；解析实现待做 |
-| GAP-065 | 03:00 自动创建新 host 对话未定 | 实现 | S1 | 主干 2 | 是 | bootstrap + deferred 兜底已落；创建新对话仍靠外部调度 |
+| GAP-065 | 03:00 自动创建新 host 对话未定 | 实现 | S1 | 主干 2 | 否 | `/new` + new-host 任务已落；部署 -Apply 后生效 |
 
 ### 3.2 实现缺口（现状 vs 目标）
 
@@ -164,6 +164,7 @@
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
+| 2026-11-09 | GAP-065 真实新建对话：`/new` → workbuddy-anc → NEW_OK | 0.3 WORKBUDDY-PATCH/MAIN-EXECUTOR/OPS；0.6 206/206 | GAP-065 收窄 | 新 host 任务脚本已加，未 -Apply 注册 |
 | 2026-11-09 | 路径隔离选 A：接受逻辑隔离，不做专用账号/ACL | 0.3 DECISIONS/D28、FUTURE 2.2、PLAN；0.6 206/206 | GAP-060 接受风险 | 不需要重启；以后可重评 B |
 | 2026-11-09 | T2.7 跨进程重启 drill：recover → bootstrap → 重新 claim | 0.3 executor/PLAN；0.6 206/206 | GAP-059 收窄 | 旧 host closed，Ticket 回 queued，新 host 完成 |
 | 2026-11-09 | T2.7 recoverHost：旧 host 统一 interrupted + 回 queued | 0.3 executor/LOCAL-SERVICE/MAIN-EXECUTOR/PLAN；0.6 206/206 | GAP-059 更新 | 真实主机重启未做 |
