@@ -38,13 +38,24 @@ function tryPerson(db: DatabaseSync, attention: executor.Attention, personId: st
   if (!personId) return null;
   const person = identity.resolvePerson(db, personId);
   if (!person || person.status !== 'active') return null;
-  const chat = privateChat(db, person.person_id, person.system_role);
-  if (chat) return { person_id: person.person_id, chat_id: chat, neutral: false, mode: 'private' };
+
   const origin = attention.origin_chat_id ? identity.resolveGroup(db, attention.origin_chat_id) : null;
-  if (origin && origin.status === 'active') {
-    return { person_id: person.person_id, chat_id: origin.chat_id, neutral: true, mode: 'origin' };
+  const originTarget = origin && origin.status === 'active'
+    ? { person_id: person.person_id, chat_id: origin.chat_id, neutral: true, mode: 'origin' as const }
+    : null;
+
+  // D32：老板 1:1 不做主动推送；公司/部门级回原群中性短号，内部级等老板问“待办”。
+  if (person.system_role === 'boss') return originTarget;
+
+  const chat = privateChat(db, person.person_id, person.system_role);
+  if (chat) {
+    const g = identity.resolveGroup(db, chat);
+    // 私密群没有 webhook 就发不出去；退回原群中性短号，比静默丢消息好。
+    if (g && g.status === 'active' && g.webhook_file) {
+      return { person_id: person.person_id, chat_id: chat, neutral: false, mode: 'private' };
+    }
   }
-  return null;
+  return originTarget;
 }
 
 function bossTarget(db: DatabaseSync, attention: executor.Attention): AttentionTarget | null {
@@ -103,7 +114,7 @@ export function buildAttentionText(
   const code = a.short_code;
   if (target.neutral) {
     if (kind === 'manager') return `【催办 ${code}】${name} 的确认已等 8 小时，请催办；确认仍由本人处理。`;
-    if (kind === 'boss') return `【升级 ${code}】${name} 的确认已等 24 小时，请介入；请回 1:1 回复 @公司bot ${code}。`;
+    if (kind === 'boss') return `【升级 ${code}】${name} 的确认已等 24 小时，请介入；详情回 1:1 问 @公司bot ${code}。`;
     return `【${code}】有一条待确认，请在原会话/私聊回复 @公司bot ${code} ${actionHint(a)}。`;
   }
   if (kind === 'manager') return `【催办 ${code}】${name} 的确认已等 8 小时，请催办；确认仍由本人处理。\n${a.question}`;

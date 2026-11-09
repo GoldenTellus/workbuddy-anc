@@ -180,14 +180,14 @@ ack           → Attention acked；Ticket done；Task done
 
 **频道**：
 
-- 优先私密：员工群（`resolvePrivateChat`）/ 老板 1:1（`boss_dm`）；
+- 优先私密：员工群（`resolvePrivateChat`）；私密群必须已配 webhook，否则视为不可用；
+- **老板 1:1 不做主动推送（D32）**：公司/部门级回原群中性短号，内部级等老板问“待办”；
 - 私密不可用 → 原群，只发短号 + 中性一句（如“A12 有一条待确认”），不带内容；
-- 连原群都没有 → 升级老板；
-- 老板的 review：公司/部门级可在原群发中性短号，细节留 1:1；内部级只发 1:1（D32：无主动推送）。
+- 连原群都没有 → 记为待办，等老板问；不群发。
 
 **降噪**：
 
-- 静默 22:00–08:00；P0 的 answer 可例外；静默期间不推进 `escalate_level`，只跳过，08:00 后下一次 sweep 补发；
+- 静默 22:00–08:00；P0 的 answer 可例外；静默期间不立即发，入队到 08:00（`next_attempt_at`），level 仍按到期推进，避免重复排期；
 - 每人每日主动通知上限 10 条；首条 ask 与升级给老板的消息不计入上限；
 - 同一 Attention 每天最多 3 次提醒（`remind_day` 变更时 `remind_count_today` 归零）；超过后只升级，不再重复提醒；
 - 升级给管理者/老板的是**催办通知**（“A12 已等 8h，请催办”），不是把确认权转给他们；确认仍只认 `required_confirmer` / 老板；
@@ -408,11 +408,12 @@ node scripts/checks/check-public.mjs
 | T3.4 执行器接线 | `question` Report；`claim --ticket-id`；human 不计 `max_attempts`；close/expire 收口；旧 reports 表迁移 | `executor.ts` / `migrate.ts`；schema+attention 测试 |
 | T3.5 技能/persona | `anc-task` / `anc-executor` / `subagent.md` / 公司 persona 同步 | `light/skills`、`light/personas`、`light/templates` |
 | T3.6 文档/门禁 | `npm test` **237/237**；`npm run check` 通过；`check-public` 待发布前跑 | `STATUS` §1.8/§3.4；`FUTURE` 3.x；模块/接口/产品/运维 |
+| 部署 | 142 文件 hash 全过；线上 DB 迁移通过；13 任务 Ready；doctor FAIL=0 WARN=3 | `deploy.ps1 -Apply`；`register-tasks.ps1 -Apply -BackupDestination D:\anc-backup`；doctor |
+| ACC-13/14/15 本机 | A2 approve → Ticket/Task done；A3 answer → human slot → working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计；真实群回复/提醒待新会话 |
 
 未完成（保持 🟡）：
 
-- **ACC-13/14/15**：真实群 review/answer/ack；需要真群与真实员工。
+- **ACC-13/14/15 真实群**：本机 CLI 链路已通过；真实群回复/提醒需新会话加载新技能/persona 后再跑。
 - **GAP-079**：补丁 `msgId`/quote 文本增强 spike；短号主路径不受影响。
 - **GAP-080**：webhook `mentioned_list` 真 userid 验证；v1 不 @，私密群/中性短号不依赖它。
-- **部署**：本机代码未重新 `deploy.ps1 -Apply`；正式验收前要部署并跑 `doctor`。
 - **T3.0**：协议 spike 未做；不阻塞。

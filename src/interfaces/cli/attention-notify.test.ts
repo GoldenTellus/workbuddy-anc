@@ -18,11 +18,11 @@ function seed(db: Db): number {
   identity.upsertPerson(db, { personId: 'mgr', name: '管理者', userid: 'uid-mgr', systemRole: 'manager', deptId: 'sales' });
   identity.upsertPerson(db, { personId: 'emp', name: '员工', userid: 'uid-emp', systemRole: 'employee', deptId: 'sales' });
   identity.upsertPerson(db, { personId: 'req', name: '交办人', userid: 'uid-req', systemRole: 'employee', deptId: 'sales' });
-  identity.upsertGroup(db, { chatId: 'chat-emp', type: 'employee', employeeId: 'emp' });
-  identity.upsertGroup(db, { chatId: 'chat-mgr', type: 'employee', employeeId: 'mgr' });
-  identity.upsertGroup(db, { chatId: 'chat-req', type: 'employee', employeeId: 'req' });
+  identity.upsertGroup(db, { chatId: 'chat-emp', type: 'employee', employeeId: 'emp', webhookFile: 'test-webhook.txt' });
+  identity.upsertGroup(db, { chatId: 'chat-mgr', type: 'employee', employeeId: 'mgr', webhookFile: 'test-webhook.txt' });
+  identity.upsertGroup(db, { chatId: 'chat-req', type: 'employee', employeeId: 'req', webhookFile: 'test-webhook.txt' });
   identity.upsertGroup(db, { chatId: 'chat-boss', type: 'boss_dm' });
-  identity.upsertGroup(db, { chatId: 'chat-company', type: 'company' });
+  identity.upsertGroup(db, { chatId: 'chat-company', type: 'company', webhookFile: 'test-webhook.txt' });
   db.prepare("INSERT INTO manager_scopes (person_id, dept_id, created_at) VALUES ('mgr', 'sales', ?)")
     .run(new Date().toISOString());
   const now = new Date().toISOString();
@@ -74,7 +74,9 @@ test('attention notify：review 找交办人；交办人停用后落老板', () 
     identity.upsertPerson(db, { personId: 'req', name: '交办人', userid: 'uid-req', systemRole: 'employee', deptId: 'sales', status: 'disabled' });
     const fallback = resolveAttentionTarget(db, a, 'ask');
     assert.equal(fallback?.person_id, 'boss');
-    assert.equal(fallback?.chat_id, 'chat-boss');
+    // D32：老板 1:1 不主动推，改回原群中性短号。
+    assert.equal(fallback?.chat_id, 'chat-company');
+    assert.equal(fallback?.neutral, true);
   } finally { db.close(); }
 });
 
@@ -109,7 +111,9 @@ test('attention notify：8h 找部门管理者，24h 找老板', () => {
 
     const boss = resolveAttentionTarget(db, a, 'boss');
     assert.equal(boss?.person_id, 'boss');
-    assert.equal(boss?.chat_id, 'chat-boss');
+    // 老板 1:1 不主动推，升级只回原群中性短号。
+    assert.equal(boss?.chat_id, 'chat-company');
+    assert.equal(boss?.neutral, true);
     assert.match(buildAttentionText(db, a, 'boss', boss!), /升级/);
   } finally { db.close(); }
 });

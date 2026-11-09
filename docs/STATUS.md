@@ -115,7 +115,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **T3.3 通知路由/降噪（2026-11-09）**：按 purpose 定人、私密优先、原群中性短号、老板兜底；outbox `attention_id`；22–08 静默、每日 10 条、2h/8h/24h 升级；`anc-executor-wake` 每分钟 `attention sweep --apply`；5 项测试；`npm test` **233/233**。
 - [x] **T3.4 执行器接线（2026-11-09）**：`question` Report → `waiting_answer`；`claim --slot human --ticket-id`；human 不计 `max_attempts`；close/expire 收口 Attention；旧 reports 表迁移；`npm test` **237/237**。
 - [x] **T3.5 技能/persona（2026-11-09）**：`anc-task` 加短号确认/回执/待办；`anc-executor` 加三类 Attention 与 human 恢复；`subagent.md` 加 `question`；公司 persona 与模板同步。
-- [x] **T3.6 文档/门禁（2026-11-09）**：模块/接口/产品/运维/计数同步；`npm test` **237/237**、`npm run check` 通过；`check-public` 0；`deploy.ps1 -Apply` 142 文件 hash 全过，线上 DB 已迁 `attentions`/`outbox.attention_id`/`reports.question`；计划任务注册待提权（GAP-081）。
+- [x] **T3.6 文档/门禁/部署（2026-11-09）**：`npm test` **237/237**、`npm run check`、`check-public` 0；`deploy.ps1 -Apply` 142 文件 hash 全过，线上 DB 已迁 `attentions`/`outbox.attention_id`/`reports.question`；13 个计划任务 Ready，doctor **FAIL=0 WARN=3**；ACC-13/14/15 待真实群。
 
 ---
 
@@ -216,8 +216,9 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-078 | `canConfirmAttention` | 本部门管理者可代确认 | 仅 `required_confirmer` + 老板；管理者可见/催办不代确认 | 主干 3 | 否 | closed：policy 收紧 + `policy.test` 覆盖；T3.2 |
 | GAP-079 | WorkBuddy 补丁 / 确认协议 | 只注入 `chat/from`；引用文本/消息 id 不可用 | 短号为主；T3.0 spike 带 `msgId` / quote 文本做增强；不改主路径 | 主干 3 | 否 | T3.0 spike |
 | GAP-080 | 通知 @ 的 userid | `people.userid` 是 GAP-072 的会话级 `wok…` id；webhook `mentioned_list` 不一定能 @ 到通讯录人员 | org 增加/采集通讯录 userid（`mention_userid`）；拿不到时回退私密员工群（无需 @）或原群中性短号不 @ | 主干 3 | 否 | T3.0/T3.3 用真实群验证；不通过就按回退方案 |
-| GAP-081 | 计划任务注册 | 2026-11-09 部署后 doctor 只有 3 个 `anc-*` 任务；`register-tasks.ps1 -Apply` 在当前非提权会话被 UAC 拒绝（脚本仍打印 OK，GAP-082） | 用管理员 PowerShell 重跑 `-Apply`；doctor 13 项任务 Ready | 主干 3 部署 | 是 | 待用户提权执行 |
+| GAP-081 | 计划任务注册 | 2026-11-09 部署后 doctor 只有 3 个 `anc-*` 任务；`register-tasks.ps1 -Apply` 在当前非提权会话被 UAC 拒绝（脚本仍打印 OK，GAP-082） | 用管理员 PowerShell 重跑 `-Apply`；doctor 13 项任务 Ready | 主干 3 部署 | 否 | closed：管理员会话 `-Apply -BackupDestination D:\anc-backup` 成功；doctor 13 任务 Ready、FAIL=0 |
 | GAP-082 | `register-tasks.ps1` 失败仍打印 OK | `Register-ScheduledTask` 抛 `拒绝访问` 后脚本继续打印 `OK <task>` 并汇总“已注册 13 个任务” | 捕获异常并以非 0 退出；失败任务不得计入“已注册” | 主干 3 部署 | 否 | closed：加 `-ErrorAction Stop`，非提权实测 exit=1、只报 ERROR/FIX |
+| GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -348,7 +349,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | 主干 3 T3.3 通知路由/降噪 | 0.6 233/233；LOCAL-SERVICE 配置/命令；OPS 唤醒任务；MAIN-EXECUTOR | GAP-013/014/015/036 关闭；outbox `attention_id`；静默/上限/升级 | 执行器接线归 T3.4；GAP-080 真 userid 待实测 |
 | 2026-11-09 | 主干 3 T3.4 执行器接线 | 0.6 237/237；modules/executor、MAIN-EXECUTOR、LOCAL-SERVICE；schema 迁移 | GAP-029/076/077 关闭；`question` Report；human 定向恢复；close/expire 收口 | 技能/persona 归 T3.5；真实群 ACC 待 T3.6 |
 | 2026-11-09 | 主干 3 T3.5/T3.6 技能、文档、门禁 | 0.6 237/237；modules/content；PRODUCT/INDEX/FUTURE/PLAN | GAP-012 关闭；技能/persona 同步；文档计数 237 | GAP-079/080 与 ACC-13/14/15 保持开放；部署与真实群待跑 |
-| 2026-11-09 | 主干 3 部署（公司主机） | deploy 142 文件 hash 全过；备份 `deploy-20261109-193745`；线上 DB 迁移 `attentions`/`outbox.attention_id`/`reports.question` 通过 | doctor `deploy-layout`/`database` PASS；`attention list` 线上返回 ok | 计划任务注册被 UAC 拒绝（当前会话非提权），13 任务仍只有 3 → GAP-081；ACC 未跑 |
+| 2026-11-09 | 主干 3 部署（公司主机） | deploy 142 文件 hash 全过；备份 `deploy-20261109-193745`/`194024`；线上 DB 迁移 `attentions`/`outbox.attention_id`/`reports.question` 通过 | 管理员会话重跑 `register-tasks -Apply`：13 任务 Ready；doctor **FAIL=0 WARN=3**；GAP-081/082/083 关闭 | ACC-13/14/15 本机 CLI 链路已跑；真实群待跑 |
+| 2026-11-09 | ACC-13/14/15 本机链路 | A2 approve → Ticket/Task done；A3 answer → human slot 恢复 working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计：`attention_answered` / `ticket_closed` / human slot；真实群回复与提醒待跑 | 需新会话加载新技能/persona 后再跑真实群 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -370,9 +372,9 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | **达成（本机，定时任务实测）**：临时 trigger now+2min → 任务自动建新 host（`conv-20261109-173355`）+ bootstrap；新 ticket 在新 host claim/report/end；trigger 已恢复 03:00 |
 | ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | **达成（本机演练）**：真实窗口重启 → `recover` → host closed、Assignment interrupted、Ticket queued → 新 host claim/start/report/end；证据 `stage/acc11-*.log` |
 | ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | **用户实测通过（2026-11-09，口述；无机器日志）** |
-| ACC-13 | 群回复 review 确认 | Attention 已发、短号可识别 | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 | GAP-029/036 | 待跑（主干 3） |
-| ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | 待跑（主干 3） |
-| ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | 待跑（主干 3） |
+| ACC-13 | 群回复 review 确认 | Attention 已发、短号可识别 | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 | GAP-029/036 | **本机 CLI 链路通过（2026-11-09）**：A2 approve → Ticket/Task done；真实群回复待新会话/员工 |
+| ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | **本机 CLI 链路通过（2026-11-09）**：A3 answer → waiting_answer → human slot 恢复 working；真实群待跑 |
+| ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | **ack + 升级计算通过（2026-11-09）**：A4 ack → Ticket done；A5 9h → level 2 manager；真实群提醒待跑 |
 
 ### 3.6 完成时的更新清单
 
