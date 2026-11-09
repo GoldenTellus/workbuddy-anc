@@ -20,6 +20,37 @@ T16b 实测：企微 AIBot 的回调帧里 `chatid`、`chattype`、`from.userid`
 content = "[anc:chat=<chatid> from=<userid>] " + content
 ```
 
+2026-11-10 起（GAP-079 / DEV-02）再追加两个**可选**字段，顺序固定在旧字段之后：
+
+```
+content = "[anc:chat=<chatid> from=<userid> msg=<msgId> quote=<引用文本>] " + content
+```
+
+- 旧字段 `chat=` / `from=` 的文本与顺序**不变**；`msg=` / `quote=` 拿不到就不加，不写空值；
+- 前缀仍是最前面的那一段；正文里用户自己写的 `[anc:` 照旧改写成 `[anc-quoted:`（防伪逻辑不变）。
+
+### 1b) 引用文本与 msgId（GAP-079 / DEV-02，2026-11-10）
+
+**为什么要抓**：`emitMessage` 收到的 `m` 里只有 `{msgId, content, chatId, user, timestamp, chatType, responseUrl, mediaFiles, msgType}`，**没有 quote**；客户端自带的 `resolveQuoteMedia(e.body)` 只处理 `image` / `file` / `video`，引用一条**文本**通知（带 `A12`）时它返回空，quote 根本不进 `emitMessage`。所以只能在原型层先抓原始帧。
+
+**抓在哪**：`preload.cjs` 的 PATCH_BODY 在原型上包 `handleTextMessage` / `handleMixedMessage` / `handleMediaMessage`，读 `e.body.quote` 的文本与 `e.body.msg_id`（`e.body.msgid` 兜底），按 msgId 记到实例上（`__ancQuoteRec`）；`emitMessage` 只在 `m.msgId` 与记录 id 对得上时使用，避免把上一条的引用串到下一条。
+
+**引用文本怎么取**（字段形状未实测，防御性多层兜底）：
+`quote.text.content` → `quote.content` → `quote.msg.text.content` → `quote.msg.content` → `quote` 字符串；任何一层取不到/抛错都返回空串。
+
+**清洗规则**（只作用于 `quote=` 字段，不碰用户正文；任何一步失败只是少一个字段，不影响原有入站）：
+
+| 规则 | 值 |
+|---|---|
+| 单行化 | `\r\n` / 换行折叠成空格，再折叠连续空白 |
+| 去方括号 | 去掉 `[`、`]`（防止引用文本伪造/破坏 `[anc:...]` 前缀边界） |
+| 限长 | 300 字，超出截断并加 `…`（总长 301） |
+| msgId 白名单 | `^[A-Za-z0-9._:-]{1,64}$`（WorkBuddy 实测 msgId 是 32 位 hex；不合法就不注入 `msg=`） |
+
+**消费方**：Main 看消息前缀里的 `quote=`，原样传给 `executor attention match --quote-text "<quote>"`；匹配层顺序仍是 **正文短号 > 引用短号 > 当前人当前群唯一 open**（D40），短号主路径不变。前缀解析规则写在 `light/skills/anc-task/SKILL.md`。
+
+**观测**：`%ProgramData%\anc\data\patch-in.log` 的入站行现在带 ` msg=<msgId> quote=<引用文本>`（有才写）；引用对象存在但文本取不到时，还会带 ` quote-type=<msgtype>` / `quote-keys=<字段名列表>` 两个**排障专用**字段（不进消息前缀、不影响入站），真实群形状不符时靠它一次性定位。`/emit/status` 的 `observed` 计数不变。
+
 ### 2) 自动升级拦截（辅助补丁）
 
 `main/main-bootstrap.js` 由 Electron 自己的加载器执行，钩不到 `_compile`，所以改从网络层拦：`https.request` / `https.get` 命中 `/v2/update` 时直接返回一个只发 `error` 的假请求，升级检查失败即止。
@@ -57,16 +88,20 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
   - **采集已自动化（GAP-074）**：公司 bot 在第一次遇到未识别成员时会请对方回复一次姓名，然后调用 `bin\bind-member-identity.ps1` 写入 org 并重渲染；管理员不用手工读 `patch-in.log`。
 - 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
 
-### 7) wake bridge（主干 2，opt-in）
+### 7) wake bridge（主干 2，opt-in；2.0 起定向 daily host）
 
 - `wake-bridge.cjs` 在主进程开 `127.0.0.1:18187`；
 - 只有 `%ProgramData%\anc\data\wb-wake.flag` 存在才监听；token 在 `wb-wake-token`；
-- `POST /wake`：当前 composer 为空时 `insertText` 一段短 prompt 并点“发送”；
-- `POST /new`：点“新建任务”→ 选择 `workspace` → 输入 prompt → 发送；用于 03:00 自动开新 host；
-- 不创建新对话、不覆盖人的草稿、不执行任意 JS；
-- `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默。
-- **默认关闭**；它是“自动兜底”，不是无条件自动。开启前确认当前窗口就是公司 bot 的 host。
+- **2.0（D46 / 2026-11-10）**：bridge 在 renderer 里调用 WorkBuddy 内部 `window.wb` API——
+  - `POST /new {prompt, workspace?, conversationId?, title?}`：`wb.conversations.create()`（可指定会话 id/工作区/标题）建任务会话 → `sendPrompt()` 发第一条 → 返回真实 `conversationId`；**只用于 03:00 日切/兼容**；
+  - `POST /wake {prompt, conversationId?}`：有 `conversationId` → `wb.conversations.get(id).sendPrompt([{type:'text',text}])` 定向发 prompt，**不新建会话、不切可见窗口、不点 DOM**；无 `conversationId` → 旧 composer 注入（composer 非空时拒绝）；
+  - `GET /health` → `{ok,pid,port,bridge:"2.0"}`；
+  - `window.wb` 不可用（升级/异常）时自动退回 1.0 的 DOM 流程：`/new` 点“新建任务”→选 workspace→输入→发送；`/wake` 注入当前 composer。日志写 `wb-wake.log`（`new ok via=wb` / `wake ok via=wb` / `FAILED ...`）。
+- 不覆盖人的草稿、不执行任意调用方 JS；token 鉴权 + loopback。
+- `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默；每次动作写 `executor-wake.log`。
+- **默认关闭**；它是“自动兜底”，不是无条件自动。
 - ✅ **2026-11-09 修复（GAP-075）**：`inject.cjs` 在暂停点除了给子进程设 `NODE_OPTIONS`，还直接 `require(preload.cjs)` 到 **Electron 主进程** → `wake-bridge.cjs` 能在主进程启动。实测建 `wb-wake.flag` + 补丁重启后 `18187` 监听、`wb-wake.log` 有 listening、token 生成；`/new`+`host bootstrap` 与真实窗口重启 recover 均已演练。注意 bridge 默认仍 opt-in（没有 flag 时模块 no-op）。
+- ✅ **2026-11-10 实测（D46）**：bridge 2.0 重启后 `{"bridge":"2.0"}`；同一 daily host 会话 `47695768…` 连续接 3 Ticket、3 subagent，wake 日志 5 次 `wake ok via=wb conversation=47695768…`，窗口内无新建会话；`/new` 只用于 03:00。
 
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。
@@ -203,9 +238,13 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 
 1. 启动后看 `%USERPROFILE%\anc\workbuddy-patch.log`：应有 `preload active`、`INJECTED mode=hash target=...wecomaibot-client.js` 与 `APPLIED mode=hash`。
 2. 在任何员工群 @ 公司 bot 发一句「把你收到的这条消息原样复述一遍」。
-3. 预期：bot 复述内容以 `[anc:chat=<chatid> from=<userid>]` 开头；同一群多次一致，不同群 chatid 不同。
-4. 反证：用 `restore.ps1` 重启后再发，前缀消失。
-5. 注入没成功时看启动器输出：`[anc] 注入没成功：…` 会直接给出原因（陈旧状态 / runId 不符 / 无 state 文件 / pid 已退出）。
+3. 预期：bot 复述内容以 `[anc:chat=<chatid> from=<userid>]` 开头；同一群多次一致，不同群 chatid 不同。没有 msgId/引用时就是旧格式（逐字不变）；有则继续带 ` msg=… quote=…`。
+4. **引用兜底（GAP-079，真实群需人工）**：先用 `executor attention create`（或真实流程）让 bot 发一条带 `A12` 的待确认通知 → 在群里**引用那条通知**并 @ 公司 bot，只回「可以」（正文不写短号）→ 预期命中该 Attention（`A12` 已处理），不是「没找到」。
+   - 同时看 `%ProgramData%\anc\data\patch-in.log`：这条入站应带 ` msg=<msgId> quote=<引用文本>`（引用文本单行、无 `[`/`]`、≤300 字）；
+   - 也可机械回放 `executor attention match --quote-text "<quote>"` 确认匹配层命中（匹配顺序：正文短号 > 引用短号 > 唯一 open）。
+   - 没有真实群时可用 `test-emit` 的 `quoteText` / `msgId` 字段模拟（见下），但那只是前缀链路验证，**不算真实群验收**。
+5. 反证：用 `restore.ps1` 重启后再发，前缀消失。
+6. 注入没成功时看启动器输出：`[anc] 注入没成功：…` 会直接给出原因（陈旧状态 / runId 不符 / 无 state 文件 / pid 已退出）。
 
 > **本机补丁由 `anc-patch-guard` 自愈拉起，日志不一定在默认位置。** 运行时证据先看
 > `%ProgramData%\anc\data\patch-state.json`（`applied` / `mode` / `pid` / `runId` / `at`；本机 2026-11-09 实测
@@ -218,6 +257,11 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 同目录 `emit-token.txt` 存在时 `/emit` 要求 `X-Anc-Token`（常量时间比对，不建文件则维持「能连本机就能发」）；
 隔离验证用 `ANC_EMIT_PORT` 换端口，避免注入到在跑部署。见 `docs/OPS.md`「程序化测试入口」。
 
+**引用消息的机械模拟（GAP-079，2026-11-10 加）**：`POST /emit` 的 body 除 `chatId` / `user` / `content` 外，
+还可带 `quoteText`（和可选 `msgId`）。带 `quoteText` 时补丁会对这条注入的消息设一条 quote 记录，
+注入前缀里出现 `quote=`（`msgId` 缺省时自动造 `emit-<seq>-<ts>`）；返回体里有 `quote:true`。
+用于验证「引用文本 → 前缀 → 匹配」链路，**不替代真实群人工引用**。
+
 2026-10-31 的实际日志（已脱敏）：
 
 ```
@@ -227,7 +271,8 @@ powershell -ExecutionPolicy Bypass -File scripts\workbuddy-patch\restore.ps1
 [pid <daemon>] APPLIED mode=hash
 ```
 
-对应落盘 prompt：`<user_query>[anc:chat=<chatid> from=<userid>] …</user_query>`。
+对应落盘 prompt：`<user_query>[anc:chat=<chatid> from=<userid>] …</user_query>`
+（有 msgId / 引用文本时是 `[anc:chat=… from=… msg=… quote=…]`）。
 
 ## 升级流程
 
@@ -308,6 +353,8 @@ launch-patched.ps1
 ## 已知限制
 
 - **改动后行为**：这条能力不属于 WorkBuddy 的产品事实，只能写进 §11 台账，不能写进 §6。
+- **引用文本的字段形状未实测（GAP-079）**：`quote=` 的取法是按已知回调形态做的多层防御性兜底；真实群引用里如果形状不同，表现只是少一个字段（短号主路径不受影响）。部署后第一次真实引用回复时看 `patch-in.log`：有 `quote=` 说明取到了；只有 `quote-type=` / `quote-keys=` 说明形状不符，按键名回来补取法。引用文本限长 300 字，超长通知的短号若不在前 300 字内会抠不到（当前通知文案短号在开头，不影响）。
+- **quote 只在 `emitMessage` 同步链路里可用**：捕获按 msgId 匹配，异步媒体消息（下载完成后才 emit）期间如果又被新消息覆盖，引用可能丢一个字段；不影响消息本身。
 - **只解决「群是谁」，不解决「消息是谁发的」之外的鉴权**：`from.userid` 是发送人，但桌面端没有发送人白名单（§6），权限仍靠群成员与可见范围。
 - **Claw 共享会话**：所有 IM 渠道共用一个会话、一个工作目录；前缀能让模型分清当前群，但不同群的上下文仍在同一个会话里（T20/T22 要重新评估）。
 - **前缀按消息注入**：不写进历史，所以会话压缩/重置不会把当轮前缀抹掉；但要防「模型拿旧轮次的 chatid 当当前群」，仍需按 T20/T22 验证 agent 始终以当轮前缀为准。
@@ -328,6 +375,7 @@ WorkBuddy 闭源，但**这不是"做不到"的理由**。下面这些手段本�
 | 目标 | 手段 | 位置 / 状态 |
 |---|---|---|
 | 拿群身份与发送人 | 在 `_compile` 里包 `emitMessage`，往正文注入 `[anc:chat=… from=…]` | `preload.cjs`，**在跑**（D17） |
+| 拿 msgId 与引用文本 | 包 `handleTextMessage` / `handleMixedMessage` / `handleMediaMessage` 读 `e.body.quote` / `msg_id`，`emitMessage` 追加 ` msg=` / `quote=` | `preload.cjs`，**DEV-02 起**（GAP-079） |
 | 拿出站文本 | 包 `sendReply(chatId, text)` | `preload.cjs`，**在跑**；但企微实际走 `sendStreamChunk`，最终整句不经过它——旁白过滤**实际不生效**（`VERIFY §17`），当前只能靠 persona |
 | 拦自动升级检查 | 劫持 `https.request` 匹配 `/v2/update` | `preload.cjs`，**在跑**；**注意它会让 Electron 主进程崩**，已加进程守卫（`process.type === "browser"` 时直接返回） |
 | 驱动 UI（切工作区、点按钮） | CDP / UIA | 已验证（T6 / T13 / R6） |

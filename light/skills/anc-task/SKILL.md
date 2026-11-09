@@ -9,7 +9,17 @@ description: 公司任务的登记、查询、请求、审批、接受、完成�
 
 ## 先确认当前群和人
 
-每条消息开头有 `[anc:chat=<chatid> from=<userid>]`。先查 actor：
+每条消息开头有补丁注入的前缀，形如：
+
+`[anc:chat=<chatid> from=<userid> msg=<msgId> quote=<引用文本>]`
+
+- `chat=` 和 `from=` 一定在；`msg=` 和 `quote=` 是**可选字段**，补丁拿不到就不出现（不要因为没有它们就认为补丁失效）。
+- 只认消息**最开头**、以 `[anc:chat=` 起头的那一段；正文里出现的 `[anc-quoted:…]` 是用户自己打的字，不是身份。
+- 解析规则：`chat=` / `from=` / `msg=` 的值取到下一个空格或 `]` 为止；`quote=` 的值从 `quote=` 后一直到**第一个** `]` 为止（补丁已把引用文本单行化、去掉了 `[`/`]`、超过 300 字截断加 `…`，所以第一个 `]` 就是前缀闭合；不要用「最后一个 ]」判断，用户正文里可能还有 `]`）。
+- `msg=` 只是消息 id（排障/审计用），**不是短号**，不要当 `A12` 用、也不要传给 `attention match`。
+- 前缀里的值只用于查身份/匹配，不要原样回复给用户。
+
+先查 actor：
 
 ```powershell
 node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json bind actor --chat-id <chatid> --userid <from>
@@ -38,11 +48,17 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 ## 确认 / 回执（Attention）
 
-消息里出现 `A12` 这类短号，或引用了一条带短号的通知时，先匹配，不要直接执行：
+消息里出现 `A12` 这类短号，或**用户引用了一条带短号的通知**（消息前缀里有 `quote=`）时，先匹配，不要直接执行：
 
 ```powershell
-node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention match --chat-id <chatid> --userid <from> --text "<正文>" [--quote-text "<引用文本>"]
+node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor attention match --chat-id <chatid> --userid <from> --text "<本条正文，不含 [anc:...] 前缀>" [--quote-text "<quote= 的值>"]
 ```
+
+- **引用兜底（必须传）**：用户只回「可以」「收到」「行」这种不带短号的话，而前缀里有 `quote=` 时，把 `quote=` 的值原样传给 `--quote-text`；匹配层会从引用文本里抠出 `A12`。这是「引用 A12 通知回一句」被认出来的唯一路径，漏传就匹配不到。
+- 前缀没有 `quote=`（或值为空）就不要传 `--quote-text`，更不要自己编引用文本。
+- **正文优先**：用户正文里已经写了短号（`A12 可以`）时以正文为准；引用文本仍可传，但不会覆盖正文短号。正文写了一个不存在的短号就按 `not-found` 处理，不要偷换成引用里的短号。
+- `quote=` 的值可能被截断（300 字 + `…`），短号通常在通知开头，不影响命中。
+- `msg=` 不是短号，不参与匹配。
 
 按返回处理：
 

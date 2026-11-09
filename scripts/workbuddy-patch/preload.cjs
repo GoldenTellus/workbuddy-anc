@@ -2,16 +2,73 @@
 'use strict';
 // ANC WorkBuddy patch：在 wecomaibot-client 加载时给 emitMessage 套壳，
 // 把 AIBot 回调里的 chatId / 发送人拼进消息正文，让群身份进入 agent 的上下文。
+// 2026-11-10（GAP-079 / DEV-02）起再追加两个可选字段：`msg=<msgId>`、`quote=<引用文本>`。
+// 引用文本来自原型方法 handleTextMessage/handleMixedMessage/handleMediaMessage 的 `e.body.quote`
+// —— emitMessage 收到的 m 里没有 quote；客户端 resolveQuoteMedia 只处理 image/file/video，
+// 文本引用（引用一条带 A12 的 bot 通知再回「可以」）不经过它，只能在原型层先抓。
 //
 // 约束（对应 FORK-DIRECTION §11）：
 //   - 只在本进程内存生效，不改 app.asar / exe，不写厂商代码 diff；
 //   - 目标文件 sha256 与 manifest 不符时 fail-closed：只记日志，不打补丁；
 //   - ANC_WB_PATCH=0 / off / false 时整体关闭；
-//   - 无 manifest 或任何异常都静默跳过，不影响 WorkBuddy 启动。
+//   - 无 manifest 或任何异常都静默跳过，不影响 WorkBuddy 启动；
+//   - quote 捕获/清洗任何一步失败都只是不加 quote 字段，不改变原有入站。
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+
+// ── 入站前缀装饰的纯函数（唯一真相）────────────────────────────────
+// PATCH_BODY 用 .toString() 把同一份实现嵌进目标模块（包在 IIFE 里，避免与压缩后的厂商变量重名）；
+// 测试用 `ANC_WB_PURE_PROBE=1` require 本文件直接拿这三个函数，不复制第二份逻辑。
+// 规则：quote 单行化（去 \r\n、折叠空白）、去 [ ]（防止伪造/破坏 [anc:...] 前缀边界）、
+// 超过 300 字截断加 …；msgId 只允许安全字符（WorkBuddy 实测是 32 位 hex），其余一律不注入。
+function ancOneLine(text, maxLen) {
+  var s = String(text == null ? '' : text);
+  s = s.replace(/[\r\n]+/g, ' ');
+  s = s.replace(/\[/g, '').replace(/\]/g, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  var max = (typeof maxLen === 'number' && maxLen > 0) ? Math.floor(maxLen) : 300;
+  if (s.length > max) s = s.slice(0, max) + '…';
+  return s;
+}
+
+function ancSafeMsgId(v) {
+  var s = String(v == null ? '' : v).trim();
+  return /^[A-Za-z0-9._:-]{1,64}$/.test(s) ? s : '';
+}
+
+// 只用于「排障字段」：quote 的类型名 / 键名列表（真实群引用形状未实测，拿不到文本时靠它定位）。
+function ancSafeToken(v, maxLen) {
+  var s = String(v == null ? '' : v).trim();
+  s = s.replace(/[^A-Za-z0-9_,.:$-]/g, '');
+  var max = (typeof maxLen === 'number' && maxLen > 0) ? Math.floor(maxLen) : 120;
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+// 文本引用的字段形状未在客户端里被读取（GAP-079 原文：形状未实测），按已知回调形态防御性取：
+// quote.text.content（最常见）/ quote.content / quote.msg.text.content / quote.msg.content / quote 字符串。
+// 任何一层是 getter 抛错都吞掉返回空串：捕获失败不能让入站消息消失。
+function ancQuoteTextFromBody(body) {
+  try {
+    if (!body) return '';
+    var q = body.quote;
+    if (!q) return '';
+    if (typeof q === 'string') return q;
+    var v = '';
+    if (q.text && typeof q.text === 'object') v = q.text.content;
+    else if (typeof q.text === 'string') v = q.text;
+    if (!v && typeof q.content === 'string') v = q.content;
+    if (!v && q.msg) {
+      var mt = q.msg.text;
+      v = (mt && typeof mt === 'object') ? mt.content : mt;
+      if (!v && typeof q.msg.content === 'string') v = q.msg.content;
+    }
+    return typeof v === 'string' ? v : '';
+  } catch (e) {
+    return '';
+  }
+}
 
 /**
  * 进程守卫（2026-11-02 加，起因见 VERIFY §16）：
@@ -89,7 +146,7 @@ global.__ancHookHit = function (name) {
   } catch (e) {}
 };
 
-global.__ancLogIn = function (chatId, user, content) {
+global.__ancLogIn = function (chatId, user, content, extra) {
   try {
     // 计数只用于 /emit/status 的观测：入站消息经过补丁包装 = bot 侧确实收到了它。
     // 注意它含真实群消息，不能当"注入已被处理"的精确计数（见 status 的 note）。
@@ -99,8 +156,23 @@ global.__ancLogIn = function (chatId, user, content) {
     }
     const s = String(content == null ? '' : content);
     const t = s.length > 300 ? s.slice(0, 300) + '...' : s;
+    // GAP-079：把 msg=/quote= 也记进 patch-in.log，用于机械验证「引用消息到底带没带进来」。
+    // 真实引用要人在群里点引用；这里先保证「带进来就能看到」，不替代真实群验收。
+    let tail = '';
+    try {
+      const ex = extra || {};
+      const mid = ancSafeMsgId(ex.msgId);
+      const q = ancOneLine(ex.quote, 300);
+      const qt = ancSafeToken(ex.quoteType, 32);
+      const qk = ancSafeToken(ex.quoteKeys, 120);
+      if (mid) tail += ' msg=' + mid;
+      if (q) tail += ' quote=' + q;
+      // 真实群引用形状未实测（GAP-079）：拿不到文本时至少留下类型/键名，免得上生产再猜。
+      if (qt) tail += ' quote-type=' + qt;
+      if (qk) tail += ' quote-keys=' + qk;
+    } catch (e) { /* 记录失败不影响计数与日志主体 */ }
     const line = new Date().toISOString() + ' chat=' + String(chatId || '').slice(0, 64) +
-      ' from=' + String(user || '').slice(0, 64) + ' len=' + s.length +
+      ' from=' + String(user || '').slice(0, 64) + tail + ' len=' + s.length +
       ' text=' + t.replace(/\r?\n/g, '\\n') + '\n';
     fs.appendFileSync(IN_LOG, line, 'utf8');
   } catch (e) {}
@@ -194,7 +266,8 @@ const __ancEmitState = {
 };
 global.__ancEmitState = __ancEmitState;
 
-if (fs.existsSync(TEST_FLAG)) {
+// probe 是测试模式（只读导出纯函数），不开测试用网络口。
+if (fs.existsSync(TEST_FLAG) && process.env.ANC_WB_PURE_PROBE !== '1') {
   try {
     const __http = require('http');
     const __srv = __http.createServer((req, res) => {
@@ -262,10 +335,24 @@ if (fs.existsSync(TEST_FLAG)) {
           const gapMs = __ancEmitState.lastAcceptedAt ? now - __ancEmitState.lastAcceptedAt : Infinity;
           const seq = ++__ancEmitState.seq;
           const queued = gapMs < EMIT_QUEUE_WINDOW_MS;
+          // GAP-079 机械验证入口：payload 可带 `quoteText`（和可选 `msgId`），模拟
+          // 「用户引用一条带 A12 的通知，只回一句 可以」——真实引用要人在群里操作，这里只证明
+          // 「引用文本能进前缀」。message id 没给时造一个安全值，避免 quote 因无 id 匹配不上。
+          const hasQuote = typeof p.quoteText === 'string' && p.quoteText.length > 0;
+          if (hasQuote) {
+            try {
+              if (msg.msgId == null || msg.msgId === '') msg.msgId = 'emit-' + seq + '-' + now;
+              global.__ancLastClient.__ancQuoteRec = {
+                at: now,
+                id: String(msg.msgId),
+                quote: p.quoteText,
+              };
+            } catch (_) { /* 模拟失败就按普通消息注入 */ }
+          }
           global.__ancLastClient.emitMessage(msg);
           __ancEmitState.accepted += 1;
           __ancEmitState.lastAcceptedAt = now;
-          log('test-emit seq=' + seq + ' queued=' + queued + ' chat=' + msg.chatId.slice(0, 12) + ' user=' + msg.user.slice(0, 8) + ' len=' + msg.content.length);
+          log('test-emit seq=' + seq + ' queued=' + queued + ' chat=' + msg.chatId.slice(0, 12) + ' user=' + msg.user.slice(0, 8) + ' len=' + msg.content.length + (hasQuote ? ' quote=1' : ''));
           reply(200, {
             ok: true,
             accepted: true,
@@ -273,6 +360,8 @@ if (fs.existsSync(TEST_FLAG)) {
             queued: queued,
             gapMs: Number.isFinite(gapMs) ? gapMs : null,
             chatId: msg.chatId,
+            msgId: msg.msgId == null ? null : String(msg.msgId),
+            quote: hasQuote,
             len: msg.content.length,
             note: queued
               ? '已排队：距上一条注入仅 ' + gapMs + ' ms。bot 内部串行处理，后一条可能延迟数分钟（VERIFY §40/§85.3）；本次只代表已投递，不代表已处理。一次只注一条，等回复后再注。'
@@ -358,8 +447,19 @@ global.__ancMarkMiss = function () {
 // （实测「我来说明一下这个流程」被吃掉），必须带动作限定。
 const NARRATION_RE = /^(?:在入库，稍等|稍等[。.．]?$|我先[^，。！？]{0,10}(?:看|查|找|确认|列|验)|让我[^，。！？]{0,8}(?:看|查|找)|我来[^，。！？]{0,8}(?:看|查|找|确认|列|验)|我找一下|我查一下|我看一下|看了一下|查一下|格式清楚了|批次就绪|已就绪|现在写(?:整理|文档|meta)|执行入库|文件就绪|原件已就位|已加载|服务正常|工具名|重新列出|回退到|已就位|入库执行)/;
 
+// 把上面三个纯函数原样嵌进 PATCH_BODY：包一层 IIFE 只暴露 __ancPure，避免和压缩后的
+// 厂商模块作用域变量重名；用 toString() 保证「测试验证的那份」就是「补丁里跑的那份」。
+const PATCH_PURE_SRC = ';var __ancPure = (function () {\n' +
+  ancOneLine.toString() + '\n' +
+  ancSafeMsgId.toString() + '\n' +
+  ancSafeToken.toString() + '\n' +
+  ancQuoteTextFromBody.toString() + '\n' +
+  '  return { oneLine: ancOneLine, safeMsgId: ancSafeMsgId, safeToken: ancSafeToken, quoteTextFromBody: ancQuoteTextFromBody };\n' +
+  '})();';
+
 const PATCH_BODY = [
   ';var __ancIdentityPatch = true;',
+  PATCH_PURE_SRC,
   ';function __ancFilterNarration(text) {',
   '  if (typeof text !== "string") return text;',
   '  var lines = text.split(/\\r?\\n/);',
@@ -381,7 +481,29 @@ const PATCH_BODY = [
   '      try {',
   '        if (m && typeof m.content === "string" && !m.__ancTagged) {',
   '          m.content = m.content.replace(/\\[\\s*anc\\s*[:\\uFF1A]/gi, "[anc-quoted:");',
-  '          if (m.chatId) { try { if (global.__ancLogIn) try { global.__ancLogIn(m.chatId, m.user, m.content); } catch (e) {} m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + "] " + m.content; } catch (e) {} }',
+  '          if (m.chatId) {',
+  '            try {',
+  '              // GAP-079：msgId 与引用文本只追加、不删旧字段（chat/from 仍是主路径）。',
+  '              // 两个字段都可缺省；拿不到安全值就不加，绝不让装饰失败影响原有入站。',
+  '              var __ancMid = __ancPure.safeMsgId(m.msgId);',
+  '              var __ancQ = "";',
+  '              var __ancQType = "";',
+  '              var __ancQKeys = "";',
+  '              try {',
+  '                var __ancRec = this.__ancQuoteRec;',
+  '                if (__ancRec && __ancRec.id && m.msgId != null && String(m.msgId) === String(__ancRec.id)) {',
+  '                  __ancQ = __ancPure.oneLine(__ancRec.quote, 300);',
+  '                  __ancQType = __ancPure.safeToken(__ancRec.qtype, 32);',
+  '                  if (!__ancQ) __ancQKeys = __ancPure.safeToken(__ancRec.qkeys, 120);',
+  '                }',
+  '              } catch (e) {}',
+  '              var __ancExtra = "";',
+  '              if (__ancMid) __ancExtra += " msg=" + __ancMid;',
+  '              if (__ancQ) __ancExtra += " quote=" + __ancQ;',
+  '              if (global.__ancLogIn) { try { global.__ancLogIn(m.chatId, m.user, m.content, { msgId: __ancMid, quote: __ancQ, quoteType: __ancQType, quoteKeys: __ancQKeys }); } catch (e) {} }',
+  '              m.content = "' + PREFIX + '" + m.chatId + " from=" + (m.user || "") + __ancExtra + "] " + m.content;',
+  '            } catch (e) {}',
+  '          }',
   '          try { Object.defineProperty(m, "__ancTagged", { value: true, enumerable: false }); } catch (e) {}',
   '        }',
   '        try { if (global.__ancCanaryWrite) global.__ancCanaryWrite({ at: new Date().toISOString(), chatId: !!(m && m.chatId), user: !!(m && m.user), contentStr: !!(m && typeof m.content === "string") }); } catch (e) {}',
@@ -408,6 +530,44 @@ const PATCH_BODY = [
   '        try { Object.defineProperty(__ancCls.prototype, __m, __d); } catch (e) {}',
   '      });',
   '    } catch (e) {}',
+  '    // 引用文本捕获（GAP-079 / DEV-02）：emitMessage 的 m 里没有 quote，原始帧在 e.body.quote。',
+  '    // 客户端 resolveQuoteMedia 只处理 image/file/video——引用一条文本通知（带 A12）时它返回空，',
+  '    // quote 根本不进 emitMessage，所以在原型层先抓：按 msg_id 记到实例上，emitMessage 再按 id 取。',
+  '    // 放在通用包装之后，包住的是「抓实例」那层，不影响原有方法链；任何异常一律吞掉。',
+  '    try {',
+  '      var __ancCaptureQuote = function (__ancName) {',
+  '        try {',
+  '          var __ancH = __ancCls.prototype[__ancName];',
+  '          if (typeof __ancH !== "function" || __ancH.__ancQuoteWrapped) return;',
+  '          var __ancWrapped = function (e) {',
+  '            try {',
+  '              var __ancBody = e && e.body;',
+  '              if (__ancBody) {',
+  '                var __ancBid = __ancBody.msg_id || __ancBody.msgid || "";',
+  '                var __ancQObj = __ancBody.quote;',
+  '                var __ancQType = "";',
+  '                var __ancQKeys = "";',
+  '                var __ancQText = __ancPure.quoteTextFromBody(__ancBody);',
+  '                try {',
+  '                  if (__ancQObj && typeof __ancQObj === "object") {',
+  '                    __ancQType = __ancPure.safeToken(__ancQObj.msgtype || __ancQObj.type || "", 32);',
+  '                    // 文本取不到时留键名：真实群引用形状未实测，部署后靠 patch-in.log 的 quote-keys 定位。',
+  '                    if (!__ancQText) __ancQKeys = __ancPure.safeToken(Object.keys(__ancQObj).slice(0, 12).join(","), 120);',
+  '                  }',
+  '                } catch (e3) {}',
+  '                this.__ancQuoteRec = { at: Date.now(), id: __ancBid ? String(__ancBid) : "", quote: __ancQText, qtype: __ancQType, qkeys: __ancQKeys };',
+  '              }',
+  '            } catch (e1) {}',
+  '            return __ancH.apply(this, arguments);',
+  '          };',
+  '          __ancWrapped.__ancQuoteWrapped = true;',
+  '          __ancCls.prototype[__ancName] = __ancWrapped;',
+  '        } catch (e2) {}',
+  '      };',
+  '      __ancCaptureQuote("handleTextMessage");',
+  '      __ancCaptureQuote("handleMixedMessage");',
+  '      __ancCaptureQuote("handleMediaMessage");',
+  '    } catch (e) {}',
   '    // 出站过滤：单点在这里，因为最终回复走 sendReply（内部按字节分块逐条 sendMessage）。',
   '    // sendStreamChunk 不动——流式块可能只有几个字，判断不了整句，硬过滤会误杀。',
   '    if (typeof __ancCls.prototype.sendReply === "function" && !__ancCls.prototype.__ancReplyPatched) {',
@@ -431,6 +591,30 @@ const PATCH_BODY = [
   '} catch (e) { try { if (global.__ancMarkMiss) global.__ancMarkMiss(); } catch (e2) {} }',
   ''
 ].join('\n');
+
+// 测试入口（只读、无副作用）：`ANC_WB_PURE_PROBE=1` 时提前返回，供 narration.test.mjs 校验
+// 纯函数与 PATCH_BODY（用伪造的 WecomAiBotClient 跑一遍注入）。默认不开启，不影响真实补丁路径。
+if (process.env.ANC_WB_PURE_PROBE === '1') {
+  // 只读测试：摘掉会写生产状态/日志的钩子。不摘的话，测试里伪造客户端跑 PATCH_BODY 会
+  // 把 patch-state.json / patch-canary.json / patch-hooks.log 写成测试进程的东西（2026-11-10 踩过）。
+  // __ancLogIn 保留：格式验证要它；测试自己接管（覆盖成内存数组或重定向到临时文件）。
+  try {
+    delete global.__ancMarkApplied;
+    delete global.__ancMarkMiss;
+    delete global.__ancCanaryWrite;
+    delete global.__ancHookList;
+    delete global.__ancHookHit;
+  } catch (e) { /* ignore */ }
+  module.exports = {
+    ancOneLine: ancOneLine,
+    ancSafeMsgId: ancSafeMsgId,
+    ancSafeToken: ancSafeToken,
+    ancQuoteTextFromBody: ancQuoteTextFromBody,
+    patchBody: PATCH_BODY,
+    prefix: PREFIX,
+  };
+  return;
+}
 
 const Module = require('module');
 const origCompile = Module.prototype._compile;

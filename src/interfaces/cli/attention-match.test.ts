@@ -97,3 +97,51 @@ test('attention match：未知的人 / 找不到 / SA12 不误判', () => {
     assert.equal(none.reason, 'not-found');
   } finally { db.close(); }
 });
+
+// GAP-079 / DEV-02（2026-11-10）：补丁把引用文本注入消息前缀的 quote= 字段，Main 原样传给
+// `--quote-text`。验收场景：用户引用一条带 A12 的通知，只回「可以」（正文不带短号）→ 命中。
+test('attention match：正文无短号时用引用文本兜底（真实通知文案形状）', () => {
+  const db = openDb(':memory:');
+  try {
+    seed(db);
+    const a = createAttention(db, {
+      purpose: 'review', question: '可以提交吗？', requiredConfirmerId: 'emp', originChatId: 'chat-emp',
+    });
+    // 与 buildAttentionText 的 ask 文案一致（短号在【】里，补丁不去这类括号，靠正则边界识别）
+    const notice = `【${a.short_code}】${a.question}\n回复 @公司bot ${a.short_code} 可以 / 不行 <原因>。`;
+    const quoted = matchAttention(db, { chatId: 'chat-emp', userid: 'uid-emp', text: '可以', quoteText: notice });
+    assert.equal(quoted.reason, 'ok');
+    assert.equal(quoted.code, a.short_code);
+    assert.equal(quoted.ambiguous, false);
+    assert.equal(quoted.matches.length, 1);
+    assert.equal(quoted.matches[0].attention.attention_id, a.attention_id);
+    assert.equal(quoted.matches[0].allowed, true);
+    assert.deepEqual(quoted.matches[0].allowed_actions, ['approve', 'reject']);
+  } finally { db.close(); }
+});
+
+test('attention match：正文短号优先于引用短号；两边都无短号且无候选 → not-found', () => {
+  const db = openDb(':memory:');
+  try {
+    seed(db);
+    createAttention(db, {
+      purpose: 'answer', question: 'q1', requiredConfirmerId: 'emp', originChatId: 'chat-emp',
+    }); // A1
+    // 正文写了一个不存在的短号：按「正文优先」返回 not-found，不偷偷回退到引用里的 A1
+    const wrong = matchAttention(db, {
+      chatId: 'chat-emp', userid: 'uid-emp', text: 'A99 可以', quoteText: '【A1】有一条待确认',
+    });
+    assert.equal(wrong.reason, 'not-found');
+    assert.equal(wrong.code, 'A99');
+    assert.equal(wrong.matches.length, 0);
+
+    // 正文、引用都没有短号；当前人在当前群又没有唯一 open → not-found（不能猜）
+    const empty = matchAttention(db, {
+      chatId: 'chat-company', userid: 'uid-emp', text: '可以', quoteText: '这条引用里没有短号',
+    });
+    assert.equal(empty.reason, 'not-found');
+    assert.equal(empty.code, null);
+    assert.equal(empty.ambiguous, false);
+    assert.equal(empty.matches.length, 0);
+  } finally { db.close(); }
+});

@@ -47,6 +47,10 @@ function itemFor(db: DatabaseSync, actor: identity.Person, a: executor.Attention
 /**
  * 短号确认的确定性匹配层：不执行动作，只回答“这条消息可能指哪几条 Attention”。
  * 顺序：正文短号 > 引用文本短号 > 当前人当前群唯一 open；多条不猜。
+ *
+ * 引用文本（quoteText）来自补丁注入的 `quote=` 字段（GAP-079 / DEV-02）：
+ * 用户引用一条带 `A12` 的 bot 通知、只回「可以」时正文没有短号，靠引用文本兜底；
+ * 正文里写了短号则以正文为准（不拿引用覆盖正文，避免“引用 + 另写一个号”时选错）。
  */
 export function matchAttention(
   db: DatabaseSync,
@@ -55,7 +59,9 @@ export function matchAttention(
   const actor = identity.resolveActor(db, input.chatId, input.userid);
   if (!actor.person) return { reason: 'unknown-actor', ambiguous: false, code: null, matches: [] };
 
-  const code = extractShortCode(input.text) ?? extractShortCode(input.quoteText ?? '');
+  // 正文短号优先；正文没有才看引用文本里的短号（D40 匹配顺序）。
+  const textCode = extractShortCode(input.text);
+  const code = textCode ?? extractShortCode(input.quoteText ?? '');
   if (code) {
     const a = executor.getAttentionByCode(db, code);
     if (!a) return { reason: 'not-found', ambiguous: false, code, matches: [] };
