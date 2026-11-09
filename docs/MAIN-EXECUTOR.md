@@ -231,7 +231,7 @@ report dropped  → done
 **投递语义（GAP-055 / D31）：at-least-once**
 
 - Main ↔ 本地服务**没有独立 ack**：`claim` 返回 Assignment 即视为投递；Main 崩溃后同一 Ticket 可能被再次 claim，靠下面的幂等收敛。
-- `claim` / `start` / `report` / `end` 全部幂等：重复 `start` 不新建 Assignment（返回当前状态）；同一 Assignment 重复 `report` **以第一次为准**，后续返回 409/业务拒绝并记 `executor_events`（不重复推进 Ticket）。
+- `claim` / `start` / `report` / `end` 全部幂等：重复 `start` 不新建 Assignment（返回当前状态）；同一 running Assignment 重复 `report` 目前允许多条（GAP-071 待补）；已结束 Assignment 的迟到 Report 记 `late=1`，只留证不推进 Ticket。
 - 迟到 Report（Assignment 已结束/被接管）记 `reports.late=1`，**只留证**：不覆盖新 Assignment 状态，也不覆盖 Ticket 当前状态。
 
 ### 2.4 Human slot
@@ -325,8 +325,8 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 | Attention 接口（问答 / 确认 / 超时） | 主干 3（占位；本契约只留 `waiting` Report 信号） |
 | 强路径隔离/ACL | D28：接受逻辑隔离；OS/ACL 留作部署选项 |
 | 授权默认值（tools/vault_paths/budget/expires_at） | 已定：DDL 兜底 + Main 每次显式填（GAP-054 / D31，见 §2.2） |
-| Ticket 授权字段的 CLI 入参（`--tools` / `--vault-paths` / `--budget` / `--max-attempts` / `--expires-at`） | 待补（GAP-054 实现对齐）：模块 `createTicket` 已支持，CLI `ticket create` 尚未暴露 |
-| 重复 Report 的 409/拒绝收敛 | 待补（GAP-055 实现对齐）：当前 `appendReport` 对同一 running Assignment 允许多条、对已结束 Assignment 记 `late=1` 不拒绝 |
+| Ticket 授权字段的 CLI 入参（`--tools` / `--vault-paths` / `--budget` / `--max-attempts` / `--expires-at`） | 归主干 2（GAP-071）：模块 `createTicket` 已支持，CLI `ticket create` 尚未暴露 |
+| 重复 Report 的 409/拒绝收敛 | 归主干 2（GAP-071）：当前 `appendReport` 对同一 running Assignment 允许多条、对已结束 Assignment 记 `late=1` 不拒绝 |
 | 产物/证据保留与清理 | GAP-058 / D31：任务目录 **90 天**、executor reports/events 审计 **180 天**、vault 投影**长期**；清理责任 = 主机管理员 / 运维计划任务；**自动清理未实现（待实现）** |
 | Task ↔ Ticket 完整映射与迁移 | 主干 2 后续（GAP-034，见 §2.2.1） |
 

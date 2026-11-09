@@ -138,7 +138,7 @@ doc-map.json / INDEX 入口
 | 任务 | 13 个 Ready，principal 正确 | 0 个 |
 | 补丁 | 补丁启动器，`applied=true` 且 pid 活着 | 不装 |
 | wake/new | `wb-wake.flag` + workspace；重启后 18187 | 不配置 |
-| 体检 | `doctor` 31 项 FAIL=0 | 员工侧 verify |
+| 体检 | `doctor` 34 项 FAIL=0 | 员工侧 verify |
 | 备份 | 本地 + 离机；恢复演练 | 无公司库，仅本机资料 |
 | 日志 | `loop.log` / `executor` 日志轮转 | 安装日志 |
 | 回滚 | 部署回滚、任务注销、DB 快照 | 卸载/恢复 persona |
