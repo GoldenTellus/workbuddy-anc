@@ -800,6 +800,7 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark org -AsDone
 | 群里加**群机器人**，拿 webhook | 群设置 → 群机器人 | 提醒/通知从这个 webhook 发 |
 | 把四类群 chatId + webhook 文件名交给 agent | 见 §1 第 10/10b 项 | 写进 `company.md` / `depts/*.md` |
 | 通讯录里查每个员工的 **userid** | 管理后台 → 通讯录 | §10.4 要用 |
+| 给需要和公司 bot 对话的员工分配 **WorkBuddy 席位 / 可使用成员** | 管理后台 → 智能专区 → 智能机器人 → 机器人管理 → WorkBuddy | 未分配时员工发消息会被企微拦截：**“你不在该智能机器人的可使用范围，无法与它聊天”**（2026-11-09 实测）；也可开启「成员领用设置」让员工自己领，减少逐个手工分配 |
 
 > **⚠ `corpId` / `corpSecret` 其实不需要（2026-11-05 查证，`VERIFY §77`）**
 >
