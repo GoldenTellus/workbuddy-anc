@@ -36,6 +36,7 @@
 - `disabled` 只认字符串 `true`（`1`/`yes` 不生效）；停用成员不出 persona、不进 `groups.json`，旧产物删除。
 - `groups.json` 同时输出 `members[]` 与 `groups[]`：employee 来自 `members.chat_id`，department 来自 `depts.chat_id`，company/boss_dm 来自 `company.md`；没有 chat_id 的群不生成。
 - `company.boss` 唯一且必须是启用成员；`members.manages` 引用的部门必须存在。
+- 成员 `mention_userid`（企微通讯录 userid，GAP-080）：只允许 `[A-Za-z0-9_@.-]`、**≤64**，可空；空值当没配。它只进 webhook `mentioned_list` 用于真 @ 人，**不进 persona 文本**，所以不受 persona 文本字段那套 markdown 限制。拿不到就留空，通知回退「原群中性短号不 @」。
 - 没有 `userid` 的成员**不生成**个人 persona（否则模板里是字面量 `<userid>`）。
 - 孤儿成员目录只在部署对拍通过后清理，且只删"有 CODEBUDDY.md 或空"的目录。
 
@@ -70,3 +71,4 @@
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P4 迁入 `src/modules/org/`；index 拆成 persona + deploy | 模块化 |
 | 2026-11-07 | org 加 boss/manages/群配置；groups.json 输出四类群 | 主干 1 |
+| 2026-11-10 | 成员加 `mention_userid`（通讯录 userid，webhook 真 @ 用）+ 字符集/长度校验；`org.example` 补示例 | GAP-080 / DEV-03 |

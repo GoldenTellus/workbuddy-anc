@@ -173,6 +173,13 @@ export function sendAttentionNotice(
   }
 
   const text = buildAttentionText(db, a, kind, target);
+  // GAP-080：原群只发中性短号时，收件人若有企微通讯录 userid 就带 mentioned_list 真 @；
+  // 拿不到（或值不安全）就不传 mentions —— 回退中性短号，不报错、不阻断。
+  // 私密群/老板 1:1 不需要 @（群里只有收件人），传了也没意义。
+  const mention = target.mode === 'origin'
+    ? identity.resolvePerson(db, target.person_id)?.mention_userid
+    : null;
+  const mentions = mention && identity.isMentionUserid(mention) ? [mention] : [];
   try {
     const q = delivery.enqueue(db, {
       text,
@@ -180,6 +187,7 @@ export function sendAttentionNotice(
       dedupeKey: dedupeKey(a, kind),
       attentionId: a.attention_id,
       at,
+      mentions,
     });
     return {
       sent: q.inserted,

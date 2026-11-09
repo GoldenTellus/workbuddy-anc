@@ -31,6 +31,7 @@
 - 发送前先 `claim`（pending → sending）；重叠的 tick / `outbox flush` 不会重复发。
 - 领取后 10 分钟没回写视为发送方退出，可重领。
 - 到点提醒迟到超过 1 小时 → `EXPIRED`，不补发。
+- `mentions` 原样进 webhook 的 `mentioned_list`（企微 userid 才 @ 得到人）；空数组 = 不 @，**不影响发送**。调用方（Attention 通知）只在「原群中性短号 + 收件人有 `mention_userid`」时传，私密群不 @。
 - `last_error` 进库前去掉 URL 与文件原文。
 - 脏 payload（坏 JSON）直接判死，不能让它把整轮 tick 卡住。
 
@@ -64,3 +65,4 @@
 |---|---|---|
 | 2026-11-06 | 建档；`sendPending` 已迁入 `send.ts` | 模块化立项 / P3 |
 | 2026-11-06 | P4 迁入 `outbox.ts`，delivery 完整 | 模块化 |
+| 2026-11-10 | 明确 `mentions` 语义：webhook `mentioned_list` 真 @，空数组不 @ 不影响发送 | GAP-080 / DEV-03 |

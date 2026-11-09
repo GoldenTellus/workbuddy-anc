@@ -14,7 +14,7 @@
 
 | 数据/文件 | 说明 |
 |---|---|
-| `people` 表 | `person_id` 主键；`userid` 唯一；`system_role`：boss/manager/employee；`dept_id` |
+| `people` 表 | `person_id` 主键；`userid` 唯一（会话级 `wok…` 会话 id）；`mention_userid` 企微通讯录 userid（webhook 真 @ 用，可空）；`system_role`：boss/manager/employee；`dept_id` |
 | `groups` 表 | `chat_id` 主键；`type`：employee/department/company/boss_dm；`employee_id`/`dept_id`/`webhook_file` |
 | `manager_scopes` 表 | 管理者 → 部门（多对多） |
 | `chat_bindings` 表 | 兼容层：员工群 `chat_id` → `employee` / `userid` / `webhook_file` |
@@ -28,7 +28,8 @@
 - `unbind(db, chatId)` / `listBindings(db)`
 - `importGroups(db, groups)`：一次导入 `groups.json` 的 `members[]` 与 `groups[]`（四类群）
 - `assertWebhookFileName(name)`：防路径穿越
-- `upsertPerson` / `resolvePerson` / `resolvePersonByUserid` / `listPeople`
+- `upsertPerson` / `resolvePerson` / `resolvePersonByUserid` / `listPeople`；`upsertPerson` 可带 `mentionUserid`（不传/空串 = 清空）
+- `isMentionUserid(v)`：webhook `mentioned_list` 取值是否安全（`[A-Za-z0-9_@.-]`、≤64）
 - `upsertGroup` / `resolveGroup` / `listGroups`
 - `setManagerScopes` / `listManagerScopes`
 - `resolveActor(db, chatId, userid)` → `{group, person}`；缺任一返回 null
@@ -41,6 +42,8 @@
 - `webhook_file` **只能是文件名**，不能是路径；否则拒绝。
 - 查不到绑定 → **返回 null**，调用方必须失败，**禁止退回任何默认群**。
 - `people.userid` 唯一；空 userid 可多条。
+- `people.mention_userid` 只用于 webhook `mentioned_list` 真 @（GAP-080）：字符集 `[A-Za-z0-9_@.-]`、≤64，空表示没配；它**不能**代替 `userid` 做身份识别，`userid` 也不能当 @ 目标（会话级 `wok…` 不一定 @ 得到人）。
+- `people` 是 org 的投影：`bind sync-org` 重跑时按 org 全量覆盖，org 删掉 `mention_userid` 会清空库里的旧值；`bind verify-org` 对账这一列，漂移要报错（否则只会悄悄回到不 @）。
 - `groups` 只有四类：employee / department / company / boss_dm；employee 群必须有 `employee_id`，department 群必须有 `dept_id`。
 - `manager_scopes` 是管理者范围的真相；`system_role=manager` 不等于自动有范围。
 - 隐私路由只决定“在哪说/能不能说”，不取 `chat_id`；实际渠道由调用方解析。
@@ -77,3 +80,4 @@
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P4 迁入 `src/modules/identity/` | 模块化 |
 | 2026-11-07 | 加 people/groups/manager_scopes、policy、privacy | 主干 1 |
+| 2026-11-10 | people 加 `mention_userid`（通讯录 userid）；sync-org 写入、verify-org 对账；`isMentionUserid` | GAP-080 / DEV-03 |

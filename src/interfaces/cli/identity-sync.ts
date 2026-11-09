@@ -52,6 +52,7 @@ export function syncOrgIdentity(db: DatabaseSync, orgDir: string): OrgSyncResult
       personId: m.id,
       name: m.name,
       userid: m.userid,
+      mentionUserid: m.mention_userid,
       systemRole: role,
       deptId: m.dept,
       status: m.disabled ? 'disabled' : 'active',
@@ -158,6 +159,8 @@ export function verifyOrgIdentity(db: DatabaseSync, orgDir: string): OrgVerifyRe
     const role = org.boss === m.id ? 'boss' : (m.manages?.length ? 'manager' : 'employee');
     if (p.system_role !== role) problems.push(`${m.id} 角色不一致: org=${role} db=${p.system_role}`);
     if ((p.userid ?? null) !== (m.userid ?? null)) problems.push(`${m.id} userid 不一致: org=${m.userid ?? 'null'} db=${p.userid ?? 'null'}`);
+    // mention_userid 是 webhook 真 @ 的唯一来源，漂移了不会报错、只会悄悄回到不 @，所以要显式对账
+    if ((p.mention_userid ?? null) !== (m.mention_userid ?? null)) problems.push(`${m.id} mention_userid 不一致: org=${m.mention_userid ?? 'null'} db=${p.mention_userid ?? 'null'}`);
     if ((p.dept_id ?? null) !== (m.dept ?? null)) problems.push(`${m.id} 部门不一致: org=${m.dept ?? 'null'} db=${p.dept_id ?? 'null'}`);
     const scopes = [...listManagerScopes(db, m.id)].sort();
     const want = [...(m.manages ?? [])].sort();

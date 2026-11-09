@@ -37,6 +37,30 @@ test('people：按 userid 解析，更新角色/部门', () => {
   } finally { d.close(); }
 });
 
+test('people：mention_userid 只接受企微 userid 字符集（≤64），空串清空', () => {
+  const d = db();
+  try {
+    const p = upsertPerson(d, {
+      personId: 'zhangsan', name: '张三', userid: 'uid-zs', mentionUserid: 'zhang.san@corp',
+    });
+    assert.equal(p.mention_userid, 'zhang.san@corp');
+    assert.equal(resolvePersonByUserid(d, 'uid-zs')?.mention_userid, 'zhang.san@corp');
+
+    // 空串 = 清空：org 删掉 mention_userid 后同步要能回退到「不 @」
+    assert.equal(upsertPerson(d, {
+      personId: 'zhangsan', name: '张三', userid: 'uid-zs', mentionUserid: '',
+    }).mention_userid, null);
+
+    for (const bad of ['zhang san', '张三', 'a'.repeat(65), 'zhang/../x', 'a"b']) {
+      assert.throws(
+        () => upsertPerson(d, { personId: 'zhangsan', name: '张三', mentionUserid: bad }),
+        /mention_userid 不合规/,
+        bad,
+      );
+    }
+  } finally { d.close(); }
+});
+
 test('groups：四类群 + 约束', () => {
   const d = db();
   try {

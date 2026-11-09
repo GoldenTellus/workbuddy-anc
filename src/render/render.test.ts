@@ -218,6 +218,37 @@ test('org：frontmatter 混入说明文字时解析报错（不静默跳过）',
   }
 });
 
+test('org：member.mention_userid 只接受企微 userid 字符集，且不进个人 persona', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anc-org-mention-'));
+  const org = join(dir, 'org');
+  const out = join(dir, 'out');
+  try {
+    makeOrg(org);
+    writeFileSync(join(org, 'members', 'zhangsan.md'), [
+      '---', 'id: zhangsan', 'name: 张三', 'role: manager', 'userid: u-zhang',
+      'mention_userid: zhang.san@corp', 'chat_id: chat-a', 'webhook_file: wecom-webhook.txt', '---',
+    ].join('\n'), 'utf8');
+
+    const loaded = loadOrg(org);
+    assert.equal(loaded.members[0].mention_userid, 'zhang.san@corp');
+
+    const r = renderOrg(org, out);
+    assert.equal(r.members, 1);
+    // 通讯录 userid 只进 webhook 的 mentioned_list，不进 persona 文本（不进渲染变量）
+    const member = readFileSync(join(out, 'members', 'zhangsan', 'CODEBUDDY.md'), 'utf8');
+    assert.doesNotMatch(member, /zhang\.san@corp/);
+
+    // 会原样进 webhook 的值：非法字符 / 超长 / 路径穿越一律拒绝
+    for (const bad of ['zhang san', '张三', 'a'.repeat(65), 'zhang/../x', 'a"b']) {
+      writeFileSync(join(org, 'members', 'zhangsan.md'),
+        `---\nid: zhangsan\nname: 张三\nrole: manager\nuserid: u-zhang\nmention_userid: ${bad}\n---\n`, 'utf8');
+      assert.throws(() => loadOrg(org), /mention_userid 不合规/, bad);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('org：未知字段要报错（拼错的键会被静默忽略，字段没生效却不报错）', () => {
   const dir = mkdtempSync(join(tmpdir(), 'anc-org-unk-'));
   try {

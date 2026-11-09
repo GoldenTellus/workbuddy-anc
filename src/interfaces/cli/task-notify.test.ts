@@ -75,6 +75,22 @@ test('notifyTaskEvent：跨部门请求通知执行人部门管理者；批准�
   } finally { db.close(); }
 });
 
+test('notifyTaskEvent：优先用通讯录 mention_userid 真 @，没配才退回 userid', () => {
+  const db = openDb(':memory:');
+  try {
+    seed(db);
+    upsertPerson(db, {
+      personId: 'emp2', name: '同事', userid: 'u-emp2', mentionUserid: 'zhangsan-real', systemRole: 'employee', deptId: 'sales',
+    });
+    const t = createTaskRequest(db, {
+      title: '看报价', requesterId: 'emp', assigneeId: 'emp2', deptId: 'sales', requiresApproval: false,
+    });
+    const r = notifyTaskEvent(db, t, 'requested');
+    assert.equal(r.sent, 1);
+    assert.deepEqual(messages(db)[0].mentions, ['zhangsan-real']);
+  } finally { db.close(); }
+});
+
 test('notifyTaskEvent：接受通知交办人；拒绝带原因通知交办人', () => {
   const db = openDb(':memory:');
   try {

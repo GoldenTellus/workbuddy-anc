@@ -94,6 +94,60 @@ test('attention notify：没有私密渠道时回原群，只发中性短号，�
     const text = buildAttentionText(db, a, 'ask', r.target!);
     assert.match(text, /A1/);
     assert.doesNotMatch(text, /内部问题/);
+    // 没配 mention_userid：不带 mentions，回退中性短号不 @（GAP-080 的失败路径不报错、不阻断）
+    assert.deepEqual((JSON.parse(outbox(db, r.outbox_id!).payload) as { mentions: string[] }).mentions, []);
+  } finally { db.close(); }
+});
+
+test('attention notify：原群中性短号时带通讯录 userid 真 @；私密群不 @', () => {
+  const db = openDb(':memory:');
+  try {
+    seed(db);
+    // 私密群（收件人自己的员工群）不需要 @：配了 mention_userid 也不传
+    identity.upsertPerson(db, {
+      personId: 'emp', name: '员工', userid: 'uid-emp', mentionUserid: 'emp-real', systemRole: 'employee', deptId: 'sales',
+    });
+    const priv = executor.createAttention(db, {
+      purpose: 'answer', question: '成本数？', requiredConfirmerId: 'emp', originChatId: 'chat-company',
+    });
+    const rp = notifyAttentionAsk(db, priv);
+    assert.equal(rp.target?.mode, 'private');
+    assert.deepEqual((JSON.parse(outbox(db, rp.outbox_id!).payload) as { mentions: string[] }).mentions, []);
+
+    // 没员工群 → 回原群中性短号：有 mention_userid 就带真 @，且仍然不贴问题正文
+    identity.upsertPerson(db, {
+      personId: 'emp3', name: '外部员工', userid: 'uid-emp3', mentionUserid: 'zhangsan-real', systemRole: 'employee', deptId: 'sales',
+    });
+    const a = executor.createAttention(db, {
+      purpose: 'answer', question: '内部问题，不能贴群', requiredConfirmerId: 'emp3', originChatId: 'chat-company',
+    });
+    const r = notifyAttentionAsk(db, a);
+    assert.equal(r.sent, true);
+    assert.equal(r.target?.mode, 'origin');
+    assert.equal(r.target?.neutral, true);
+    const payload = JSON.parse(outbox(db, r.outbox_id!).payload) as { text: string; mentions: string[] };
+    assert.deepEqual(payload.mentions, ['zhangsan-real']);
+    assert.doesNotMatch(payload.text, /内部问题/);
+  } finally { db.close(); }
+});
+
+test('attention notify：24h 老板升级走原群时，也带老板 mention_userid', () => {
+  const db = openDb(':memory:');
+  try {
+    seed(db);
+    identity.upsertPerson(db, {
+      personId: 'boss', name: '老板', userid: 'uid-boss', mentionUserid: 'guoshuai-real', systemRole: 'boss',
+    });
+    const a = executor.createAttention(db, {
+      purpose: 'answer', question: '成本数？', requiredConfirmerId: 'emp', originChatId: 'chat-company',
+    });
+    const r = sendAttentionNotice(db, a, 'boss');
+    assert.equal(r.sent, true);
+    assert.equal(r.target?.person_id, 'boss');
+    assert.equal(r.target?.mode, 'origin');
+    const payload = JSON.parse(outbox(db, r.outbox_id!).payload) as { text: string; mentions: string[] };
+    assert.deepEqual(payload.mentions, ['guoshuai-real']);
+    assert.match(payload.text, /升级/);
   } finally { db.close(); }
 });
 

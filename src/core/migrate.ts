@@ -9,6 +9,8 @@ export function migrate(db: DatabaseSync): void {
   };
   addCol('chat_bindings', 'userid', 'TEXT');
   addCol('chat_bindings', 'webhook_file', 'TEXT');
+  // GAP-080：people 增加企微通讯录 userid（webhook mentioned_list 真 @ 用）；旧库原地加列
+  addCol('people', 'mention_userid', 'TEXT');
   addCol('tasks', 'assignee_userid', 'TEXT');
   // 后台任务（D22）：执行器是 WorkBuddy，小服务只管状态与超时
   addCol('tasks', 'kind', "TEXT NOT NULL DEFAULT 'simple'");

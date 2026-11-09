@@ -6,6 +6,12 @@ export interface Member {
   name: string;
   role: string;
   userid?: string;
+  /**
+   * 企微通讯录 userid（不是会话级 `wok…` 会话 id，见 GAP-072/080）。
+   * 只用于 webhook `mentioned_list` 真 @ 人，不进 persona 文本；
+   * 人工从企微通讯录抄，拿不到就留空，通知回退「中性短号不 @」。
+   */
+  mention_userid?: string;
   chat_id?: string;
   webhook_file?: string;
   seat?: string;
@@ -81,11 +87,16 @@ const MEMBER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const DEPT_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 /** 会原样进 persona 的文本字段：拒绝控制字符、反引号、HTML 注释，限制长度，免得夹带指令或破坏 markdown */
 const PERSONA_TEXT_FIELDS = ['name', 'role', 'userid', 'chat_id'] as const;
+/**
+ * 通讯录 userid：会原样进企微 webhook 的 `mentioned_list`，所以只允许企微 userid 的字符集，
+ * 长度按企微上限 64。它不进 persona，因此不受 PERSONA_TEXT_FIELDS 那套 markdown 限制。
+ */
+const MENTION_USERID = /^[A-Za-z0-9_@.-]{1,64}$/;
 
 /** 允许出现的 frontmatter 键。拼错一个键会被静默忽略（字段没生效但不报错），所以白名单要收死。 */
 const KNOWN_KEYS: Record<string, string[]> = {
   company: ['name', 'company_bot_name', 'vault_shared', 'vault_internal', 'local_workdir', 'boss', 'company_group_chat_id', 'company_group_webhook_file', 'boss_dm_chat_id', 'boss_dm_webhook_file'],
-  member: ['id', 'name', 'role', 'userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled', 'dept', 'manages'],
+  member: ['id', 'name', 'role', 'userid', 'mention_userid', 'chat_id', 'webhook_file', 'seat', 'bot', 'disabled', 'dept', 'manages'],
   role: ['id', 'name', 'duties'],
   dept: ['id', 'name', 'vault_paths', 'skills', 'chat_id', 'webhook_file', 'note'],
 };
@@ -107,6 +118,11 @@ function assertMemberFields(file: string, id: string, fm: Record<string, string>
   }
   if (fm.webhook_file !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.txt$/.test(fm.webhook_file)) {
     throw new Error(`成员 webhook_file 只能是 secrets 目录下的文件名（${file}）: ${fm.webhook_file}`);
+  }
+  // 空值等当没配（`mention_userid:` 留空不算错），非空必须是企微 userid 字符集
+  const mention = fm.mention_userid?.trim();
+  if (mention && !MENTION_USERID.test(mention)) {
+    throw new Error(`成员 mention_userid 不合规（企微通讯录 userid：字母数字 _ @ . -，≤64；${file}）: ${fm.mention_userid}`);
   }
 }
 
@@ -160,6 +176,7 @@ export function loadOrg(dir: string): Org {
       name: fm.name,
       role: fm.role || '',
       userid: fm.userid,
+      mention_userid: fm.mention_userid?.trim() || undefined,
       chat_id: fm.chat_id,
       webhook_file: fm.webhook_file,
       seat: fm.seat,

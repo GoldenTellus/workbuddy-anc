@@ -53,6 +53,45 @@ test('schema：groups.type 只接受四类群', () => {
   }
 });
 
+test('schema：旧 people 表原地加 mention_userid，迁移可重复执行且旧行保留', () => {
+  const db = openDb(':memory:');
+  try {
+    // 模拟主干 1 时代的旧库：people 没有 mention_userid
+    db.exec('DROP TABLE people');
+    db.exec(`CREATE TABLE people (
+      person_id   TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      userid      TEXT UNIQUE,
+      system_role TEXT NOT NULL DEFAULT 'employee'
+                  CHECK (system_role IN ('boss', 'manager', 'employee')),
+      dept_id     TEXT,
+      status      TEXT NOT NULL DEFAULT 'active',
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
+    )`);
+    db.prepare('INSERT INTO people (person_id,name,userid,created_at,updated_at) VALUES (?,?,?,?,?)')
+      .run('old', '旧人', 'u-old', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z');
+
+    migrate(db);
+    // 幂等：重复执行不能抛 duplicate column
+    migrate(db);
+
+    const cols = (db.prepare('PRAGMA table_info(people)').all() as Array<{ name: string }>).map((c) => c.name);
+    assert.equal(cols.includes('mention_userid'), true, '旧库迁移后缺 people.mention_userid');
+    const row = db.prepare('SELECT * FROM people WHERE person_id = ?').get('old') as { name: string; mention_userid: string | null };
+    assert.equal(row.name, '旧人');
+    assert.equal(row.mention_userid, null);
+
+    db.prepare('UPDATE people SET mention_userid = ? WHERE person_id = ?').run('zhangsan-real', 'old');
+    assert.equal(
+      (db.prepare('SELECT mention_userid FROM people WHERE person_id = ?').get('old') as { mention_userid: string }).mention_userid,
+      'zhangsan-real',
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('schema：旧 reports 表迁到含 question 的 CHECK，旧行保留', () => {
   const db = openDb(':memory:');
   try {

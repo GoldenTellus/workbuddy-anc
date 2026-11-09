@@ -11,6 +11,8 @@ export interface Person {
   person_id: string;
   name: string;
   userid: string | null;
+  /** 企微通讯录 userid（GAP-080）：只用于 webhook mentioned_list 真 @；空表示没配，通知回退不 @ */
+  mention_userid: string | null;
   system_role: SystemRole;
   dept_id: string | null;
   status: PersonStatus;
@@ -36,6 +38,26 @@ export interface ActorContext {
 }
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/**
+ * 通讯录 userid：会原样进企微 webhook 的 `mentioned_list`，只允许企微 userid 字符集，长度按上限 64。
+ * 与 org 模块的成员校验保持一致（org 不能 import identity，规则各留一份，改一处要同步另一处）。
+ */
+const MENTION_USERID = /^[A-Za-z0-9_@.-]{1,64}$/;
+
+/** webhook `mentioned_list` 的取值是否安全（char 集 + ≤64）；发送路径也会用它兜一层。 */
+export function isMentionUserid(v: unknown): v is string {
+  return typeof v === 'string' && MENTION_USERID.test(v);
+}
+
+function assertMentionUserid(v: string | undefined): string | null {
+  if (v === undefined) return null;
+  const s = v.trim();
+  if (!s) return null;   // 空值等当没配
+  if (!isMentionUserid(s)) {
+    throw new Error('mention_userid 不合规（企微通讯录 userid：字母数字 _ @ . -，≤64）: ' + v);
+  }
+  return s;
+}
 
 function clean(v: string | undefined, field: string): string {
   if (typeof v !== 'string' || !v.trim()) throw new Error(`缺少 ${field}`);
@@ -89,6 +111,8 @@ export function upsertPerson(
     personId: string;
     name: string;
     userid?: string;
+    /** 企微通讯录 userid（webhook 真 @ 用）；不传/空串 = 清空，回退不 @ */
+    mentionUserid?: string;
     systemRole?: SystemRole;
     deptId?: string;
     status?: PersonStatus;
@@ -97,22 +121,24 @@ export function upsertPerson(
   const personId = assertId(input.personId, 'person_id');
   const name = clean(input.name, 'name');
   const userid = input.userid ? clean(input.userid, 'userid') : null;
+  const mentionUserid = assertMentionUserid(input.mentionUserid);
   const systemRole = assertRole(input.systemRole);
   const deptId = input.deptId ? assertId(input.deptId, 'dept_id') : null;
   const status = input.status ?? 'active';
   if (status !== 'active' && status !== 'disabled') throw new Error('person.status 只能是 active / disabled: ' + status);
   const t = nowIso();
   db.prepare(`
-    INSERT INTO people (person_id, name, userid, system_role, dept_id, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO people (person_id, name, userid, mention_userid, system_role, dept_id, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(person_id) DO UPDATE SET
       name = excluded.name,
       userid = excluded.userid,
+      mention_userid = excluded.mention_userid,
       system_role = excluded.system_role,
       dept_id = excluded.dept_id,
       status = excluded.status,
       updated_at = excluded.updated_at
-  `).run(personId, name, userid, systemRole, deptId, status, t, t);
+  `).run(personId, name, userid, mentionUserid, systemRole, deptId, status, t, t);
   return resolvePerson(db, personId)!;
 }
 

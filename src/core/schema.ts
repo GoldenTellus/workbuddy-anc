@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS people (
   person_id   TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   userid      TEXT UNIQUE,
+  -- 企微通讯录 userid，只用于 webhook mentioned_list 真 @（GAP-080）；
+  -- userid 是会话级 wok… id，不保证 @ 得到人。空表示没配，通知回退中性短号。
+  mention_userid TEXT,
   system_role TEXT NOT NULL DEFAULT 'employee'
               CHECK (system_role IN ('boss', 'manager', 'employee')),
   dept_id     TEXT,

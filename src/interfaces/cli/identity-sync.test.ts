@@ -27,7 +27,7 @@ function mkOrg(dir: string): string {
   writeFileSync(join(org, 'roles', 'eng.md'), '---\nid: eng\nname: 工程师\nduties: 写代码\n---\n');
   writeFileSync(join(org, 'depts', 'sales.md'), '---\nid: sales\nname: 销售部\nskills: anc-task\nchat_id: c-dept-sales\nwebhook_file: hook-dept.txt\n---\n');
   writeFileSync(join(org, 'members', 'boss.md'), '---\nid: boss\nname: 老板\nrole: eng\nuserid: uid-boss\nchat_id: c-boss\n---\n');
-  writeFileSync(join(org, 'members', 'mgr.md'), '---\nid: mgr\nname: 经理\nrole: eng\nuserid: uid-mgr\nchat_id: c-mgr\ndept: sales\nmanages: sales\n---\n');
+  writeFileSync(join(org, 'members', 'mgr.md'), '---\nid: mgr\nname: 经理\nrole: eng\nuserid: uid-mgr\nmention_userid: mgr-real\nchat_id: c-mgr\ndept: sales\nmanages: sales\n---\n');
   writeFileSync(join(org, 'members', 'emp.md'), '---\nid: emp\nname: 员工\nrole: eng\nuserid: uid-emp\nchat_id: c-emp\ndept: sales\n---\n');
   return org;
 }
@@ -53,6 +53,9 @@ test('syncOrgIdentity：org → people/groups/manager_scopes，并保留 chat_bi
       assert.equal(resolvePerson(db, 'boss')?.system_role, 'boss');
       assert.equal(resolvePerson(db, 'mgr')?.system_role, 'manager');
       assert.equal(resolvePerson(db, 'emp')?.system_role, 'employee');
+      // GAP-080：org 的 mention_userid 落库（webhook 真 @ 的唯一来源）
+      assert.equal(resolvePerson(db, 'mgr')?.mention_userid, 'mgr-real');
+      assert.equal(resolvePerson(db, 'emp')?.mention_userid, null);
       assert.deepEqual(listManagerScopes(db, 'mgr'), ['sales']);
       assert.equal(resolveGroup(db, 'c-mgr')?.type, 'employee');
       assert.equal(resolveGroup(db, 'c-mgr')?.employee_id, 'mgr');
@@ -92,6 +95,44 @@ test('backfillFromBindings：chat_bindings 按 userid 补 employee 群，不猜�
     assert.equal(resolveGroup(db, 'c-old')?.employee_id, 'p1');
     assert.equal(resolveGroup(db, 'c-unknown'), null);
   } finally { db.close(); }
+});
+
+test('syncOrgIdentity：mention_userid 幂等同步、可清空、verify 能抓漂移', () => {
+  withTmp((d) => {
+    const db = openDb(':memory:');
+    try {
+      const org = mkOrg(d);
+      syncOrgIdentity(db, org);
+      syncOrgIdentity(db, org);   // 重复同步必须幂等（旧库反复升级/重跑的真实场景）
+      assert.equal(resolvePerson(db, 'mgr')?.mention_userid, 'mgr-real');
+      assert.equal(verifyOrgIdentity(db, org).ok, true);
+
+      // 手工改库造成漂移：verify 必须报出来，不能悄悄回到不 @
+      db.prepare("UPDATE people SET mention_userid = 'other-id' WHERE person_id = 'mgr'").run();
+      const bad = verifyOrgIdentity(db, org);
+      assert.equal(bad.ok, false);
+      assert.ok(bad.problems.some((p) => p.includes('mention_userid 不一致')));
+
+      // org 删掉 mention_userid → people 是投影，必须清空旧值
+      writeFileSync(join(org, 'members', 'mgr.md'),
+        '---\nid: mgr\nname: 经理\nrole: eng\nuserid: uid-mgr\nchat_id: c-mgr\ndept: sales\nmanages: sales\n---\n');
+      syncOrgIdentity(db, org);
+      assert.equal(resolvePerson(db, 'mgr')?.mention_userid, null);
+      assert.equal(verifyOrgIdentity(db, org).ok, true);
+    } finally { db.close(); }
+  });
+});
+
+test('syncOrgIdentity：org 里 mention_userid 非法直接拒绝（它要原样进 webhook）', () => {
+  withTmp((d) => {
+    const org = mkOrg(d);
+    writeFileSync(join(org, 'members', 'emp.md'),
+      '---\nid: emp\nname: 员工\nrole: eng\nuserid: uid-emp\nmention_userid: bad value/../x\nchat_id: c-emp\ndept: sales\n---\n');
+    const db = openDb(':memory:');
+    try {
+      assert.throws(() => syncOrgIdentity(db, org), /mention_userid 不合规/);
+    } finally { db.close(); }
+  });
 });
 
 test('verifyOrgIdentity：同步后通过；群里类型漂移要报出来', () => {

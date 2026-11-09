@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { enqueue } from '../../modules/delivery/index.ts';
 import {
+  isMentionUserid,
   listManagersForDept,
   resolvePerson,
   resolvePrivateChat,
@@ -28,12 +29,14 @@ export function notifyTaskEvent(db: DatabaseSync, task: Task, event: TaskNotifyE
     if (!person || person.status !== 'active') { skipped.push(`person:${personId}`); return; }
     const chatId = resolvePrivateChat(db, person.person_id, 'employee');
     if (!chatId) { skipped.push(`no-employee-group:${personId}`); return; }
+    // GAP-080：优先用企微通讯录 userid 真 @；没配时退回会话级 userid（@ 不到人但不报错）
+    const mention = person.mention_userid ?? person.userid ?? null;
     try {
       const q = enqueue(db, {
         text,
         chatId,
         dedupeKey: key,
-        mentions: person.userid ? [person.userid] : [],
+        mentions: mention && isMentionUserid(mention) ? [mention] : [],
       });
       if (q.inserted) sent += 1;
       else skipped.push(`duplicate:${personId}`);
