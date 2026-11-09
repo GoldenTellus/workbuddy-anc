@@ -1,423 +1,228 @@
-# PLAN — 当前主干：主干 3（between us：Attention / 确认 / 通知）
+# PLAN — 当前批次：收口补齐 + 双机全量回归
 
-> 类型：执行（当前主干）
-> 状态：**已完成（2026-11-09）· ACC-13/14/15 真实群通过**
-> 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 3（3.1–3.5）
-> 账本：[STATUS.md](./STATUS.md) §3.1 / §3.3 / §3.5
-> 决策：[DECISIONS.md](./DECISIONS.md) D40–D44
-> 快照：[archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)
-> 上一个主干：[archive/plans/TRUNK-0-20261109.md](./archive/plans/TRUNK-0-20261109.md)
-> 完成后：快照到 `archive/plans/TRUNK-3-<日期>.md`
+> 类型：执行（当前批次）
+> 状态：**待开工（2026-11-10）**
+> 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 4 / 横切；[STATUS.md](./STATUS.md) §3.3b / §3.5
+> 账本：[STATUS.md](./STATUS.md)
+> 决策：[DECISIONS.md](./DECISIONS.md) D40–D45；GAP-079/080/084/087
+> 上一个主干：[archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)
+> 完成后：快照到 `archive/plans/BATCH-<日期>.md`
 
 ## 1. 目标
 
-把执行环接上人的回路：
+这轮不是新功能主干，是**收口批次**，做三件事：
 
-```text
-公司 bot 先自主完成
-→ 只在 answer / review / responsibility 三种情况下找人
-→ 用短号 A12 在群里确认
-→ 按 purpose 找对人
-→ 回答/回执后同一 Ticket 继续或收口
-```
+1. 把主干 0 的复检结论写进 PLAN，作为本批的起始账本。
+2. 把主干 2/3 留下的偏差补齐，不把“已收口”当成“没有欠账”。
+3. 用**两台电脑**（公司侧 + 员工侧）从环境、部署、群、任务、执行、确认、入库、运维到员工 bot，做一次全量回归，产出机器证据。
 
 **完成定义**：
 
-- 3.1–3.5 全部 `设计 ✅ + 实现 ✅ + 验收 ✅/—`；
-- `attentions` 表、短号、attention CLI、通知路由、执行器接线、技能/persona 全部落地；
-- `npm test` 全绿、`npm run check` 通过、`check-public` 零输出；
-- ACC-13/14/15 真实群跑通，或有书面例外；
-- `STATUS` / `FUTURE-DESIGN` / `PLAN` / 模块契约 / `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `PRODUCT` / `DECISIONS` 同步。
+- 主干 2 的 D45 偏差修正：wake 定向唤醒**已有 daily host**，不再每个 Ticket 新建 host；`/new` 只用于 03:00 日切。
+- GAP-079（`msgId`/引用文本增强）、GAP-080（通知 @ 真 userid）补齐；8h/24h 实际投递补测。
+- 双机全量回归矩阵全部通过，或有**书面例外**并登记 GAP；不能拿口述/单测冒充真实验收。
+- `npm test` 全绿（当前 238/238，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
+- `STATUS` / `FUTURE-DESIGN` / `PLAN` / 模块契约 / `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `OPS` / `PRODUCT` / `DECISIONS` 同步。
+- 员工 bot 仍是旧 1.0 的部分，明确记为**主干 4 缺口**，不伪装成通过。
 
-## 2. 起始基线
+## 2. 起始基线（2026-11-10）
 
 ```text
-测试：217 / 217（主干 3 开工前；T3.1 后 224/224，T3.2 后 228/228，T3.3 后 233/233，T3.4 后 237/237；GAP-085 后 238/238）
+主干：0 / 1 / 2 / 3 已收口（主干 2 ACC-16、主干 3 ACC-13/14/15 真实群通过）
+测试：238 / 238
 模块：13 / 13 current
 CLI：17 组
 技能：8
 计划任务：13
-Attention：0（无表、无 CLI、无解析）
+公司主机：deploy 142 文件；doctor 非提权 FAIL=0 WARN=13
+员工电脑：旧 1.0，已按 D35 用户实测；主干 4 未实现
+open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验级别
 ```
 
-本机已有、但**不算**主干 3 验收：
+## 3. 主干 0 当前状态（2026-11-10 复检）
 
-```text
-四类群 + bind actor + verify-org
-outbox dedupe / 退避 / mentions
-human slot 能领 waiting_*（但还不能定向）
-补丁能注入 [anc:chat=... from=...]
-```
+> 详细判定见 `STATUS` §3.3b / §3.4；这里只留本批 PLAN 要用的结论。
 
-## 3. 范围
+**已关闭 / 已接受**：
 
-**做**：
-
-- `attentions` 表 / 仓储 / 短号 / 审计事件；
-- answer / review / responsibility 三类 Attention 与状态机；
-- 短号确认、引用文本增强、歧义反问、老板代确认；
-- 通知路由（按 purpose 找人、私密优先、中性短号回原群）；
-- outbox 通知、静默时段、每日上限、2h/8h/24h 升级；
-- 执行器接线：`question` Report、human slot 定向领取、close/rework；
-- `anc-task` / `anc-executor` / `subagent.md` / company persona；
-- 测试、文档、ACC-13/14/15。
-
-**不做**：
-
-- 引用消息 id 的完整匹配（T3.0 只做增强 spike，失败不阻塞）；
-- 通知合并 / 每日日报（v1 不做，留后续）；
-- 强 ACL / 专用账号（D28 继续逻辑隔离）；
-- 员工 bot handoff / 本地执行（主干 4）；
-- 把 Attention 正文发到公司群（只发中性短号）；
-- 多公司 / 多主机 / 多语言。
-
-## 4. 设计定稿摘要（D40–D44）
-
-| 决策 | 结论 |
-|---|---|
-| **D40 确认协议** | 必须 @；短号 `A<seq>` 为主；引用文本里的短号可认，不依赖消息 id；匹配顺序：正文短号 > 引用短号 > 当前人唯一 open；多条只反问一次；只有 `required_confirmer` 或老板能确认 |
-| **D41 通知通道** | Attention 通知走 outbox 群机器人；`attention create` 一个事务写 Attention + 推进 Ticket + 入 outbox；`outbox.attention_id` 关联；不新建 Notification 表 |
-| **D42 回执** | `require_ack` 默认关；责任转给具体人 / 跨部门 / 对外财务生产三类开；2h 本人 → 8h 部门管理者 → 24h 老板；只提醒，不自动拒绝/转移 |
-| **D43 状态机** | 新增 Report `question` → `waiting_answer`；`waiting_ack` 由 attention create 推进；`claim --slot human --ticket-id`；human 尝试不计入 `max_attempts` |
-| **D44 通知对象** | review → 交办人；answer → `required_confirmer`；responsibility → 接手人；兜底老板；优先私密，私密不可用回原群只发中性短号 |
-
-## 5. 数据模型
-
-```sql
-CREATE TABLE IF NOT EXISTS attentions (
-  attention_id   TEXT PRIMARY KEY,
-  short_code     TEXT NOT NULL UNIQUE,          -- A1, A2, ... 全局单调、不复用
-  ticket_id      TEXT REFERENCES tickets(ticket_id),
-  task_id        INTEGER REFERENCES tasks(id),
-  department_id  TEXT,
-  purpose        TEXT NOT NULL
-                 CHECK (purpose IN ('answer', 'review', 'responsibility')),
-  question       TEXT NOT NULL,
-  options_json   TEXT NOT NULL DEFAULT '[]',
-  required_confirmer_id TEXT NOT NULL,
-  require_ack    INTEGER NOT NULL DEFAULT 0,
-  origin_chat_id TEXT,                          -- 原群；私密渠道不可用时只回这里发中性短号
-  status         TEXT NOT NULL
-                 CHECK (status IN ('open', 'answered', 'approved', 'rejected',
-                                   'acked', 'notified', 'expired', 'cancelled')),
-  answer_text    TEXT,
-  answered_by    TEXT,
-  on_behalf_of   TEXT,
-  answer_message_id TEXT,
-  notified_chat_id TEXT,
-  notified_outbox_id INTEGER,
-  remind_day     TEXT,
-  remind_count_today INTEGER NOT NULL DEFAULT 0,
-  remind_count   INTEGER NOT NULL DEFAULT 0,
-  last_reminded_at TEXT,
-  escalate_level INTEGER NOT NULL DEFAULT 0,
-  created_at     TEXT NOT NULL,
-  answered_at    TEXT,
-  expires_at     TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_attentions_open
-  ON attentions(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_attentions_ticket
-  ON attentions(ticket_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_attentions_confirmer
-  ON attentions(required_confirmer_id, status);
-```
-
-迁移：
-
-- `outbox` 加 `attention_id TEXT`（`addCol`，旧库兼容）；不建外键。
-- 短号计数器放 `meta` 的 `attention_seq`；`attention create` 事务内自增，`A` + 十进制序号；删除/取消不回收。
-- 审计写 `executor_events`：`attention_created` / `notified` / `reminded` / `escalated` / `answered` / `approved` / `rejected` / `acked` / `cancelled` / `expired`。
-
-**模块边界**：`attentions` 归 `executor` 模块；通知入 outbox 由 CLI 层编排（`tx(db, () => { executor.createAttention(...); delivery.enqueue(...) })`）。`executor` 仍只依赖 `core`，不 import `delivery` / `identity`；身份解析和频道选择在 CLI/接口层做。
-
-## 6. 确认协议
-
-**前提**：必须 @ 公司 bot。
-
-**匹配顺序**：
-
-1. 正文里的短号（`A12`）→ 唯一 Attention；
-2. 引用文本里的短号（`--quote-text`）→ 唯一 Attention；
-3. 当前人 + 当前群的唯一 `open` → 直接用它；
-4. 多条 → 只反问一次：“你指的是 A12 报销，还是 A13 采购？”，最多列 3 条；不执行。
-
-**意图映射**（Main 做自然语言分类，CLI 校验）：
-
-| purpose | 用户说法 | action |
+| 处理 | GAP | 结论 |
 |---|---|---|
-| answer | 任意回答内容 | `answer` |
-| review | 可以 / 通过 / 没问题 / 提交 | `approve` |
-| review | 不行 / 重做 / 改成… | `reject` |
-| responsibility | 收到 / 我接手 / 好的 | `ack` |
+| 关闭 | 026 / 029 / 036 / 056 | 主干 2/3 已落四表、Attention/outbox、确认接口 |
+| 关闭 | 084 | A10 中文问题落库/群显示正常；A1 乱码是本机直传参数，不是 bot 路径 |
+| 接受 | 079 | 短号主路径已通过；`msgId`/引用增强留本轮补齐 |
+| 接受 | 080 | v1 不 @；本轮补 `mention_userid` 或明确回退 |
+| 接受 | 071 | running 允许多条 report、late=1；不改状态机 |
+| 关闭 | 087 | 非提权 doctor 对服务任务报 WARN，不再假 FAIL；FAIL=0 WARN=13 |
+| 移出 | 005 / 016 / 017 / 018 / 019 / 020 / 037 / 038 / 039 | 归主干 4，不计入主干 0 |
 
-模糊（“嗯”“看着办”）→ 反问，不猜。
+**当前结论**：按现有范围，主干 0 开放 GAP = 0，保持 ✅。本批双机回归如果发现新缺口，**自动重开主干 0**，不压到下一轮。
 
-**资格**：
+## 4. 需要补齐的偏差（不是重做主干）
 
-- 只有 `required_confirmer_id` 或老板；
-- 本部门管理者不代确认，只可见/催办；
-- 老板代确认：`answered_by=boss`、`on_behalf_of=<原确认人>`，给原确认人发非阻塞通知；
-- 非确认人 @ 了：只回“这条需要 XX 确认”，不执行、不泄露内容。
+| ID | 现状 | 目标 | 验收 |
+|---|---|---|---|
+| **DEV-01** D45 单一日对话 | wake 每个 queued Ticket 用 `/new` 新建一个 Agent host；`sessions` 会随 Ticket 增长 | wake 定向唤醒**已有 active daily host**；`/new` 只用于 03:00 日切；host conversation id 稳定 | 连续 3 个 Ticket：只产生 1 个 daily host 会话；3 个 subagent；无重复 host；`sessions` 不按 Ticket 增长 |
+| **DEV-02** GAP-079 msgId/quote | 补丁只注入 `chat/from`；短号主路径可用，引用文本不能兜底 | 补丁注入 `msgId`/quote 文本；`attention match` 在无短号时可用引用文本命中；短号仍是主路径 | 真实群引用 A10 回复“可以”不带短号 → 命中；短号路径不回归 |
+| **DEV-03** GAP-080 mention userid | v1 通知不 @ 人；`people.userid` 是会话级 `wok…` | org 增加/采集 `mention_userid`；webhook `mentioned_list` 真 @；拿不到就回退中性短号 | 真实员工收到 @；失败时回退不报错 |
+| **DEV-04** 8h/24h 实际投递 | 2h 真实群已过；8h/24h 只算级别，没真发 | 回拨 Attention 时间，跑 sweep --apply，测试群收到 8h 管理者/24h 老板文案 | outbox `sent`；文案/收件人正确；不重复 |
+| **DEV-05** ACC-01/06/08 证据 | 口述/书面例外，无机器日志 | 双机回归用日志/截图/DB 证据重跑 | 每项有机器证据；不能口述 |
+| **DEV-06** 员工 bot 旧 1.0 | 员工侧仍是旧实现，主干 4 未做 | 本批只按现状测，缺口登记；**不在本批实现主干 4** | EMP 项通过或登记 GAP，不伪装通过 |
 
-**Ticket 动作**：
+**规则**：DEV-01/02/03/04 是本批必须补齐的偏差；DEV-05 用双机回归补证据；DEV-06 只记录，不扩成本批实现。
 
-```text
-answer        → Attention answered；Ticket 保持 waiting_answer；Main claim --slot human --ticket-id
-review approve → Attention approved；Ticket done；Task done
-review reject  → Attention rejected；Ticket queued；Task 保持 open
-ack           → Attention acked；Ticket done；Task done
-```
+## 5. 双机全量回归：环境与角色
 
-## 7. 通知路由
+### 5.1 两台机器
 
-| purpose | 第一收件人 | 兜底 |
+| 机器 | 角色 | 要求 |
 |---|---|---|
-| review | Task 交办人 | 老板 |
-| answer | `required_confirmer` | 交办人 → 老板 |
-| responsibility | 接手人 | 老板 |
-| progress | 不发，只进 `executor brief` | — |
+| **公司主机** | 公司 bot / Main / Executor host / 计划任务 | 7×24 Windows；管理员只用于部署/注册任务；日常 WorkBuddy 用普通权限；`D:\anc` 数据；13 任务；webhook 可用 |
+| **员工电脑** | 员工 bot | Windows；普通用户；WorkBuddy 普通权限；员工群；本地资料；员工侧补丁；不查公司库 |
 
-**频道**：
-
-- 优先私密：员工群（`resolvePrivateChat`）；私密群必须已配 webhook，否则视为不可用；
-- **老板 1:1 不做主动推送（D32）**：公司/部门级回原群中性短号，内部级等老板问“待办”；
-- 私密不可用 → 原群，只发短号 + 中性一句（如“A12 有一条待确认”），不带内容；
-- 连原群都没有 → 记为待办，等老板问；不群发。
-
-**降噪**：
-
-- 静默 22:00–08:00；P0 的 answer 可例外；静默期间不立即发，入队到 08:00（`next_attempt_at`），level 仍按到期推进，避免重复排期；
-- 每人每日主动通知上限 10 条；首条 ask 与升级给老板的消息不计入上限；
-- 同一 Attention 每天最多 3 次提醒（`remind_day` 变更时 `remind_count_today` 归零）；超过后只升级，不再重复提醒；
-- 升级给管理者/老板的是**催办通知**（“A12 已等 8h，请催办”），不是把确认权转给他们；确认仍只认 `required_confirmer` / 老板；
-- 去重键：`attention:<id>:ask` / `:remind:<n>` / `:escalate:<level>` / `:result`。
-
-**扫描**：复用 `anc-executor-wake` 每分钟任务，在 `executor expire` 后跑 `executor attention sweep --apply --now <iso>`；不新增计划任务。
-
-## 8. 执行器接线
-
-### 8.1 Report 类型
-
-新增 `question`：
+### 5.2 账号与群
 
 ```text
-progress   → 不改
-waiting    → waiting_trigger
-question   → waiting_answer
-ready      → waiting_review
-blocked    → blocked
-failed     → failed
-dropped    → done
+老板：guoshuai（全局）
+管理者：zhangjiayi（tech）
+员工：wuqiong（tech）
+群：员工群（wuqiong）、部门群（tech）、公司大群、老板 1:1、anc测试群
 ```
 
-`question` 的 Report JSON：
+### 5.3 前置
 
-```json
-{
-  "type": "question",
-  "summary": "需要成本数才能继续",
-  "evidence": ["departments/sales/tasks/t-.../quote.md"],
-  "next_step": "请提供 Q3 报价的成本数"
-}
-```
+- 两台机器在同一企业微信主体；公司主机 webhook / secrets 可用。
+- 公司主机：`deploy.ps1 -Apply`、`register-tasks.ps1 -Apply`、doctor FAIL=0；patch/bridge 正常。
+- 员工电脑：WorkBuddy 安装、员工侧部署、补丁、首次绑定；`bind actor` 能返回 employee。
+- 测试数据只进测试群/测试 Task；生产 vault 只读；跑完清理测试 Task/Ticket/Attention。
+- 开始前备份 `C:\ProgramData\anc\data\anc.db` 与 `D:\anc` 测试目录。
 
-### 8.2 attention create 的入口
+### 5.4 干净部署路径（可选，不碰生产）
+
+如果要验“从零装起来”，用独立根（例如 `%ProgramData%\anc-e2e` + `D:\anc-e2e`）跑 `deploy.ps1` / `render deploy` / `doctor` / `backup`；不接真实群，只验安装/渲染/权限/回滚。真实群回归仍用生产测试群。
+
+## 6. 双机全量回归：测试矩阵
+
+> 每项都要有证据：DB 查询、日志、截图、产物路径。没有证据 = 未通过。
+
+### 6.1 环境与身份
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| ENV-01 | 公司主机干净部署 | 142 文件 hash 全过；13 任务 Ready；doctor FAIL=0 | deploy 日志、doctor |
+| ENV-02 | 员工电脑干净部署 | WorkBuddy + 员工侧部署 + 补丁；首次绑定成功 | 安装日志、bind actor |
+| ENV-03 | 补丁/前缀 | 群消息带 `[anc:chat/from]`；不是“身份识别暂不可用” | 消息截图、patch 日志 |
+| ID-01 | 四类群 bind actor | employee/department/company/boss_dm 的 type/role 正确 | `bind actor` JSON |
+| ID-02 | 角色越权 | 员工不能看别人/别部门；管理者只本部门 | 拒绝回复、DB |
+
+### 6.2 任务与请求
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| TASK-01 | 老板派任务 | Task open，assignee 正确 | `task list` |
+| TASK-02 | 员工自建任务 | 只登记给自己 | `task list` |
+| TASK-03 | 同部门请求 | `pending_acceptance` → 接受 → open | 状态/审计 |
+| TASK-04 | 跨部门审批 | `pending_approval` → 管理者批准 → 接受 → open | 状态/审计 |
+| TASK-05 | 完成/取消权限 | 只有执行人/交办人可操作；越权拒绝 | CLI/群回复 |
+
+### 6.3 Main / Executor
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| EXE-01 | background 全链路 | Main 只建 Ticket；wake 定向 daily host；host 起真实 subagent；产物；review；done | Task/Ticket/Assignment/Report、产物 |
+| EXE-02 | 队列与 slot | 4+1 slot；P0 队首；不抢占；同优先级 FIFO | DB/日志 |
+| EXE-03 | 失败与重试 | failed 自动重试至 max_attempts；不假成功 | DB/Report |
+| EXE-04 | 窗口重启恢复 | 旧 Assignment interrupted；Ticket queued；新 host 重派 | recover 日志 |
+| EXE-05 | 03:00 日切 | `/new` 建新 host；旧任务继续；新任务进新 host | host/日志 |
+
+### 6.4 Attention / 确认
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| ATT-01 | review approve | Ticket/Task done | A 短号、审计 |
+| ATT-02 | review reject | Ticket 回 queued，带返工意见 | 状态/审计 |
+| ATT-03 | answer + human slot | 同一 Ticket 恢复，不重开 | Assignment/Ticket |
+| ATT-04 | responsibility ack | 责任转移；Ticket done | 审计 |
+| ATT-05 | 非确认人拒绝 | 只回“需要 XX 确认”，不执行、不泄露 | 群截图 |
+| ATT-06 | 老板代确认 | `on_behalf_of` 记录 | 审计 |
+| ATT-07 | 2h/8h/24h | 2h 本人；8h 管理者；24h 老板；不重复 | outbox/截图 |
+| ATT-08 | 多义/多短号 | 只反问一次，最多列 3 条 | 群截图 |
+| ATT-09 | 静默/上限 | 22–08 顺延；每日上限 10；首条 ask 不占 | 配置/日志 |
+
+### 6.5 入库 / 知识
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| ING-01 | 文件入库 | 共享区批次、审计、原件不入 git | git/审计 |
+| ING-02 | 覆盖写 base hash | 不带 base hash 拒绝；带对才写 | 错误/审计 |
+| ING-03 | 权限边界 | 员工只读共享区；内部区只有公司侧 | ACL/拒绝 |
+
+### 6.6 运维 / 安全
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| OPS-01 | 备份/恢复 | 备份可读；恢复演练通过 | backup 日志 |
+| OPS-02 | doctor / patch guard | 管理员 13 任务 PASS；非提权 WARN 不假 FAIL | doctor 输出 |
+| OPS-03 | 重启 | 服务恢复；Task/Ticket 不丢 | 重启前后 DB |
+| SEC-01 | 跨群泄露 | 个人/内部数据不出正确群 | 群截图 |
+| SEC-02 | 注入 | 文档/群消息里的指令不执行 | 回复/审计 |
+| SEC-03 | 伪造确认 | 非确认人/伪造短号不生效 | 状态不变 |
+
+### 6.7 员工 bot（现状）
+
+| ID | 场景 | 预期 | 证据 |
+|---|---|---|---|
+| EMP-01 | 员工群边界 | 只服务本人；不查公司库；不越权 | 群截图 |
+| EMP-02 | 员工→公司 handoff | 若旧 1.0 没有 handoff，登记为**主干 4 缺口**，不算通过 | GAP |
+
+## 7. 任务分解
+
+| 任务 | 内容 | 完成条件 |
+|---|---|---|
+| **T5.1** 主干 0 记录 | 把 §3.3b 复检、GAP-087、trunk-4 移出写进 PLAN/STATUS | 账本一致；check 通过 |
+| **T5.2** 单一日对话 | 改 wake 定向已有 daily host；`/new` 只 03:00 | 3 Ticket 只 1 host；无重复；EXE-01/05 通过 |
+| **T5.3** GAP-079 | 补丁 `msgId`/quote；match 兜底 | 引用无短号命中；短号不回归 |
+| **T5.4** GAP-080 | org `mention_userid` + webhook mention | 真人员工收到 @；回退可用 |
+| **T5.5** 8h/24h | 回拨 Attention；sweep 真发 | 8h/24h 文案/收件人正确 |
+| **T5.6** 双机环境 | 公司主机 + 员工电脑按 §5 准备 | ENV-01/02/03、ID-01 通过 |
+| **T5.7** 全量回归 | 按 §6 矩阵跑 | 全部通过或书面例外 + GAP |
+| **T5.8** 缺口收口 | 新 GAP 修/接受/移出；文档同步 | STATUS/FUTURE/模块/接口同步 |
+| **T5.9** 发布门禁 | 测试 3 次、check、check-public、doctor、快照 | 全绿；PLAN 快照 |
+
+## 8. 测试与门禁
 
 ```text
-purpose=answer:        ticket 从 working | waiting_trigger | waiting_answer → waiting_answer
-purpose=review:        ticket 必须是 waiting_review；不改状态
-purpose=responsibility + require_ack=1:
-                       ticket 从 waiting_review | working → waiting_ack
-purpose=responsibility + require_ack=0:
-                       不改 Ticket，Attention status=notified
-```
-
-非法入口 → `ATT_BAD_TICKET_STATE`。
-
-### 8.3 human slot 恢复
-
-- `claim --slot human` 增加 `--ticket-id`；不传时保持原行为（按优先级领）。
-- 传 `--ticket-id` 时，只允许 `waiting_answer / waiting_review / waiting_ack / blocked / failed`，并校验该 Ticket 有 `answered` 或 `rejected` 的 Attention。
-- human-slot Assignment 不计入 `max_attempts`；`failed` 自动重试只数 normal slot。
-- Main 在起 subagent 前调 `executor attention context --ticket-id <id>`，把问题+回答带进 prompt。
-
-### 8.4 收口
-
-- review approve / ack → `executor close --ticket-id <id> --decision done`；CLI 同步 Task `done`（D38）。
-- review reject → Ticket `queued`；下一次 claim 新建 normal Assignment，prompt 带 reject 意见。
-- Ticket 过期 / 取消 → 对应 open Attention 置 `expired` / `cancelled`。
-
-## 9. 任务分解
-
-### T3.0 协议 spike（可选增强，不阻塞）
-
-- 在补丁里抓 `msgId` 和 `quote` 文本，注入 `[anc:chat=... from=... msg=... quote=...]`；
-- 用真实群消息验证文本引用的字段形状；
-- 通过 → 只作为“引用文本增强”；不通过 → 只保留短号，记录 GAP-079；
-- 产物：`_research/workbuddy/` 记录 + 补丁改动 + `WORKBUDDY-PATCH` 更新（若采纳）。
-
-**完成标准**：能说清“引用文本里能不能拿到 A12”；拿不到也不影响 T3.1 之后。
-
-### T3.1 数据层
-
-- `src/core/schema.ts`：`attentions` 表 + 索引；`outbox.attention_id` 迁移。
-- `src/modules/executor/executor.ts`：`createAttention` / `getAttention` / `listAttentions` / `answerAttention` / `cancelAttention` / `sweepAttentions` / `attentionContext`；短号生成。
-- `src/modules/executor/index.ts`：导出。
-- `executor.test.ts`：schema、短号单调/唯一、状态机、幂等。
-
-**完成标准**：表能建、短号不重复、状态迁移有测试；不接 CLI 也能跑。
-
-### T3.2 CLI 与资格
-
-- `src/interfaces/cli/executor.ts`：`attention create|list|show|match|answer|cancel|sweep|context`。
-- `src/modules/identity/policy.ts`：`canConfirmAttention` 收紧为 `required_confirmer` 或老板；管理者不再代确认。
-- `policy.test.ts`：老板/本人/管理者/无关人四种。
-- `executor.test.ts` / 新 `attention.test.ts`：match 顺序、歧义、非确认人、重复回答。
-
-**完成标准**：CLI 能完整跑 `create → match → answer`；错误码可区分。
-
-### T3.3 通知路由
-
-- `src/interfaces/cli/executor.ts`（或 `src/service/` 薄编排）：`resolveAttentionTarget`。
-- `src/modules/executor/executor.ts`：只算“哪些 Attention 到期、该升到哪一级”；不解析人、不入 outbox。
-- `src/modules/delivery/outbox.ts`：`attention_id` 写入。
-- 静默/上限/升级：CLI 编排 `executor.listDueAttentions` → `identity` 解析收件人 → `delivery.enqueue` → `executor.markAttentionNotified`。
-- 测试：review→交办人、answer→confirmer、responsibility→接手人、fallback 老板、无私密渠道→原群中性短号。
-
-**完成标准**：每条 Attention 都能算出“发给谁、发到哪、发什么”；去重键不重复；`executor` 不 import `identity` / `delivery`。
-
-### T3.4 执行器接线
-
-- `ReportType` 加 `question`；`mapReportState` 加映射；`subagent.md` / `MAIN-EXECUTOR` 同步。
-- `claim` 加 `ticketId`；human-slot 尝试不计入 `max_attempts`。
-- `attention create` 的入口状态校验。
-- review approve/reject、ack 的 Ticket/Task 收口。
-- `executor expire` / `cancel` 时收口 Attention。
-- 测试：question、定向 claim、human 尝试、approve/reject/ack、过期。
-
-**完成标准**：一条真实 Ticket 能走完 `question → answer → human slot → report → ready → review → done`。
-
-### T3.5 技能与 persona
-
-- `light/skills/anc-task/SKILL.md`：确认/回执、短号、歧义、非确认人、老板代确认、待办查询。
-- `light/skills/anc-executor/SKILL.md`：ready→review Attention、question→answer Attention、responsibility、`attention context`、`claim --slot human --ticket-id`。
-- `light/skills/anc-executor/subagent.md`：`question` Report 格式；不 @、不发消息。
-- `light/templates/company-bot.md`：一个嘴巴、短号协议、不泄露内容、静默时段。
-- `light/evals/anc-task.json`：加确认/歧义/非确认人用例。
-
-**完成标准**：Main 在真实群里能按技能走完确认；不靠临时提示词。
-
-### T3.6 文档、门禁、验收
-
-- 文档：`modules/executor`、`MAIN-EXECUTOR`、`LOCAL-SERVICE`、`PRODUCT`、`OPS`、`WORKBUDDY-PATCH`（若 T3.0 采纳）、`INDEX`/`README`/`AGENTS` 计数。
-- 门禁：`npm test`、`npm run check`、`check-public`、`doctor -SelfTest`。
-- ACC-13/14/15 真实群。
-- `STATUS` §3.4/§3.5、`FUTURE-DESIGN` 分支/汇总、`PLAN` 勾选。
-- 完成后快照 `archive/plans/TRUNK-3-<日期>.md`。
-
-**完成标准**：代码、文档、账本、验收四处一致；没有“本机通过 = 验收通过”。
-
-## 10. 测试与门禁
-
-新增测试至少覆盖：
-
-```text
-short code    单调、唯一、不复用、并发创建
-create        answer/review/responsibility 入口；非法状态拒绝
-match         正文短号、引用短号、唯一 open、多条歧义、非确认人
-answer        answer/approve/reject/ack；幂等；老板代确认
-routing       review→交办人、answer→confirmer、responsibility→接手人、fallback
-sweep         2h/8h/24h、静默、每日上限、每 Attention 3 次
-executor      question→waiting_answer、claim --ticket-id、human 不计 max_attempts
-e2e           create → outbox → match → answer → claim → start → report → close
-```
-
-门禁：
-
-```powershell
-npm test
-npm run check
+npm test                  # 当前 238/238；新增项继续加
+npm run check             # modules + docs
+npm run coverage
 node scripts/checks/check-public.mjs
+doctor.ps1 -Repo ...      # 管理员 + 非提权各一次
+deploy-verify.ps1
 ```
 
-## 11. 文档联动
+- 双机矩阵每项必须有证据；口述不算。
+- 新增代码必须有测试；修 bug 必须有回归。
+- 失败项进 `STATUS` GAP，不静默跳过。
+- 测试数据清理；生产 vault 不被测试写。
 
-| 文档 | 必须写什么 |
-|---|---|
-| `FUTURE-DESIGN.md` | 3.1–3.5 实现状态、主干 3 汇总、6.3 叶子关闭 |
-| `STATUS.md` | GAP-029/036/076–079；ACC-13/14/15；§3.4 复检 |
-| `DECISIONS.md` | D40–D44（已写）；实现中如有偏离，补新决策 |
-| `modules/executor.md` | `attentions` 表、公开 API、不变量、错误码、测试 |
-| `MAIN-EXECUTOR.md` | `question` Report、`claim --ticket-id`、attention 命令、context |
-| `LOCAL-SERVICE.md` | 新表/列、executor attention 子命令、错误码 |
-| `PRODUCT.md` | 短号确认、三类通知、静默/上限、老板代确认 |
-| `OPS.md` | `attention sweep` 复用 `anc-executor-wake`；静默/上限配置 |
-| `WORKBUDDY-PATCH.md` | T3.0 若采纳，写 `msgId`/quote 注入与升级回归 |
-| `INDEX.md` / `README.md` / `AGENTS.md` | 计数不变（17 CLI / 8 技能 / 13 模块 / 13 任务）；测试数更新 |
-| `DOC-SYNC.md` | 主干 3 完成审计行 |
+## 9. 文档联动
 
-## 12. 真实环境验收
+- `STATUS` §3.3b（主干 0 复检）、§3.4（本批执行记录）、§3.5（双机 ACC/矩阵）。
+- `FUTURE-DESIGN` 主干 4 / 横切：员工 bot 缺口、单一日对话、GAP-079/080。
+- `DECISIONS`：D45 修订/补充；如单一日对话实现方式变化，登记 D46。
+- `MAIN-EXECUTOR` / `OPS` / `LOCAL-SERVICE`：wake 定向、mention、8h/24h。
+- `PRODUCT`：补齐后的能力边界。
+- 完成后归档 `archive/plans/BATCH-<日期>.md`。
 
-| 编号 | 验收项 | 通过标准 |
-|---|---|---|
-| ACC-13 | 群回复 review | 交办人回 `A12 可以` → Ticket/Task done；非确认人被拒 |
-| ACC-14 | 群回复 answer | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 |
-| ACC-15 | 责任回执/升级 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 |
+## 10. 风险与不做
 
-> 真实群跑通前，主干 3 保持 🟡 待验收；本地测试不算验收。
+- **员工 bot 旧 1.0**：双机回归会暴露主干 4 缺口；本批只记录，不实现主干 4。若要“全部功能通过”，需另开主干 4 PLAN。
+- **定向唤醒 UI 脆弱**：如果 WorkBuddy 无法稳定定位 daily host tab，先做 `/new` 兜底但必须书面登记 D46，不静默接受。
+- **GAP-080 可能拿不到通讯录 userid**：拿不到就回退中性短号，明确记录“未 @”，不算通过。
+- **测试数据**：只用测试群/测试 Task；生产数据先备份；跑完清理。
+- **不重做已收口主干**：除 DEV-01..06 外，不改主干 1/2/3 的已验收行为；发现缺陷按 GAP 修。
 
-## 13. 风险
+## 11. 执行记录
 
-| 风险 | 处理 |
-|---|---|
-| 用户忘打短号 | “当前人唯一 open”兜底；多条只反问，不猜 |
-| 老板 1:1 无主动推送（D32） | 公司/部门级在原群发中性短号；内部级等老板看/问“待办” |
-| outbox 群机器人与 AI Bot 两个发送者 | persona 说明“通知来自公司 bot 的通知通道，确认仍 @ 公司 bot” |
-| webhook `mentioned_list` 用 `wok…` 会话 id，@ 不到人（GAP-080） | T3.0/T3.3 真实群验证；不通过就回退私密员工群（无需 @）或原群中性短号不 @ |
-| human 尝试耗尽 `max_attempts` | D43：human 不计入；补测试 |
-| 补丁 spike 失败 | 短号主路径不受影响；GAP-079 记录“只做短号” |
-| 静默时段压住 P0 | P0 的 answer 例外；其余顺延到 08:00 |
-| 通知内容泄露 | 回原群只发中性短号，不带内容；正文只走私密 |
-| 旧库迁移失败 | `addCol` 兼容；schema 测试覆盖旧库 |
-| 短号被猜/冒用 | 确认仍校验 actor + required_confirmer；非确认人只回“需要 XX 确认” |
-| 反问造成重复执行 | 反问不消耗 Attention；用户下一条带短号才执行；answer 幂等 |
-
-## 14. 收尾
-
-```text
-主干 3 完成
-→ 回填 STATUS：GAP-029/036/076–079、ACC-13/14/15、§3.4
-→ 改 FUTURE-DESIGN 3.1–3.5 与主干 3 汇总
-→ 改模块/接口/产品/运维文档
-→ 填 DOC-SYNC 审计行
-→ 快照 PLAN 到 archive/plans/TRUNK-3-<日期>.md
-→ npm test / npm run check / check-public
-→ 最后才标主干 3 ✅
-```
-
-本 PLAN 不把“本机测试通过”当成“主干 3 完成”。
-
-## 15. 执行记录（2026-11-09，本机）
-
-| 任务 | 结果 | 证据 |
-|---|---|---|
-| T3.1 数据层 | `attentions` 表 + `outbox.attention_id`；短号 `A<seq>`；三类入口；answer/approve/reject/ack；到期扫描 | `src/modules/executor/attention.ts`；`attention.test.ts` 10 项 |
-| T3.2 CLI/资格 | `executor attention create/list/show/match/answer/cancel/context/sweep`；`canConfirmAttention` 收紧；match 4 项 | `src/interfaces/cli/attention*.ts`；`attention-match.test.ts` |
-| T3.3 通知/降噪 | 按 purpose 定人、私密优先、中性短号、老板兜底；静默/上限/2h/8h/24h；`wake-if-queued.ps1` 每分钟 `sweep --apply` | `attention-notify.ts`；5 项测试 |
-| T3.4 执行器接线 | `question` Report；`claim --ticket-id`；human 不计 `max_attempts`；close/expire 收口；旧 reports 表迁移 | `executor.ts` / `migrate.ts`；schema+attention 测试 |
-| T3.5 技能/persona | `anc-task` / `anc-executor` / `subagent.md` / 公司 persona 同步 | `light/skills`、`light/personas`、`light/templates` |
-| T3.6 文档/门禁 | `npm test` **237/237**；`npm run check` 通过；`check-public` 已跑 0 | `STATUS` §1.8/§3.4；`FUTURE` 3.x；模块/接口/产品/运维 |
-| 部署 | 142 文件 hash 全过；线上 DB 迁移通过；13 任务 Ready；doctor FAIL=0 WARN=3 | `deploy.ps1 -Apply`；`register-tasks.ps1 -Apply -BackupDestination D:\anc-backup`；doctor |
-| ACC-13/14/15 本机 | A2 approve → Ticket/Task done；A3 answer → human slot → working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计 |
-| ACC-13/14/15 真实群 | A6 `A6可以` → Task #10 done；A7 `120000` → human slot → Task #11 done；A8 `A8收到` → Task #12 done；A9 `A9收到` 代张佳艺 + 2h 催办 outbox #5 sent → Task #13 done | 线上 DB 审计 + `anc测试群` 截图 |
-
-**收口（2026-11-09）**：主干 3 完成，快照见 [archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)。
-
-遗留（非阻塞，不挡主干 3）：
-
-- **GAP-079**：补丁 `msgId`/quote 文本增强 spike；短号主路径不受影响。
-- **GAP-080**：webhook `mentioned_list` 真 userid 验证；v1 不 @，私密群/中性短号不依赖它。
-- **GAP-084**：CLI 中文提问编码；真实群 A6/A7/A8 用 ASCII 提问，中文参数仍待复测。
-- **T3.0**：协议 spike 未做；不阻塞。
+| 日期 | 事项 | 变更 | 证据 | 备注 |
+|---|---|---|---|---|
+| 2026-11-10 | PLAN 切“收口补齐 + 双机全量回归” | 写入主干 0 复检、DEV-01..06、双机矩阵 | 本文件 | 待开工 |
