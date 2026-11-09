@@ -354,7 +354,7 @@ flowchart LR
 4. 没空位就排队；P0 可抢占一个槽，同优先级 FIFO。
 5. subagent 在自己的任务目录工作，写产物、证据、Report；不直接进群。
 6. 调度台收 Report，更新 Ticket/Assignment，发通知或起下一个任务。
-7. 日切：新开日对话，旧对话写 `days/<date>.md`；数据库里的排队/运行中任务继续。
+7. 03:00 日切：新开日对话接新任务；旧对话进入 `closing`，不再接新任务，但运行中的 Assignment 继续写 Report；交接摘要写 `days/<date>.md`。
 
 **目录约定**
 
@@ -374,13 +374,22 @@ flowchart LR
 - **共享文件**：任务默认只读；要改走单独的 ingest/merge 流程，避免两个 subagent 互相覆盖。
 - **一个嘴巴**：subagent 不直接进群、不直接 @ 人；所有对人说话都经 Main。
 
+**日切（每天 03:00）**
+
+- 03:00 新 host 进入 `active`，开始接新任务；旧 host 进入 `closing`，`accepting_new=false`，不再接新任务。
+- 旧 host 已启动的 subagent 不因日切被主动杀掉；完成后把 Report 写回数据库。
+- 旧 host 运行中的 Assignment 保持 `running`；新 host 看到 `running` 就不重复派同一个 Ticket。
+- 旧 host 写 `days/<date>.md` 交接摘要：未完成任务、排队任务、运行中 Assignment、产物路径。
+- 如果旧对话被关闭/平台无法让它继续运行：超过 grace（默认 10 分钟）后把 Assignment 标为 `interrupted`；新 host 用同一 Ticket、同一任务目录、上次 Report 重新起 subagent，不重复已完成的外部动作。
+- 新任务只进新 host；旧 host 只负责收尾，不接新活。
+
 **并发与恢复**
 
 - 全局并发上限先按 4；每个 subagent 一个任务，不按部门另设 subagent 类型。
 - **2026-11-09 并发/落盘 spike 通过**：4 个 subagent 同时运行（最早 start 02:24:24，最晚 finish 02:24:38；4 条时间窗重叠），销售 2 任务、财务 2 任务各自只写 `departments/<dept>/tasks/<ticket>/`，没有串写。
 - 并发上限、模型选择、预算、重试上限待定（6.2 #9）。
 - 主机重启后，按 Ticket/Assignment 恢复；subagent 是临时执行体，不把“会话 id”当任务身份。
-- 日对话被关闭/换日不阻塞任务：Report 写回数据库，下一班调度台接管。
+- 日对话被关闭/换日不阻塞任务：Report 写回数据库，下一班调度台接管；旧 host 只收尾，不接新任务。
 
 **约束**
 
@@ -395,7 +404,7 @@ flowchart LR
 |---|---|---|---|
 | **Task** | 人可见的“要做什么” | `task_id`、标题、交办人、执行人、群、`department_id`、截止时间、优先级、状态 | Main |
 | **Ticket** | 一次被授权的执行单元；一个 Task 可以有多张 Ticket（重做/恢复） | `ticket_id`、`task_id`、`department_id`、授权范围（工具/路径/预算/有效期/最大尝试）、状态、创建原因 | Main |
-| **ExecutorHost** | 当天的 WorkBuddy 调度对话 | `host_id`、日期、conversation_id、状态、开始/结束 | Main / runtime |
+| **ExecutorHost** | 当天的 WorkBuddy 调度对话；03:00 日切 | `host_id`、日期、conversation_id、状态（active/closing/closed）、`cut_at`、`accepting_new`、开始/结束 | Main / runtime |
 | **Assignment** | 一次具体的执行尝试；一个 Ticket 可以有多次 Assignment | `assignment_id`、`ticket_id`、`host_id`、`subagent_id`、`department_id`、任务目录、开始/结束、结束原因 | Main / subagent 事实回报 |
 | **Report** | subagent 对一次执行的回报 | `report_id`、`assignment_id`、`department_id`、类型、摘要、证据、下一步 | subagent |
 | **Attention** | 需要人行动的一条待确认 | `attention_id`、`ticket_id`、目的、问题、选项、`required_confirmer`、状态、回复消息 id | Main |
