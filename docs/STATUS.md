@@ -64,8 +64,8 @@
 |---|---|---|---|---|---|---|
 | GAP-001 | 公司大群/部门级隐私分级与路由 | 验收 | S1 | 主干 1 | 否 | 隐私 router 已有；接实际员工群/1:1 渠道并入 ACC-05 |
 | GAP-002 | 员工请求同事的两阶段审批/接受 | 验收 | S1 | 主干 1 | 否 | 状态机/CLI/通知链已完成；真实群接线并入 ACC-03/04 |
-| GAP-003 | 公司大群/部门群成员与 org 同步 | 实现 | S2 | 主干 1 | 否 | org 为准；企微成员校验告警；入群/退群/换号 |
-| GAP-004 | 老板 1:1 真通道 / 私有群 fallback | 验收 | S1 | 主干 1 | 否 | 类型/配置已有；真 1:1 spike 并入 ACC-06 |
+| GAP-003 | 公司大群/部门群成员与 org 同步 | 实现 | S2 | 主干 1 | 否 | org→DB 同步/测试已做；企微 API 成员对账并入 ACC-08 |
+| GAP-004 | 老板 1:1 真通道 / 私有群 fallback | 验收 | S1 | 主干 1 | 否 | 类型/表/resolvePrivateChat 已测；真 1:1 spike 并入 ACC-06 |
 | GAP-005 | 员工群两个 bot 的触发分工 | 实现 | S1 | 主干 4 | 是 | 员工 bot 只服务员工；补丁/移除查库（GAP-037–039） |
 | GAP-006 | WorkBuddy 日对话 + 任务 subagent 适配 | 实现 | S0 | 主干 2 | 是 | 先验证 subagent 并发/工具边界/日切 |
 | GAP-007 | 部门/任务目录路径、命名、清理、权限 | 实现 | S1 | 主干 2 | 是 | 定 departments/<dept>/tasks/<ticket> |
@@ -107,7 +107,7 @@
 |---|---|---|---|---|---|---|
 | GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 是 | 四表 + 仓储 + CLI 已落；Attention/Notification 未落 |
 | GAP-027 | 没有 Main / Executor 运行时 | 实现 | S0 | 主干 2 | 是 | D2 执行器 |
-| GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | people/groups/CLI/render 已完成；真实群配置并入 ACC-01 |
+| GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | 本地群模型/CLI/render/测试已完成；真实群配置并入 ACC-01 |
 | GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 是 | D3 群与确认 |
 | GAP-030 | 没有 boss/manager/employee 角色模型 | 验收 | S1 | 主干 1 | 否 | people/policy/sync/persona 已完成；真实群接线并入 ACC |
 | GAP-031 | 没有日对话调度 / subagent 管理 | 实现 | S1 | 主干 2 | 是 | 真实 subagent 单条已通；唤醒/自动 host 未接 |
@@ -165,6 +165,7 @@
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
 | 2026-11-09 | T2.7 审计/幂等收口：events + notify dedupe | 0.3 LOCAL-SERVICE/MAIN-EXECUTOR/PLAN；0.6 209/209 | GAP-057 接受范围 | 其他副作用未实现 |
+| 2026-11-09 | T1 本地收口核对：T1.3/T1.7/T1.11 本地部分已有测试 | 0.3 PLAN/STATUS；0.6 209/209 | GAP-003/004/028 更新 | 真实群/1:1/成员 API 仍留 ACC-01/06/08 |
 | 2026-11-09 | 收口方式定为：本机收口 → 主干0回馈 → 两机验收 | 0.3 PLAN/STATUS §3.5；0.6 209/209 | 新增 ACC-09..12 | 本机不关 ACC；两机前主干保持 🟡 |
 | 2026-11-09 | T2 收口批次：sweep/队列/human slot/审计 | 0.3 PLAN、executor 契约；0.6 209/209 | GAP-057/059 更新；验收项大部分勾选 | 真实部署/窗口重启/强 ACL 仍留 |
 | 2026-11-09 | T2.3/T2.4/T2.7 补测：sweep、队列顺序、human slot、审计事件 | 0.3 executor/PLAN/模块契约；0.6 209/209 | GAP-057/059 更新 | effect_key 仍待做 |
