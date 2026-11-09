@@ -50,7 +50,7 @@
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
 | Node | **v26.13.0**（本机实测；设计基线 Node 22 LTS） | `node -v`（`node:sqlite` 与类型剥离默认可用） |
-| 脚本 | **54** 个 | `(git ls-files scripts \| Measure-Object -Line).Lines`（文件系统同为 54） |
+| 脚本 | **55** 个 | `(git ls-files scripts \| Measure-Object -Line).Lines`（文件系统同为 55） |
 
 > 历史验收（38 ✅ / 2 🟡）在 [archive/history/ACCEPTANCE.md](./archive/history/ACCEPTANCE.md)；历史实测在 [archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -76,7 +76,7 @@
 | `src/render/` | 只剩 `cli.ts` 薄壳与渲染器测试 | 8 个文件；部署时只复制 2 个 |
 | `src/ingest/` | 只剩 `cli.ts` 薄壳与入库测试 | 3 个文件；部署时只复制 2 个 |
 | `src/shared/` | 只剩 summarize 测试与 package | 3 个文件；运行代码已迁 `modules/knowledge` |
-| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 54 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
+| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 55 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
 | `scripts/workbuddy-patch/` | WorkBuddy 补丁体、启动器、注入测试口 | 见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
 | `light/` | 技能名片、persona、模板、eval 用例 | 8 个技能目录 |
 | `reference/upstream/` | 上游原样文档与未合并分支 | **不参与构建**；来源登记见 [UPSTREAM.md](./UPSTREAM.md) |

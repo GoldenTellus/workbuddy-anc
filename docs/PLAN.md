@@ -58,7 +58,7 @@ wake bridge 当前窗口注入
 ```text
 测试：212 / 212 ×3      模块：13 / 13 current
 CLI：17 组               技能：8
-计划任务：13 个 Ready     部署：137 文件（hash 对拍通过）
+计划任务：13 个 Ready     部署：138 文件（hash 对拍通过）
 doctor：34 项 FAIL=0 WARN=3
 deploy-verify：ok:true pass=4 fail=0 skip=1（bot-reply 无群 SKIP）
 补丁：applied=true mode=hash pid=24140 活着
@@ -399,6 +399,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 - 真实消息验证：补丁在真实企微入站消息上注入群身份（canary 三项 true），说明补丁链路在真实路径生效；仍无群绑定，`bot-reply` SKIP。
 - org/群接线：3 成员 + 技术部（管理者 1）+ 公司大群 + boss_dm 1:1 写入本机 org；`render deploy --db` 4 产物、`sync-org` 通过、`bind verify-org` ok；`bind actor` 验证老板/管理者/员工角色正确；公司 persona 已重装并干净重启 WorkBuddy 重新打补丁（applied=true，新 pid）。
 - 真实入站校正：公司群 chatid 与老板 `userid` 以 `patch-in.log` 实际值为准（AI Bot 上报 `wok…` 会话级 id，不是通讯录账号 → GAP-072）；校正后 `bind actor` 在 公司群 与 boss_dm 均返回 boss。员工 sender id 待其发消息后采集。
+- 首次身份绑定自动化（GAP-074）：新增 `bin\bind-member-identity.ps1` + persona/`anc-task` 首次绑定流程；未识别成员第一次 @ 时 bot 请对方回一次姓名并自动写 org → 重渲染 → sync。部署 138 文件，临时 org 验证匹配/未匹配返回。
 - 代码修复后重新 `deploy.ps1 -Apply` 137 文件 hash 全过（备份 `deploy-20261109-155502`）。
 - 证据：`%ProgramData%\anc\stage\elevated-*.log`、`stage\elevated-done.json`、`.workbuddy/verify/deploy/`。
 

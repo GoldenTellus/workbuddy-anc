@@ -313,7 +313,7 @@ issue
 | 进度台账 | `deploy-state.ps1 -Mark <step> -AsDone/-AsFailed` | **不要手改 JSON** |
 | 程序化测试 | `POST 127.0.0.1:17999/emit` | 模拟"有人 @ 了 bot"，需 `test-emit.flag` |
 
-**本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **137 个文件**；13 个计划任务已注册（12 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
+**本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **138 个文件**；13 个计划任务已注册（12 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
 
 **`prepare-wipe.ps1` 的回滚**：它把目录改名成 `*-prewipe-<时间戳>`，回滚就是把后缀去掉 + `register-tasks.ps1 -Apply` 重注册任务。
 

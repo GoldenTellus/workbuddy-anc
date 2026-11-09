@@ -18,7 +18,15 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 - 返回 `group.type`：`employee` / `department` / `company` / `boss_dm`；
 - 返回 `person.system_role`：`boss` / `manager` / `employee`；
 - 管理者额外返回 `manager_scopes`（管的部门）。
-- 查不到：按「未识别」处理，回「这个群/这个人还没识别，请管理员先同步 org」，不要猜人。
+- 查不到（`found:false`，或 group 有但 person 为空）：走「首次绑定」，每名成员只需一次：
+  1. 如果本条消息正文能明确自报姓名（如「我是张三」「我是张佳艺」），直接用该姓名绑定；
+     否则只回一句：「你是新成员，请回复你的姓名（或员工 ID），一次就好，以后自动识别。」
+  2. 拿到姓名后执行（`from` 就是消息前缀里的 sender id）：
+     ```powershell
+     powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\bind-member-identity.ps1 -Name "<姓名>" -Userid "<from>"
+     ```
+  3. 返回 `"ok":true` → 重跑 `bind actor`，按新身份继续回答（可顺带回一句「已识别：<姓名>/<角色>」）；
+     返回 `person-not-found` / `ambiguous` → 回「已记录，请老板/管理员确认姓名」，不要猜人、不登记任务。
 
 角色边界：
 

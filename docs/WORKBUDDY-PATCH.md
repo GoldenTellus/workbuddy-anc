@@ -53,7 +53,8 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - **watchdog**：24 小时内 `chatId=false` → 运维群告警；
 - ⚠ **`from=` 的语义（2026-11-09 实测，GAP-072）**：WorkBuddy 的 AI Bot 把发送者归一成 `wok…` 形式的**会话级 open id**，补丁注入的 `from=` 就是它，**不是企微通讯录账号 userid**。org 的 `member.userid` 必须写这个实际值，`bind actor` 才能匹配到人；采集方法见 `DEPLOY-COMPANY.md §10.4`。
   - 这类 id 是「成员自建机器人」给的外部化 userid（`wo…` 开头，和 external_userid 同形）；企微回调里不提供通讯录 userid，官方社区也有同类提问（[成员自建机器人 userId 为 wo 开头](https://developer.work.weixin.qq.com/community/question/detail?content_id=16861945518233122603)、[如何获取可读 userid](https://developer.work.weixin.qq.com/community/question/detail?content_id=16839204387079593965)）。
-  - 因此**身份绑定是「一次性采集」而非可推导**：某人第一次发消息时采集其 `wo…` id 写进 org，之后长期有效；换企微账号/换机器人要重新绑。- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
+  - 因此**身份绑定是「一次性采集」而非可推导**：某人第一次发消息时采集其 `wo…` id 写进 org，之后长期有效；换企微账号/换机器人要重新绑。
+  - **采集已自动化（GAP-074）**：公司 bot 在第一次遇到未识别成员时会请对方回复一次姓名，然后调用 `bin\bind-member-identity.ps1` 写入 org 并重渲染；管理员不用手工读 `patch-in.log`。- 这一层只能**发现**语义漂移，修还是要按技能 B/C 重放。
 
 ### 7) wake bridge（主干 2，opt-in）
 

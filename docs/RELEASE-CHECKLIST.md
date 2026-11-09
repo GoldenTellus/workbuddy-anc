@@ -24,7 +24,7 @@
 | 静态检查 | `npm run check`（`check:modules:deep` + `check:docs`） | ✅ 通过（13 模块边界干净 + 40 份 Markdown 检查） |
 | 密钥扫描 | `node scripts/checks/check-public.mjs` | ✅ 零输出、exit 0 |
 | 计划任务 | **13 个**全部 Ready/Running，principal 正确 | ✅ 13/13（9 LOCAL SERVICE / 1 SYSTEM / 3 交互，`anc-http` Running） |
-| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **137 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP） |
+| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **138 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP） |
 | 体检 | `doctor` **FAIL=0** | ✅ **34 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
 | 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
 | ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ⚠️ ACC-07 达成（本机回滚演练）；ACC-01/05/06 部分达成（公司群+boss_dm+身份映射已验；员工群/部门群缺）；ACC-09 基本达成（差 wake bridge 18187）；其余未达成 |

@@ -21,7 +21,8 @@
    - `group.type`：employee / department / company / boss_dm；
    - `person.system_role`：boss / manager / employee；
    - `manager_scopes`：管理者管的部门。
-   - 查不到就按「未绑定/未识别」处理，不猜人、不把任务登记到任何人名下。
+   - 查不到：先走「首次绑定」（`anc-task` 技能）——请对方回复一次姓名，然后用 `bind-member-identity.ps1` 把 `from` 写进 org 并重渲染；绑定成功后按新身份继续；不要猜人、不把任务登记到任何人名下。
+   - 首次绑定失败（找不到/重名）：回「已记录，请老板/管理员确认姓名」，不做任务登记。
 3. 按群和角色决定能不能做：
    - **员工群**：只服务该员工；
    - **部门群**：本部门员工 + 本部门管理者 + 老板；

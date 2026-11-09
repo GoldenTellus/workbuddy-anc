@@ -54,7 +54,7 @@
 
 ### 1.5 公司侧部署与自证（2026-11-09，本机）
 
-- [x] `deploy.ps1 -Apply` 成功：**137 个文件**逐一 hash 对拍通过（日志 `%ProgramData%\anc\stage\elevated-*.log`）。
+- [x] `deploy.ps1 -Apply` 成功：**138 个文件**逐一 hash 对拍通过（含 `bind-member-identity.ps1`；日志 `%ProgramData%\anc\stage\elevated-*.log`、后一次部署 `deploy-20261109-170700`）。
 - [x] `deploy-skills.ps1 -Apply`：8 个技能 / 10 个文件落盘（`%USERPROFILE%\.workbuddy\skills`）。
 - [x] `register-tasks.ps1 -Apply`：**13 个计划任务**全部 Ready（LOCAL SERVICE×9 / SYSTEM×1 / DNT 交互×3）。
 - [x] WorkBuddy 补丁：`patch-state.json` → `applied=true mode=hash pid=24140 version=5.9.3`，进程活着（由 `anc-patch-guard` 自愈拉起）。
@@ -65,7 +65,7 @@
 - [x] `deploy.ps1 -Rollback` 已实现并在临时根演练：首次部署回滚删除 137 个文件；升级回滚恢复备份文件（`%ProgramData%\anc\stage\rollback-drill.log`）。
 - [x] `doctor`（34 项）FAIL=0 WARN=3（work-hours / patch 日志落点 / bindings；canary 在 15:38 收到首条真实消息后转 PASS）；`deploy-verify` `ok:true pass=4 fail=0 skip=1`（bot-reply：无已绑定群，SKIP）。
 - [x] 真实消息路径：15:38:34 补丁处理了一条真实企微消息（`patch-canary.json` chatId/user/contentStr 三项 true，`patch-in.log` 记录前缀注入），随后 doctor 的 canary 转 PASS —— 群身份注入在真实入站路径生效；因为没有群绑定，`bot-reply` 仍 SKIP。
-- [x] 代码修复后重新 `deploy.ps1 -Apply`：137 文件 hash 全过（备份 `backup\deploy-20261109-155502`），线上脚本与仓库一致。
+- [x] 代码修复后重新 `deploy.ps1 -Apply`：137 文件 hash 全过（备份 `backup\deploy-20261109-155502`），线上脚本与仓库一致；后续加自动绑定脚本后为 **138 文件**（备份 `deploy-20261109-170700`）。
 - [x] 提交 `0ed1938`（29 文件）；**干净树最终门禁**：`npm test` **212/212 ×3**（39.5/39.1/38.8s）、`npm run check`、coverage **90.85/80.43/94.99**、`check-public` 零输出、`doctor -SelfTest` ALL PASS、`doctor` 34 项 FAIL=0 WARN=3、`deploy-verify` `ok:true pass=4 fail=0 skip=1`、`deploy-state` 11/11。
 - [ ] 真实两机群 / 员工数据 / 03:00 日切 / 窗口重启恢复 / 生产回滚窗口 → 仍归 ACC（本机无真实群、无员工名单、无第二台电脑）。
 
@@ -80,7 +80,9 @@
 - [x] `boss_dm` 用老板与公司 bot 的 1:1：已识别通过（老板/boss，2026-11-09 16:33 实测）；**不建老板私有群**（用户决定，D32）；1:1 无群机器人，主动推送不做承诺。
 - [x] **ACC-07 生产回滚窗口已演练**：`deploy.ps1 -Rollback` 恢复 137 文件（回滚源 `backup\deploy-20261109-155502`）→ 再 `-Apply` 137 文件 hash 全过（新备份 `deploy-20261109-164051`）；演练后 `deploy-verify ok:true 4/0/1`、`doctor 34 项 FAIL=0 WARN=3`。证据 `.workbuddy/verify/final/acc07-rollback-*.log`。
 - [x] 员工 @ 已打通：用户调整企微智能机器人「可使用范围」后，16:55 收到吴琼在群里的真实消息（`patch-in.log` 有入站）；按实际 sender id 更新 `member.userid`（`wok…` 会话级 id），`bind actor` → 吴琼 / employee，`verify-org` ok。**GAP-073 关闭**（新成员仍需在企微后台分配/领用，见 DEPLOY-COMPANY §11.1）。
-- [ ] 张佳艺尚未发消息 → sender id 待采集（她发一句后同样绑定）。
+- [x] **首次身份绑定已自动化（GAP-074）**：新增 `bin\bind-member-identity.ps1`（按姓名/ID 把 sender id 写进 org → 重渲染 → sync），persona 与 `anc-task` 技能已加「首次绑定」流程：未识别成员第一次 @ 时，bot 请对方回复一次姓名（若消息自带姓名则直接绑），随后自动写 org，下一条消息即识别。已部署（138 文件）、临时 org 验证匹配/未匹配两种返回；`deploy-persona` + `deploy-skills` 已更新（新会话生效）。
+- [ ] 张佳艺尚未发消息 → 下一次她 @ 时（新会话/`/new` 后）走自动绑定即可识别；无需人工采集日志。
+- [ ] 员工群（每人一个：本人 + 公司 bot + 员工 bot）与部门群 chatId 未建 → 员工侧 @ 链路待建群。
 - [ ] 真实群消息回归：需老板/员工在群里 `@公司 bot` 验证新 persona（新会话生效；旧会话需 `/new`）。
 
 ---
@@ -223,8 +225,9 @@
 | GAP-069 | DEPLOY-EMPLOYEE 卸载清单缺 `anc-executor` | 本轮改文档，关闭 |
 | GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 文档写明归主干 2 后续；主干 0 接受暂不实现 |
 | GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 归主干 2 后续；已在 `MAIN-EXECUTOR.md` §7 标「待补」，不阻塞主干 0 |
-| GAP-072 | 企微 AI Bot 上报的发送者 id 是会话级 open id（`wok…`），不是通讯录 userid；org 的 `member.userid` 必须写实际上报值，否则 `bind actor` 找不到人 | 已按真实入站消息校正老板映射并写进 WORKBUDDY-PATCH / DEPLOY-COMPANY；员工 id 待其发消息后采集，关闭前保持登记 |
+| GAP-072 | 企微 AI Bot 上报的发送者 id 是会话级 open id（`wok…`），不是通讯录 userid；org 的 `member.userid` 必须写实际上报值，否则 `bind actor` 找不到人 | 已按真实入站消息校正老板映射并写进 WORKBUDDY-PATCH / DEPLOY-COMPANY；首次绑定已自动化（GAP-074）：员工第一次 @ 时由 bot 调脚本写入 org |
 | GAP-073 | 员工未分配 WorkBuddy 企业版席位/可使用成员 → 企微智能机器人拦截（“你不在该智能机器人的可使用范围”），员工侧 ACC 无法开始 | **closed**：用户已调整企微机器人可使用范围；16:55 吴琼消息入站，采集实际 sender id 并绑定，`bind actor` 通过。新成员仍需按 DEPLOY-COMPANY §11.1 分配/领用 |
+| GAP-074 | 首次身份绑定原需人工读日志采集 sender id（员工第一次 @ 后要管理员操作），不满足“公司 bot 自己完成采集绑定” | **closed（已实现）**：`bin\bind-member-identity.ps1` + persona/`anc-task` 首次绑定流程；部署 138 文件；临时 org 验证匹配/未匹配返回；下一条消息即识别 |
 
 ---
 
@@ -287,6 +290,7 @@
 | 2026-11-09 | 用户决定 boss_dm 简化为老板 1:1（不建私有群） | 0.3 DECISIONS D32、STATUS §1.6/§3.5；0.8 ACC-06 口径 | 无新增 GAP | 1:1 无主动推送，按 D32 接受；收口期不扩配置 |
 | 2026-11-09 | ACC-07 生产回滚演练（rollback 137 → re-apply 137） | 0.4 部署回滚；0.8 ACC-07 达成 | 无新增 GAP | 演练后 doctor/verify 全绿；证据 `verify/final/acc07-rollback-*.log` |
 | 2026-11-09 | 员工入站打通：企微机器人可使用范围调整 + 吴琼 sender id 绑定 | 0.3 STATUS §1.6/§3.5；0.8 员工链路推进 | GAP-073 关闭 | `patch-in.log` 有吴琼入站；`bind actor` 通过；张佳艺 id 待采集 |
+| 2026-11-09 | 首次身份绑定自动化：bind-member-identity.ps1 + persona/技能流程 | 0.2/0.3 脚本/技能/persona；0.6 部署 138 文件；0.8 员工链路 | 新增并关闭 GAP-074 | 未识别成员第一次 @ 时自动绑定；临时 org 验证两种返回 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -297,7 +301,7 @@
 | 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP | 2026-11-09 本机结果 |
 |---|---|---|---|---|---|
 | ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工角色与 manager_scopes 正确、`verify-org` 通过；员工群/部门群 chatId 未建 |
-| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 | 未达成：员工身份已可识别（吴琼已绑定），但员工群未建；张佳艺 id 待采集 |
+| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 | 未达成：员工身份链路已通且首次绑定自动化（吴琼已绑；张佳艺下一条消息自动绑），但员工群未建 |
 | ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 | 未达成：无真实员工群（员工身份已可识别） |
 | ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 | 未达成：无部门群/管理者；员工身份已可识别 |
 | ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 | **部分达成**：公司群身份/角色映射可用；真实隐私路由需员工请求与部门群 |

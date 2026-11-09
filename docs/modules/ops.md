@@ -3,7 +3,7 @@
 > 类型：模块契约
 
 > 状态：现行（P5 后按域分组到 `scripts/<domain>/`，部署仍扁平到 `bin/`）
-> 代码：`scripts/`（54 个文件）
+> 代码：`scripts/`（55 个文件）
 > 入口：`scripts/deploy/deploy.ps1`
 
 ## 职责

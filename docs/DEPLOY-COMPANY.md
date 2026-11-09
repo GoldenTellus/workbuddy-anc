@@ -711,6 +711,12 @@ webhook_file: zhangsan-bot.txt   # secrets 目录下的文件名（不是路径�
 > 2. 把 `member.userid` 写成这个实际值（通讯录账号仅作人工对照，不要写进去）；
 > 3. 重跑 `render deploy --db` + `bind verify-org`，再用 `bind actor` 验证。
 > 通讯录账号在员工机侧/人工沟通里仍有意义，但公司侧的入站身份以 AI Bot 上报值为准。
+>
+> **首次绑定已自动化（2026-11-09，GAP-074）**：不用管理员手工读日志。公司 bot 在 `bind actor` 查不到人时，会请对方回复一次姓名（若第一条消息已自报「我是X」则直接绑），然后执行：
+> ```powershell
+> powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\bin\bind-member-identity.ps1 -Name "<姓名>" -Userid "<from>"
+> ```
+> 脚本按姓名/成员 ID 找 `D:\anc\org\members\<id>.md`，把 `userid` 写成实际 sender id → 重渲染 → `sync-org`；下一条消息即可识别。找不到/重名时返回 `person-not-found` / `ambiguous`，bot 会请老板/管理员确认，不猜人。
 
 ### 10.5 webhook 文件（每个群一个）
 

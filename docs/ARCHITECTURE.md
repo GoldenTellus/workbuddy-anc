@@ -117,7 +117,7 @@ content     独立：只依赖 CLI 命令契约
 | `scripts/<domain>/*.ps1` | `%ProgramData%\anc\bin\<name>.ps1`（**扁平**） | 文件名不变，计划任务引用 |
 | `light/*` | 由 `deploy-skills.ps1` / 渲染器部署 | 内容 |
 
-`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射；本机 dry-run = **137 个文件**，`bin` 35 个）；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
+`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射；本机 dry-run = **138 个文件**，`bin` 36 个）；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
 
 ---
 
