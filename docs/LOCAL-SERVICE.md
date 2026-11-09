@@ -20,6 +20,11 @@
 | `outbox` | 出站消息 | `dedupe_key` 唯一；入队前过凭据扫描 |
 | `config` | 工作时段/节假日 | `work_start` / `work_end` / `weekdays`（1–7）/ `holidays`（逗号分隔日期）；默认全天 |
 | `a2a_surveys` | 调查（访谈） | `rule_version` + `rule_hash` 冻结规则；`expected` 是应交回的人员 |
+| `executor_hosts` | 03:00 日切 host | 全库只能一个 `active`；`cut_deferred` 是兜底标记 |
+| `tickets` | 执行单元 | `task_dir` 由部门 + ticket_id 推导；状态由 Report/人的动作推进 |
+| `assignments` | 一次 subagent 尝试 | 一个 Ticket 同时只能有一个 `pending/running` |
+| `reports` | subagent 回报 | 只追加；`late=1` 表示旧 Assignment 迟到回报 |
+| `executor_events` | 执行审计 | 只追加：claim/start/report/end/interrupt/recover |
 | `a2a_messages` | 交回的信封 | 按 `message_id` 去重；文件归档在内部区 `surveys/<survey_id>/` |
 
 原则（§5.5）：
