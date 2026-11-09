@@ -25,6 +25,66 @@ Main 用 WorkBuddy Agent tool 起 subagent
 
 background 任务**不自动接单**。候选先由 Main 评估，决定是否建 Ticket、优先级和授权；`executor` 只接收已经授权的 Ticket。夜里没有消息时由 wake 触发 Main 评估，不绕过 Main 直接派活。
 
+### 评估输入
+
+```text
+task 行（title / requester_id / assignee_id / dept_id / due_at / kind=background）
+请求人角色与部门范围
+已有 Ticket / Assignment（去重）
+当前 slot（4 normal + 1 human）
+授权默认值（tools / vault_paths / budget / max_attempts）
+```
+
+### 硬门槛（任一不过就不接）
+
+1. 请求人已登记、在职，且有权发起 background 任务；
+2. 标题不是空话，至少能说清“交付物”或“验收标准”；
+3. `dept_id` 明确，数据级别允许进入该部门任务目录；
+4. 同一 `task_id` 没有已存在的 open Ticket；
+5. 当前工具/路径授权足以完成；不需要 Main 临时提权；
+6. 预计不会产生未授权的外部副作用（发群、写共享区、动钱、动生产）。
+7. 有可用 slot；没有就排队，不抢占。
+
+### 判断（硬门槛之后）
+
+| 维度 | 判断 |
+|---|---|
+| 价值 | 做了是否解决一个真实问题；没有交付物就 `defer`/`ask` |
+| 风险 | 外部可见、跨部门、写共享区、凭据/财务 → `ask`，不直接接 |
+| 优先级 | P0 老板 / P1 管理者 / P2 员工 / P3 系统；同层按截止时间 |
+| 成本 | 预计超时、需要多轮工具、依赖外部系统 → 降级或 `defer` |
+| 可验证 | 有没有明确产物/证据路径；没有就 `ask` |
+
+### 决策输出
+
+```json
+{
+  "decision": "accept | defer | ask | reject",
+  "reason": "一句话",
+  "priority": "P0..P3",
+  "ticket": {
+    "title": "...",
+    "task_id": 12,
+    "department_id": "sales",
+    "tools": ["read", "write"],
+    "vault_paths": ["departments/sales/..."],
+    "budget": {"max_minutes": 30},
+    "max_attempts": 3
+  }
+}
+```
+
+- `accept`：才建 Ticket；
+- `defer`：任务保持候选，下一次 wake 再评估；
+- `ask`：需要人补充信息/确认，进主干 3 的 Attention；
+- `reject`：说明原因，不静默取消。
+
+默认策略：**不确定就 `ask` 或 `defer`，不猜、不自动接。**
+
+### 当前实现边界
+
+评估流程目前是 Main 技能里的行为约定，还没有独立的评估记录表；`GAP-008` 设计已定，评估器实现待做。
+
 ## 1. Main 的一个 tick
 
 ```text
