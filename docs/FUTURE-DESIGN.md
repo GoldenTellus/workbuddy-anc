@@ -375,6 +375,7 @@ flowchart LR
 **并发与恢复**
 
 - 全局并发上限先按 4；每个 subagent 一个任务，不按部门另设 subagent 类型。
+- **2026-11-09 并发/落盘 spike 通过**：4 个 subagent 同时运行（最早 start 02:24:24，最晚 finish 02:24:38；4 条时间窗重叠），销售 2 任务、财务 2 任务各自只写 `departments/<dept>/tasks/<ticket>/`，没有串写。
 - 并发上限、模型选择、预算、重试上限待定（6.2 #9）。
 - 主机重启后，按 Ticket/Assignment 恢复；subagent 是临时执行体，不把“会话 id”当任务身份。
 - 日对话被关闭/换日不阻塞任务：Report 写回数据库，下一班调度台接管。
