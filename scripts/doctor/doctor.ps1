@@ -648,18 +648,48 @@ if ($untracked.Count -eq 0) {
         Add-Result 'vault-ingest-audit' 'WARN' ("$($untracked.Count) 个未跟踪文件，但 1 小时内没有成功入库记录——可能绕过了 CLI 直接写盘") '核对 inbox/done 有没有对应批次；绕过写入的文件不该进 git'
     }
 }
-# 21 备份新鲜度（备份平时看不出坏，只能靠时间戳判活）
+# 21 备份新鲜度（备份平时看不出坏，只能靠时间戳 + schema 判活）
+# 2026-11-10（BATCH-20261110 / GAP-089）：只看时间戳会假 PASS——trunk-3 迁移后旧备份缺 attentions，
+# 但 mtime 仍"新鲜"; 真的回滚会丢表。这里额外用 node:sqlite 只读打开备份，比对 live 库的表清单。
 $bakDir = Join-Path $Root 'backup'
 $lastBak = Get-ChildItem $bakDir -Filter 'anc-*.db' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $lastBak) {
     Add-Result 'backup-freshness' 'FAIL' '没有任何数据库备份' '跑一次 anc-backup 任务，或 scripts\backup\backup-anc.ps1'
 } else {
     $ageH = [int]((Get-Date) - $lastBak.LastWriteTime).TotalHours
+    $liveDb = Join-Path $Root 'data\anc.db'
+    # JS 放环境变量、-e 只放 eval(...)：PS 7 的原生参数传递会吃掉字符串里的引号，
+    # 直接 `node -e "require('node:sqlite')..."` 在 PS 7 下会被拆坏。环境变量对 5.1/7 都稳。
+    $probeJs = 'const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.ANC_PROBE_DB,{readOnly:true});const t=db.prepare("select name from sqlite_master where type=''table''").all().map(r=>r.name).sort();console.log(JSON.stringify(t));db.close();'
+    $env:ANC_PROBE_JS = $probeJs
+    function Get-DbTables([string]$dbPath) {
+        if (-not (Test-Path $dbPath)) { return @() }
+        $env:ANC_PROBE_DB = $dbPath
+        try {
+            $raw = & node --no-warnings -e 'eval(process.env.ANC_PROBE_JS)' 2>$null | Out-String
+            $trim = $raw.Trim()
+            if (-not $trim) { return @() }
+            $parsed = $trim | ConvertFrom-Json
+            $out = @()
+            foreach ($x in $parsed) { $out += [string]$x }
+            return $out
+        } catch { return @() } finally {
+            Remove-Item Env:ANC_PROBE_DB -ErrorAction SilentlyContinue
+        }
+    }
+    $bakTables = @(Get-DbTables $lastBak.FullName)
+    $liveTables = @(Get-DbTables $liveDb)
+    $missing = @($liveTables | Where-Object { $bakTables -notcontains $_ })
     if ($ageH -gt 30) {
         Add-Result 'backup-freshness' 'FAIL' ("最近备份 $ageH 小时前（阈值 30）") '检查 anc-backup 任务与磁盘空间；backup.log 里有原因'
+    } elseif ($bakTables.Count -eq 0) {
+        Add-Result 'backup-freshness' 'FAIL' ("最新备份打不开或无表: " + $lastBak.Name) '删除损坏备份并重跑 scripts\backup\backup-anc.ps1，再按 OPS 做恢复演练'
+    } elseif ($missing.Count -gt 0) {
+        Add-Result 'backup-freshness' 'FAIL' ("最新备份缺 live 表: " + ($missing -join ',') + "（备份早于迁移？）") '强制跑一次 scripts\backup\backup-anc.ps1 -MinIntervalHours 0，再复跑 doctor'
     } else {
-        Add-Result 'backup-freshness' 'PASS' ("$ageH 小时前，" + [math]::Round($lastBak.Length / 1KB) + " KB") '-'
+        Add-Result 'backup-freshness' 'PASS' ("$ageH 小时前，" + [math]::Round($lastBak.Length / 1KB) + " KB，" + $bakTables.Count + " 表与 live 对齐") '-'
     }
+    Remove-Item Env:ANC_PROBE_JS -ErrorAction SilentlyContinue
 }
 $fails = @($results | Where-Object { $_.state -eq 'FAIL' }).Count
 $warns = @($results | Where-Object { $_.state -eq 'WARN' }).Count
