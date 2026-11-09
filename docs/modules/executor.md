@@ -29,6 +29,8 @@
 - `sweepStaleAssignments({now, graceMinutes})`：旧 host 超 grace 的 Assignment 自动中断
 - `listExecutorEvents({ticketId, hostId, limit})`：审计查询
 - `recordEvaluation({taskId, decision, reason, priority, ticketId})` / `listEvaluations`：Main 评估记录
+- `getTicketScope(ticketId)`：只返回 task_dir/allowed_roots/tools/vault_paths/group_access=false
+- `expireTickets({now})`：过期 Ticket 中断 Assignment 并转 failed
 - `interruptAssignment({assignmentId, reason})`
 
 ## 不变量

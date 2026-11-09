@@ -41,7 +41,7 @@
 - [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
 - [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
 - [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
-- [x] `npm test` **210/210**；`npm run check` 通过。
+- [x] `npm test` **212/212**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ---
@@ -165,6 +165,7 @@
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
 | 2026-11-09 | T2.7 审计/幂等收口：events + notify dedupe | 0.3 LOCAL-SERVICE/MAIN-EXECUTOR/PLAN；0.6 209/209 | GAP-057 接受范围 | 其他副作用未实现 |
+| 2026-11-09 | T2.5/T2.6 收口：ticket scope + expire | 0.3 executor/LOCAL-SERVICE/MAIN-EXECUTOR；0.6 212/212 | GAP-054 部分收窄 | 物理隔离仍按 D28 |
 | 2026-11-09 | Main 评估落库：executor_evaluations + evaluate CLI | 0.3 MAIN-EXECUTOR/modules；0.6 210/210 | GAP-008 更新 | 自动评估器仍未做 |
 | 2026-11-09 | GAP-008 决策：background 由 Main 评估后接 | 0.3 DECISIONS/D29、MAIN-EXECUTOR、anc-executor；0.6 209/209 | GAP-008 设计关闭 | 不自动接；评估器实现待做 |
 | 2026-11-09 | T1 本地收口核对：T1.3/T1.7/T1.11 本地部分已有测试 | 0.3 PLAN/STATUS；0.6 209/209 | GAP-003/004/028 更新 | 真实群/1:1/成员 API 仍留 ACC-01/06/08 |

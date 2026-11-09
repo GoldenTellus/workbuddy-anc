@@ -192,6 +192,10 @@ node src/service/cli.ts --json executor notify `
   --chat-id <chatid> --text "<result summary>" [--dedupe-key <key>]
 
 # 进程重启后，旧 host 的 pending/running 统一中断并回到队列
+node src/service/cli.ts --json executor scope --ticket-id <ticket>
+
+node src/service/cli.ts --json executor expire --now "<now>"
+
 node src/service/cli.ts --json executor sweep --now "<now>" --grace-minutes 10
 
 node src/service/cli.ts --json executor recover --host-id <old-host> --reason host-restart

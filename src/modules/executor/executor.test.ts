@@ -9,6 +9,8 @@ import {
   listExecutorEvents,
   listEvaluations,
   recordEvaluation,
+  getTicketScope,
+  expireTickets,
   sweepStaleAssignments,
   deferCutIfDue,
   closeHostIfIdle,
@@ -18,6 +20,7 @@ import {
   endAssignment,
   getHost,
   getTicket,
+  getAssignment,
   interruptAssignment,
   startAssignment,
 } from './executor.ts';
@@ -318,5 +321,32 @@ test('executor：Main 评估记录 accept/defer/ask/reject 可追溯', () => {
       () => recordEvaluation(db, { taskId: 1, decision: 'auto' as never, reason: 'x' }),
       /decision 必须是/,
     );
+  } finally { db.close(); }
+});
+test('executor：ticket scope 只给任务目录，不给群权限', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'scope', tools: ['read', 'write'] });
+    const scope = getTicketScope(db, t.ticket_id);
+    assert.equal(scope.task_dir, t.task_dir);
+    assert.deepEqual(scope.allowed_roots, [t.task_dir]);
+    assert.deepEqual(scope.tools, ['read', 'write']);
+    assert.equal(scope.group_access, false);
+  } finally { db.close(); }
+});
+
+test('executor：过期的 Ticket 会中断 Assignment 并转 failed', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'expire', expiresAt: '2026-11-09T00:00:00.000Z' });
+    const a = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-expire' });
+    const r = expireTickets(db, { now: '2026-11-10T00:00:00.000Z' });
+    assert.equal(r.expired, 1);
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'failed');
+    assert.equal(getAssignment(db, a.assignment.assignment_id)!.state, 'interrupted');
   } finally { db.close(); }
 });

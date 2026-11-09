@@ -111,6 +111,15 @@ export interface ClaimResult {
   assignment: Assignment;
 }
 
+export interface TicketScope {
+  ticket_id: string;
+  task_dir: string;
+  allowed_roots: string[];
+  tools: string[];
+  vault_paths: string[];
+  group_access: false;
+}
+
 export interface ExecutorEvaluation {
   evaluation_id: string;
   task_id: number;
@@ -393,6 +402,19 @@ export function listTickets(db: DatabaseSync, state?: TicketState): Ticket[] {
   return db.prepare('SELECT * FROM tickets ORDER BY created_at').all() as Ticket[];
 }
 
+export function getTicketScope(db: DatabaseSync, ticketId: string): TicketScope {
+  const t = getTicket(db, ticketId);
+  if (!t) throw execError('EXEC_TICKET_NOT_FOUND', 'ticket 不存在');
+  return {
+    ticket_id: t.ticket_id,
+    task_dir: t.task_dir,
+    allowed_roots: [t.task_dir],
+    tools: JSON.parse(t.tools_json) as string[],
+    vault_paths: JSON.parse(t.vault_paths_json) as string[],
+    group_access: false,
+  };
+}
+
 function activeCount(db: DatabaseSync, slot: 'normal' | 'human'): number {
   const row = db.prepare(
     "SELECT COUNT(*) AS n FROM assignments WHERE slot = ? AND state IN ('pending', 'running')",
@@ -557,6 +579,25 @@ export function recoverHost(db: DatabaseSync, input: { hostId: string; reason?: 
     recordEvent(db, 'host_recovered', { hostId: host.host_id }, { recovered: rows.length, reason: input.reason ?? 'host-restart' });
     closeHostIfIdle(db, host.host_id);
     return { host: getHost(db, host.host_id)!, recovered: rows.length };
+  });
+}
+
+/** expires_at 已到的 Ticket：中断活跃 Assignment，Ticket 转 failed。 */
+export function expireTickets(db: DatabaseSync, input: { now: string }): { expired: number } {
+  return tx(db, () => {
+    const rows = db.prepare(`
+      SELECT * FROM tickets
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+        AND state NOT IN ('done', 'cancelled', 'failed')
+    `).all(input.now) as Ticket[];
+    for (const t of rows) {
+      db.prepare("UPDATE assignments SET state = 'interrupted', ended_at = ?, end_reason = 'ticket-expired' WHERE ticket_id = ? AND state IN ('pending', 'running')")
+        .run(input.now, t.ticket_id);
+      db.prepare("UPDATE tickets SET state = 'failed', ended_at = ?, updated_at = ? WHERE ticket_id = ?")
+        .run(input.now, input.now, t.ticket_id);
+      recordEvent(db, 'ticket_expired', { ticketId: t.ticket_id }, { expires_at: t.expires_at });
+    }
+    return { expired: rows.length };
   });
 }
 

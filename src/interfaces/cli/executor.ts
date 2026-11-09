@@ -143,6 +143,19 @@ export default function executorGroup(ctx: CliContext): void {
     return;
   }
 
+  if (cmd === 'scope') {
+    const ticketId = String(args['ticket-id'] ?? '');
+    if (!ticketId) fail('缺少 --ticket-id');
+    out({ ok: true, scope: executor.getTicketScope(db, ticketId) });
+    return;
+  }
+
+  if (cmd === 'expire') {
+    const now = typeof args.now === 'string' ? args.now : new Date().toISOString();
+    out({ ok: true, ...executor.expireTickets(db, { now }) });
+    return;
+  }
+
   if (cmd === 'evaluate') {
     const taskId = Number(args['task-id']);
     const decision = String(args.decision ?? '');

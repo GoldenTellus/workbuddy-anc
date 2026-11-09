@@ -72,6 +72,8 @@ npm run service -- --json executor report --assignment-id <id> --type ready --su
 npm run service -- --json executor notify --chat-id <chatid> --text "结果摘要" [--dedupe-key <key>]
 npm run service -- --json executor evaluate --task-id <n> --decision accept --reason "<理由>" [--priority P1] [--ticket-id <ticket>]
 npm run service -- --json executor evaluations --task-id <n>
+npm run service -- --json executor scope --ticket-id <ticket>
+npm run service -- --json executor expire --now "2026-11-10T00:00:00+08:00"
 npm run service -- --json executor sweep --now "2026-11-10T03:00:00+08:00" --grace-minutes 10
 npm run service -- --json executor recover --host-id <old-host> --reason host-restart
 npm run service -- --json executor end --assignment-id <id> --reason completed

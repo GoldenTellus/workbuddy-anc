@@ -106,7 +106,8 @@
 
 ### T2.5 WorkBuddy subagent 适配
 
-- [ ] `ExecutorPort`：`start(ticket, assignment)`、`report`、`interrupt`（Main 技能已按契约工作；代码端口待抽）。
+- [ ] `ExecutorPort`：`start(ticket, assignment)`、`report`、`interrupt`（Main 技能 + CLI 已是实际端口；不做空壳 TS 抽象）。
+- [x] 过期 Ticket：`expireTickets` 中断 Assignment 并转 failed；scope 输出 group_access=false。
 - [x] 真实 subagent：把 Ticket、部门、任务目录、工具边界、Report 格式写进 prompt（`anc-executor` 技能 + `subagent.md`）。
 - [x] 解析 Report；超时、失败、重试、`interrupted` 回写（Report CLI 已落；超时/重试待 scheduler）。
 - [x] 并发 spike：4 个 subagent 同时跑；两个部门各 2 个任务；只写各自目录。

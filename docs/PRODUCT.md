@@ -403,7 +403,7 @@ issue
 | 任务链路是否通 | 群里说「登记任务：明天 10:00 提醒我交周报」→ 49 秒内应回任务号 |
 | 自愈是否工作 | `anc-selfheal.ps1 -DryRun` → `hashMatches=True anchorsOk=True` |
 | 备份是否做过 | `doctor` 的 `backup-freshness` 必须是 PASS（**要本地备份，不是离机副本**） |
-| 单元与集成测试 | `npm test` → 210/210 |
+| 单元与集成测试 | `npm test` → 212/212 |
 
 ---
 
