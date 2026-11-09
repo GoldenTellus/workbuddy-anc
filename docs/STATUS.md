@@ -15,7 +15,7 @@
 - [x] 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 237/237；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 238/238；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run **138 个文件**（早期基线 125；最终含 bind-member-identity）；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -128,7 +128,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 主干 0 | **已收口（2026-11-09）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；见 [PLAN.md](./PLAN.md) 与快照 |
 | 主干 1 | **已收口（2026-11-09）** | 4/4 分支；D35 用户实测、D36 例外；员工 bot 旧 1.0 归主干 4 |
 | 主干 2 | **本机收口，验收 🟡** | 5/5 分支；ACC-09/10/11 本机达成；真实 Main 群回归待两机 |
-| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；237/237；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；遗留 GAP-079/080/084 非阻塞 |
+| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；238/238；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；遗留 GAP-079/080/084 非阻塞 |
 | 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
 
@@ -223,6 +223,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-082 | `register-tasks.ps1` 失败仍打印 OK | `Register-ScheduledTask` 抛 `拒绝访问` 后脚本继续打印 `OK <task>` 并汇总“已注册 13 个任务” | 捕获异常并以非 0 退出；失败任务不得计入“已注册” | 主干 3 部署 | 否 | closed：加 `-ErrorAction Stop`，非提权实测 exit=1、只报 ERROR/FIX |
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
 | GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实群 A6/A7/A8 问题为 ASCII，中文提问仍未复测；乱码就走文件/包装 |
+| GAP-085 | Main 真实群回归的 subagent 隔离 | 2026-11-09 真实群 Task #14：bot 用 `subagent_id=main` 自己写 `hello.md`，没有起独立 subagent；功能链路通，但违反“一 Ticket 一 subagent” | `startAssignment` 拒绝 main/self/company-bot；技能明确必须用 Agent tool 返回 id；重跑真实群 | 主干 2 | 否 | closed：host 侧真实 Agent id `agent-634568e4…` 跑通，`hello2.md` 落盘，Task #15 done |
+| GAP-086 | Claw Main 没有 Agent tool | Task #15 真实群：公司群 bot 是 Main（Claw 会话），没有 Agent 工具，不能起 subagent；它正确拒绝，未建 Ticket | Main 只建 Ticket + 唤醒 host；host（Agent 模式）claim/start/subagent；加角色守卫/定向 wake | 主干 2 | 是 | host 侧已通；剩余 Main→host 路由与角色拆分 |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -356,6 +358,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | 主干 3 部署（公司主机） | deploy 142 文件 hash 全过；备份 `deploy-20261109-193745`/`194024`；线上 DB 迁移 `attentions`/`outbox.attention_id`/`reports.question` 通过 | 管理员会话重跑 `register-tasks -Apply`：13 任务 Ready；doctor **FAIL=0 WARN=3**；GAP-081/082/083 关闭 | ACC-13/14/15 本机 CLI 链路已跑；真实群待跑 |
 | 2026-11-09 | ACC-13/14/15 本机链路 | A2 approve → Ticket/Task done；A3 answer → human slot 恢复 working；A4 ack → done；A5 9h → level 2 | 线上 DB 审计：`attention_answered` / `ticket_closed` / human slot；真实群回复与提醒待跑 | 需新会话加载新技能/persona 后再跑真实群 |
 | 2026-11-09 | CLI 中文参数编码复现 | PowerShell 5.1 直传中文出现乱码；`task add` 中文标题此前正常 | 新增 GAP-084；本机验收改用 ASCII；真实群前用新会话复测 | 若复现，`attention create` 加 `--json-file`/UTF-8 包装 |
+| 2026-11-09 | 主干 2 真实群回归发现 GAP-085 | Task #14 功能链路通；但 `subagent_id=main`，Main 自己写 `hello.md` | 加 `startAssignment` 守卫（拒绝 main/self/company-bot）+ 技能写明必须 Agent id；238/238 | 待重跑 Task #15 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 

@@ -407,3 +407,22 @@ test('executor：超过 budget.max_minutes 自动中断并 block Ticket', () => 
     assert.equal(getTicket(db, t.ticket_id)!.state, 'blocked');
   } finally { db.close(); }
 });
+
+test('executor：start 拒绝 main/self 充当 subagent', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: '整理报价' });
+    const c = claim(db, { hostId: h.host_id });
+    assert.ok(c);
+    assert.throws(
+      () => startAssignment(db, { assignmentId: c!.assignment.assignment_id, subagentId: 'main' }),
+      /Agent tool/,
+    );
+    const started = startAssignment(db, { assignmentId: c!.assignment.assignment_id, subagentId: 'agent-real-1' });
+    assert.equal(started.state, 'running');
+    assert.equal(started.subagent_id, 'agent-real-1');
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'working');
+  } finally { db.close(); }
+});

@@ -517,13 +517,19 @@ export function startAssignment(db: DatabaseSync, input: { assignmentId: string;
     if (!a) throw execError('EXEC_ASSIGNMENT_NOT_FOUND', 'assignment 不存在');
     if (a.state === 'running') return a;
     if (a.state !== 'pending') throw execError('EXEC_ASSIGNMENT_BAD_STATE', '只有 pending 能 start');
-    if (!input.subagentId.trim()) throw execError('EXEC_BAD_SUBAGENT', 'subagentId 必填');
+    const sid = input.subagentId.trim();
+    if (!sid) throw execError('EXEC_BAD_SUBAGENT', 'subagentId 必填');
+    // Main 自己不是 subagent：agent id 必须是 Agent tool 返回的 id。
+    // 放行 "main" 会让 Main 边调度边干活，破坏“一 Ticket 一 subagent”的隔离。
+    if (/^(main|self|company[-_ ]?bot|bot)$/i.test(sid)) {
+      throw execError('EXEC_BAD_SUBAGENT', 'subagentId 必须是 Agent tool 返回的 id，不能是 main/self/company-bot');
+    }
     const at = nowIso();
     db.prepare("UPDATE assignments SET state = 'running', subagent_id = ?, started_at = ? WHERE assignment_id = ?")
-      .run(input.subagentId, at, a.assignment_id);
+      .run(sid, at, a.assignment_id);
     db.prepare("UPDATE tickets SET state = 'working', updated_at = ? WHERE ticket_id = ?")
       .run(at, a.ticket_id);
-    recordEvent(db, 'assignment_started', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { subagent_id: input.subagentId });
+    recordEvent(db, 'assignment_started', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { subagent_id: sid });
     return getAssignment(db, a.assignment_id)!;
   });
 }

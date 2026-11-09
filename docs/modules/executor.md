@@ -60,6 +60,7 @@
 - `answer` 只从 `working` / `waiting_trigger` 进入 `waiting_answer`；`review` 只在 `waiting_review` 建；`require_ack` 只从 `waiting_review` / `working` 进入 `waiting_ack`。
 - `answerAttention` 幂等：同一人、同一动作、同一内容重复投递返回当前状态。
 - Report `question` → Ticket `waiting_answer`；human-slot Assignment 不计入 `max_attempts`（D43）。
+- `startAssignment` 只接受 Agent tool 返回的 subagent id；`main` / `self` / `company-bot` 一律拒绝，防止 Main 自己干活。
 - `closeTicket` / `expireTickets` 会把该 Ticket 还挂着的 `open`/`notified` Attention 置 `cancelled`/`expired`。
 
 ## 失败模式
@@ -73,6 +74,7 @@
 | `EXEC_BAD_TASK_DIR` | 任务目录不是部门相对路径 |
 | `EXEC_ASSIGNMENT_NOT_FOUND` | assignment 不存在 |
 | `EXEC_ASSIGNMENT_BAD_STATE` | Assignment 状态不允许该动作 |
+| `EXEC_BAD_SUBAGENT` | subagentId 为空，或写成 main/self/company-bot（必须是 Agent tool 返回的 id） |
 | `EXEC_TICKET_NOT_FOUND` | ticket 不存在 |
 | `EXEC_BAD_REPORT_TYPE` | 未知 Report 类型 |
 | `EXEC_HUMAN_NO_INPUT` | human 定向领取前没有 answered/rejected Attention |

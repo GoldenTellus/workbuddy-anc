@@ -7,6 +7,12 @@ description: 公司 bot 的 Main 派发执行任务。发现队列里有 Ticket 
 
 任务状态在本地服务；**Main 是唯一活着的调度台**。本地服务不会开 WorkBuddy 对话，也不会替你调 Agent。
 
+## 先判断角色
+
+- **公司群 / 老板 1:1（Claw 会话）**：你是 Main，通常**没有 Agent tool**。只做 `brief` / `evaluate` / `ticket create` / 通知，把 Ticket 留在队列并唤醒 host；**不要 claim/start，不要自己写产物**。
+- **每日 host 会话（Agent 模式，有 Agent tool）**：你才是 Executor。才做 `claim/start` + Agent tool 起 subagent。
+- 不确定：先看当前工具列表；没有 Agent tool 就按 Main 处理，回报“已建 Ticket，等 host 执行”。
+
 ## 前置
 
 - 当前 host 必须已经由部署/启动器注册为 `active`；不要自己编 `conversation_id`。
@@ -46,6 +52,8 @@ prompt: <subagent.md 填充后的内容>
 ```
 
 - 一个 Ticket 一个 subagent；不要按部门拆 subagent 类型。
+- `--subagent-id` 必须是 **Agent tool 返回的 id**；禁止写 `main` / `self` / `company-bot`——CLI 会拒绝。Main 不自己写任务产物；Agent tool 起不来就 `report blocked`，不要代写。
+- 当前会话没有 Agent tool（Claw 会话常见）时，不要假装能派活：保持候选、回“当前会话没有 Agent 工具”，提示切到 Agent 模式或由专用 Executor host 接单。
 - subagent 只做当前 Ticket；不直接进群、不 @ 人、不新开对话。
 - 拿到 Agent id 后：
 
