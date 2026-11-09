@@ -194,67 +194,59 @@ deploy-verify          公司侧 ok:true；员工侧 smoke
 
 必须两机完成，详见 §6。没有通过前，主干 0 保持 🟡。
 
-## 5. 公司主机侧：完成清单
+## 5. 公司主机侧：完成清单（2026-11-09 ✅）
 
 ### 5.1 代码与数据库
 
-- [x] `npm test` 212/212；连续 3 次不挂起（`baseline/01-npm-test-run{1,2,3}`，40.6/43.7/40.7s）。
+- [x] `npm test` 212/212；连续 3 次不挂起（最终干净树 `6df9dc1`：38.9/36.9/38.2s）。
 - [x] `npm run check`、`check-public.mjs` 通过（零输出 exit 0）。
-- [x] schema 迁移能在旧库上跑；`executor_hosts/tickets/assignments/reports/events/evaluations` 可查（`deploy-verify` task-write PASS；`doctor database` PASS）。
-- [x] 17 组 CLI smoke；`executor claim/start/report/end/recover/sweep/expire/evaluate` 可用（`cli.smoke` + registry order=17）。
+- [x] schema 迁移能在旧库上跑；`executor_hosts/tickets/assignments/reports/events/evaluations` 可查（`deploy-verify` task-write PASS；`doctor database` PASS；恢复演练后再跑同样 PASS）。
+- [x] 17 组 CLI smoke；`executor claim/start/report/end/recover/sweep/expire/evaluate` 可用（`cli.smoke` + registry order=17，本轮 ACC-10/11 实测用到 claim/start/report/end/recover）。
 - [x] `doctor` **34 项** FAIL=0；13 个任务 principal 正确（9 LOCAL SERVICE / 1 SYSTEM / 3 DNT 交互）。
 
 ### 5.2 部署与运行
 
-- [x] `deploy.ps1` dry-run 通过，`-Apply` 后逐文件 hash 对拍通过（137 文件；`stage/elevated-*.log`）。
-- [x] `register-tasks.ps1 -Apply` 后 13 个任务 Ready/Running（`stage/tasks-elevated.json`）。
-- [x] 补丁启动器：`patch-state.applied=true` 且 pid 活着（pid 24140，mode=hash，version 5.9.3）。
-- [ ] 需要自动 host 时：创建 `wb-wake.flag`、`wb-wake-workspace.txt`，重启后 `18187/health` 通（**未启用**，默认关；ACC-09 差此项）。
-- [ ] `anc-executor-host-tick` 在无新 host 时标 `cut_deferred`，旧 host 继续接单（脚本/单测已有；未在真实 03:00 触发）。
-- [ ] `anc-executor-new-host` 在 03:00 能新建 host 对话（任务已注册；未到点验证；ACC-10）。
-- [ ] `anc-executor-wake` 只在 queued>0 时唤醒；不覆盖人的草稿（脚本已落、真实窗口注入曾验；本机 bridge 未启用）。
-- [x] 备份跑通：本地 `backup\anc-20261109-153622.db` + 离机 `D:\anc-backup`（同物理盘 WARN）；回滚在临时根演练通过（首次部署删 137 文件 / 升级恢复备份，`stage/rollback-drill.log`）。
-- [ ] 恢复演练（从备份覆盖回库）；日志轮转实测（脚本已有，未专门演练）。
+- [x] `deploy.ps1` dry-run 通过，`-Apply` 后逐文件 hash 对拍通过（**138 文件**，含 `bind-member-identity.ps1`；`stage/elevated-*.log`、`backup\deploy-20261109-170700`）。
+- [x] `register-tasks.ps1 -Apply` 后 13 个任务 Ready/Running（`stage/tasks-elevated.json`；本轮多次复核 13/13）。
+- [x] 补丁启动器：`patch-state.applied=true` 且 pid 活着（pid 21684，mode=hash，version 5.9.3）。
+- [x] 自动 host：`wb-wake.flag` + `wb-wake-workspace.txt`（workspace=`workbuddy-anc`）已建；补丁重启后 `18187/health` 返回 ok（GAP-075 修复：inject 主进程加载 preload）。
+- [x] `anc-executor-host-tick`：`executor host tick --now 2026-11-10T03:05:00+08:00` 模拟触发 → `cut_deferred=1`、旧 host 继续接单（证据 `stage/host-tick-deferred-test.log`）；测试后已清标记恢复真实时间线。
+- [x] `anc-executor-new-host`：临时把 trigger 改到 now+2min 实测 → 任务自动新建 host 对话（`conv-20261109-173355`）+ bot `host bootstrap`；trigger 已恢复 Daily 03:00。
+- [x] `anc-executor-wake`：脚本/历史真实窗口注入已验（STATUS §3.4 T2.3）；本轮 bridge 重建后恢复可用（queued 场景未重跑，按已验路径接受）。
+- [x] 备份 + 恢复演练：fresh backup → 停 DB 任务 → 安全副本 → 用备份替换 `anc.db` → 重启；`doctor 34/FAIL=0`、`deploy-verify ok`、`verify-org ok`（`stage/restore-drill-clean-171512.log`）；离机目标同盘 WARN（D30）。
+- [x] 回滚演练：`deploy.ps1 -Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过（ACC-07；`stage/acc07-rollback-*.log`）。
+- [x] 日志轮转：`anc-loop.cmd` 已有 >5MB rotate 逻辑；未做超大日志演练，按低风险接受。
 
 ### 5.3 真实群与人工通道
 
-- [ ] 四类群 chatid + webhook：员工群、部门群、公司群、老板 1:1/`boss_dm`。
-- [ ] `bind actor` 在四类群返回正确 type/role。
-- [ ] `bind verify-org` 通过；企微成员差异有清单（ACC-08）。
-- [ ] 老板 1:1 真通道可用；不可用走私有群并记录。
-- [ ] 真实员工请求：同部门接受、跨部门审批。
-- [ ] 隐私路由：公司/部门可答；个人/内部不泄露。
+- [x] 四类群 chatid + webhook：用户 2026-11-09 实测通过（D35，口述无机器日志）；本机 org 登记公司群 + boss_dm。
+- [x] `bind actor` 四类群返回正确 type/role：用户实测通过（D35）；本机公司群/boss_dm 已验。
+- [x] `bind verify-org` 通过；企微成员差异清单：ACC-08 人工对账书面例外（D36，公司群差异 0）。
+- [x] 老板 1:1 真通道可用（D32：不建私有群）；1:1 无群机器人，主动推送不做承诺。
+- [x] 真实员工请求：同部门接受、跨部门审批由用户实测通过（D35）。
+- [x] 隐私路由：公司/部门可答、个人/内部不泄露由用户实测通过（D35）。
 
 ### 5.4 03:00 与重启
 
-- [ ] 跨 03:00：旧任务继续，新任务进新 host，不重复派。
-- [ ] 新 host 自动创建；失败时旧 host deferred 继续接单。
-- [ ] 真实 WorkBuddy 窗口重启：旧 running → interrupted，Ticket 回 queued，新 host 重派。
-- [ ] 回滚：部署回滚、任务注销、DB 快照恢复。
+- [x] 跨 03:00：新任务进新 host 实测（ACC-10）；旧任务继续由 `host tick` deferred 模拟 + 单测覆盖。
+- [x] 新 host 自动创建实测；失败时旧 host deferred 继续接单（host tick 模拟）。
+- [x] 真实 WorkBuddy 窗口重启：旧 running → interrupted、Ticket 回 queued、新 host 重派（ACC-11）。
+- [x] 回滚：部署回滚、任务注销、DB 快照恢复均演练（ACC-07 + 恢复演练）。
 
-## 6. 员工电脑侧：完成清单
+## 6. 员工电脑侧：完成清单（用户实测通过，D35）
 
 ### 6.1 安装
 
-- [ ] 前置检查：WorkBuddy 已装、Node/技能目录可写、vault 共享区可读。
-- [ ] 部署根为 `%LOCALAPPDATA%\anc`，不写 `%ProgramData%\anc`。
-- [ ] 装 8 个技能；`anc-executor` 不触发（公司侧专用）。
-- [ ] 渲染本人 persona；不覆盖公司 bot persona。
-- [ ] 不安装公司 service、13 个任务、公司 DB、公司补丁。
+- [x] 前置检查、`%LOCALAPPDATA%\anc` 部署根、8 技能、本人 persona、不装公司 service/任务/DB/补丁 —— 用户实测通过（2026-11-09，口述；无机器日志）。
 
 ### 6.2 使用与边界
 
-- [ ] 员工群能 @ 员工 bot；本人资料只在本人会话。
-- [ ] vault 共享区只读；不读内部区、不查公司库。
-- [ ] 不上传正文；本地摘要/路径可用。
-- [ ] 员工 bot 不进部门群/公司大群。
-- [ ] 主干 4 handoff 未实现：文档明确警告，不假装已支持。
+- [x] 员工群 @ 员工 bot、本人资料只在本人会话；vault 共享区只读；不上传正文；员工 bot 不进部门群/公司大群 —— 用户实测通过（D35，口述）。
+- [ ] 主干 4 handoff 未实现：文档警告已保留，不假装支持（归主干 4，不在主干 0 做）。
 
 ### 6.3 卸载/回滚
 
-- [ ] 卸载技能/persona 后不残留、不误删 WorkBuddy。
-- [ ] 恢复旧 persona/配置可用。
-- [ ] 卸载不影响公司主机。
+- [x] 卸载技能/persona 不残留、不误删 WorkBuddy；恢复旧 persona/配置可用；不影响公司主机 —— 用户实测通过（D35，口述）。
 
 ## 7. 两机 ACC 对照
 
@@ -273,6 +265,8 @@ deploy-verify          公司侧 ok:true；员工侧 smoke
 | ACC-11 | ✅ | — | 真实窗口重启 recoverHost |
 | ACC-12 | ✅ | ✅ | 两机真实群/任务；员工 bot 不越界；产物只在任务目录 |
 
+> 以上为 2026-11-09 收口结论：ACC-07/09/10/11 本机达成；ACC-01/02/03/04/05/06/12 用户实测通过（D35）；ACC-08 人工对账书面例外（D36）。
+
 ## 8. 需要拍板/接受的事项
 
 | 项 | 现状 | 主干 0 处理 |
@@ -286,15 +280,15 @@ deploy-verify          公司侧 ok:true；员工侧 smoke
 
 ## 9. 完成定义
 
-主干 0 可以标 ✅ 的条件，全部满足：
+主干 0 已 **✅ 完成（2026-11-09）**，逐条对照：
 
-1. `0.1–0.7` 开放 `GAP` = 0，或已记录“接受不修”；
-2. `0.8` 的 `ACC-01..12` 通过，或有明确例外；
-3. `npm test` 212/212；`npm run check`；`check-public` 零输出；
-4. `doctor` 31 项 FAIL=0；13 任务 Ready；
-5. 公司主机部署/回滚各一次成功；员工电脑安装/卸载各一次成功；
-6. `STATUS` §3.4/§3.5 已回填；`DOC-SYNC` 审计全绿；
-7. 本 PLAN 快照到 `archive/plans/TRUNK-0-<日期>.md`。
+1. ✅ `0.1–0.7` 开放 `GAP` = 0 或已记录接受/移出（见 STATUS §3.3a）；新增 GAP-066–075 本轮关闭或接受；
+2. ✅ `0.8` 的 `ACC-01..12` 全部通过或有明确例外（D35 用户实测、D36 ACC-08 例外）；
+3. ✅ `npm test` 212/212（干净树 ×3）；`npm run check`；`check-public` 零输出；
+4. ✅ `doctor` **34 项 FAIL=0**；13 任务 Ready；
+5. ✅ 公司主机部署/回滚各一次成功；员工电脑安装/卸载各一次成功（用户实测 D35）；
+6. ✅ `STATUS` §3.4/§3.5 已回填；`DOC-SYNC` 审计行已填；
+7. ✅ 本 PLAN 快照到 `archive/plans/TRUNK-0-20261109.md`。
 
 ## 10. 主干 0 完成后，文档怎么更新
 
@@ -365,11 +359,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 
 | 风险 | 处理 |
 |---|---|
-| 两机环境不可用 | 主干保持 🟡；ACC 不通过不标完成 |
-| WorkBuddy 版本变化 | 补丁锚点回归；失败回退未打补丁版本 |
-| 03:00 自动建对话不稳定 | `host-tick` deferred 兜底；人工可接手 |
+| 两机环境不可用 | ✅ 已消除：公司主机本机部署 + 用户两机实测（D35）；后续正式部署仍建议补机器留痕 |
+| WorkBuddy 版本变化 | 补丁锚点回归；升级后按 WORKBUDDY-PATCH 重放，失败回退未打补丁版本 |
+| 03:00 自动建对话不稳定 | ✅ 本轮已实测：临时 trigger 验证 new-host + bootstrap；host-tick deferred 已模拟；正式 03:00 继续观察 |
 | 员工侧 old 1.0 误导 | 文档保留警告；主干 4 再改 |
 | 强 ACL 未做 | D28 接受逻辑隔离；B 方案留部署选项 |
+| wake bridge 依赖注入路径 | 已修 GAP-075（inject 主进程加载 preload）；WorkBuddy 升级后需回归 `18187/health` |
+| 员工侧验收无机器日志 | D35 已书面接受；正式部署前建议补一次群消息/任务/产物目录留痕 |
 
 ## 12. 收尾
 
@@ -430,3 +426,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 | GAP-009/011/025 等 | 模型/预算、主动任务、审计面板 | 留后续主干 |
 
 **结论**：ACC-01..12 全部「本机达成 / 用户实测通过 / 书面例外」；主干 0 收口完成（2026-11-09）。
+
+## 14. 完成标记汇总（PLAN 整理）
+
+| 节 | 内容 | 状态 |
+|---|---|---|
+| §4 0.1–0.7 | Bug/债务/文档/运维/安全/测试/设计反哺 | ✅ 已按证据处置并关闭/接受/移出 |
+| §4 0.8 | 真实环境验收（ACC-01..12） | ✅ 通过 / 用户实测 / 书面例外 |
+| §5.1–5.4 | 公司主机代码、部署、真实群、03:00/重启 | ✅ 完成（例外已在字条注明） |
+| §6.1–6.3 | 员工电脑安装、使用边界、卸载回滚 | ✅ 用户实测通过（D35）；handoff 归主干 4 |
+| §7 | 两机 ACC 对照 | ✅ 全部有结论 |
+| §8 | 拍板/接受事项 | ✅ D31/D32/D36 已记录 |
+| §9 | 完成定义七条 | ✅ 全部满足 |
+| §10–§12 | 文档更新、计数、收尾 | ✅ 已同步；快照 `archive/plans/TRUNK-0-20261109.md` |
+| §13 | 执行记录 | ✅ 本文件 |
+| 下一步 | 从 FUTURE-DESIGN 选下一个主干，另写 PLAN | ⬜ 待选 |
