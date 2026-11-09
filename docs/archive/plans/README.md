@@ -1,8 +1,8 @@
-# 已完成的 PLAN 快照
+# PLAN 快照
 
 > 类型：历史
 
-每个主干完成后，把当时的 `docs/PLAN.md` 复制到这里，命名：
+每个主干完成或暂停切走时，把当时的 `docs/PLAN.md` 复制到这里，命名：
 
 ```text
 TRUNK-<编号>-<YYYYMMDD>.md
