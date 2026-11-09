@@ -416,7 +416,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 | 项 | 缺什么 | 下一步 |
 |---|---|---|
 | ACC-01 / 05 / 06 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工与 manager_scopes；boss_dm 仅识别、无出站 webhook | 建员工群/部门群并补 chatId；真实群消息回归 |
-| ACC-02 / 03 / 04 / 08 / 12 | 缺员工群、部门群、企微成员 API、第二台电脑 | 用户补数据后按 DEPLOY-COMPANY §10–§12 跑 |
+| ACC-02 / 03 / 04 | 员工身份链路已通（吴琼 sender id 已绑定，张佳艺待采集）；缺员工群/部门群 | 建员工群（本人+公司 bot+员工 bot）后跑登记/接受/审批 |
+| ACC-08 / 12 | 企微成员 API、第二台电脑 | 用户分配成员 API 凭据；员工机安装 |
 | ACC-09 剩余 | wake bridge 18187（默认关） | 用户确认启用后建 flag/workspace + 补丁重启 |
 | ACC-10 | 真实队列 + 03:00 + bridge | 依赖 ACC-01/09 |
 | ACC-11 | 真实 host 会话 + WorkBuddy 窗口重启 | 依赖 ACC-09/10 |

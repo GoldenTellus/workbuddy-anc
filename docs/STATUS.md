@@ -79,7 +79,8 @@
 - [ ] 员工群（每人一个：本人 + 公司 bot + 员工 bot）与部门群 chatId 未建 → `chat_bindings` 仍为空，员工侧 @ 链路待建群。
 - [x] `boss_dm` 用老板与公司 bot 的 1:1：已识别通过（老板/boss，2026-11-09 16:33 实测）；**不建老板私有群**（用户决定，D32）；1:1 无群机器人，主动推送不做承诺。
 - [x] **ACC-07 生产回滚窗口已演练**：`deploy.ps1 -Rollback` 恢复 137 文件（回滚源 `backup\deploy-20261109-155502`）→ 再 `-Apply` 137 文件 hash 全过（新备份 `deploy-20261109-164051`）；演练后 `deploy-verify ok:true 4/0/1`、`doctor 34 项 FAIL=0 WARN=3`。证据 `.workbuddy/verify/final/acc07-rollback-*.log`。
-- [ ] 员工当前被企微拦截：吴琼/张佳艺 @公司 bot 时提示 **“你不在该智能机器人的可使用范围，无法与它聊天”**；本机 WorkBuddy 日志没有她们的入站记录（拦截发生在企微服务端）。已在 `DEPLOY-COMPANY.md §11.1` 记修复路径：管理后台 → 智能专区 → 智能机器人 → 机器人管理 → WorkBuddy → 分配席位/可使用成员（或开「成员领用」）；分配后再采集 sender id（GAP-073）。
+- [x] 员工 @ 已打通：用户调整企微智能机器人「可使用范围」后，16:55 收到吴琼在群里的真实消息（`patch-in.log` 有入站）；按实际 sender id 更新 `member.userid`（`wok…` 会话级 id），`bind actor` → 吴琼 / employee，`verify-org` ok。**GAP-073 关闭**（新成员仍需在企微后台分配/领用，见 DEPLOY-COMPANY §11.1）。
+- [ ] 张佳艺尚未发消息 → sender id 待采集（她发一句后同样绑定）。
 - [ ] 真实群消息回归：需老板/员工在群里 `@公司 bot` 验证新 persona（新会话生效；旧会话需 `/new`）。
 
 ---
@@ -223,7 +224,7 @@
 | GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 文档写明归主干 2 后续；主干 0 接受暂不实现 |
 | GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 归主干 2 后续；已在 `MAIN-EXECUTOR.md` §7 标「待补」，不阻塞主干 0 |
 | GAP-072 | 企微 AI Bot 上报的发送者 id 是会话级 open id（`wok…`），不是通讯录 userid；org 的 `member.userid` 必须写实际上报值，否则 `bind actor` 找不到人 | 已按真实入站消息校正老板映射并写进 WORKBUDDY-PATCH / DEPLOY-COMPANY；员工 id 待其发消息后采集，关闭前保持登记 |
-| GAP-073 | 员工未分配 WorkBuddy 企业版席位/可使用成员 → 企微智能机器人拦截（“你不在该智能机器人的可使用范围”），员工侧 ACC 无法开始 | 外部前置（企微管理后台）；修复路径已写 DEPLOY-COMPANY §11.1；分配后采集员工 sender id 并继续 ACC-02/03/04/12 |
+| GAP-073 | 员工未分配 WorkBuddy 企业版席位/可使用成员 → 企微智能机器人拦截（“你不在该智能机器人的可使用范围”），员工侧 ACC 无法开始 | **closed**：用户已调整企微机器人可使用范围；16:55 吴琼消息入站，采集实际 sender id 并绑定，`bind actor` 通过。新成员仍需按 DEPLOY-COMPANY §11.1 分配/领用 |
 
 ---
 
@@ -285,6 +286,7 @@
 | 2026-11-09 | org 与真实群接线（公司大群 + boss_dm + 3 成员/技术部） | 0.3 STATUS §1.6/§3.5、PLAN §13；0.8 真实群接线推进 | 无新增 GAP；ACC-01/05/06 转「部分达成」 | 员工群/部门群/成员 API 仍缺；需真实群消息回归 |
 | 2026-11-09 | 用户决定 boss_dm 简化为老板 1:1（不建私有群） | 0.3 DECISIONS D32、STATUS §1.6/§3.5；0.8 ACC-06 口径 | 无新增 GAP | 1:1 无主动推送，按 D32 接受；收口期不扩配置 |
 | 2026-11-09 | ACC-07 生产回滚演练（rollback 137 → re-apply 137） | 0.4 部署回滚；0.8 ACC-07 达成 | 无新增 GAP | 演练后 doctor/verify 全绿；证据 `verify/final/acc07-rollback-*.log` |
+| 2026-11-09 | 员工入站打通：企微机器人可使用范围调整 + 吴琼 sender id 绑定 | 0.3 STATUS §1.6/§3.5；0.8 员工链路推进 | GAP-073 关闭 | `patch-in.log` 有吴琼入站；`bind actor` 通过；张佳艺 id 待采集 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -295,9 +297,9 @@
 | 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP | 2026-11-09 本机结果 |
 |---|---|---|---|---|---|
 | ACC-01 | 四类群配置 | 四类群 chat_id + secrets webhook + org 字段 | `bind actor` 在四类群返回正确 type/role；`verify-org` 通过 | GAP-003/042 | **部分达成**：公司大群 + boss_dm 已配，`bind actor` 验证老板/管理者/员工角色与 manager_scopes 正确、`verify-org` 通过；员工群/部门群 chatId 未建 |
-| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 | 未达成：无员工群；且员工未分配 WorkBuddy 席位，被企微拦截（GAP-073） |
-| ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 | 未达成：无真实员工群；员工席位未分配（GAP-073） |
-| ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 | 未达成：无部门群/管理者；员工席位未分配（GAP-073） |
+| ACC-02 | 员工群任务 + 个人数据 | 员工群可用 | 登记任务成功；个人数据只在本人员工群答 | GAP-001/002 | 未达成：员工身份已可识别（吴琼已绑定），但员工群未建；张佳艺 id 待采集 |
+| ACC-03 | 同部门请求 | 两个同部门员工 | A 请 B → `pending_acceptance` → B 接受 → `open` | GAP-002 | 未达成：无真实员工群（员工身份已可识别） |
+| ACC-04 | 跨部门审批 | 执行人部门管理者在群 | A 请 C → `pending_approval` → 管理者批准 → C 接受 → `open` | GAP-002/003 | 未达成：无部门群/管理者；员工身份已可识别 |
 | ACC-05 | 公司/部门群隐私 | 公司群、部门群可用 | 公司/部门级直接答；个人级转员工群；内部级只回 1:1 | GAP-001 | **部分达成**：公司群身份/角色映射可用；真实隐私路由需员工请求与部门群 |
 | ACC-06 | 老板 1:1 | 真 1:1 或私有群 | 内部数据只在 1:1 答；公司群不泄露 | GAP-004 | **部分达成**：1:1 识别通过（`bind actor` → boss，16:33 实测回复「识别通过：老板 1:1」）；私有群 fallback 不做（D32）；内部数据只在 1:1 答待验 |
 | ACC-07 | 部署 / 重启 / 回滚 | 公司主机管理员 | `deploy.ps1 -Apply` + `render deploy --db` + 服务重启；失败可回滚 | GAP-042 | **达成（本机）**：部署 137 文件、`render deploy --db`、WorkBuddy 重启（补丁 applied）均完成；`deploy.ps1 -Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过；演练后 doctor 34/FAIL=0、deploy-verify ok 4/0/1 |
@@ -305,7 +307,7 @@
 | ACC-09 | 公司主机部署 + 13 个任务 | 公司主机管理员 | `deploy.ps1 -Apply` + `register-tasks.ps1 -Apply`；13 个任务 Ready；带补丁重启后 wake bridge 监听 18187 | GAP-006/065 | **基本达成、按标准未达成**：137 文件 / 13 任务 Ready / `patch-state applied=true pid 24140` / doctor 34 项 FAIL=0；wake bridge 未启用（18187 不监听，默认关） |
 | ACC-10 | 03:00 自动日切 | ACC-09 + workspace 配置 | `/new` 自动建新对话；host bootstrap；旧任务继续、新任务进新 host | GAP-031/061/065 | 未达成：new-host 任务已注册但 bridge/workspace 未启用；无真实任务队列 |
 | ACC-11 | 真实窗口重启恢复 | 公司主机 | 重启 WorkBuddy 后 `recoverHost` 生效；旧 Assignment interrupted；Ticket 回 queued 并由新 host 重派 | GAP-059 | 未达成：本机 executor_hosts=0（无真实 host 会话）；仅做过跨进程 drill |
-| ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | 未达成：无第二台员工电脑；员工席位未分配（GAP-073） |
+| ACC-12 | 两机真实群/任务 | 公司主机 + 员工电脑 | 真实员工群/部门群/公司群；员工 bot 不越界；任务产物只在对应目录 | GAP-050/006 | 未达成：无第二台员工电脑 |
 
 ### 3.6 完成时的更新清单
 
