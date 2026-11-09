@@ -420,7 +420,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-ve
 | ACC-09 剩余 | wake bridge 18187（默认关） | 用户确认启用后建 flag/workspace + 补丁重启 |
 | ACC-10 | 真实队列 + 03:00 + bridge | 依赖 ACC-01/09 |
 | ACC-11 | 真实 host 会话 + WorkBuddy 窗口重启 | 依赖 ACC-09/10 |
-| ACC-07 生产回滚窗口 | 一次生产回滚窗口（当前仅临时根演练） | 用户确认窗口后跑 `deploy.ps1 -Rollback` → `-Apply` |
+| ACC-07 | **达成（本机）**：`-Rollback` 恢复 137 文件 → 再 `-Apply` 137 文件 hash 全过；演练后 doctor 34/FAIL=0、deploy-verify ok 4/0/1 | 证据 `verify/final/acc07-rollback-*.log`；正式部署前再跑一次 |
 | 备份恢复演练 / 独立备份盘 | 恢复演练 + 独立盘/UNC | 用户提供盘后跑 |
 | GAP-034/053/070 | Task↔Ticket 映射实现、重试/拆分 | 归主干 2 后续 |
 | GAP-009/011/025 等 | 模型/预算、主动任务、审计面板 | 留后续主干 |
