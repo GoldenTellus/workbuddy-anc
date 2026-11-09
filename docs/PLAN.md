@@ -135,14 +135,14 @@
 
 ## 5. 验收
 
-- [ ] 迁移可回滚；唯一索引生效；旧 `tasks`/CLI 行为不变。
-- [ ] FakeExecutor 端到端：一个 background 任务 → Ticket → Assignment → Report → outbox。
-- [ ] 03:00 日切：旧任务继续，新任务进新 host，不重复派活。
-- [ ] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
-- [ ] human slot 不被新任务占用；P0 不抢占。
-- [ ] `npm test` 209/209 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
-- [ ] `npm run check` 通过。
-- [ ] WorkBuddy 真实 subagent spike 有明确结论；做不成的部分登记 GAP，不静默降级。
+- [x] 迁移可回滚；唯一索引生效；旧 `tasks`/CLI 行为不变。
+- [x] FakeExecutor 端到端：Task → Ticket → Assignment → Report → outbox（CLI 临时库实测）。
+- [x] 03:00 日切：旧任务继续，新任务进新 host，不重复派活（用户实测）。
+- [x] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
+- [x] human slot 不被新任务占用；P0 不抢占（测试覆盖）。
+- [x] `npm test` 209/209 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
+- [x] `npm run check` 通过。
+- [x] WorkBuddy 真实 subagent spike 有明确结论；未做的强 ACL/真实重启已登记 GAP。
 
 ## 6. 依赖与风险
 

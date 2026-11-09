@@ -164,6 +164,7 @@
 | 2026-11-09 | 写定主干 2 PLAN：日对话 + 任务 subagent | 0.3 FUTURE 2.2/2.3 + PLAN；0.6 196/196 | PLAN 已切主干 2；dsh 调研入 PLAN | 未动代码 |
 | 2026-11-09 | 主干0复检（主干2设计/PLAN/契约后） | 0.1–0.8 | 0.3 已更新（MAIN-EXECUTOR/upstream/PLAN）；0.7 无新增；0.8 仍待 ACC-01..08 | 0.1/0.2/0.4/0.5/0.6 无变化 |
 | 2026-11-09 | wake bridge 测试收尾：临时桥关闭，正式 opt-in 保留 | 0.3 STATUS；0.6 203/203 | GAP-063 证据补齐 | 18187/18188 均关闭；部署后按 flag 启用 |
+| 2026-11-09 | T2 收口批次：sweep/队列/human slot/审计 | 0.3 PLAN、executor 契约；0.6 209/209 | GAP-057/059 更新；验收项大部分勾选 | 真实部署/窗口重启/强 ACL 仍留 |
 | 2026-11-09 | T2.3/T2.4/T2.7 补测：sweep、队列顺序、human slot、审计事件 | 0.3 executor/PLAN/模块契约；0.6 209/209 | GAP-057/059 更新 | effect_key 仍待做 |
 | 2026-11-09 | GAP-065 真实新建对话：`/new` → workbuddy-anc → NEW_OK | 0.3 WORKBUDDY-PATCH/MAIN-EXECUTOR/OPS；0.6 206/206 | GAP-065 收窄 | 新 host 任务脚本已加，未 -Apply 注册 |
 | 2026-11-09 | 路径隔离选 A：接受逻辑隔离，不做专用账号/ACL | 0.3 DECISIONS/D28、FUTURE 2.2、PLAN；0.6 206/206 | GAP-060 接受风险 | 不需要重启；以后可重评 B |
