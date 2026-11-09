@@ -41,13 +41,13 @@
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
 | 测试 | **196 / 196 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
-| 覆盖率（行 / 分支 / 函数） | **91.80% / 81.44% / 95.14%** | `npm run coverage`（2026-11-08，196 测试） |
-| 测试文件 | **24** 个 | `package.json` 的 `scripts.test` 列表 |
+| 覆盖率（行 / 分支 / 函数） | **91.80% / 81.44% / 95.14%** | `npm run coverage`（2026-11-08，196 测试；2026-11-09 起 201 测试，覆盖率待重跑） |
+| 测试文件 | **25** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **31** 项 | 21 个 `Add-Result` 字面量 + 10 个 `task-*` 循环项 |
 | 计划任务 | **10** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
 | 技能目录 | **7** 个 | `ls -d light/skills/*/ \| wc -l` |
 | 本地服务命令组 | **16** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
-| 模块 | **12 / 12 `current`** | `npm run check:modules` |
+| 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
 | Node | **v22.22.2** | `node -v`（`node:sqlite` 与类型剥离默认可用） |
 | 脚本 | **49** 个 | `find scripts -type f \| wc -l` |
@@ -60,9 +60,9 @@
 
 | 路径 | 管什么 | 备注 |
 |---|---|---|
-| `module-map.json` | 模块边界真相源（`ARCHITECTURE.md` 的可执行版） | `check:modules` 读它；12 个模块的 paths/dependsOn |
+| `module-map.json` | 模块边界真相源（`ARCHITECTURE.md` 的可执行版） | `check:modules` 读它；13 个模块的 paths/dependsOn |
 | `docs/` | 方向、执行、账本、现状契约、运维手册、历史 | 现行文档 + `modules/` + `upstreams/` + `archive/` |
-| `docs/modules/` | 每个模块一份契约（目的/拥有/公开接口/不变量/失败模式） | 12 份；由 `module-map.json` 引用 |
+| `docs/modules/` | 每个模块一份契约（目的/拥有/公开接口/不变量/失败模式） | 13 份；由 `module-map.json` 引用 |
 | `docs/FUTURE-DESIGN.md` | 未来发展设计（设计树） | 主干/分支/叶子；不是现状 |
 | `docs/PLAN.md` | 当前主干的执行计划 | 一次只写一个主干 |
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险 | `GAP-###` 总账 |

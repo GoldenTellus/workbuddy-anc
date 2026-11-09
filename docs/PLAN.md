@@ -75,17 +75,17 @@
 
 ### T2.1 领域表与迁移
 
-- [ ] `executor_hosts` / `tickets` / `assignments` / `reports` 迁移；只加表/列，可回滚。
-- [ ] 唯一索引：一个 active host；一个 Ticket 同时一个 active Assignment。
-- [ ] 仓储：`createTicket` / `claim` / `startAssignment` / `appendReport` / `endAssignment`。
-- [ ] 测试：迁移幂等、唯一索引、旧 tasks 不退化。
+- [x] `executor_hosts` / `tickets` / `assignments` / `reports` 迁移；只加表/列，可回滚。
+- [x] 唯一索引：一个 active host；一个 Ticket 同时一个 active Assignment。
+- [x] 仓储：`createTicket` / `claim` / `startAssignment` / `appendReport` / `endAssignment`。
+- [x] 测试：迁移幂等、唯一索引、旧 tasks 不退化（executor.test.ts 5 条）。
 
 ### T2.2 状态机与 Report
 
-- [ ] Ticket：`queued → working → waiting_* / blocked / failed / done / cancelled`。
-- [ ] Assignment：`pending → running → ended / interrupted / failed / cancelled`。
-- [ ] Report → Ticket 映射：`progress / waiting / ready / blocked / failed / dropped`。
-- [ ] 测试：非法迁移拒绝；Ticket 不跟随 host/subagent 状态。
+- [x] Ticket：`queued → working → waiting_* / blocked / failed / done / cancelled`。
+- [x] Assignment：`pending → running → ended / interrupted / failed / cancelled`。
+- [x] Report → Ticket 映射：`progress / waiting / ready / blocked / failed / dropped`。
+- [x] 测试：非法迁移拒绝；Ticket 不跟随 host/subagent 状态（executor.test.ts）。
 
 ### T2.3 Host 生命周期与 03:00 日切
 
@@ -138,7 +138,7 @@
 - [ ] 03:00 日切：旧任务继续，新任务进新 host，不重复派活。
 - [ ] 4 个 subagent 并发；同一部门 2 个任务不串写；任务目录正确。
 - [ ] human slot 不被新任务占用；P0 不抢占。
-- [ ] `npm test` 196/196 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
+- [ ] `npm test` 201/201 不退化；新增测试覆盖迁移、状态机、队列、日切、恢复。
 - [ ] `npm run check` 通过。
 - [ ] WorkBuddy 真实 subagent spike 有明确结论；做不成的部分登记 GAP，不静默降级。
 

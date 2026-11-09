@@ -456,6 +456,8 @@ CREATE TABLE IF NOT EXISTS tickets (
                                           -- waiting_answer | waiting_review | waiting_ack |
                                           -- blocked | failed | done | cancelled
   priority        TEXT NOT NULL DEFAULT 'P2',
+  due_at          TEXT,
+  task_dir        TEXT NOT NULL,
   tools_json      TEXT NOT NULL DEFAULT '[]',
   vault_paths_json TEXT NOT NULL DEFAULT '[]',
   budget_json     TEXT,

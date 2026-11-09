@@ -48,6 +48,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 | `core` | 平台底座 | 库、迁移、事务、时间、配置、审计、出站扫描、备份 | `meta`/`config` 表、schema、`audit.log` 格式 | 无 |
 | `identity` | 身份与群绑定 | chatid ↔ 群类型 ↔ 人/角色/部门 ↔ webhook | `people`/`groups`/`manager_scopes`；`chat_bindings` 兼容 | core |
 | `tasks` | 任务与提醒 | 任务生命周期、提醒排期、后台任务超时、离职转交；两阶段请求 | `tasks`/`task_events`/`reminders` | core · delivery |
+| `executor` | 执行调度 | 03:00 host、Ticket、Assignment、Report、4+1 slot | `executor_hosts`/`tickets`/`assignments`/`reports` | core |
 | `delivery` | 出站投递 | 队列、去重、领取、退避、过期、按群选 webhook、发送 | `outbox` | core · identity |
 | `knowledge` | 知识与入库 | 入库校验/写入/锁/归档；本地检索与摘要；A2A 归档 | vault 两区文件、ingest 锁、`a2a_*` 表 | core |
 | `org` | 组织与渲染 | org 解析、persona/接入包、`groups.json`、事务部署与回滚 | org 输入、render 产物、manifest | core |
@@ -190,7 +191,7 @@ content     独立：只依赖 CLI 命令契约
 >
 > **P3 进度（2026-11-06）**：`loop.ts` 拆成 `runtime/{tick,run,carry,escalation,guard}.ts`；`sendPending` 迁到 `delivery/send.ts`；`service/loop.ts` 变 2 行薄壳。`deploy.ps1` 增加 `modules\runtime` / `modules\delivery` 映射，doctor 增加对应入口依赖检查。同时把 core 的 5 个旧薄壳和所有 capability 模块的 `./db.ts` 引用清掉，**深导入 17→0，`--strict-deep` 已能通过**。
 >
-> **P4 进度（2026-11-06）**：identity / tasks / delivery.outbox / improvement / knowledge / org 全部迁入 `src/modules/`；`render/index.ts` 拆成 `persona.ts`（渲染）与 `deploy.ts`（事务部署/回滚），`render/cli.ts`、`ingest/cli.ts`、`service/cli.ts`、`service/loop.ts` 都只剩薄壳。`deploy.ps1` 增加 7 个模块映射，doctor 增加 3 个入口依赖检查。部署布局实测 `task list` / `loop --once` / `render`（persona + groups.json）/ `ingest` 全通。**12 个模块全部 `current`，深导入 0，违规 0。**
+> **P4 进度（2026-11-06）**：identity / tasks / delivery.outbox / improvement / knowledge / org 全部迁入 `src/modules/`；`render/index.ts` 拆成 `persona.ts`（渲染）与 `deploy.ts`（事务部署/回滚），`render/cli.ts`、`ingest/cli.ts`、`service/cli.ts`、`service/loop.ts` 都只剩薄壳。`deploy.ps1` 增加 7 个模块映射，doctor 增加 3 个入口依赖检查。部署布局实测 `task list` / `loop --once` / `render`（persona + groups.json）/ `ingest` 全通。**12 个模块全部 `current`，深导入 0，违规 0（2026-11-09 新增 `executor`，现 13 个）。**
 >
 > **P5 进度（2026-11-06）**：49 个脚本按域分组；`deploy.ps1` 的 `bin` 映射改为递归 + `SkipDirs`，目标仍是扁平的 `bin\<原文件名>`；`deploy.ps1` / `register-tasks.ps1` / `rebuild-drill.ps1` / `devbot-scheduler.ps1` 改为从脚本位置向上找 `.git`；`deploy-verify.ps1` 增加 repo/部署两种布局的根探测；`deploy-persona.ps1` 的源路径、`rebuild-z.ps1` 的 `set-acl` 路径都加了仓库/部署候选。`npm test` 163、`check:modules:deep` OK、`check-public` 零输出。
 >
@@ -207,7 +208,7 @@ content     独立：只依赖 CLI 命令契约
 不涉及部署：
 
 ```powershell
-npm test                       # 196/196，不得少
+npm test                       # 201/201，不得少
 npm run check:modules          # 0 违规
 ```
 

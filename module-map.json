@@ -41,6 +41,16 @@
       "owns": ["tasks 表", "task_events 表", "reminders 表"]
     },
     {
+      "id": "executor",
+      "name": "执行调度",
+      "doc": "docs/modules/executor.md",
+      "entry": "src/modules/executor/index.ts",
+      "status": "current",
+      "paths": ["src/modules/executor/"],
+      "dependsOn": ["core"],
+      "owns": ["executor_hosts 表", "tickets 表", "assignments 表", "reports 表"]
+    },
+    {
       "id": "delivery",
       "name": "出站投递",
       "doc": "docs/modules/delivery.md",

@@ -10,8 +10,8 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 
 ## 1. 现在到哪了
 
-- 12 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- `npm test` **196/196**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
+- 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
+- `npm test` **201/201**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
 
@@ -31,7 +31,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 
 | 文件 | 内容 |
 |---|---|
-| **`docs/ARCHITECTURE.md`** | 12 个模块、依赖规则、源码/部署布局；`module-map.json` + `check:modules` 可执行 |
+| **`docs/ARCHITECTURE.md`** | 13 个模块、依赖规则、源码/部署布局；`module-map.json` + `check:modules` 可执行 |
 | **`docs/FUTURE-DESIGN.md`** | 未来设计树：主干/分支/叶子；主干 0 是常驻清债 |
 | `docs/PLAN.md` | 当前主干的执行计划；一次只写一个主干 |
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险；`GAP-###` 总账 |

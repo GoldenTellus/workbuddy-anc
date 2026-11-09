@@ -225,4 +225,83 @@ CREATE TABLE IF NOT EXISTS eval_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_eval_runs_case ON eval_runs(case_id, id);
+
+-- 主干 2：调度对话、执行单元、执行尝试、回报。
+-- tickets 不替代 tasks：tasks 是人可见任务，tickets 是执行单位。
+CREATE TABLE IF NOT EXISTS executor_hosts (
+  host_id           TEXT PRIMARY KEY,
+  business_date     TEXT NOT NULL,
+  conversation_id   TEXT NOT NULL,
+  status            TEXT NOT NULL CHECK (status IN ('active', 'closing', 'closed')),
+  accepting_new     INTEGER NOT NULL DEFAULT 1,
+  cut_at            TEXT NOT NULL,
+  started_at        TEXT NOT NULL,
+  closed_at         TEXT,
+  last_heartbeat_at TEXT
+);
+
+-- 同一时间只允许一个 active host；03:00 日切靠它兜底。
+CREATE UNIQUE INDEX IF NOT EXISTS ux_executor_hosts_active
+  ON executor_hosts(status) WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS tickets (
+  ticket_id        TEXT PRIMARY KEY,
+  task_id          INTEGER NOT NULL REFERENCES tasks(id),
+  department_id    TEXT NOT NULL,
+  title            TEXT NOT NULL,
+  state            TEXT NOT NULL CHECK (state IN (
+                     'queued', 'working', 'waiting_trigger', 'waiting_answer',
+                     'waiting_review', 'waiting_ack', 'blocked', 'failed',
+                     'done', 'cancelled')),
+  priority         TEXT NOT NULL DEFAULT 'P2',
+  due_at           TEXT,
+  task_dir         TEXT NOT NULL,
+  tools_json       TEXT NOT NULL DEFAULT '[]',
+  vault_paths_json TEXT NOT NULL DEFAULT '[]',
+  budget_json      TEXT,
+  expires_at       TEXT,
+  max_attempts     INTEGER NOT NULL DEFAULT 3,
+  latest_report_id TEXT,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL,
+  ended_at         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_state ON tickets(state, priority, created_at);
+
+CREATE TABLE IF NOT EXISTS assignments (
+  assignment_id   TEXT PRIMARY KEY,
+  ticket_id       TEXT NOT NULL REFERENCES tickets(ticket_id),
+  host_id         TEXT NOT NULL REFERENCES executor_hosts(host_id),
+  subagent_id     TEXT,
+  department_id   TEXT NOT NULL,
+  task_dir        TEXT NOT NULL,
+  slot            TEXT NOT NULL DEFAULT 'normal' CHECK (slot IN ('normal', 'human')),
+  state           TEXT NOT NULL CHECK (state IN ('pending', 'running', 'ended', 'interrupted', 'failed', 'cancelled')),
+  attempt         INTEGER NOT NULL DEFAULT 1,
+  report_id       TEXT,
+  created_at      TEXT NOT NULL,
+  started_at      TEXT,
+  ended_at        TEXT,
+  end_reason      TEXT
+);
+
+-- 一个 Ticket 同时只有一个 pending/running Assignment。
+CREATE UNIQUE INDEX IF NOT EXISTS ux_assignments_active_ticket
+  ON assignments(ticket_id) WHERE state IN ('pending', 'running');
+CREATE INDEX IF NOT EXISTS idx_assignments_host_state ON assignments(host_id, state);
+
+CREATE TABLE IF NOT EXISTS reports (
+  report_id     TEXT PRIMARY KEY,
+  assignment_id TEXT NOT NULL REFERENCES assignments(assignment_id),
+  ticket_id     TEXT NOT NULL REFERENCES tickets(ticket_id),
+  department_id TEXT NOT NULL,
+  type          TEXT NOT NULL CHECK (type IN ('progress', 'waiting', 'ready', 'blocked', 'failed', 'dropped')),
+  summary       TEXT NOT NULL,
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  next_step     TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_ticket ON reports(ticket_id, created_at);
 `;

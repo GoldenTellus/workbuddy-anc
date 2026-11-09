@@ -42,6 +42,7 @@
 | core | 库、配置、审计、扫描、备份 | [core.md](./core.md) |
 | identity | chatid ↔ 员工 ↔ webhook | [identity.md](./identity.md) |
 | tasks | 任务生命周期与提醒 | [tasks.md](./tasks.md) |
+| executor | 日对话 / Ticket / Assignment / Report 调度 | [executor.md](./executor.md) |
 | delivery | outbox 与 webhook 发送 | [delivery.md](./delivery.md) |
 | knowledge | vault 入库、检索、A2A | [knowledge.md](./knowledge.md) |
 | org | org → persona、部署与回滚 | [org.md](./org.md) |
