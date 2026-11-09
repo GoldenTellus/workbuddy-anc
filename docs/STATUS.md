@@ -15,7 +15,7 @@
 - [x] 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 212/212；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 216/216；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run **138 个文件**（早期基线 125；最终含 bind-member-identity）；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -41,7 +41,7 @@
 - [x] Bot 接线：`bind actor`；公司 bot persona + `anc-task` 技能接四类群/三角色/隐私路由/两阶段任务。
 - [x] 群配置投影：`groups.json` 输出四类群；`bind import`/`sync-org` 写 groups；发送按 `groups.webhook_file` fallback。
 - [x] `render deploy --db` 自动 `sync-org` + `verify-org`；本地一致性校验失败即退出 1。
-- [x] `npm test` **212/212**；`npm run check` 通过。
+- [x] `npm test` **216/216**；`npm run check` 通过。
 - [ ] 企微 API 群成员校验、`boss_dm` spike（GAP-042）；T1.9 文档已关闭。
 
 ### 1.4 主干 1/2 本机收口（2026-11-09）
@@ -49,7 +49,7 @@
 - [x] 主干 1 本地：T1.3 群类型/org→DB resolver、T1.7 `boss_dm` 类型/`resolvePrivateChat`、T1.11 render/deploy groups 均有测试。
 - [x] 主干 2 本地：executor 四表 + evaluations/events、host bootstrap/cut/deferred、claim/start/report/end/recover/sweep/expire、4+1 slot、队列顺序、human slot、迟到 Report、scope、Main 评估记录。
 - [x] 真实 WorkBuddy：单条 subagent、4 并发、wake bridge、`/new` 新建 host；跨进程 recover drill。
-- [x] `npm test` **212/212**；`check` 通过；13 个计划任务、17 组 CLI、8 个技能、13 个模块。
+- [x] `npm test` **216/216**；`check` 通过；13 个计划任务、17 组 CLI、8 个技能、13 个模块。
 - [x] 真实群/1:1/成员 API、部署、03:00、窗口重启、两机群 → ACC-01..12；ACC-01/02/03/04/05/06/12 按 D35 用户实测、ACC-08 按 D36 书面例外。
 
 ### 1.5 公司侧部署与自证（2026-11-09，本机）
@@ -131,7 +131,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-006 | WorkBuddy 日对话 + 任务 subagent 适配 | 实现 | S0 | 主干 2 | 否 | closed：ACC-09/10/11 本机达成 + D35 用户验收 |
 | GAP-007 | 部门/任务目录路径、命名、清理、权限 | 实现 | S1 | 主干 2 | 是 | 定 departments/<dept>/tasks/<ticket> |
 | GAP-008 | `background` 任务接单规则 | 设计 | S1 | 主干 2 | 否 | D29：Main 评估后接；evaluations 记录已落，自动评估器未做 |
-| GAP-009 | subagent 全局并发/模型/预算 | 后续 | S2 | 主干 2 | 否 | 定默认 4 与重试 |
+| GAP-009 | subagent 全局并发/模型/预算 | 后续 | S2 | 主干 2 | 否 | 4+1 slot + D37 默认 30m/3/default；金额预算未设 |
 | GAP-010 | 是否预留人工续谈 slot | 后续 | S3 | 主干 2 | 否 | 压测后定 |
 | GAP-011 | 主动任务 observe/auto 规则 | 后续 | S2 | 主干 0 | 否 | 规则与审批 |
 | GAP-012 | `require_ack` 任务类型与升级 | 设计 | S1 | 主干 3 | 是 | 定义必须回执的类型 |
@@ -148,7 +148,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-023 | 工作时段/时区/节假日 | 后续 | S3 | 横切 | 否 | 沿用现有 config |
 | GAP-024 | 审计/报告/任务目录保留期 | 后续 | S3 | 横切 | 否 | 定清理策略 |
 | GAP-025 | 审计面板/最小可观测字段 | 后续 | S2 | 横切 | 否 | 定最小字段 |
-| GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 否 | 主干 0 关基数/状态机；重试/拆分归 GAP-070 |
+| GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 否 | 状态机 + D38 重试已落；拆分不做 |
 | GAP-054 | Ticket 授权范围字段（tools/vault_paths/budget/expires_at/max_attempts） | 设计 | S1 | 主干 2 | 否 | closed：D31 定值；Main 每次显式填 |
 | GAP-055 | Main↔Executor 传输与投递语义（DB+tick 已选方向） | 设计 | S1 | 主干 2 | 否 | closed：D31 at-least-once / 无独立 ack / 幂等 |
 | GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 否 | 主干 0 只留占位，接口归主干 3 |
@@ -189,7 +189,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ID | 修正对象 | 旧行为 / 旧契约 | 目标行为 | 来源主干 | 阻塞 | 下一步 |
 |---|---|---|---|---|---|---|
 | GAP-033 | 文档 / 身份契约 | 文档把“一人一群”写成完整模型 | 员工群 + 部门群 + 公司大群 + 老板 1:1 + 角色 | 主干 1 | 否 | 已同步 README/AGENTS/PRODUCT/DECISIONS/部署/契约；关闭 |
-| GAP-034 | `tasks` 状态 | open / done / cancelled / needs_review | Task + Ticket / Assignment 状态 | 主干 2 | 是 | 定义映射；旧字段不反向覆盖 |
+| GAP-034 | `tasks` 状态 | open / done / cancelled / needs_review | Task + Ticket / Assignment 状态 | 主干 2 | 否 | closed：D38 单向终止，Ticket done/dropped → Task done；失败不改 Task |
 | GAP-035 | `runtime` tick | 只做提醒 / 超时 / 投影 | Main / Executor 分层；tick 只做通知与调度 | 主干 2 | 是 | 在 D2 拆边界，保留旧行为兼容 |
 | GAP-036 | outbox / 通知 | 单向消息 | Attention / 确认 / 回执 | 主干 3 | 是 | 不覆盖旧 outbox；新增 Attention 层 |
 | GAP-037 | 员工 bot 技能集 | 现有员工侧 `anc-vault-read` 卡片 | 移除；员工查库直接 @ 公司 bot | 主干 4 | 是 | 改 member persona / skill cards / DEPLOY-EMPLOYEE |
@@ -244,7 +244,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-067 | 设计/现状文档状态漂移（FUTURE 主干 2「未开始实现」、MAIN-EXECUTOR「草案」、RELEASE-CHECKLIST ACC-01..08） | 本轮改文档，关闭 |
 | GAP-068 | 部署脚本缺陷：deploy.ps1 缺 executor 映射且无 -Rollback 实现；doctor.ps1 缺 executor 布局检查；deploy-skills.ps1 仓库根探测错；register-tasks.ps1 3 处漏参、BotUser 默认与 D25 冲突；deploy-verify 调 doctor 未传 -Repo | 本轮修复 + 临时根回滚演练，关闭 |
 | GAP-069 | DEPLOY-EMPLOYEE 卸载清单缺 `anc-executor` | 本轮改文档，关闭 |
-| GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 文档写明归主干 2 后续；主干 0 接受暂不实现 |
+| GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 已落映射 + failed 自动重试（D38）；拆分不做，关闭 |
 | GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 归主干 2 后续；已在 `MAIN-EXECUTOR.md` §7 标「待补」，不阻塞主干 0 |
 | GAP-072 | 企微 AI Bot 上报的发送者 id 是会话级 open id（`wok…`），不是通讯录 userid；org 的 `member.userid` 必须写实际上报值，否则 `bind actor` 找不到人 | 已按真实入站消息校正老板映射并写进 WORKBUDDY-PATCH / DEPLOY-COMPANY；首次绑定已自动化（GAP-074）：员工第一次 @ 时由 bot 调脚本写入 org |
 | GAP-073 | 员工未分配 WorkBuddy 企业版席位/可使用成员 → 企微智能机器人拦截（“你不在该智能机器人的可使用范围”），员工侧 ACC 无法开始 | **closed**：用户已调整企微机器人可使用范围；16:55 吴琼消息入站，采集实际 sender id 并绑定，`bind actor` 通过。新成员仍需按 DEPLOY-COMPANY §11.1 分配/领用 |
@@ -369,7 +369,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-07 | 文档分层重组 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 2026-11-09 | 主干 2 PLAN 切换 + dsh-superagent 复核 | ✅ | ✅ | ✅ | ◎ | ◎ | ◎ | ✅ | ◎ | ✅ | ◎ | ✅ |
 | 2026-11-09 | 主干 2 第一批收口：表/CLI/恢复/审计 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ |
-| 2026-11-09 | 全量文档/部署计数：13 任务、17 CLI、8 技能、212 测试 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 2026-11-09 | 全量文档/部署计数：13 任务、17 CLI、8 技能、216 测试 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 2026-11-09 | 主干 0 本机收口 + 公司侧部署 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | **主干 0 收口完成**（8 分支 + ACC-01..12 通过或书面例外） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | 状态/文档一致性收口（STATUS/FUTURE/模块/部署/计数） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |

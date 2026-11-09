@@ -34,6 +34,7 @@
 - `recordEvaluation({taskId, decision, reason, priority, ticketId})` / `listEvaluations`：Main 评估记录
 - `getTicketScope(ticketId)`：只返回 task_dir/allowed_roots/tools/vault_paths/group_access=false
 - `expireTickets({now})`：过期 Ticket 中断 Assignment 并转 failed
+- `closeTicket({ticketId, decision})`：人工收口 done/cancelled；CLI 负责同步 Task
 - `interruptAssignment({assignmentId, reason})`
 
 ## 不变量

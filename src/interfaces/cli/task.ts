@@ -115,7 +115,7 @@ export default function task(ctx: CliContext): void {
     const rejected = tasks.rejectTaskRequest(db, id, actorId, reason);
     out({ ok: true, task: rejected, notified: notifyTaskEvent(db, rejected, 'rejected') });
   } else if (cmd === 'list') {
-    out({ ok: true, tasks: tasks.listTasks(db, { status: args.status as never, chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined }) });
+    out({ ok: true, tasks: tasks.listTasks(db, { status: args.status as never, chatId: typeof args['chat-id'] === 'string' ? args['chat-id'] : undefined, kind: args.kind === 'background' ? 'background' : undefined }) });
   } else if (cmd === 'get') {
     const t = tasks.getTask(db, num('id'));
     out(t ? { ok: true, task: t, events: tasks.taskEvents(db, t.id) } : { ok: false, found: false });

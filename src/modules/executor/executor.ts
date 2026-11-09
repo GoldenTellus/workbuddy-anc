@@ -4,6 +4,10 @@ import { nowIso, tx } from '../../core/index.ts';
 
 export const NORMAL_SLOTS = 4;
 export const HUMAN_SLOTS = 1;
+export const DEFAULT_MAX_MINUTES = 30;
+export const DEFAULT_MAX_ATTEMPTS = 3;
+export const DEFAULT_MODEL = 'default';
+export const DEFAULT_BUDGET = Object.freeze({ max_minutes: DEFAULT_MAX_MINUTES, model: DEFAULT_MODEL });
 
 export type HostStatus = 'active' | 'closing' | 'closed';
 export type TicketState =
@@ -367,9 +371,9 @@ export function createTicket(db: DatabaseSync, input: CreateTicketInput): Ticket
     task_dir: taskDir,
     tools_json: JSON.stringify(input.tools ?? []),
     vault_paths_json: JSON.stringify(input.vaultPaths ?? []),
-    budget_json: input.budget ? JSON.stringify(input.budget) : null,
+    budget_json: JSON.stringify({ ...DEFAULT_BUDGET, ...(input.budget ?? {}) }),
     expires_at: input.expiresAt ?? null,
-    max_attempts: Math.max(1, Math.floor(input.maxAttempts ?? 3)),
+    max_attempts: Math.max(1, Math.floor(input.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)),
     latest_report_id: null,
     created_at: at,
     updated_at: at,
@@ -422,6 +426,11 @@ function activeCount(db: DatabaseSync, slot: 'normal' | 'human'): number {
   return Number(row.n);
 }
 
+function assignmentCount(db: DatabaseSync, ticketId: string): number {
+  const row = db.prepare('SELECT COUNT(*) AS n FROM assignments WHERE ticket_id = ?').get(ticketId) as { n: number };
+  return Number(row.n);
+}
+
 function activeAssignmentForTicket(db: DatabaseSync, ticketId: string): Assignment | null {
   return (db.prepare(
     "SELECT * FROM assignments WHERE ticket_id = ? AND state IN ('pending', 'running') LIMIT 1",
@@ -453,6 +462,12 @@ export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal'
     if (!rows.length) return null;
 
     const ticket = rows[0];
+    const nextAttempt = assignmentCount(db, ticket.ticket_id) + 1;
+    if (nextAttempt > ticket.max_attempts) {
+      db.prepare("UPDATE tickets SET state = 'failed', updated_at = ? WHERE ticket_id = ?").run(nowIso(), ticket.ticket_id);
+      recordEvent(db, 'ticket_failed', { ticketId: ticket.ticket_id }, { reason: 'max-attempts' });
+      return null;
+    }
     const assignment: Assignment = {
       assignment_id: 'a-' + randomUUID(),
       ticket_id: ticket.ticket_id,
@@ -462,7 +477,7 @@ export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal'
       task_dir: ticket.task_dir,
       slot,
       state: 'pending',
-      attempt: 1,
+      attempt: assignmentCount(db, ticket.ticket_id) + 1,
       report_id: null,
       created_at: nowIso(),
       started_at: null,
@@ -531,7 +546,19 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
     recordEvent(db, 'report_appended', { hostId: a.host_id, ticketId: a.ticket_id, assignmentId: a.assignment_id }, { type, late });
     if (late) return report;
     const nextState = mapReportState(type);
-    if (nextState) {
+    if (nextState === 'failed') {
+      const attempts = assignmentCount(db, a.ticket_id);
+      const ticketNow = getTicket(db, a.ticket_id)!;
+      if (attempts < ticketNow.max_attempts) {
+        db.prepare("UPDATE tickets SET state = 'queued', latest_report_id = ?, updated_at = ? WHERE ticket_id = ?")
+          .run(report.report_id, at, a.ticket_id);
+        recordEvent(db, 'retry_scheduled', { ticketId: a.ticket_id }, { attempts, max_attempts: ticketNow.max_attempts });
+      } else {
+        db.prepare("UPDATE tickets SET state = 'failed', latest_report_id = ?, updated_at = ?, ended_at = ? WHERE ticket_id = ?")
+          .run(report.report_id, at, at, a.ticket_id);
+        recordEvent(db, 'ticket_failed', { ticketId: a.ticket_id }, { attempts, max_attempts: ticketNow.max_attempts });
+      }
+    } else if (nextState) {
       const ended = nextState === 'done' ? at : null;
       db.prepare('UPDATE tickets SET state = ?, latest_report_id = ?, updated_at = ?, ended_at = COALESCE(ended_at, ?) WHERE ticket_id = ?')
         .run(nextState, report.report_id, at, ended, a.ticket_id);
@@ -540,6 +567,20 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
         .run(report.report_id, at, a.ticket_id);
     }
     return report;
+  });
+}
+
+/** 人工/核查关闭 Ticket：done 或 cancelled；只做状态收敛，不碰 Assignment 历史。 */
+export function closeTicket(db: DatabaseSync, input: { ticketId: string; decision: 'done' | 'cancelled' }): Ticket {
+  return tx(db, () => {
+    const t = getTicket(db, input.ticketId);
+    if (!t) throw execError('EXEC_TICKET_NOT_FOUND', 'ticket 不存在');
+    if (t.state === 'done' || t.state === 'cancelled') return t;
+    const at = nowIso();
+    db.prepare('UPDATE tickets SET state = ?, ended_at = ?, updated_at = ? WHERE ticket_id = ?')
+      .run(input.decision, at, at, t.ticket_id);
+    recordEvent(db, 'ticket_closed', { ticketId: t.ticket_id }, { decision: input.decision });
+    return getTicket(db, t.ticket_id)!;
   });
 }
 

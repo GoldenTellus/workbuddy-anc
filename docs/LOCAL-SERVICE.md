@@ -74,6 +74,7 @@ npm run service -- --json executor report --assignment-id <id> --type ready --su
 npm run service -- --json executor notify --chat-id <chatid> --text "结果摘要" [--dedupe-key <key>]
 npm run service -- --json executor evaluate --task-id <n> --decision accept --reason "<理由>" [--priority P1] [--ticket-id <ticket>]
 npm run service -- --json executor evaluations --task-id <n>
+npm run service -- --json executor close --ticket-id <ticket> --decision done
 npm run service -- --json executor scope --ticket-id <ticket>
 npm run service -- --json executor expire --now "2026-11-10T00:00:00+08:00"
 npm run service -- --json executor sweep --now "2026-11-10T03:00:00+08:00" --grace-minutes 10
@@ -100,7 +101,7 @@ npm run service -- task reject --id <n> --actor-id <person_id> --reason "没资�
 npm run service -- task add --title "跑月度汇总" --chat-id <chatid> --requester <姓名> --requester-userid <userid> --kind background --timeout 30
 npm run service -- task start --id 9
 npm run service -- task review --id 9 --decision retry --actor <userid>   # 超时后：retry 重排 / close 关掉
-npm run service -- task list --status open
+npm run service -- task list --status open [--kind background]
 npm run service -- task list --status needs_review
 npm run service -- task done --id 1 --actor <userid>
 npm run service -- task cancel --id 1 --actor <userid>
@@ -169,7 +170,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 212/212 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 216/216 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

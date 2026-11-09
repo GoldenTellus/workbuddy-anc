@@ -315,6 +315,13 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 - subagent 不直接进群、不 @ 人、不开新对话；所有对外说话经 Main。
 - 先写 Assignment/Report/outbox，再做外部动作。
 
+## 6.1 Task ↔ Ticket 映射（D38）
+
+- `Ticket state=done` 或 Report `dropped` → 对应 `Task` 置 `done`；blocked/failed 不自动关 Task。
+- `failed` Report 且 attempts < `max_attempts` → Ticket 回 `queued`；下一次 claim 新建 Assignment（attempt+1）。
+- 达到 `max_attempts` → Ticket `failed`，不再自动重试；不做 Ticket 拆分。
+- `executor close --ticket-id <id> --decision done|cancelled` 可显式收口。
+
 ## 7. 待定
 
 | 项 | 归属 |

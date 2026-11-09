@@ -199,11 +199,12 @@ export function getTask(db: DatabaseSync, id: number): Task | null {
   return (row as Task | undefined) ?? null;
 }
 
-export function listTasks(db: DatabaseSync, opts: { status?: TaskStatus; chatId?: string; limit?: number } = {}): Task[] {
+export function listTasks(db: DatabaseSync, opts: { status?: TaskStatus; chatId?: string; kind?: TaskKind; limit?: number } = {}): Task[] {
   const where: string[] = [];
   const args: unknown[] = [];
   if (opts.status) { where.push('status = ?'); args.push(opts.status); }
   if (opts.chatId) { where.push('chat_id = ?'); args.push(opts.chatId); }
+  if (opts.kind) { where.push('kind = ?'); args.push(opts.kind); }
   const sql = `SELECT ${FIELDS} FROM tasks ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT ?`;
   args.push(opts.limit ?? 50);
   return db.prepare(sql).all(...(args as never[])) as unknown as Task[];
@@ -264,6 +265,21 @@ export function cancelTask(db: DatabaseSync, id: number, actor?: string): Task {
     }
     db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('cancelled', t, id);
     db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)').run(id, 'cancelled', null, t);
+    db.prepare("UPDATE reminders SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'").run(id);
+    return getTask(db, id)!;
+  });
+}
+
+/** 执行侧完成 Ticket 后同步 Task；只处理 done，blocked/failed 留给人复核。 */
+export function completeTaskFromExecution(db: DatabaseSync, id: number, reason = 'executor-done'): Task {
+  const t = nowIso();
+  return tx(db, () => {
+    const task = getTask(db, id);
+    if (!task) throw new Error(`任务不存在: ${id}`);
+    if (task.status === 'done' || task.status === 'cancelled') return task;
+    db.prepare("UPDATE tasks SET status = 'done', updated_at = ?, completed_at = ? WHERE id = ?").run(t, t, id);
+    db.prepare('INSERT INTO task_events (task_id, kind, detail, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, 'executor_done', JSON.stringify({ reason }), t);
     db.prepare("UPDATE reminders SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'").run(id);
     return getTask(db, id)!;
   });

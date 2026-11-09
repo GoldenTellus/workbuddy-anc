@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../../core/index.ts';
 import {
-  createTaskRequest, approveTaskRequest, acceptTaskRequest,
-  rejectTaskRequest, completeTask, cancelTask, getTask, taskEvents,
+  createTask, createTaskRequest, approveTaskRequest, acceptTaskRequest,
+  rejectTaskRequest, completeTask, completeTaskFromExecution, cancelTask, getTask, taskEvents, listTasks,
 } from './index.ts';
 
 function db() { return openDb(':memory:'); }
@@ -73,5 +73,25 @@ test('任务请求：接受/拒绝后不能重复操作', () => {
     assert.throws(() => acceptTaskRequest(d, t.id, 'emp2'), /只有 pending_acceptance/);
     assert.throws(() => rejectTaskRequest(d, t.id, 'emp2', '晚了一步'), /只有待审批/);
     assert.equal(getTask(d, t.id)?.status, 'open');
+  } finally { d.close(); }
+});
+test('任务列表：kind=background 只返回后台候选', () => {
+  const d = db();
+  try {
+    const bg = createTask(d, { title: '后台日报', kind: 'background' });
+    createTask(d, { title: '简单任务' });
+    const rows = listTasks(d, { status: 'open', kind: 'background' });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, bg.id);
+    assert.equal(rows[0].kind, 'background');
+  } finally { d.close(); }
+});
+test('任务映射：执行侧完成只把 Task 置 done', () => {
+  const d = db();
+  try {
+    const t = createTask(d, { title: '执行完成', kind: 'background' });
+    const done = completeTaskFromExecution(d, t.id, 'executor-close');
+    assert.equal(done.status, 'done');
+    assert.equal(taskEvents(d, t.id).some((e) => e.kind === 'executor_done'), true);
   } finally { d.close(); }
 });

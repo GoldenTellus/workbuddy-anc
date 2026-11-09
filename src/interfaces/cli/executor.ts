@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as executor from '../../modules/executor/index.ts';
 import * as delivery from '../../modules/delivery/index.ts';
+import * as tasks from '../../modules/tasks/index.ts';
 import type { ReportType } from '../../modules/executor/index.ts';
 import type { CliContext } from './context.ts';
 
@@ -125,7 +126,14 @@ export default function executorGroup(ctx: CliContext): void {
     const assignmentId = String(args['assignment-id'] ?? '');
     if (!assignmentId) fail('缺少 --assignment-id');
     const report = readReport(args, fail);
-    out({ ok: true, report: executor.appendReport(db, { assignmentId, ...report }) });
+    const saved = executor.appendReport(db, { assignmentId, ...report });
+    const ticket = executor.getTicket(db, saved.ticket_id);
+    let taskDone = false;
+    if (ticket?.state === 'done') {
+      tasks.completeTaskFromExecution(db, ticket.task_id, 'executor-dropped');
+      taskDone = true;
+    }
+    out({ ok: true, report: saved, task_done: taskDone });
     return;
   }
 
@@ -178,6 +186,21 @@ export default function executorGroup(ctx: CliContext): void {
     const taskId = typeof args['task-id'] === 'string' ? Number(args['task-id']) : undefined;
     const limit = numArg(args.limit, 50, 1, 500);
     out({ ok: true, evaluations: executor.listEvaluations(db, { taskId, limit }) });
+    return;
+  }
+
+  if (cmd === 'close') {
+    const ticketId = String(args['ticket-id'] ?? '');
+    const decision = String(args.decision ?? 'done');
+    if (!ticketId) fail('缺少 --ticket-id');
+    if (decision !== 'done' && decision !== 'cancelled') fail('--decision 必须是 done 或 cancelled');
+    const ticket = executor.closeTicket(db, { ticketId, decision });
+    let taskDone = false;
+    if (decision === 'done') {
+      tasks.completeTaskFromExecution(db, ticket.task_id, 'executor-close');
+      taskDone = true;
+    }
+    out({ ok: true, ticket, task_done: taskDone });
     return;
   }
 

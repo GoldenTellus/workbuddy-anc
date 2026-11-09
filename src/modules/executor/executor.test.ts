@@ -20,6 +20,7 @@ import {
   endAssignment,
   getHost,
   getTicket,
+  closeTicket,
   getAssignment,
   interruptAssignment,
   startAssignment,
@@ -54,6 +55,8 @@ test('executor：host/ticket/assignment/report 生命周期', () => {
     });
     assert.equal(t.state, 'queued');
     assert.equal(t.task_dir, `departments/sales/tasks/${t.ticket_id}`);
+    assert.deepEqual(JSON.parse(t.budget_json!), { max_minutes: 30, model: 'default' });
+    assert.equal(t.max_attempts, 3);
 
     const c = claim(db, { hostId: h.host_id });
     assert.ok(c);
@@ -196,6 +199,8 @@ test('executor：task_dir 必须由部门 + ticket_id 推导，拒绝跨部门/�
     seedTask(db);
     const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'path', });
     assert.equal(t.task_dir, `departments/sales/tasks/${t.ticket_id}`);
+    assert.deepEqual(JSON.parse(t.budget_json!), { max_minutes: 30, model: 'default' });
+    assert.equal(t.max_attempts, 3);
     assert.throws(
       () => createTicket(db, { taskId: 1, departmentId: 'sales', title: 'x', taskDir: 'departments/ops/tasks/t-x' }),
       /task_dir 必须是/,
@@ -348,5 +353,41 @@ test('executor：过期的 Ticket 会中断 Assignment 并转 failed', () => {
     assert.equal(r.expired, 1);
     assert.equal(getTicket(db, t.ticket_id)!.state, 'failed');
     assert.equal(getAssignment(db, a.assignment.assignment_id)!.state, 'interrupted');
+  } finally { db.close(); }
+});
+test('executor：closeTicket 收口 waiting_review → done', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'close', });
+    const a = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-close' });
+    appendReport(db, { assignmentId: a.assignment.assignment_id, type: 'ready', summary: 'review' });
+    endAssignment(db, { assignmentId: a.assignment.assignment_id });
+    assert.equal(closeTicket(db, { ticketId: t.ticket_id, decision: 'done' }).state, 'done');
+  } finally { db.close(); }
+});
+test('executor：failed Report 在 max_attempts 内自动回 queued，超限才 failed', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'retry', maxAttempts: 3 });
+    for (let i = 1; i <= 2; i++) {
+      const a = claim(db, { hostId: h.host_id })!;
+      assert.equal(a.assignment.attempt, i);
+      startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-' + i });
+      appendReport(db, { assignmentId: a.assignment.assignment_id, type: 'failed', summary: 'boom ' + i });
+      endAssignment(db, { assignmentId: a.assignment.assignment_id });
+      assert.equal(getTicket(db, t.ticket_id)!.state, 'queued');
+    }
+    const a3 = claim(db, { hostId: h.host_id })!;
+    assert.equal(a3.assignment.attempt, 3);
+    startAssignment(db, { assignmentId: a3.assignment.assignment_id, subagentId: 'agent-3' });
+    appendReport(db, { assignmentId: a3.assignment.assignment_id, type: 'failed', summary: 'boom 3' });
+    endAssignment(db, { assignmentId: a3.assignment.assignment_id });
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'failed');
+    assert.equal(claim(db, { hostId: h.host_id }), null);
   } finally { db.close(); }
 });
