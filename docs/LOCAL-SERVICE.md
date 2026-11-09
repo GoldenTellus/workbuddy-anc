@@ -10,7 +10,7 @@
 
 | 表 | 作用 | 关键约束 |
 |---|---|---|
-| `people` | 人 → 角色/部门/userid | `person_id` 主键；`system_role`: boss/manager/employee；`userid` 唯一 |
+| `people` | 人 → 角色/部门/userid | `person_id` 主键；`system_role`: boss/manager/employee；`userid` 唯一（GAP-072 的会话级 `wok…` id，用于身份匹配）；`mention_userid` 可选（企微通讯录 userid，用于 webhook @，D47） |
 | `groups` | 群 → 类型/员工/部门/webhook | `type`: employee/department/company/boss_dm；employee 群必须有 employee_id，department 群必须有 dept_id |
 | `manager_scopes` | 管理者 → 部门 | 多对多；管理者范围以此为准 |
 | `chat_bindings` | 员工群 chatid → 员工 | 兼容层；管理员写、agent 只读；`bind sync-org`/`backfill` 双写 |
@@ -39,6 +39,8 @@
 
 ## 命令
 
+> 退出码（GAP-090 对齐实现）：`0` 成功；`1` 业务拒绝（模块状态机/策略抛错，如“已有 active host”“不是确认人”“没有派活权限”中由模块判定的一类）；`2` 参数/环境错误（`ctx.fail()` 的参数校验、缺文件、DB 打不开等）。调用方以 `--json` 里 `{ok:false, error}` 为准，不要只靠退出码区分业务与参数。
+
 ```powershell
 # 绑定（管理员；userid 用于提醒时 @ 人，webhook-file 是该群自己的密钥文件名）
 npm run service -- bind set --chat-id <chatid> --employee <姓名> --userid <企微 userid> --webhook-file hook-<姓名拼音>.txt
@@ -48,6 +50,7 @@ npm run service -- bind actor --chat-id <chatid> --userid <userid>
 npm run service -- bind list
 
 # 主干 1：org → people/groups/manager_scopes（同时双写 chat_bindings 兼容旧技能）
+# org members 可选 mention_userid（企微通讯录 userid）：写了才会在原群通知里真 @，没写就只发中性短号
 npm run service -- bind sync-org --org <org 目录>
 # 校验 org 与库里 people/groups/manager_scopes 是否漂移；有差异退出 1
 npm run service -- bind verify-org --org <org 目录>
@@ -61,6 +64,7 @@ npm run service -- bind group-list [--type department]
 npm run service -- bind person-list
 
 # 主干 2：Executor 调度（T2.3，先落 CLI；Runner 仍由 Main 接）
+# conversation-id 现在必须是真实 WorkBuddy 会话 UUID（new-host.ps1 预生成）；host cut 可带 --cut-at（默认 business_date 次日 03:00）
 npm run service -- --json executor host bootstrap --conversation-id <conv-id> --date 2026-11-09 --cut-at "2026-11-10T03:00:00+08:00"
 npm run service -- --json executor host tick --now "2026-11-10T03:00:00+08:00"
 npm run service -- --json executor host register --conversation-id <conv-id> --date 2026-11-09 --cut-at "2026-11-10T03:00:00+08:00"
@@ -181,7 +185,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 238/238 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 248/248 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

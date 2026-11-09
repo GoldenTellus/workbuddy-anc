@@ -15,7 +15,7 @@
 - [x] 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - [x] `core` 拆出 `schema` / `migrate` / `tx` / `fs`；两份 `writeAtomic` 下沉。
 - [x] 深导入 0、模块违规 0、环 0。
-- [x] 2026-11-06 基线 `npm test` 163/163；当前 238/238；`check:modules:deep` 通过；`check-public` 零输出。
+- [x] 2026-11-06 基线 `npm test` 163/163；当前 248/248；`check:modules:deep` 通过；`check-public` 零输出。
 - [x] 部署 dry-run **138 个文件**（早期基线 125；最终含 bind-member-identity）；部署布局跑通 `task list` / `loop --once` / `render` / `ingest`。
 证据：[ARCHITECTURE.md](./ARCHITECTURE.md)、[archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md)、[archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -125,19 +125,35 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] `anc-executor-wake` 自动 `/new` 建 Agent host（session `c208fb40…`，`mode=craft`）。
 - [x] Host claim/start，真实 subagent `agent-15b76a26…` 写 `hello5.md`；report `ready`；review Attention `A10`；郭帅 `A10 可以` → Ticket/Task #18 `done`。
 
+### 1.10 本批收口补齐 + 公司主机侧全量回归（BATCH-20261110，2026-11-10）
+
+> 证据根：`%ProgramData%\anc\stage\batch-20261110\`（dev01/dev02/dev04/regression/gates）；部署备份 `%ProgramData%\anc\backup\deploy-20261110-011736` 等。PLAN 快照：[archive/plans/BATCH-20261110.md](./archive/plans/BATCH-20261110.md)。
+
+- [x] **DEV-01 单一日对话（D46）**：wake bridge 2.0 改走 renderer `window.wb` API —— `/new` 用 `wb.conversations.create()`（可指定 conversationId/workspace/title）、`/wake` 用 `conversation.get(id).sendPrompt()` 定向发 prompt，不再切窗口/点 DOM；`wake-if-queued.ps1` 读到 active host 的真实 UUID 就定向 `/wake`，只有 03:00 `new-host.ps1` 才 `/new`。实测：`h-ed2b1b65…`（conversation `47695768…`，真实 UUID）承接 3 个 Ticket，3 个 subagent（`agent-acda2b89…` / `agent-a777c714…` / `agent-c5068f71…`），全部同一 host 会话；wake 日志 5 次 `wake ok via=wb conversation=47695768…`；测试窗口内没有新建任何会话（`createdAt` 最新即 host 会话）；`executor_hosts` 总量 4→4。证据 `dev01/EVIDENCE.md`（E1–E6：wb API 探测、bootstrap、3 票、部署重启、清理）。
+- [x] **DEV-02 GAP-079**：补丁在原型层捕获 `handleTextMessage/handleMixedMessage/handleMediaMessage` 的 `e.body.quote` 与 `msg_id`，入站前缀追加可选 ` msg=`/`quote=`（单行化、去 ASCII 方括号、300 字截断；旧 `[anc:chat= from=]` 不变、捕获失败不影响入站）；`attention match` 无短号时用 `--quote-text` 兜底、正文短号优先；`anc-task` 技能与 company persona 写明解析规则（persona 6470B ≤6500）。`npm test` 新增 10 条补丁/匹配用例；`narration.test.mjs` 26 PASS。真实入站/真实引用样本需人在测试群操作 → ACC-18。证据 `dev02/EVIDENCE.md` E1–E17 + ACC-E16。
+- [x] **DEV-03 GAP-080**：org `mention_userid` → `people.mention_userid`（schema+migrate 幂等）→ sync-org/verify-org → `attention-notify` 在原群中性短号路径带 `outbox.mentions`→webhook `mentioned_list`；拿不到不 @、不报错；私密群不 @；24h 老板升级同逻辑。部署版对生产库抽查：迁移 no-op、副本库三路径断言全过（有 mention→真 @、无→空、私密→空）；唯一 ACC 是“真人收到 @”（需真实通讯录 userid）。证据 `dev04/EVIDENCE.md`、`dev04/deploy-verify/`。
+- [x] **DEV-04 8h/24h 实际投递**：测试 Attention A12（回拨 9h）→ 8h 管理者 zhangjiayi、A13（回拨 25h）→ 24h 老板 guoshuai，sweep 文案/短号/收件人正确；二次 sweep `due:[]` 不重复；`outbox flush` sent=2 failed=0，webhook 直连探针 HTTP 200 `{"errcode":0}`；测试行清理后 0 残留。证据 `dev04/EVIDENCE.md`、`evidence-summary.json`、`live-sweep*.json`、`live-outbox-flush.json`、`webhook-probe.json`。
+- [x] **T5.1 主干 0 记录**：主干 0 复检沿用 PLAN §3；本批新发现的 GAP-088（cutHost started_at）关闭，GAP-089（备份 schema 假 PASS）关闭，GAP-090/092 接受，GAP-091 留后续。
+- [x] **GAP-088 修复（DEV-01 实测发现）**：`cutHost` 曾把“下次日切时间”同时当新 host 的 `started_at`，跨日 bootstrap 后新 host 时间记成未来；改为 `started_at=切换时刻`、`cut_at=下次日切`，`executor.test` 断言覆盖，线上 active host 已回修。
+- [x] **GAP-089 / OPS-01 修复（回归 FAIL 项）**：回归发现最新备份是 trunk-3 迁移前 schema（缺 attentions），而 `backup-anc.ps1` 因 20h 间隔跳过、doctor 只看 mtime → 假 PASS。已修 `doctor.ps1` 的 `backup-freshness`：用 `node:sqlite` 只读打开最新备份，比对 live 表清单（缺表→FAIL），负例实测“缺 attentions”能报 FAIL；随后强制备份 `anc-20261110-011357.db`（25 表/hash 对齐）并做副本恢复演练（quick_check ok、各表计数与 live 一致）→ OPS-01 PASS。证据 `dev01/ops01-backup-restore-drill.json`、`gates/doctor-backup-stale-negative.out`。
+- [x] **T5.6/T5.7 公司主机侧全量回归**：矩阵断言 70/70 PASS（HEAD 与部署后工作树各一次）；入库 ING 16/16；矩阵 ID 23 PASS / 1 FAIL（OPS-01，已修）/ 10 NOT-RUN（员工侧/真实群/03:00 等，见 ACC-17/18/20/21）+ 5 项本机 PASS·真实环境待验；门禁 `check-public` 零输出、`npm run check` 0、doctor 提权 FAIL=0 WARN=3（34 项）/ 非提权 FAIL=0 WARN=13、`deploy-verify` PASS=4 FAIL=0 SKIP=1、13 任务 Ready。真实群截图/员工机/03:00 观察不在本机范围 → ACC。证据 `regression/REPORT.md`。
+- [x] **T5.9 门禁**：`npm test` **248/248**、coverage **88.87/78.87/93.85**、`npm run check` 通过、`check-public` 零输出、doctor 提权 FAIL=0 WARN=3、deploy-state 11/11；部署 `142 文件 hash 全过` × 3 次（`deploy-20261110-010510` / `010935` / `011736`），技能 `deploy-skills` 1 文件更新，persona `deploy-persona` 最终版 6470B 已落盘。证据 `gates/`。
+- [x] **部署 + 真实 WorkBuddy 重启**：`deploy.ps1 -Apply` → `anc-selfheal.ps1 -Apply` → 新主进程 pid=22468、patch-state `applied=true mode=hash runId=78eecdc3…`、wake bridge `/health` `{"bridge":"2.0"}`；13 任务恢复 Ready/Running；host 会话在重启后仍可用。证据 `dev01/deploy/`、`gates/`。
+- [x] **清理**：DEV-01 测试 Task/Ticket/Assignment/Report/Attention/outbox/events 全部删除（0 残留；`attention_seq` 回 10；outbox 历史 #6 已取消），产物 `dev01/artifacts/` 留证后从 `D:\anc\departments\tech\tasks` 移除；研究用探测会话 3 个已删；生产库回到测试前计数（tasks 12 / tickets 12 / attentions 10 / outbox 6 / events 122）。证据 `dev01/cleanup/cleanup-report.json`、`post-cleanup-snapshot.db`。
+
 ---
 
 ## 2. 进行中
 
 | 事项 | 状态 | 证据 / 下一步 |
 |---|---|---|
-| 主干 0 | **已收口（2026-11-10 复检）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；开放 GAP=0（trunk-4 移出；079/080/071 接受）；doctor 非提权 FAIL=0 WARN=13 |
+| 主干 0 | **已收口（2026-11-10 复检；本批新增 GAP-088/089 已关闭）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；原开放 GAP=0（trunk-4 移出；079/080/071 接受）；本批回归新开 GAP-088/089（已修）、090/092（接受）、091（留后续）；doctor 非提权 FAIL=0 WARN=13 |
 | 主干 1 | **已收口（2026-11-09）** | 4/4 分支；D35 用户实测、D36 例外；员工 bot 旧 1.0 归主干 4 |
-| 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10） |
-| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；238/238；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；遗留 GAP-079/080/084 非阻塞 |
-| **当前批次** | **待开工（2026-11-10）** | [PLAN.md](./PLAN.md)：收口补齐（D45 单一日对话、GAP-079/080、8h/24h）+ 双机全量回归（公司侧 + 员工侧） |
-| 公司侧部署（本机） | 已完成 11/11 | 见 §1.5；`deploy-state` `ok:true progress 11/11` |
-| 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-09 收口审计行 |
+| 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10）；本批 DEV-01 已把 wake 改成定向 host（D46） |
+| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；本批后 **248/248**；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；GAP-079/080 本批已实现（真实样本留 ACC-18） |
+| **当前批次（BATCH-20261110）** | **公司侧收口完成（2026-11-10）；双机项待 ACC（D48 书面例外）** | PLAN §4 DEV-01/02/03/04 全部完成（见 §1.10）；T5.6/T5.7 公司主机侧矩阵 70/70×2 + ING 16/16 + 门禁全绿；OPS-01 备份 FAIL 已修（GAP-089）；员工侧/真实群/03:00 → ACC-17/18/20/21 |
+| 公司侧部署（本机） | 已完成 11/11 | 见 §1.5/§1.10；`deploy-state` `ok:true progress 11/11 at 2026-11-10 01:14` |
+| 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-10 本批审计行见 §4 |
 
 ---
 
@@ -205,6 +221,11 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-050 | 四类群真实端到端验收批次 | 验收 | S1 | 主干 1 | 否 | closed：ACC-01..12 按 D35/D36 收口 |
 | GAP-051 | FUTURE-DESIGN 内部状态/规则不一致（0.8/主干1/叶子/差距表） | 文档/契约 | S1 | 主干 0 | 否 | 已修：0.8/三态/树/叶子/差距表；check 通过；关闭 |
 | GAP-052 | 全仓文档语义漂移（一人一群/私聊/命令/计数） | 文档/契约 | S1 | 主干 0 | 否 | 已批量修 README/AGENTS/PRODUCT/DECISIONS/部署/契约/计数；check 通过；关闭 |
+| GAP-088 | `cutHost` 新 host 的 `started_at` 被记成"下次日切时间" | Bug/回归 | S2 | 主干 0 | 否 | **closed（本批 DEV-01 实测发现并修复）**：跨日 bootstrap 后新 host `started_at` 变成明天 03:00，host 列表排序/心跳错位。改为 `started_at=切换时刻`、`cut_at=下次日切`；`executor.test` 断言覆盖；线上 active host 已回修 |
+| GAP-089 | 备份落后 schema + `backup-anc.ps1` 20h 间隔跳过 + doctor 只看 mtime → 假 PASS | Bug/回归 | S1 | 主干 0（本批回归） | 否 | **closed**：`doctor.ps1` 的 `backup-freshness` 改为 node:sqlite 只读比对 live 表清单（缺表 FAIL，负例“缺 attentions”实测可报）；强制备份 `anc-20261110-011357.db`（25 表）+ 副本恢复演练 PASS。见 §1.10 / OPS-01 |
+| GAP-090 | CLI 退出码文档与实现不一致：`ctx.fail()` 参数/权限=2，模块 throw 业务拒绝=1；文档只写“1 业务 / 2 参数” | 文档/契约 | S3 | 主干 0（本批回归） | 否 | **accepted（文档对齐）**：`LOCAL-SERVICE` 改为写清两类失败（业务=1、参数/权限校验=2），不在此批重排退出码 |
+| GAP-091 | `ingest` 审计 `targets` 恒空，且 `cmd` 记录成绝对路径（INGEST 契约说记录路径） | Bug/文档 | S3 | 主干 0（本批回归） | 否 | open：后续修 ingest 审计字段；不影响入库本职与权限 |
+| GAP-092 | “多义只反问一次（最多 3 条）”只有 CLI `ambiguous` 证据，Main 话术无审计 | 实现/审计 | S3 | 主干 0（本批回归） | 否 | accepted：CLI 契约已测；话术层无机器审计，留后续（不阻塞） |
 
 > `S0` 阻断主流程；`S1` 高；`S2` 中；`S3` 低。`阻塞=是` 表示不解决就不能完成对应主干/分支。
 
@@ -224,8 +245,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-076 | Ticket 状态机 / Report 类型 | 6 类 Report 没有 `question`；`waiting_answer` / `waiting_ack` 无入口 | 加 `question → waiting_answer`；`waiting_ack` 由 `attention create` 推进；同步 2.3 / MAIN-EXECUTOR / subagent | 主干 3 | 否 | closed：`question` 已落，`waiting_ack` 由 attention create 进；T3.4 |
 | GAP-077 | human slot / claim | `claim --slot human` 不能定向；human Assignment 计入 `max_attempts` | 加 `--ticket-id`；human 不计入 `max_attempts`；answer 进下一次 prompt | 主干 3 | 否 | closed：`claim --ticket-id` + normal-only 计数；`attention context` 已提供；T3.4 |
 | GAP-078 | `canConfirmAttention` | 本部门管理者可代确认 | 仅 `required_confirmer` + 老板；管理者可见/催办不代确认 | 主干 3 | 否 | closed：policy 收紧 + `policy.test` 覆盖；T3.2 |
-| GAP-079 | WorkBuddy 补丁 / 确认协议 | 只注入 `chat/from`；引用文本/消息 id 不可用 | 短号为主；T3.0 spike 带 `msgId` / quote 文本做增强；不改主路径 | 主干 3 | 否 | accepted：短号主路径已真实群通过；msgId/quote 增强留后续，不阻塞 |
-| GAP-080 | 通知 @ 的 userid | `people.userid` 是 GAP-072 的会话级 `wok…` id；webhook `mentioned_list` 不一定能 @ 到通讯录人员 | org 增加/采集通讯录 userid（`mention_userid`）；拿不到时回退私密员工群（无需 @）或原群中性短号不 @ | 主干 3 | 否 | accepted：v1 不 @；私密/中性短号路径已通过；通讯录 userid 留后续 |
+| GAP-079 | WorkBuddy 补丁 / 确认协议 | 只注入 `chat/from`；引用文本/消息 id 不可用 | 短号为主；T3.0 spike 带 `msgId` / quote 文本做增强；不改主路径 | 主干 3 | 否 | **closed（本批 DEV-02）**：补丁在原型层捕获 `e.body.quote` + `msg_id`，前缀追加可选 `msg=`/`quote=`；attention-match 无短号时用 `--quote-text` 兜底（正文短号优先）；技能/persona 写明解析。265 行新增测试 + 部署版复验通过；真实入站/引用样本 → ACC-18。见 §1.10 |
+| GAP-080 | 通知 @ 的 userid | `people.userid` 是 GAP-072 的会话级 `wok…` id；webhook `mentioned_list` 不一定能 @ 到通讯录人员 | org 增加/采集通讯录 userid（`mention_userid`）；拿不到时回退私密员工群（无需 @）或原群中性短号不 @ | 主干 3 | 否 | **closed（本批 DEV-03）**：org/people 增加 `mention_userid`，原群中性短号路径带 `mentions`→webhook `mentioned_list`；缺失/私密回退不 @、不报错。部署版副本库三路径与生产迁移抽查通过；唯一 ACC：真人收到 @ 需真实通讯录 userid（ACC-18）。见 §1.10 |
 | GAP-081 | 计划任务注册 | 2026-11-09 部署后 doctor 只有 3 个 `anc-*` 任务；`register-tasks.ps1 -Apply` 在当前非提权会话被 UAC 拒绝（脚本仍打印 OK，GAP-082） | 用管理员 PowerShell 重跑 `-Apply`；doctor 13 项任务 Ready | 主干 3 部署 | 否 | closed：管理员会话 `-Apply -BackupDestination D:\anc-backup` 成功；doctor 13 任务 Ready、FAIL=0 |
 | GAP-082 | `register-tasks.ps1` 失败仍打印 OK | `Register-ScheduledTask` 抛 `拒绝访问` 后脚本继续打印 `OK <task>` 并汇总“已注册 13 个任务” | 捕获异常并以非 0 退出；失败任务不得计入“已注册” | 主干 3 部署 | 否 | closed：加 `-ErrorAction Stop`，非提权实测 exit=1、只报 ERROR/FIX |
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
@@ -389,6 +410,11 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-10 | **主干 2 真实 Main 群全链路** | 公司群 Main 只建 Ticket #18；wake `/new` host `c208fb40…`；`agent-15b76a26…` 写 `hello5.md`；A10 approved → Task #18 done | ACC-16 通过；GAP-086 关闭；主干 2 可标 ✅ | 主干 2 收口 |
 | 2026-11-10 | **主干 0 复检（主干 2/3 收口后）** | 0.1–0.8 逐项核对；关闭 026/029/036/056/084；接受 079/080/071；GAP-087 doctor 非提权修复；trunk-4 项移出 | 开放 GAP=0；主干 0 保持 ✅；238/238 | 下次：主干 4 开工前 |
 | 2026-11-10 | **PLAN 切“收口补齐 + 双机全量回归”** | 0.3 PLAN 重写；0.4 主干 0 复检；0.6 238/238 | 写入主干 0 复检、DEV-01..06、双机矩阵；PLAN 状态待开工 | 见 [PLAN.md](./PLAN.md) |
+| 2026-11-10 | 本批开工：DEV-01 定向唤醒预验证 | 0.8 部分推进：WorkBuddy renderer `wb.conversations.create/sendPrompt` 可程序化建会话并定向发 prompt（无需切窗口）；真实 host `h-ed2b1b65…` 的 `conversation_id` 已是真实 UUID `47695768…`，1 个 Ticket 由该 host claim→subagent→report→waiting_review | **新增并关闭 GAP-088**（cutHost started_at 误用下次日切时间） | 部署+重启后跑 3 Ticket 单 host 验收 |
+| 2026-11-10 | 本批部署 + WorkBuddy 重启（01:05） | 0.4/0.8：142 文件 hash 全过、13 任务 Ready、patch-state applied=true runId=78eecdc3…、wake bridge 2.0 | 无新增 GAP（部署期瞬时 doctor FAIL 已归因为未提交树，部署后消失） | 重启后跑定向 3 Ticket |
+| 2026-11-10 | **DEV-01 单 host 3 Ticket 真实通过** | 0.8：同一 host 会话 `47695768…` 连续接 3 Ticket、3 subagent；wake log 5 次 `via=wb` 同会话；会话数不随 Ticket 增长；host 总量不变 | 无新增 GAP | EXE-01 主路径达成；EXE-05 03:00 留 ACC-20 |
+| 2026-11-10 | 公司主机侧全量回归（T5.6/T5.7） | 0.6/0.4/0.8：矩阵 70/70×2、ING 16/16、门禁全绿；**发现 OPS-01 备份 FAIL** | **新增 GAP-089（已修）/090（接受）/091（open）/092（接受）**；GAP-003/ACC-01 员工部门群 chatId 覆盖继续留 ACC | 见 §1.10、`regression/REPORT.md` |
+| 2026-11-10 | 收口门禁 | 0.6：`npm test` 248/248、coverage 88.87/78.87/93.85、check 通过、check-public 零输出、doctor FAIL=0 WARN=3、deploy-state 11/11 | GAP-089 关闭；本批公司侧收口 | 双机项转 ACC-17/18/20/21（D48 书面例外） |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
@@ -414,6 +440,12 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | **真实群通过（2026-11-09）**：郭帅回 `@公司bot A7 120000` → A7 answered；human slot 续谈 → Task #11 done |
 | ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | **真实群通过（2026-11-09）**：A8 `A8收到` → Task #12 done；A9 回拨 2h → outbox #5 sent（群催办）；郭帅代张佳艺 ack（`on_behalf_of=zhangjiayi`）→ Task #13 done |
 | ACC-16 | 真实 Main 群全链路 | 公司群 Main 无 Agent；wake 可用 | Main 只建 Ticket；wake 自动建 Agent host；host 起真实 subagent；review 后 Task done | GAP-086 | **通过（2026-11-10）**：Task #18 → `t-b6b53f83…` queued；wake `/new` host `c208fb40…`；`agent-15b76a26…` 写 `hello5.md`；A10 approved → Task #18 done |
+| ACC-17 | 员工侧双机全量（ENV-02/EMP-01/EMP-02 等） | 员工电脑 + WorkBuddy + 员工侧部署/补丁 | 员工侧 ENV/ID/TASK/EMP 项按 §6 矩阵通过或有书面例外 | GAP-005/016/017/018/020/037/038/039 | **NOT-RUN（本批）**：员工电脑不在本机可达范围；本批只出公司主机侧矩阵。员工 bot 仍是旧 1.0，主干 4 缺口保持 |
+| ACC-18 | 真实群补丁/引用/@ 复验（ENV-03 + DEV-02/03） | 测试群 + 真人操作 | ① 真人 @ 公司bot 后 `patch-in.log` 带 ` msg=`；② 引用 A1x 通知回「可以」→ `quote=` 进前缀且 `attention match --quote-text` 命中；③ 短号主路径不回归；④ 真实员工群/部门群 `bind actor`；⑤ 填真实 `mention_userid` 后收到 @ | GAP-079/080/072/003 | **NOT-RUN（需人在真实群操作）**：本机已机械验证注入格式/匹配/部署生效（DEV-02 E1–E14）与副本库 mention 三路径（DEV-03），真实样本一项未跑 |
+| ACC-19 | 8h/24h 实际投递 | Attention 已建、测试群可用 | 8h→管理者、24h→老板；文案/收件人正确；不重复 | GAP-012/014/015 | **达成（2026-11-10 机器证据）**：A12/A13 回拨后 sweep 产出正确、二次 sweep 不重复、outbox flush sent=2 failed=0、webhook HTTP200 errcode 0。见 §1.10 |
+| ACC-20 | 03:00 真实日切观察 | 隔夜 03:00 | `/new` 建新 host、旧任务继续、新任务进新 host；wake 定向新 host | GAP-061/065/D46 | **NOT-RUN（本批未跨夜）**：本批用真实 API 建 host + bootstrap/cut 已验证（E2、DEV-01），但 03:00 定时触发与跨夜旧任务续跑未观察；明早 03:00 可采 |
+| ACC-21 | 真实群安全回归（SEC-01/02/03） | 真实群 + 非确认人/伪造回复 | 不跨群泄露；注入不执行；伪造短号/非确认人不生效 | GAP-021/D40 | **NOT-RUN（本批）**：本机有策略/匹配单测与 `canConfirmAttention` 覆盖；真实群截图类证据需人操作 |
+| ACC-22 | 备份恢复演练（OPS-01） | 最新备份 + 恢复副本 | 备份含当前 schema；副本 quick_check ok、数据计数一致 | GAP-089 | **达成（2026-11-10 机器证据）**：`anc-20261110-011357.db` 25 表与 live 对齐；副本恢复 quick_check ok、计数一致；doctor 新检查负例可报 FAIL。见 §1.10 |
 
 ### 3.6 完成时的更新清单
 
@@ -449,7 +481,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-09 | **主干 0 收口完成**（8 分支 + ACC-01..12 通过或书面例外） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | 状态/文档一致性收口（STATUS/FUTURE/模块/部署/计数） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◎ |
 | 2026-11-09 | **主干 3 收口完成**（T3.1–T3.6 + ACC-13/14/15 真实群通过） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ | ◎ | ✅ | ◎ |
-| 2026-11-10 | **主干 2 收口完成**（真实 Main 群全链路 + ACC-16） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ | ◎ | ✅ | ◎ |
+| 2026-11-10 | **主干 2 收口完成**（真实 Main 群全链路 + ACC-16） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ◎ | ✅ | ✅ | ◎ |
+| 2026-11-10 | **BATCH-20261110 公司侧收口**（DEV-01..04 + 回归 + 门禁） | ✅ | ✅ | ✅ | ✅ | ◎ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 待填 | 主干 2 完成 |  |  |  |  |  |  |  |  |  |  |  |
 
 ---
@@ -464,8 +497,11 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 未来上游许可证不明 | 不能合法二创 | `UPSTREAM.md` 的许可证门禁：不明只学概念 |
 | 文档再次漂移 | 又回到“多份真相” | `DOC-SYNC` + `check:docs` + 主干完成定义；本轮已关闭 GAP-066/067 |
 | 离机备份与本地同物理盘（本机 D:\anc-backup） | 盘坏时本地与离机一起丢 | 换独立盘或 UNC；本机实测已在 `backup.log` 告警，D30 暂接受 |
+| 备份落后 schema（GAP-089，本批已修） | 回滚到旧备份会丢新表 | doctor `backup-freshness` 现在比对 live 表清单；部署/迁移后强制 `backup-anc.ps1 -MinIntervalHours 0` 并复跑 doctor |
+| WorkBuddy 内部 `window.wb` API 无公开契约（D46） | WorkBuddy 升级可能改 API，wake bridge 2.0 失效 | bridge 保留 DOM fallback（`wb-api-missing` 时走旧 `/new`/`/wake`）；`/health` 带 bridge 版本；升级后按 `WORKBUDDY-PATCH` 回归并更新 manifest |
+| 真实群样本未跑（ACC-18/20/21） | 补丁 msg=/quote=、03:00 跨夜、真实群安全只有本机证据 | 转 ACC 书面例外（D48）；在测试群 @ 一次、引用一次、隔夜看 03:00 即可补齐 |
 | WorkBuddy 非标准安装路径依赖 Junction（本机 D:\App\WorkBuddy） | 换机/重装/升级后路径假设失效 | DEPLOY-COMPANY §2 已写建法；回滚=删 Junction；doctor 每次体检覆盖 |
-| Node v26 与设计基线 v22 差异（本机实测） | 未在 v22 上复测本轮脚本改动 | 212/212 在 v26 通过；发布机建议仍用 Node 22 LTS |
+| Node v26 与设计基线 v22 差异（本机实测） | 未在 v22 上复测本轮脚本改动 | 248/248 在 v26 通过；发布机建议仍用 Node 22 LTS |
 | 员工侧验收无机器日志 | D35 已书面接受，审计证据强度较低 | 正式部署前补一次群消息/任务/产物目录留痕 |
 
 ---

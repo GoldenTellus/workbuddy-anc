@@ -13,7 +13,7 @@
 | `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <bin>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
 | `anc-executor-new-host` | 每天 03:00 | `LOCAL SERVICE` | `new-host.ps1` | 主干2 自动创建新 host 对话；失败由 `anc-executor-host-tick` 标 deferred，旧 host 继续接单 |
 | `anc-executor-host-tick` | 每天 03:00 | `LOCAL SERVICE` | `executor-host-tick.ps1` | 主干2 自动兜底：没有新 host 时只标 `cut_deferred`，旧 host 继续接单 |
-| `anc-executor-wake` | 每分钟 | `LOCAL SERVICE` | `wake-if-queued.ps1` | 先跑 `executor expire` + `executor attention sweep --apply`（2h/8h/24h 提醒/升级，不依赖 bridge）；有 queued Ticket 时优先 `/new` 建 Agent host（带 active host id，不 bootstrap），无 workspace 文件回退 `/wake` 注入当前会话；没有队列或 bridge 未启用时静默 |
+| `anc-executor-wake` | 每分钟 | `LOCAL SERVICE` | `wake-if-queued.ps1` | 先跑 `executor expire` + `executor attention sweep --apply`（2h/8h/24h 提醒/升级，不依赖 bridge）；有 queued Ticket 时读 active host：`conversation_id` 是真实 UUID → `/wake` **定向现有 daily host**（D46）；只有旧占位 id 才回退 `/new`；无队列或 bridge 未启用时静默；每次动作写 `executor-wake.log` |
 | `anc-backup` | 每天 02:00 起每 1 小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `backup-anc.ps1 -Destination <第二块盘>` | `VACUUM INTO` 快照 + 完整性校验，保留 14 份并复制到第二块盘；错过 02:00 会自动补 |
 | `anc-boot-alert` | 开机后每 10 分钟（持续 2 小时） | `LOCAL SERVICE` | `boot-alert.ps1` | WorkBuddy 没起来就经运维群 webhook 告警 |
 | `anc-cleanup` | 每天 03:00 | `SYSTEM` | `cleanup-media.ps1 -MediaDir <bot 用户的 TEMP>\workbuddy-wecom-media -Days 7` | 清企微附件落地目录里超过 7 天的文件（要访问 bot 用户的 TEMP，故用 SYSTEM）；遇到 junction / 符号链接一律跳过。**`-MediaDir` 写死了 bot 用户，换运行身份时要同步改** |
@@ -199,9 +199,11 @@ powershell -ExecutionPolicy Bypass -File scripts\backup\backup-anc.ps1 -Destinat
 - 备份是 SQLite `VACUUM INTO` 的一致性快照，服务在跑也能做；
 - 恢复：停 `anc-service` → 用备份文件覆盖 `anc.db`（同时删掉 `-wal`/`-shm`）→ 启动任务；
 - **离机目标要填上才算真正离机**：注册任务时用 `-BackupDestination <独立盘或 UNC>` 指定（脚本会把它写成任务参数 `-Destination`；本机实测注册为 `D:\anc-backup`）。目标不可达只告警，不算备份失败。
-- **同一块物理盘不算离机**：脚本会比对两边的 `DiskNumber`，同盘就发运维告警（同一块盘只报一次，状态记在 `%ProgramData%\anc\data\backup.state.json`）。本机 2026-11-09 实测：离机目标 `D:\anc-backup` 与本地备份同在 Disk 0 —— 会发 WARN、离机复制照常，但等于没有离机保护；要接独立物理盘或 UNC。`doctor` 的 `backup-freshness` 只看本地备份，因此这个 WARN 不影响它 PASS。
+- **同一块物理盘不算离机**：脚本会比对两边的 `DiskNumber`，同盘就发运维告警（同一块盘只报一次，状态记在 `%ProgramData%\anc\data\backup.state.json`）。本机 2026-11-09 实测：离机目标 `D:\anc-backup` 与本地备份同在 Disk 0 —— 会发 WARN、离机复制照常，但等于没有离机保护；要接独立物理盘或 UNC。
+- **部署/迁移后必须强制备份（D49 / GAP-089）**：默认 20h 间隔会跳过“刚迁移完还没到点”的情况，导致最新备份是迁移前 schema（实测缺 `attentions`）。规则：每次 deploy 或 DB 迁移收口后跑一次 `backup-anc.ps1 -MinIntervalHours 0 -Destination <离机目标>`，并做一次副本恢复演练。
+- **doctor 现在校验备份 schema**：`backup-freshness` 除了看时间，还用 `node:sqlite` 只读打开最新备份，比对 live 库表清单；备份缺表（早于迁移）直接 FAIL。负例：把迁移前备份放成最新 → `FAIL 最新备份缺 live 表: attentions`（2026-11-10 实测）。
 - 保留策略：本地 `-Keep 14` 份（每天一份约两周）；离机 `-OffsiteKeep 60` + 每月 1 号那份留 `-OffsiteMonthlyKeep 12`（月档不会被日保留挤掉）。
-- 失败一定告警：`cli` 退出码非 0、文件为空/没生成、离机复制失败都会发 `ops-webhook.txt`；`doctor` 的 `backup-freshness` 在最近备份超过 30 小时时 FAIL。
+- 失败一定告警：`cli` 退出码非 0、文件为空/没生成、离机复制失败都会发 `ops-webhook.txt`；`doctor` 的 `backup-freshness` 在最近备份超过 30 小时或缺表时 FAIL。
 
 ## 离职（一个人走掉时）
 

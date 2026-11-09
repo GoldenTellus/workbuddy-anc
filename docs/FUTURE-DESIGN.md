@@ -125,6 +125,8 @@
 > 收开发过程中留下的 bug、技术债、文档/契约/运维/安全/测试缺口，也收**未来主干反过来修正现阶段项目**的欠账。它不是功能主干，不占正常主干顺序；在功能主干之间、发版前、或积压到阈值时开批次。
 >
 > **2026-11-10 复检**：开放 GAP=0（trunk-4 项移出；079/080/071 接受）；非提权 doctor 改为 WARN，不再假 FAIL。
+>
+> **BATCH-20261110（2026-11-10）**：本批为收口批次——DEV-01 单一日对话（D46，wake 定向已有 daily host，真实 3 Ticket/1 host 通过）、DEV-02 GAP-079、DEV-03 GAP-080、DEV-04 8h/24h 真实投递完成；公司主机侧回归发现 GAP-088/089 并修复、090/092 接受、091 留后续；双机/真实群项转 ACC-17/18/20/21（D48 书面例外）。主干 0 因新 GAP 自动重开又基本收回，保留 GAP-091 开放。员工 bot 旧 1.0 / 主干 4 缺口不变。
 
 ### 0.1 分支
 
@@ -718,7 +720,7 @@ DSH 的哲学是“take as little human attention as possible, and give as much 
 2. **引用文本里的短号**（增强）：用户引用一条带 `A12` 的通知，回 `@公司bot 可以`；从引用文本抠 `A12`，不依赖消息 id；
 3. **当前人 + 当前群的唯一 open**：没短号、没引用时，只有一条 open 才执行；多条不猜。
 
-`quote` 的消息 id 不作为主路径：补丁当前只注入 `chat/from`，文本引用的字段形状未实测，出站 webhook 也不保存消息 id（GAP-079）。T3.0 只做增强 spike，失败不阻塞。
+**已实现（BATCH-20261110 / DEV-02）**：补丁在原型层捕获 `e.body.quote` 与 `msg_id`，入站前缀追加可选 ` msg=` / `quote=`；`attention match --quote-text` 在正文无短号时用引用文本兜底（正文短号优先），`anc-task` 技能写明解析规则。真实群引用样本仍需人操作（ACC-18），本机已有单测 + fake client + 部署生效证据。
 
 每条 Attention 必须落库：
 
@@ -770,7 +772,7 @@ created_at, answered_at, expires_at
 - 私密不可用 → 原群，只发短号 + 中性一句（如“A12 有一条待确认”），不带内容；内容仍走私密；
 - 连原群都没有 → 升级老板，不群发；
 
-**@ 提醒（GAP-080）**：webhook `mentioned_list` 依赖真 userid；当前 `people.userid` 是会话级 `wok…`（GAP-072），不一定 @ 得到。拿不到真 userid 时，优先走私密员工群（无需 @），原群只发中性短号不 @。
+**@ 提醒（GAP-080，已实现 DEV-03 / D47）**：`people.userid` 继续是会话级 `wok…`（GAP-072，不可当通讯录 id）；新增可选 `people.mention_userid`（org 人工填写）。原群中性短号通知在有 `mention_userid` 时带 webhook `mentioned_list` 真 @；拿不到则照旧不 @、不报错；私密群不发 @。真实“员工收到 @”需真实通讯录 userid → ACC-18。
 
 **通知落库**：走 outbox（D41），`attention_id` 关联；去重键 `attention:<id>:ask|remind:<n>|escalate:<level>|result`。
 

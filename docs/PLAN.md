@@ -1,7 +1,7 @@
 # PLAN — 当前批次：收口补齐 + 双机全量回归
 
 > 类型：执行（当前批次）
-> 状态：**待开工（2026-11-10）**
+> 状态：**公司侧收口完成（2026-11-10）；双机/真实群项待 ACC-17/18/20/21（D48 书面例外）**
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 4 / 横切；[STATUS.md](./STATUS.md) §3.3b / §3.5
 > 账本：[STATUS.md](./STATUS.md)
 > 决策：[DECISIONS.md](./DECISIONS.md) D40–D45；GAP-079/080/084/087
@@ -21,7 +21,7 @@
 - 主干 2 的 D45 偏差修正：wake 定向唤醒**已有 daily host**，不再每个 Ticket 新建 host；`/new` 只用于 03:00 日切。
 - GAP-079（`msgId`/引用文本增强）、GAP-080（通知 @ 真 userid）补齐；8h/24h 实际投递补测。
 - 双机全量回归矩阵全部通过，或有**书面例外**并登记 GAP；不能拿口述/单测冒充真实验收。
-- `npm test` 全绿（当前 238/238，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
+- `npm test` 全绿（当前 248/248，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
 - `STATUS` / `FUTURE-DESIGN` / `PLAN` / 模块契约 / `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `OPS` / `PRODUCT` / `DECISIONS` 同步。
 - 员工 bot 仍是旧 1.0 的部分，明确记为**主干 4 缺口**，不伪装成通过。
 
@@ -29,7 +29,7 @@
 
 ```text
 主干：0 / 1 / 2 / 3 已收口（主干 2 ACC-16、主干 3 ACC-13/14/15 真实群通过）
-测试：238 / 238
+测试：248 / 248
 模块：13 / 13 current
 CLI：17 组
 技能：8
@@ -69,6 +69,14 @@ open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验�
 | **DEV-06** 员工 bot 旧 1.0 | 员工侧仍是旧实现，主干 4 未做 | 本批只按现状测，缺口登记；**不在本批实现主干 4** | EMP 项通过或登记 GAP，不伪装通过 |
 
 **规则**：DEV-01/02/03/04 是本批必须补齐的偏差；DEV-05 用双机回归补证据；DEV-06 只记录，不扩成本批实现。
+
+**本批结论（2026-11-10）**：
+- DEV-01 ✅ 单一日对话（D46）：wake bridge 2.0 定向 host，真实 3 Ticket / 1 host / 3 subagent；`/new` 只用于 03:00。证据 `STATUS` §1.10。
+- DEV-02 ✅ GAP-079：补丁注入 `msg=`/`quote=`，match 引用兜底；真实群样本转 ACC-18。
+- DEV-03 ✅ GAP-080：`mention_userid` + webhook `mentioned_list` + 回退；真实“收到 @”转 ACC-18。
+- DEV-04 ✅ 8h/24h 实际投递：A12/A13 sweep + outbox sent=2 + webhook errcode 0（ACC-19 达成）。
+- DEV-05 ✅（公司侧机器证据）/ ACC：矩阵 70/70×2、ING 16/16、门禁全绿；员工侧/真实群/03:00 → ACC-17/18/20/21（D48）。
+- DEV-06 记录：员工 bot 仍是旧 1.0，主干 4 未实现；本批不伪装通过（ACC-17）。
 
 ## 5. 双机全量回归：环境与角色
 
@@ -188,10 +196,12 @@ open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验�
 | **T5.8** 缺口收口 | 新 GAP 修/接受/移出；文档同步 | STATUS/FUTURE/模块/接口同步 |
 | **T5.9** 发布门禁 | 测试 3 次、check、check-public、doctor、快照 | 全绿；PLAN 快照 |
 
+**任务状态（2026-11-10）**：T5.1 ✅ / T5.2 ✅（DEV-01）/ T5.3 ✅（DEV-02）/ T5.4 ✅（DEV-03）/ T5.5 ✅（DEV-04）/ T5.6 ✅ 公司主机侧（员工侧 ACC-17）/ T5.7 ✅ 公司主机侧矩阵（真实群/03:00 → ACC-18/20/21，D48 书面例外）/ T5.8 ✅（本批新 GAP 已处置；GAP-091 留后续）/ T5.9 ✅（248/248、check、check-public、doctor、deploy-state、快照）。
+
 ## 8. 测试与门禁
 
 ```text
-npm test                  # 当前 238/238；新增项继续加
+npm test                  # 当前 248/248；新增项继续加
 npm run check             # modules + docs
 npm run coverage
 node scripts/checks/check-public.mjs
@@ -226,3 +236,6 @@ deploy-verify.ps1
 | 日期 | 事项 | 变更 | 证据 | 备注 |
 |---|---|---|---|---|
 | 2026-11-10 | PLAN 切“收口补齐 + 双机全量回归” | 写入主干 0 复检、DEV-01..06、双机矩阵 | 本文件 | 待开工 |
+| 2026-11-10 | 本批开工 | T5.1 沿用 §3 主干 0 结论；DEV-01 改为 `wb.conversations` / `sendPrompt` 定向唤醒（不再每票 `/new`）；DEV-02/03/04 并行；公司主机侧回归由 teammate 跑 | `STATUS` §3.4；`%ProgramData%\anc\stage\batch-20261110\` | 进行中；部署+重启点在 DEV-01/02 代码齐后统一做 |
+| 2026-11-10 | 本批部署 + 重启 + 验收 | 142 文件 ×3 部署 hash 全过；patch-state applied=true runId=78eecdc3…；wake bridge 2.0；DEV-01 3 Ticket/1 host/3 subagent；DEV-02/03/04 完成；回归 70/70×2 + ING 16/16；GAP-088/089 修复，090/092 接受，091 留后续 | `STATUS` §1.10；`dev01/EVIDENCE.md`、`dev02/EVIDENCE.md`、`dev04/EVIDENCE.md`、`regression/REPORT.md`、`gates/` | 门禁：248/248、coverage 88.87/78.87/93.85、check、check-public 0、doctor FAIL=0 WARN=3、deploy-state 11/11 |
+| 2026-11-10 | 本批快照 | PLAN 归档到 `archive/plans/BATCH-20261110.md`；双机项转 ACC-17/18/20/21（D48） | 本文件 | 批次收口（公司侧） |

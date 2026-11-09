@@ -120,7 +120,7 @@
 | 命令组 | 子命令 | 能做什么 |
 |---|---|---|
 | **`task`** | `add` `list` `get` `done` `start` `reassign` `cancel` `review` `request` `approve` `accept` `reject` | 任务生命周期 + 两阶段请求：同部门待接受，跨部门先审批；拒绝必须带原因 |
-| **`executor`** | `host` `ticket` `claim` `start` `report` `notify` `end` `attention` | 主干 2 日对话/Ticket/Assignment/Report；4+1 slot 与 03:00 日切；`attention` 子命令管人在环路的待确认 |
+| **`executor`** | `host` `ticket` `claim` `start` `report` `notify` `end` `attention` | 主干 2 日对话/Ticket/Assignment/Report；4+1 slot 与 03:00 日切；wake 定向已有 daily host（D46，不按 Ticket 新建会话）；`attention` 子命令管人在环路的待确认（短号 + 引用文本兜底 + mention_userid @） |
 | **`reminder`** | `add` `due` `sent` | 计时提醒的入队与发送记录 |
 | **`outbox`** | `list` `flush` `create` `submit` `status` | 出站消息队列。**真正的发送通道**，所有提醒都经它 |
 | **`submission`** | `add` `list` `set-status` | 员工报的问题（原始记录） |
@@ -150,9 +150,9 @@
 | 任务 | 频率 | 运行身份 | 干什么 | 失败时 |
 |---|---|---|---|---|
 | **`anc-service`** | 每日 + 开机 | LOCAL SERVICE | 主服务（状态、提醒、完成判定） | — |
-| **`anc-executor-new-host`** | 每天 03:00 | LOCAL SERVICE | 自动创建新 host 对话；失败由 host-tick 兜底 | — |
+| **`anc-executor-new-host`** | 每天 03:00 | LOCAL SERVICE | 预生成会话 UUID 并建新 host 对话（唯一允许建 host 的路径）；失败由 host-tick 兜底 | — |
 | **`anc-executor-host-tick`** | 每天 03:00 | LOCAL SERVICE | 主干2 host 兜底：无新对话时旧 host 继续接单 | — |
-| **`anc-executor-wake`** | 每分钟 | LOCAL SERVICE | 先跑 `executor expire` + `attention sweep --apply`；有 queued Ticket 时唤醒当前对话（需开启 wake bridge） | — |
+| **`anc-executor-wake`** | 每分钟 | LOCAL SERVICE | 先跑 `executor expire` + `attention sweep --apply`；有 queued Ticket 时 `/wake` 定向当前 daily host 会话（需开启 wake bridge） | — |
 | **`anc-http`** | 每日 + 开机 | LOCAL SERVICE | 定时触发 `loop` 跑一轮（发到点的提醒） | — |
 | **`anc-backup`** | 每日 | LOCAL SERVICE | 数据库一致性快照（`VACUUM INTO`）+ 本地保留 + 可选离机复制 | 离机失败但本地成功 = 仍算成功 |
 | **`anc-watchdog`** | 每日 | LOCAL SERVICE | 盯心跳、outbox 积压、WorkBuddy 进程；异常发运维群（带冷却） | 每 10 分钟一轮，5 项检查 |
@@ -216,10 +216,10 @@ WOULD SKIP
 | 需要人回答 | bot 发 `A12 <问题>` | 只有 `required_confirmer` 或老板能答 |
 | 需要人核查 | 结果出来后发 `A12 可以提交吗？` | 通过 → Ticket/Task done；退回 → Ticket 回队列重做 |
 | 责任交接 | 发 `A12 后续由你接手` | 默认只通知；责任转移/跨部门/对外财务生产才要求“收到”回执 |
-| 群回复确认 | `@公司bot A12 可以` / `A12 不行 <原因>` / `A12 <回答>` / `A12 收到` | 必须 @；短号为主，引用文本里带短号也认；多条只反问一次 |
+| 群回复确认 | `@公司bot A12 可以` / `A12 不行 <原因>` / `A12 <回答>` / `A12 收到` | 必须 @；短号为主；**引用带 A12 的通知只回「可以」也认**（补丁注入 `quote=`，Main 传 `--quote-text`）；正文短号优先；多条只反问一次 |
 | 老板代确认 | 老板回 `A12 可以` | 自动记 `on_behalf_of`，通知原确认人 |
-| 提醒/升级 | 自动：2h 本人 → 8h 部门管理者 → 24h 老板 | 只提醒，不自动拒绝/转移；22–08 静默，每人每日上限 10 条；首条提问不占上限 |
-| 通知频道 | 优先私密员工群；老板 1:1 不主动推 | 私密群要有 webhook；没有则回原群中性短号，老板回 1:1 问“待办”看详情 |
+| 提醒/升级 | 自动：2h 本人 → 8h 部门管理者 → 24h 老板 | 只提醒，不自动拒绝/转移；22–08 静默，每人每日上限 10 条；首条提问不占上限；8h/24h 已做真实投递验收（文案/收件人/不重复） |
+| 通知频道 | 优先私密员工群；老板 1:1 不主动推 | 私密群要有 webhook；没有则回原群中性短号，老板回 1:1 问“待办”看详情；原群通知填了 `mention_userid` 会真 @（企微 webhook `mentioned_list`），没填则只发短号不 @ |
 | 查看待办 | 「有什么要确认的」 | 每人只看自己的；管理者看到的是催办，不是确认权 |
 
 **关键**：**通知走本地 outbox，不靠模型记忆**；回原群只发中性短号，问题正文只走私密渠道。
@@ -420,7 +420,7 @@ issue
 | 任务链路是否通 | 群里说「登记任务：明天 10:00 提醒我交周报」→ 49 秒内应回任务号 |
 | 自愈是否工作 | `anc-selfheal.ps1 -DryRun` → `hashMatches=True anchorsOk=True` |
 | 备份是否做过 | `doctor` 的 `backup-freshness` 必须是 PASS（**要本地备份，不是离机副本**） |
-| 单元与集成测试 | `npm test` → 238/238 |
+| 单元与集成测试 | `npm test` → 248/248 |
 
 ---
 

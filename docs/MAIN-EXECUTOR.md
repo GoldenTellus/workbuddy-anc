@@ -145,8 +145,9 @@ node src/service/cli.ts --json executor host status
 ```
 
 - `host register` 校验只允许一个 `active`；若已有 active，返回 409。
-- `host cut` 原子完成：旧 host `active → closing`、`accepting_new=0`；新 host `active`。
+- `host cut` 原子完成：旧 host `active → closing`、`accepting_new=0`；新 host `active`。新 host 的 `started_at` 是**切换时刻**，`cut_at` 是**下次日切时间**（未给 `--cut-at` 时默认 `business_date` 次日 03:00）；不要把 `cut_at` 当 `started_at`（GAP-088 已修）。
 - 旧 host 只收尾；`claim` 只能拿新 host 的 queued Ticket。
+- `conversation_id` 必须是**真实 WorkBuddy 会话 id**（UUID）；`conv-…` 是旧占位值，wake 无法定向，只能回退 `/new` 兜底（D46）。
 
 ### 2.2 Claim / start
 
@@ -281,6 +282,8 @@ node src/service/cli.ts --json executor attention context --ticket-id <ticket>
 ```
 
 - `match` 只做确定性匹配：正文短号 > 引用文本短号 > 当前人当前群唯一 open；多条返回 `ambiguous:true`，Main 只反问一次，不猜。
+- 引用文本来自补丁注入的入站前缀 `quote=` 字段（GAP-079 / DEV-02）：用户引用一条带 `A12` 的通知只回「可以」时，Main 把 `quote=` 原样传给 `--quote-text`，正文没有短号也能命中；正文与引用都有短号时**正文优先**。
+- 通知 @：`people.mention_userid`（企微通讯录 userid，可选）存在且通知走**原群中性短号**时，`attention notify` 的 outbox payload 带 `mentions:[mention_userid]` → webhook `mentioned_list` 真 @；缺失/私密群则不 @、不报错（D47 / GAP-080）。
 - `allowed=false` 时不要执行：`not-confirmer` 回“这条需要 XX 确认”；`not-in-chat` 回“要在原会话确认”。
 - 老板可代确认；CLI 记 `on_behalf_of`，并给原确认人非阻塞通知。
 - review `approve` / responsibility `ack` 会收口 Ticket 并同步 Task；`reject` 把 Ticket 回 `queued`，下一次 claim 带退回意见。
@@ -339,24 +342,26 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 
 1. 群消息到达（Main 处理完后建 Ticket，交给 wake）；
 2. `anc-executor-wake` 计划任务每分钟跑一次：先查 `executor ticket list --state queued`，**只有 queued > 0** 才唤醒 Host：
-   - 有 `%ProgramData%\anc\data\wb-wake-workspace.txt`：调 `POST /new`，在该 workspace 新建一个 Agent 会话，prompt 带 `active host=<host_id>`，要求“不要 host bootstrap、用这个 host id claim、只做一个 tick”；
-   - 没有 workspace 文件：回退 `POST /wake` 注入当前会话（仅兼容旧部署）。
+   - 读 `executor host status` 的 active host：若 `conversation_id` 是真实 UUID → 调 **`POST /wake`**（body `{prompt, conversationId}`），bridge 用 `wb.conversations.get(id).sendPrompt()` 向该会话定向发 prompt，**不新建会话、不切换可见窗口**（D46）；
+   - 只有 host 没有真实会话 id（旧数据）时：有 `wb-wake-workspace.txt` → 调 `POST /new`（旧行为，D46 兜底）；否则回退 `/wake` 注入当前会话（仅兼容旧部署）。
 
-依赖 opt-in 的 WorkBuddy wake bridge：
+依赖 opt-in 的 WorkBuddy wake bridge（2.0）：
 
-- `%ProgramData%\anc\data\wb-wake.flag` 存在才启用；
-- token 在 `wb-wake-token`；只监听 loopback；
-- `/wake` 的 composer 非空时拒绝，不覆盖人的草稿；`/new` 新建任务，不碰当前草稿。
+- `%ProgramData%\anc\data\wb-wake.flag` 存在才启用；token 在 `wb-wake-token`；只监听 loopback；
+- `GET /health` 返回 `{ok,pid,port,bridge:"2.0"}`；
+- `POST /wake {prompt, conversationId?}`：有 `conversationId` → 定向 `conversation.sendPrompt()`；无 → 旧 composer 注入（composer 非空时拒绝，不覆盖人的草稿）；
+- `POST /new {prompt, workspace?, conversationId?, title?}`：用 `wb.conversations.create()` 建会话（可指定 id/工作区），再 `sendPrompt` 发第一条，返回真实 `conversationId`；`window.wb` 不可用时退回旧的 DOM 点击流程（点“新建任务”→选工作区→输入→发送）；
+- 默认仍 opt-in（没有 flag 时模块 no-op）；bridge 实现见 `docs/WORKBUDDY-PATCH.md` §7。
 
 没有 flag / bridge 时 `wake-if-queued.ps1` 静默退出；任务仍会落库，等下一次消息或人工唤醒。
 
-**2026-11-10 实测**：`/new` 新会话 `mode=craft`、`cwd=D:/workbuddy-anc`，Agent tool 可用；host tick 用真实 `agent-19d61bd4…` 写 `hello3.md`，Task #16 done。`/wake` 仍会落到“当前窗口”，所以生产默认走 `/new`。
+**2026-11-10 实测（D46）**：wake bridge 2.0 + 真实 host 会话 `47695768…`，连续 3 个 Ticket 全部由同一 daily host 承接（3 个 subagent：`agent-acda2b89…`/`agent-a777c714…`/`agent-c5068f71…`），wake 日志 5 次 `wake ok via=wb conversation=47695768…`，窗口内没有新建其他会话；`/new` 只用于 03:00 日切。
 
 `claim` 无任务时立即返回，不 sleep，不占住 Main 的回合。
 
 ## 5. 03:00 Host bootstrap
 
-自动创建：`anc-executor-new-host` 每天 03:00 调 wake bridge 的 `/new`，在指定 workspace 新建对话并注入 bootstrap 命令。
+自动创建（**唯一允许新建 host 会话的路径**）：`anc-executor-new-host` 每天 03:00 预生成 UUID，调 wake bridge `/new`（body 带 `conversationId`/`workspace`/`title`）建会话并发 bootstrap prompt；新会话首个 turn 执行 `executor host bootstrap --conversation-id <UUID> --date <今天> --cut-at <明天03:00>`，DB 里的 host `conversation_id` 因此是**真实会话 id**。03:00 之后所有 wake 都定向这个会话（D46）。
 
 兜底：如果 `/new` 失败或新对话没出现，`host tick` 只把旧 host 标成 `cut_deferred=1`，**不切、不停止接单**；旧 host 继续接新 Ticket。等新对话出现后 `host bootstrap` 再切。
 

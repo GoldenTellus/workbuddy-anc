@@ -40,8 +40,8 @@
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **238 / 238 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
-| 覆盖率（行 / 分支 / 函数） | **90.83% / 80.43% / 94.99%** | `npm run coverage`（2026-11-09 干净树 `0ed1938` 实测，217 测试时；主干 3 后未重跑） |
+| 测试 | **248 / 248 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
+| 覆盖率（行 / 分支 / 函数） | **88.87% / 78.87% / 93.85%** | `npm run coverage`（2026-11-09 干净树 `0ed1938` 实测，217 测试时；主干 3 后未重跑） |
 | 测试文件 | **28** 个 | `package.json` 的 `scripts.test` 列表 |
 | doctor 检查项 | **34** 项 | 21 个 `Add-Result` 字面量 + 13 个 `task-*` 循环项 |
 | 计划任务 | **13** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
