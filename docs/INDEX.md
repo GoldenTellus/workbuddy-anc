@@ -28,7 +28,7 @@
 | **联动规则** | 主干完成时哪些文档要跟着更新 | [DOC-SYNC.md](./DOC-SYNC.md) |
 | **现状能力** | 现在能做什么、不做什么 | [PRODUCT.md](./PRODUCT.md) |
 | **现状架构** | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) |
-| **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[RENDERER.md](./RENDERER.md)、[INGEST.md](./INGEST.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
+| **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁 / Main↔Executor 怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)、[RENDERER.md](./RENDERER.md)、[INGEST.md](./INGEST.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
 | **运维手册** | 怎么部署、怎么修、怎么重建 | [DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[ONBOARDING.md](./ONBOARDING.md) |
 | **来源** | 哪些上游/参考项目、许可证、用了什么 | [UPSTREAM.md](./UPSTREAM.md) + [upstreams/](./upstreams/) |
 | **决策** | 为什么这么定 | [DECISIONS.md](./DECISIONS.md) |
