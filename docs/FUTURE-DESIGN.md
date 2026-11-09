@@ -684,13 +684,13 @@ Report 到 Ticket 的默认映射：`progress` 不改状态；`waiting` → `wai
 - 产物/证据的保留、清理、权限（6.2 #31）。
 - 主机重启后 Assignment/Ticket 的恢复语义（6.2 #32）。
 
-## 3. 主干 3：between us，先自主完成，再通知人｜设计 ✅ · 实现 ⬜ · 验收 —
+## 3. 主干 3：between us，先自主完成，再通知人｜设计 ✅ · 实现 ✅（本机） · 验收 🟡
 
 > **你的原话（转述）**：公司 bot 会先自主完成可处理的任务，再通知人类。通知目的分两类：一是让人类核查任务是否有误，二是将责任同步给人类。公司 bot 把自己能做的做完，遇到需要通知人类的地方去通知人类；通知完确认完再接着干活。公司 bot 要找对的人通知，通知谁才是对的、有效的。
 
 DSH 的哲学是“take as little human attention as possible, and give as much value as possible”：只在人必须行动或能使用结果时说话。OpenAI 的 “between us” 则是把 AI 放在人与人之间做协调层，不是工具，也不是平级同事。合起来就是：**公司 bot 先干，干到需要人拍板/接手时，再找对的人，用最短的话说清楚。**
 
-### 3.1 三种需要人的情况｜设计 ✅ · 实现 ⬜
+### 3.1 三种需要人的情况｜设计 ✅ · 实现 ✅
 
 | 类型 | 目的 | 是否阻塞 | 对应状态 |
 |---|---|---|---|
@@ -704,7 +704,7 @@ DSH 的哲学是“take as little human attention as possible, and give as much 
 
 **入口与状态（D43）**：`answer` 由 Report `question` 进入 `waiting_answer`；`review` 由 `ready` 进入 `waiting_review`；`responsibility` 默认不改 Ticket（`notified`），标 `require_ack` 时由 `attention create` 推进 `waiting_ack`。`question` 是新 Report 类型，`MAIN-EXECUTOR` / `subagent.md` 同步。
 
-### 3.2 群回复确认协议｜设计 ✅ · 实现 ⬜
+### 3.2 群回复确认协议｜设计 ✅ · 实现 ✅
 
 前提：**必须 @ 公司 bot**。
 
@@ -734,7 +734,7 @@ created_at, answered_at, expires_at
 
 **歧义处理**：多条同时匹配时，bot 不发散、不猜，只问一句“你指的是 A12 报销，还是 A13 采购？”，最多列 3 条；用户下一条带短号再执行。原 Attention 继续按 2h/8h/24h 升级，不因反问而暂停。
 
-### 3.3 谁有资格确认、责任怎么交｜设计 ✅ · 实现 ⬜
+### 3.3 谁有资格确认、责任怎么交｜设计 ✅ · 实现 ✅
 
 - 每条 Attention 带 `required_confirmer_id`，必须落到具体人；角色在创建时解析成人，不存“某角色”。
 - **只有 `required_confirmer` 或老板能确认**；本部门管理者不再代确认（D40；改 `canConfirmAttention`）。管理者可见、可催办，但 @ 了也只回“这条需要 XX 确认”。
@@ -748,7 +748,7 @@ created_at, answered_at, expires_at
 - 标了 `require_ack` 的，必须回“收到/我接手”才算责任转移；Ticket 停在 `waiting_ack`，回执后 `done`。
 - 没回执时责任仍算公司 bot：2h 提醒本人 → 8h 提醒本人部门管理者 → 24h 提醒老板；只提醒，不自动拒绝/转移；夜里顺延到工作时段。升级给管理者/老板的是**催办通知**，不是转移确认权；确认仍只认 `required_confirmer` / 老板。
 
-### 3.4 通知谁才是对的｜设计 ✅ · 实现 ⬜
+### 3.4 通知谁才是对的｜设计 ✅ · 实现 ✅
 
 **按 purpose 定人（D44）**：
 
@@ -772,7 +772,7 @@ created_at, answered_at, expires_at
 
 **通知落库**：走 outbox（D41），`attention_id` 关联；去重键 `attention:<id>:ask|remind:<n>|escalate:<level>|result`。
 
-### 3.5 一条完整的链（示例）｜设计 ✅ · 实现 ⬜
+### 3.5 一条完整的链（示例）｜设计 ✅ · 实现 ✅
 
 老板在公司大群 @公司 bot：
 
