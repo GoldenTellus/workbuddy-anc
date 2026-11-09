@@ -234,7 +234,7 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 | 自动创建 03:00 新对话 | GAP-065 |
 | 定时唤醒用 WorkBuddy 哪个机制 | 已落：`anc-executor-wake` + opt-in wake bridge |
 | Report 解析失败后的 Attention 话术 | 主干 3 |
-| 强路径隔离/ACL | GAP-060 |
+| 强路径隔离/ACL | D28：接受逻辑隔离；OS/ACL 留作部署选项 |
 | 授权默认值（tools/vault_paths/budget） | GAP-054 |
 
 本契约先解决 **GAP-062 / GAP-064** 的接口形状；实现和真实 spike 仍按 PLAN T2.1–T2.5 推进。
