@@ -305,23 +305,38 @@ export function bootstrapHost(db: DatabaseSync, input: { conversationId: string;
   });
 }
 
-export function cutHost(db: DatabaseSync, input: { oldHostId: string; newConversationId: string; businessDate: string; cutAt?: string }): ExecutorHost {
-  const at = input.cutAt ?? nowIso();
+export function cutHost(db: DatabaseSync, input: { oldHostId: string; newConversationId: string; businessDate: string; cutAt?: string; startedAt?: string }): ExecutorHost {
+  // cut_at 是**新 host 的下次日切时间**，started_at 是它开始接单的时间（=现在）。
+  // 2026-11-10 修正（DEV-01 实测踩到）：旧实现把 cut_at 同时当 started_at，跨日 bootstrap 后
+  // 新 host 的 started_at 会变成"明天 03:00"，host 列表排序/心跳时间全部错位。
+  const startedAt = input.startedAt ?? nowIso();
+  const cutAt = input.cutAt ?? nextCutAt(input.businessDate);
   return tx(db, () => {
     const old = getHost(db, input.oldHostId);
     if (!old) throw execError('EXEC_HOST_NOT_FOUND', 'host 不存在: ' + input.oldHostId);
     if (old.status !== 'active') throw execError('EXEC_HOST_NOT_ACTIVE', '只有 active host 能日切');
     db.prepare("UPDATE executor_hosts SET status = 'closing', accepting_new = 0, last_heartbeat_at = ? WHERE host_id = ?")
-      .run(at, old.host_id);
+      .run(startedAt, old.host_id);
     const next = createHost(db, {
       conversationId: input.newConversationId,
       businessDate: input.businessDate,
-      cutAt: input.cutAt ?? at,
-      startedAt: at,
+      cutAt,
+      startedAt,
     });
     recordEvent(db, 'host_cut', { hostId: old.host_id }, { old_host: old.host_id, new_host: next.host_id });
     return next;
   });
+}
+
+/**
+ * 未显式给 cut_at 时的默认值：business_date 次日 03:00（本机时区）。
+ * 与 §5「03:00 日切」一致；调用方（bootstrap）通常显式传 cut-at，这里只服务 CLI 手工 cut。
+ */
+function nextCutAt(businessDate: string): string {
+  const d = new Date(businessDate + 'T03:00:00');
+  if (Number.isNaN(d.getTime())) return nowIso();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString();
 }
 
 /** 03:00 没有新 host：不硬切；旧 host 继续接单，标记 deferred。 */

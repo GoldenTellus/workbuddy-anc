@@ -168,6 +168,10 @@ test('executor：bootstrapHost 同日幂等、跨日自动切、不同对话拒�
     const b = bootstrapHost(db, { conversationId: 'conv-b', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
     assert.notEqual(b.host_id, a.host_id);
     assert.equal(getHost(db, a.host_id)!.status, 'closing');
+    // DEV-01 修正：新 host 的 started_at 是"现在"，cut_at 才是下次日切时间
+    assert.equal(b.cut_at, '2026-11-11T03:00:00+08:00');
+    assert.ok(Date.parse(b.started_at) <= Date.now() + 1000, 'started_at 不应是未来日切时间');
+    assert.ok(Date.parse(b.started_at) >= Date.parse(a.started_at), 'started_at 不应早于旧 host');
     assert.throws(
       () => bootstrapHost(db, { conversationId: 'conv-c', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' }),
       /已有 active host/,

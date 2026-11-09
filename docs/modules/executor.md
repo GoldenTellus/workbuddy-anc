@@ -48,6 +48,8 @@
 ## 不变量
 
 - 同一时间只有一个 `executor_hosts.status='active'`（唯一索引）。
+- host 的 `conversation_id` 是真实 WorkBuddy 会话 UUID（`new-host.ps1` 预生成）；`conv-…` 旧占位值只能靠 wake `/new` 兜底（D46）。
+- `cutHost`：新 host 的 `started_at` = 切换时刻、`cut_at` = 下次日切；旧 host 进 `closing`、`accepting_new=0`（GAP-088 修正）。
 - 一个 Ticket 同时只能有一个 `pending/running` Assignment（唯一索引）。
 - `department_id`、`task_id`、`task_dir` 创建后不可变。
 - `tickets` 状态不跟随 host/subagent 存活；Report/人的动作推进状态。
@@ -108,5 +110,6 @@
 |---|---|---|
 | 2026-11-09 | 建档；加 host/ticket/assignment/report 与 slot/日切 | 主干 2 T2.1/T2.2 |
 | 2026-11-09 | 「拥有」补 `executor_events` / `executor_evaluations`；补部署目标 | 契约与实现（`schema.ts` 6 表）对齐 |
+| 2026-11-10 | `cutHost` 修正：新 host `started_at=切换时刻`、`cut_at=下次日切`；host `conversation_id` 要求真实 UUID | GAP-088（DEV-01 实测）+ D46（wake 定向 daily host） |
 | 2026-11-09 | 加 `attentions` 表与 Attention API/不变量/错误码；短号、status、入口状态 | 主干 3 T3.1 数据层 |
 | 2026-11-09 | 加 `question` Report、human slot 定向领取、human 不计 `max_attempts`、收口 Attention | 主干 3 T3.4 执行器接线 |

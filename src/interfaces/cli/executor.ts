@@ -71,7 +71,8 @@ export default function executorGroup(ctx: CliContext): void {
       if (!oldHostId) fail('缺少 --old-host');
       if (!newConversationId) fail('缺少 --new-conversation-id');
       if (!date) fail('缺少 --date');
-      out({ ok: true, host: executor.cutHost(db, { oldHostId, newConversationId, businessDate: date }) });
+      const cutAt = typeof args['cut-at'] === 'string' && args['cut-at'] ? args['cut-at'] : undefined;
+      out({ ok: true, host: executor.cutHost(db, { oldHostId, newConversationId, businessDate: date, cutAt }) });
     } else if (sub === 'status') {
       out({ ok: true, hosts: executor.listHosts(db) });
     } else {

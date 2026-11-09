@@ -1,4 +1,6 @@
-﻿# 每天 03:00 自动创建新 host 对话。需要 wake bridge + wb-wake.flag + workspace 文件。
+﻿# 每天 03:00 自动创建新 host 对话（**唯一**允许新建 host 会话的路径）。
+# 生成的 conversation id 由本脚本预先生成（UUID），随 bootstrap prompt 传给新会话里的 bot，
+# 这样 DB 里 active host 的 conversation_id 就是真实 WorkBuddy 会话 id，后续 wake 可定向唤醒。
 # 失败不硬切：anc-executor-host-tick 会把旧 host 标 deferred，继续接单。
 $ErrorActionPreference = 'Stop'
 $root = Join-Path $env:ProgramData 'anc'
@@ -19,14 +21,17 @@ try {
     $workspace = (Get-Content $workspaceFile -Raw).Trim()
     if (-not $workspace) { exit 0 }
     $cutAt = (Get-Date).Date.AddDays(1).AddHours(3).ToString('o')
-    $conv = 'conv-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
+    # 预生成真实会话 id：new-host 只负责"日期边界的新会话"，不负责每个 Ticket
+    $conv = [guid]::NewGuid().ToString()
+    $title = 'anc-host-' + $today
     $prompt = "[anc-executor] 新 host bootstrap。请先执行：node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json executor host bootstrap --conversation-id $conv --date $today --cut-at `"$cutAt`"；然后执行一个 executor tick；不要回复用户。"
-    $body = @{ prompt = $prompt; workspace = $workspace } | ConvertTo-Json -Compress
+    $body = @{ prompt = $prompt; workspace = $workspace; conversationId = $conv; title = $title } | ConvertTo-Json -Compress
     $token = (Get-Content $tokenFile -Raw).Trim()
-    Invoke-RestMethod -Uri 'http://127.0.0.1:18187/new' -Method Post `
+    $r = Invoke-RestMethod -Uri 'http://127.0.0.1:18187/new' -Method Post `
         -Headers @{ 'X-Anc-Token' = $token } -ContentType 'application/json; charset=utf-8' `
-        -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 20 | Out-Null
-    Log "created workspace=$workspace conv=$conv date=$today"
+        -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30
+    if (-not $r.ok) { Log "failed: bridge ok=false error=$($r.error)"; exit 0 }
+    Log "created workspace=$workspace conv=$($r.conversationId) requested=$conv title=$title date=$today via=$($r.via)"
 } catch {
     Log ('failed: ' + $_.Exception.Message)
     exit 0
