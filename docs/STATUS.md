@@ -131,7 +131,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 
 | 事项 | 状态 | 证据 / 下一步 |
 |---|---|---|
-| 主干 0 | **已收口（2026-11-09）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；见 [PLAN.md](./PLAN.md) 与快照 |
+| 主干 0 | **已收口（2026-11-10 复检）** | 0.1–0.7 按证据处置；ACC-07/09/10/11 本机达成，ACC-01/02/03/04/05/06/12 用户实测通过（D35），ACC-08 人工对账书面例外（D36）；开放 GAP=0（trunk-4 移出；079/080/071 接受）；doctor 非提权 FAIL=0 WARN=13 |
 | 主干 1 | **已收口（2026-11-09）** | 4/4 分支；D35 用户实测、D36 例外；员工 bot 旧 1.0 归主干 4 |
 | 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10） |
 | 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；238/238；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；遗留 GAP-079/080/084 非阻塞 |
@@ -176,7 +176,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-053 | Task / Ticket / Assignment 的基数与重试/重开/拆分语义 | 设计 | S1 | 主干 2 | 否 | 状态机 + D38 重试已落；拆分不做 |
 | GAP-054 | Ticket 授权范围字段（tools/vault_paths/budget/expires_at/max_attempts） | 设计 | S1 | 主干 2 | 否 | closed：D31 定值；Main 每次显式填 |
 | GAP-055 | Main↔Executor 传输与投递语义（DB+tick 已选方向） | 设计 | S1 | 主干 2 | 否 | closed：D31 at-least-once / 无独立 ack / 幂等 |
-| GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 否 | 主干 0 只留占位，接口归主干 3 |
+| GAP-056 | Attention 与主干 3 的最终接口（谁存/谁发/谁确认） | 设计 | S1 | 主干 2 | 否 | closed：主干 3 已落 Attention/outbox 接口；ACC-13/14/15 真实群通过 |
 | GAP-057 | 外部副作用幂等键与 at-most-once 保证 | 实现 | S1 | 主干 2 | 否 | closed（范围接受）：outbox dedupe；其他副作用未接 |
 | GAP-058 | 产物/证据保留、清理、权限 | 后续 | S2 | 主干 2 | 否 | closed（默认值）：90/180 天；自动清理未实现（D31） |
 | GAP-059 | 主机重启后 Assignment/Ticket 恢复语义 | 实现 | S1 | 主干 2 | 否 | closed：ACC-11 真实窗口重启 recover 通过 |
@@ -191,10 +191,10 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 
 | ID | 缺口 | 类型 | 严重度 | 来源 | 阻塞 | 下一步 |
 |---|---|---|---|---|---|---|
-| GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 否 | 主干 0 部分 closed：四表已落；Attention 归主干 3 |
+| GAP-026 | 没有 Ticket / Assignment / Report / Attention / Notification 表 | 实现 | S0 | 主干 2 | 否 | closed：四表 + Attention/outbox 已落；主干 3 收口 |
 | GAP-027 | 没有 Main / Executor 运行时 | 实现 | S0 | 主干 2 | 否 | closed：executor + CLI + Main 技能 |
 | GAP-028 | 没有 company/department/boss_dm 群模型 | 验收 | S1 | 主干 1 | 否 | 本地群模型/CLI/render/测试已完成；真实群配置并入 ACC-01 |
-| GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 否 | closed：T3.1–T3.4 已落表/短号/CLI/match/通知/question/human slot；ACC-13/14 待真实群 |
+| GAP-029 | 没有群回复确认解析 / Attention 存储 | 实现 | S1 | 主干 3 | 否 | closed：T3.1–T3.4 已落表/短号/CLI/match/通知/question/human slot；ACC-13/14/15 真实群通过 |
 | GAP-030 | 没有 boss/manager/employee 角色模型 | 验收 | S1 | 主干 1 | 否 | people/policy/sync/persona 已完成；真实群接线并入 ACC |
 | GAP-031 | 没有日对话调度 / subagent 管理 | 实现 | S1 | 主干 2 | 否 | closed：真实 subagent + wake/new-host + ACC-10/11 |
 | GAP-032 | `npm test` 并发偶发 100s 级挂起 | Bug/回归 | S1 | 主干 0 | 否 | 已改 `--test-concurrency=1`；连续 3 次通过（当时 191/191），关闭 |
@@ -223,14 +223,15 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-076 | Ticket 状态机 / Report 类型 | 6 类 Report 没有 `question`；`waiting_answer` / `waiting_ack` 无入口 | 加 `question → waiting_answer`；`waiting_ack` 由 `attention create` 推进；同步 2.3 / MAIN-EXECUTOR / subagent | 主干 3 | 否 | closed：`question` 已落，`waiting_ack` 由 attention create 进；T3.4 |
 | GAP-077 | human slot / claim | `claim --slot human` 不能定向；human Assignment 计入 `max_attempts` | 加 `--ticket-id`；human 不计入 `max_attempts`；answer 进下一次 prompt | 主干 3 | 否 | closed：`claim --ticket-id` + normal-only 计数；`attention context` 已提供；T3.4 |
 | GAP-078 | `canConfirmAttention` | 本部门管理者可代确认 | 仅 `required_confirmer` + 老板；管理者可见/催办不代确认 | 主干 3 | 否 | closed：policy 收紧 + `policy.test` 覆盖；T3.2 |
-| GAP-079 | WorkBuddy 补丁 / 确认协议 | 只注入 `chat/from`；引用文本/消息 id 不可用 | 短号为主；T3.0 spike 带 `msgId` / quote 文本做增强；不改主路径 | 主干 3 | 否 | T3.0 spike |
-| GAP-080 | 通知 @ 的 userid | `people.userid` 是 GAP-072 的会话级 `wok…` id；webhook `mentioned_list` 不一定能 @ 到通讯录人员 | org 增加/采集通讯录 userid（`mention_userid`）；拿不到时回退私密员工群（无需 @）或原群中性短号不 @ | 主干 3 | 否 | T3.0/T3.3 用真实群验证；不通过就按回退方案 |
+| GAP-079 | WorkBuddy 补丁 / 确认协议 | 只注入 `chat/from`；引用文本/消息 id 不可用 | 短号为主；T3.0 spike 带 `msgId` / quote 文本做增强；不改主路径 | 主干 3 | 否 | accepted：短号主路径已真实群通过；msgId/quote 增强留后续，不阻塞 |
+| GAP-080 | 通知 @ 的 userid | `people.userid` 是 GAP-072 的会话级 `wok…` id；webhook `mentioned_list` 不一定能 @ 到通讯录人员 | org 增加/采集通讯录 userid（`mention_userid`）；拿不到时回退私密员工群（无需 @）或原群中性短号不 @ | 主干 3 | 否 | accepted：v1 不 @；私密/中性短号路径已通过；通讯录 userid 留后续 |
 | GAP-081 | 计划任务注册 | 2026-11-09 部署后 doctor 只有 3 个 `anc-*` 任务；`register-tasks.ps1 -Apply` 在当前非提权会话被 UAC 拒绝（脚本仍打印 OK，GAP-082） | 用管理员 PowerShell 重跑 `-Apply`；doctor 13 项任务 Ready | 主干 3 部署 | 否 | closed：管理员会话 `-Apply -BackupDestination D:\anc-backup` 成功；doctor 13 任务 Ready、FAIL=0 |
 | GAP-082 | `register-tasks.ps1` 失败仍打印 OK | `Register-ScheduledTask` 抛 `拒绝访问` 后脚本继续打印 `OK <task>` 并汇总“已注册 13 个任务” | 捕获异常并以非 0 退出；失败任务不得计入“已注册” | 主干 3 部署 | 否 | closed：加 `-ErrorAction Stop`，非提权实测 exit=1、只报 ERROR/FIX |
 | GAP-083 | 通知目标选择 | 只要群存在就选为私密目标，不检查 webhook；老板 1:1 也被当主动推送目标 | 私密群必须有 webhook；老板 1:1 不主动推，公司/部门级回原群中性短号，内部级等问待办 | 主干 3 部署 | 否 | closed：`tryPerson` 已改；notify 5 项测试通过 |
-| GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | 真实群 A6/A7/A8 问题为 ASCII，中文提问仍未复测；乱码就走文件/包装 |
+| GAP-084 | CLI 中文参数编码 | PowerShell 5.1 直接 `& node ... --question "中文"` 会按控制台代码页传参，线上 A1 出现乱码；`task add` 中文标题此前正常，说明 bot 路径可能不同 | 技能统一走 UTF-8 包装或 `--json-file`；复现则给 `attention create` 加文件入参 | 主干 3 验收 | 否 | closed：A10 问题为中文且落库/群显示正常（`ACC-MAIN-4 drill: hello5.md 已产出，可以验收吗？`）；A1 乱码是本机 PowerShell 直传参数，不是 bot 路径 |
 | GAP-085 | Main 真实群回归的 subagent 隔离 | 2026-11-09 真实群 Task #14：bot 用 `subagent_id=main` 自己写 `hello.md`，没有起独立 subagent；功能链路通，但违反“一 Ticket 一 subagent” | `startAssignment` 拒绝 main/self/company-bot；技能明确必须用 Agent tool 返回 id；重跑真实群 | 主干 2 | 否 | closed：host 侧真实 Agent id `agent-634568e4…` 跑通，`hello2.md` 落盘，Task #15 done |
 | GAP-086 | Claw Main 没有 Agent tool | 公司群 bot 是 Main（Claw 会话），没有 Agent 工具；`anc-executor-wake` 的 `/wake` 又落到当前窗口（2026-11-10 落到 dev 窗口），不是 host | Main 只建 Ticket + 定向唤醒 host；host（Agent 模式）claim/start/subagent；加角色守卫/定向 wake 或 `/new` 专用 host | 主干 2 | 否 | closed：wake 改 `/new`；Task #18 真实群全链路通过（`c208fb40…` host、`agent-15b76a26…`、A10 approved） |
+| GAP-087 | doctor 非提权假 FAIL | 非提权会话看不到 LOCAL SERVICE/SYSTEM 任务，13 项里 10 项报“任务不存在” FAIL；实际服务在跑（heartbeat/http PASS） | 检测 `IsElevated`；非提权对服务任务报 WARN“用管理员会话跑 doctor”，不把看不到当不存在 | 主干 0 | 否 | closed：`doctor.ps1` 已改；非提权复检 FAIL=0 WARN=13 |
 
 ### 3.3a 主干 0 收口处置（2026-11-09）
 
@@ -249,23 +250,23 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 009 | 收窄 | 4 normal + 1 human slot 已落；模型/预算默认值留主干 2 |
 | 010 | **closed** | human slot 只接等待人工的 Ticket（测试） |
 | 011 / 021 / 022 | accepted | 主动任务规则 / 注入评审 / 多公司多主机：接受现状，不阻塞 |
-| 012 / 013 / 014 / 015 | trunk-3 | `require_ack`、通知细分、多 Attention、频率合并 |
+| 012 / 013 / 014 / 015 | **closed（主干 3 收口）** | `require_ack`、通知细分、多 Attention、频率合并已落；ACC-13/14/15 真实群通过 |
 | 016 / 017 / 018 / 020 | trunk-4 | 员工 bot 本地执行、handoff、双 bot 路由、知识边界 |
 | 019 | acc + trunk-4 | resolver/sync/backfill 已测；大群/1:1 成员同步留 ACC-08 || 023 | **closed** | 工作时段/时区走 config；`service.test.ts` |
 | 024 | 并入 058 | 保留期统一由 GAP-058 定 |
 | 025 | 收窄（接受） | `executor_events` 审计已落；面板/最小字段留后续 |
-| 026 | **主干 0 部分 closed** | 四表 + 仓储 + CLI 已落；Attention/Notification 归主干 3 |
+| 026 | **closed（主干 3 收口）** | 四表 + Attention/outbox 已落；ACC-13/14/15 通过 |
 | 027 | **closed** | executor 655 行 / 16 测试 / 17 CLI 子命令 / `anc-executor` 技能 |
 | 028 / 030 | **closed（用户实测通过，口述；无机器日志）** | ACC-01 / 真实群接线由用户验收；本机 org 仅登记公司群 + boss_dm |
-| 029 / 036 | trunk-3 | 群确认解析 / Attention 层 |
+| 029 / 036 | **closed（主干 3 收口）** | 群确认解析 / Attention 层已落；ACC-13/14/15 真实群通过 |
 | 032 / 033 / 040 / 051 / 052 / 061 | **closed（保持）** | 原证据仍成立；032 本轮补 3 次 212/212 证据 |
-| 034 | open（归主干 2 后续） | Ticket↔Task 映射已在 `MAIN-EXECUTOR` 说明；实现不假关 |
+| 034 | **closed（主干 2 收口）** | D38 单向终止 + failed 重试；ACC-16 真实 Main 群全链路通过 |
 | 035 | **closed** | runtime 不再引用 executor/Ticket；模块分层成立 |
 | 037 / 038 / 039 | trunk-4 | 员工侧补丁/handoff 归主干 4；文档警告已补（0.7 部分完成） |
 | 053 | **主干 0 关「基数/状态机」** | 状态机/唯一索引/claim-start-report-end 已落；重试/拆分归 GAP-070 |
 | 054 | **closed（定值）** | DDL 兜底 + Main 每次显式填（D31） |
 | 055 | **closed（定值）** | at-least-once、无独立 ack、幂等规则（D31） |
-| 056 | **主干 0 占位 closed** | Attention/Notification 接口归主干 3；主干 0 只留占位 |
+| 056 | **closed（主干 3 收口）** | Attention/Notification 接口已落；ACC-13/14/15 通过 |
 | 057 | **closed（接受）** | outbox dedupe_key 已落；其他外部副作用未接 |
 | 058 | **closed（接受默认值）** | 任务目录 90 天 / reports·events 180 天 / vault 长期；自动清理未实现（D31） |
 | 060 | **closed（接受）** | D28 逻辑隔离；强 ACL 留部署选项 |
@@ -281,11 +282,28 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-068 | 部署脚本缺陷：deploy.ps1 缺 executor 映射且无 -Rollback 实现；doctor.ps1 缺 executor 布局检查；deploy-skills.ps1 仓库根探测错；register-tasks.ps1 3 处漏参、BotUser 默认与 D25 冲突；deploy-verify 调 doctor 未传 -Repo | 本轮修复 + 临时根回滚演练，关闭 |
 | GAP-069 | DEPLOY-EMPLOYEE 卸载清单缺 `anc-executor` | 本轮改文档，关闭 |
 | GAP-070 | GAP-034/053 残留：Task↔Ticket 映射实现、Ticket 重试/重开/拆分语义 | 已落映射 + failed 自动重试（D38）；拆分不做，关闭 |
-| GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 已暴露授权字段；重复 report 收敛仍未做（GAP-071 余项） |
+| GAP-071 | executor 实现与契约对齐项：`ticket create` CLI 尚未暴露授权字段（模块层已支持）；「重复 report 409/拒绝」未实现（running 允许多条，结束后的记 late=1） | 已暴露授权字段；重复 report 接受现状：running 允许多条、late=1，不改状态机；后续要收敛再开 |
 | GAP-072 | 企微 AI Bot 上报的发送者 id 是会话级 open id（`wok…`），不是通讯录 userid；org 的 `member.userid` 必须写实际上报值，否则 `bind actor` 找不到人 | 已按真实入站消息校正老板映射并写进 WORKBUDDY-PATCH / DEPLOY-COMPANY；首次绑定已自动化（GAP-074）：员工第一次 @ 时由 bot 调脚本写入 org |
 | GAP-073 | 员工未分配 WorkBuddy 企业版席位/可使用成员 → 企微智能机器人拦截（“你不在该智能机器人的可使用范围”），员工侧 ACC 无法开始 | **closed**：用户已调整企微机器人可使用范围；16:55 吴琼消息入站，采集实际 sender id 并绑定，`bind actor` 通过。新成员仍需按 DEPLOY-COMPANY §11.1 分配/领用 |
 | GAP-074 | 首次身份绑定原需人工读日志采集 sender id（员工第一次 @ 后要管理员操作），不满足“公司 bot 自己完成采集绑定” | **closed（已实现）**：`bin\bind-member-identity.ps1` + persona/`anc-task` 首次绑定流程；部署 138 文件；临时 org 验证匹配/未匹配返回；下一条消息即识别 |
 | GAP-075 | wake bridge 在当前 `--inspect-brk` 注入路径下不可用：preload 只进子进程，Electron 主进程不加载 → 18187 不监听、无 token；`anc-executor-wake`/`new-host` 静默跳过 | **closed（已修复）**：`inject.cjs` 增加主进程 `require(preload.cjs)`，wake-bridge 正常启动；实测 18187 监听 + token；ACC-09 达成、ACC-10 机制验证、ACC-11 重启演练通过 |
+
+### 3.3b 主干 0 复检（2026-11-10）
+
+> 主干 2/3 收口后逐项看 0.1–0.8；trunk-4 项明确移出，不计入本轮。
+
+| 分支 | 判定 |
+|---|---|
+| 0.1 Bug / 回归 | 无新增；GAP-032 保持关闭 |
+| 0.2 技术债 / 重构 | GAP-071 接受现状（running 允许多条 report、late=1，不改状态机） |
+| 0.3 文档 / 契约 | 关闭 GAP-026/029/036/056/084；主干 2/3 文档已同步 |
+| 0.4 运维 / 部署 | GAP-081/082/083/087 关闭；非提权 doctor **FAIL=0 WARN=13**；work-hours / patch 日志 / bindings 接受 |
+| 0.5 安全 / 合规 | 无新增；GAP-021 原接受 |
+| 0.6 测试 / 覆盖 | **238/238**；GAP-085 新测试；无 flake |
+| 0.7 设计反哺 / 现状修正 | D45（Main/Host + wake `/new`）已登记；D32/GAP-083 已同步 |
+| 0.8 真实环境验收 | ACC-13/14/15/16 通过；ACC-01..12 按 D35/D36 |
+
+**结论**：按现有范围，主干 0 开放 GAP = 0；GAP-005/016/017/018/019/020/037/038/039 明确移出主干 4；GAP-079/080/071 接受现状。主干 0 保持 ✅。
 
 ---
 
@@ -368,6 +386,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-10 | wake 落在 dev 窗口；host tick 真实跑通 | 手动/定时 wake 落到当前窗口而非 host；host 侧 claim t-88e…、`agent-19d61bd4…` 写 `hello3.md`、Task #16 done | GAP-085 关闭；GAP-086 更新为“wake 定向”；Main 角色守卫已写 | 下一步：wake 定向 host 或 `/new` 专用 host |
 | 2026-11-10 | wake 改 `/new`；host 自动执行 | `/new` 新会话 `mode=craft`；host claim t-3e7…、`agent-fa2f39eb…` 写 `hello4.md`、report ready、Task #17 done | GAP-086 只剩 Main 角色守卫复测（新会话） | 下一步：公司群只建 Ticket 复测 |
 | 2026-11-10 | **主干 2 真实 Main 群全链路** | 公司群 Main 只建 Ticket #18；wake `/new` host `c208fb40…`；`agent-15b76a26…` 写 `hello5.md`；A10 approved → Task #18 done | ACC-16 通过；GAP-086 关闭；主干 2 可标 ✅ | 主干 2 收口 |
+| 2026-11-10 | **主干 0 复检（主干 2/3 收口后）** | 0.1–0.8 逐项核对；关闭 026/029/036/056/084；接受 079/080/071；GAP-087 doctor 非提权修复；trunk-4 项移出 | 开放 GAP=0；主干 0 保持 ✅；238/238 | 下次：主干 4 开工前 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 

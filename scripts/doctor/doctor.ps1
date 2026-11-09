@@ -17,6 +17,8 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# 非提权会话通常看不到 LOCAL SERVICE/SYSTEM 的任务；不能把“看不到”当成“任务不存在”。
+$script:IsElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $Root) { $Root = Join-Path $env:ProgramData 'anc' }
 $vaultShared = Join-Path $VaultRoot 'vault-shared'
 if (-not $BotUser) { $BotUser = $env:USERNAME }
@@ -276,7 +278,15 @@ function Get-TaskCoverage([hashtable]$Expected) {
     $out = @()
     foreach ($t in ($Expected.Keys | Sort-Object)) {
         $task = Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
-        if (-not $task) { $out += @{ name = $t; state = 'FAIL'; detail = '任务不存在'; fix = "按 docs/OPS.md 注册 $t" }; continue }
+        if (-not $task) {
+            $want = [string]$Expected[$t]
+            if (-not $script:IsElevated -and ($want -eq 'LOCAL SERVICE' -or $want -eq 'SYSTEM')) {
+                $out += @{ name = $t; state = 'WARN'; detail = '非提权会话看不到服务任务，无法核对'; fix = '用管理员会话跑 doctor' }
+                continue
+            }
+            $out += @{ name = $t; state = 'FAIL'; detail = '任务不存在'; fix = "按 docs/OPS.md 注册 $t" }
+            continue
+        }
         $uid = [string]$task.Principal.UserId
         $short = ($uid -split '\\')[-1]
         $want = [string]$Expected[$t]
