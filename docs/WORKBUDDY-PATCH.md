@@ -66,7 +66,7 @@ content = "[anc:chat=<chatid> from=<userid>] " + content
 - 不创建新对话、不覆盖人的草稿、不执行任意 JS；
 - `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默。
 - **默认关闭**；它是“自动兜底”，不是无条件自动。开启前确认当前窗口就是公司 bot 的 host。
-- ⚠ **2026-11-09 本机实测限制（GAP-075）**：`wake-bridge.cjs` 只在 `preload.cjs` 加载于 **Electron 主进程（process.type=browser）** 时启动；当前正式启动路径是 `--inspect-brk` + 运行时给子进程设 `NODE_OPTIONS`，主进程本身不加载 preload，因此**即使 `wb-wake.flag` 存在，18187 也不会监听**（无 `wb-wake.log` / `wb-wake-token`）。已验证：建 flag + 补丁重启后 18187 无监听。要恢复 bridge 需要换“主进程启动时带入 preload”的启动方式（与身份补丁的注入路径冲突，需单独评估），当前收口期按例外接受；`anc-executor-wake` / `new-host` 在 token 不存在时静默跳过。
+- ✅ **2026-11-09 修复（GAP-075）**：`inject.cjs` 在暂停点除了给子进程设 `NODE_OPTIONS`，还直接 `require(preload.cjs)` 到 **Electron 主进程** → `wake-bridge.cjs` 能在主进程启动。实测建 `wb-wake.flag` + 补丁重启后 `18187` 监听、`wb-wake.log` 有 listening、token 生成；`/new`+`host bootstrap` 与真实窗口重启 recover 均已演练。注意 bridge 默认仍 opt-in（没有 flag 时模块 no-op）。
 
 - **只在进程内存生效**：通过 `NODE_OPTIONS=--require preload.cjs` 在主进程/daemon 启动时注入，不改 `app.asar`、不改 `exe`、不落厂商代码 diff。
 - **每个群一个 chatid**（实测两个群不同），发送人在 `from.userid`。

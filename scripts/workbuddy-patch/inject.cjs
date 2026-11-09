@@ -30,11 +30,18 @@ if (/\s/.test(PRELOAD)) {
 }
 
 const esc = PRELOAD.replace(/\\/g, '\\\\');
+const preloadLit = JSON.stringify(PRELOAD);
+// 2026-11-09：主进程也主动 require 一次 preload。
+// 为什么：wake-bridge 只在 Electron 主进程（process.type=browser）加载 preload 时启动，
+// 而 --inspect-brk 注入只能在运行时给**子进程**设 NODE_OPTIONS，主进程本身永远不加载 preload。
+// 这里在暂停点直接调用主进程的 require，把 preload 装进主进程 → 有 wb-wake.flag 时 bridge 能监听 18187。
+// preload 的主进程分支只做 require('./wake-bridge.cjs') 然后 return，不会碰身份补丁逻辑。
 const expr =
   "(function(){try{process.env.NODE_OPTIONS='--require " + esc + "';" +
+  "try{var pm=process.mainModule||module;pm.require(" + preloadLit + ");globalThis.__ancMainPreload='loaded';}catch(e){globalThis.__ancMainPreload='ERR '+e.message;}" +
   "globalThis.__ancCloseInspector=function(){try{var i=null;try{i=process.mainModule.require('inspector');}catch(e1){i=require('inspector');}" +
   "setTimeout(function(){try{i.close();}catch(e){}},0);return 'scheduled';}catch(e){return 'close-err '+e.message;}};" +
-  "return 'OK:'+process.pid;}catch(e){return 'ERR '+e.message;}})()";
+  "return 'OK:'+process.pid+'|mainPreload='+globalThis.__ancMainPreload;}catch(e){return 'ERR '+e.message;}})()";
 
 async function main() {
   const deadline = Date.now() + 30000;
