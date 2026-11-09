@@ -81,7 +81,7 @@
 - [x] **ACC-07 生产回滚窗口已演练**：`deploy.ps1 -Rollback` 恢复 137 文件（回滚源 `backup\deploy-20261109-155502`）→ 再 `-Apply` 137 文件 hash 全过（新备份 `deploy-20261109-164051`）；演练后 `deploy-verify ok:true 4/0/1`、`doctor 34 项 FAIL=0 WARN=3`。证据 `.workbuddy/verify/final/acc07-rollback-*.log`。
 - [x] 员工 @ 已打通：用户调整企微智能机器人「可使用范围」后，16:55 收到吴琼在群里的真实消息（`patch-in.log` 有入站）；按实际 sender id 更新 `member.userid`（`wok…` 会话级 id），`bind actor` → 吴琼 / employee，`verify-org` ok。**GAP-073 关闭**（新成员仍需在企微后台分配/领用，见 DEPLOY-COMPANY §11.1）。
 - [x] **首次身份绑定已自动化（GAP-074）**：新增 `bin\bind-member-identity.ps1`（按姓名/ID 把 sender id 写进 org → 重渲染 → sync），persona 与 `anc-task` 技能已加「首次绑定」流程：未识别成员第一次 @ 时，bot 请对方回复一次姓名（若消息自带姓名则直接绑），随后自动写 org，下一条消息即识别。已部署（138 文件）、临时 org 验证匹配/未匹配两种返回；`deploy-persona` + `deploy-skills` 已更新（新会话生效）。
-- [ ] 张佳艺尚未发消息 → 下一次她 @ 时（新会话/`/new` 后）走自动绑定即可识别；无需人工采集日志。
+- [x] 张佳艺已绑定：17:09 收到她「我是张佳艺」入站，已按实际 sender id 写入 org（manager / tech / scopes=tech），`bind actor` 通过；同时清理了 groups 表里一条旧公司群 chatid 残留。自动绑定流程（GAP-074）尚待在**新会话**（`/new` 后）首次触发验证——本次消息发生在旧会话，脚本未自动执行，属人工补绑。
 - [ ] 员工群（每人一个：本人 + 公司 bot + 员工 bot）与部门群 chatId 未建 → 员工侧 @ 链路待建群。
 - [ ] 真实群消息回归：需老板/员工在群里 `@公司 bot` 验证新 persona（新会话生效；旧会话需 `/new`）。
 
@@ -290,7 +290,7 @@
 | 2026-11-09 | 用户决定 boss_dm 简化为老板 1:1（不建私有群） | 0.3 DECISIONS D32、STATUS §1.6/§3.5；0.8 ACC-06 口径 | 无新增 GAP | 1:1 无主动推送，按 D32 接受；收口期不扩配置 |
 | 2026-11-09 | ACC-07 生产回滚演练（rollback 137 → re-apply 137） | 0.4 部署回滚；0.8 ACC-07 达成 | 无新增 GAP | 演练后 doctor/verify 全绿；证据 `verify/final/acc07-rollback-*.log` |
 | 2026-11-09 | 员工入站打通：企微机器人可使用范围调整 + 吴琼 sender id 绑定 | 0.3 STATUS §1.6/§3.5；0.8 员工链路推进 | GAP-073 关闭 | `patch-in.log` 有吴琼入站；`bind actor` 通过；张佳艺 id 待采集 |
-| 2026-11-09 | 首次身份绑定自动化：bind-member-identity.ps1 + persona/技能流程 | 0.2/0.3 脚本/技能/persona；0.6 部署 138 文件；0.8 员工链路 | 新增并关闭 GAP-074 | 未识别成员第一次 @ 时自动绑定；临时 org 验证两种返回 |
+| 2026-11-09 | 首次身份绑定自动化：bind-member-identity.ps1 + persona/技能流程 | 0.2/0.3 脚本/技能/persona；0.6 部署 138 文件；0.8 员工链路 | 新增并关闭 GAP-074 | 未识别成员第一次 @ 时自动绑定；临时 org 验证两种返回；张佳艺本次为旧会话，人工补绑 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
