@@ -521,8 +521,16 @@ export function claim(db: DatabaseSync, input: { hostId: string; slot?: 'normal'
       .run(assignment.assignment_id, assignment.ticket_id, assignment.host_id, null,
         assignment.department_id, assignment.task_dir, assignment.slot, assignment.state,
         assignment.attempt, null, assignment.created_at, null, null, null);
+    // GAP-106（2026-11-10 验收实测）：normal claim 后 Ticket 必须立即离开 queued。
+    // 否则 start 之前（agent 慢/卡 planning）wake 每分钟仍看到 queued，会重复唤醒同一批 Ticket，
+    // 产生重复 prompt 堆积。reserve 语义：claim = Ticket 已分给这个 Assignment；
+    // start 仍会再写一次 working（幂等），interrupt/recover 会把它放回 queued。
+    if (slot === 'normal') {
+      db.prepare("UPDATE tickets SET state = 'working', updated_at = ? WHERE ticket_id = ? AND state = 'queued'")
+        .run(assignment.created_at, assignment.ticket_id);
+    }
     recordEvent(db, 'assignment_claimed', { hostId: host.host_id, ticketId: ticket.ticket_id, assignmentId: assignment.assignment_id }, { slot });
-    return { ticket, assignment };
+    return { ticket: getTicket(db, ticket.ticket_id)!, assignment };
   });
 }
 

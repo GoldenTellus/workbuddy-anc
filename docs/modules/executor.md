@@ -63,6 +63,7 @@
 - `answerAttention` 幂等：同一人、同一动作、同一内容重复投递返回当前状态。
 - Report `question` → Ticket `waiting_answer`；human-slot Assignment 不计入 `max_attempts`（D43）。
 - `startAssignment` 只接受 Agent tool 返回的 subagent id；`main` / `self` / `company-bot` 一律拒绝，防止 Main 自己干活。
+- normal `claim` 即把 Ticket 从 `queued` 置 `working`（reserve，GAP-106）；`startAssignment` 再写 working 幂等；`interrupt`/`recover`/`sweep` 把 Ticket 放回 `queued`。claim 后只剩 `pending/running` Assignment，不存在“queued+pending assignment”中间态。
 - `closeTicket` / `expireTickets` 会把该 Ticket 还挂着的 `open`/`notified` Attention 置 `cancelled`/`expired`。
 
 ## 失败模式
@@ -111,5 +112,6 @@
 | 2026-11-09 | 建档；加 host/ticket/assignment/report 与 slot/日切 | 主干 2 T2.1/T2.2 |
 | 2026-11-09 | 「拥有」补 `executor_events` / `executor_evaluations`；补部署目标 | 契约与实现（`schema.ts` 6 表）对齐 |
 | 2026-11-10 | `cutHost` 修正：新 host `started_at=切换时刻`、`cut_at=下次日切`；host `conversation_id` 要求真实 UUID | GAP-088（DEV-01 实测）+ D46（wake 定向 daily host） |
+| 2026-11-10 | normal `claim` 即置 Ticket `working`（reserve），`start` 幂等；`interrupt/recover/sweep` 回 queued | GAP-106（wake 重复唤醒窗口）+ D50 |
 | 2026-11-09 | 加 `attentions` 表与 Attention API/不变量/错误码；短号、status、入口状态 | 主干 3 T3.1 数据层 |
 | 2026-11-09 | 加 `question` Report、human slot 定向领取、human 不计 `max_attempts`、收口 Attention | 主干 3 T3.4 执行器接线 |

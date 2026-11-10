@@ -21,7 +21,7 @@
 - 主干 2 的 D45 偏差修正：wake 定向唤醒**已有 daily host**，不再每个 Ticket 新建 host；`/new` 只用于 03:00 日切。
 - GAP-079（`msgId`/引用文本增强）、GAP-080（通知 @ 真 userid）补齐；8h/24h 实际投递补测。
 - 双机全量回归矩阵全部通过，或有**书面例外**并登记 GAP；不能拿口述/单测冒充真实验收。
-- `npm test` 全绿（当前 248/248，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
+- `npm test` 全绿（当前 249/249，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
 - `STATUS` / `FUTURE-DESIGN` / `PLAN` / 模块契约 / `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `OPS` / `PRODUCT` / `DECISIONS` 同步。
 - 员工 bot 仍是旧 1.0 的部分，明确记为**主干 4 缺口**，不伪装成通过。
 
@@ -29,7 +29,7 @@
 
 ```text
 主干：0 / 1 / 2 / 3 已收口（主干 2 ACC-16、主干 3 ACC-13/14/15 真实群通过）
-测试：248 / 248
+测试：249 / 249
 模块：13 / 13 current
 CLI：17 组
 技能：8
@@ -201,7 +201,7 @@ open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验�
 ## 8. 测试与门禁
 
 ```text
-npm test                  # 当前 248/248；新增项继续加
+npm test                  # 当前 249/249；新增项继续加
 npm run check             # modules + docs
 npm run coverage
 node scripts/checks/check-public.mjs

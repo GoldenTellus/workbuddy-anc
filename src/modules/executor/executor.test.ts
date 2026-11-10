@@ -62,7 +62,10 @@ test('executor：host/ticket/assignment/report 生命周期', () => {
     const c = claim(db, { hostId: h.host_id });
     assert.ok(c);
     assert.equal(c!.assignment.state, 'pending');
-    assert.equal(c!.ticket.state, 'queued');
+    // GAP-106：claim = 已经把 Ticket 分给这个 Assignment，必须立刻离开 queued，
+    // 否则 wake 会在 start 之前重复唤醒同一批 Ticket。
+    assert.equal(c!.ticket.state, 'working');
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'working');
 
     const started = startAssignment(db, { assignmentId: c!.assignment.assignment_id, subagentId: 'agent-1' });
     assert.equal(started.state, 'running');
@@ -85,6 +88,30 @@ test('executor：host/ticket/assignment/report 生命周期', () => {
     for (const k of ['ticket_created', 'assignment_claimed', 'assignment_started', 'report_appended', 'assignment_ended']) {
       assert.equal(kinds.includes(k), true, '缺事件 ' + k);
     }
+  } finally { db.close(); }
+});
+
+test('executor：GAP-106 claim 后 Ticket 立即 working；中断后回 queued 且可 attempt=2 重派', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    const t = createTicket(db, { taskId: 1, departmentId: 'sales', title: 'gap106' });
+    const c = claim(db, { hostId: h.host_id })!;
+    assert.equal(c.assignment.state, 'pending');
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'working', 'claim 后不应仍是 queued（GAP-106）');
+    // reserve 生效：同一 Ticket 不会被重复领
+    assert.equal(claim(db, { hostId: h.host_id }), null);
+    // 模拟 host 在 start 之前挂掉：recover 必须把 Ticket 放回 queued
+    const rec = recoverHost(db, { hostId: h.host_id, reason: 'gap106-test' });
+    assert.equal(rec.recovered, 1);
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'queued');
+    assert.equal(getAssignment(db, c.assignment.assignment_id)!.state, 'interrupted');
+    // 新 host 重新派：attempt=2
+    const h2 = createHost(db, { conversationId: 'conv-gap106-retry', businessDate: '2026-11-10', cutAt: '2026-11-11T03:00:00+08:00' });
+    const c2 = claim(db, { hostId: h2.host_id })!;
+    assert.equal(c2.assignment.attempt, 2);
+    assert.equal(getTicket(db, t.ticket_id)!.state, 'working');
   } finally { db.close(); }
 });
 

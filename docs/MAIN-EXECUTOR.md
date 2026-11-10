@@ -112,6 +112,7 @@ node src/service/cli.ts --json executor brief
 - Main **不等待**长任务：subagent 用后台 Agent 运行；完成后再 report。
 - 没有任务时 `claim` 返回 `data: null`，不阻塞、不 sleep。
 - 一个 tick 最多 claim `normal limit` 个；human slot 单独走 `--slot human`。
+- `claim` 成功即把 Ticket 置 `working`（reserve，GAP-106）：wake 不会在 claim→start 窗口重复唤醒；`start` 再写一次 working 是幂等的；claim 后未 start 就崩溃的 Ticket 由 `recover` / `sweep` 放回 `queued`。
 
 ## 2. CLI 命令（现行）
 

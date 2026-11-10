@@ -20,7 +20,7 @@
 
 | 门禁项 | 判据 | 本机实测（2026-11-09） |
 |---|---|---|
-| 测试 | `npm test` **248/248**，连跑 3 次不挂起 | ✅ 最近一次 248/248、0 fail（单次约 44 s） |
+| 测试 | `npm test` **249/249**，连跑 3 次不挂起 | ✅ 最近一次 249/249、0 fail（单次约 44 s） |
 | 静态检查 | `npm run check`（`check:modules:deep` + `check:docs`） | ✅ 通过（13 模块边界干净 + 40 份 Markdown 检查） |
 | 密钥扫描 | `node scripts/checks/check-public.mjs` | ✅ 零输出、exit 0 |
 | 计划任务 | **13 个**全部 Ready/Running，principal 正确 | ✅ 13/13（9 LOCAL SERVICE / 1 SYSTEM / 3 交互，`anc-http` Running） |

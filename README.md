@@ -146,7 +146,7 @@ Windows 主机（7×24）
 
 ## 现状
 
-- 13 个模块全部 `current`；`npm test` **248/248**；`npm run check`（模块边界 + 文档检查）通过。
+- 13 个模块全部 `current`；`npm test` **249/249**；`npm run check`（模块边界 + 文档检查）通过。
 - 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。
@@ -172,7 +172,7 @@ Windows 主机（7×24）
 
 ## 开发约定
 
-- 文档中文为主；TypeScript + Node 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0，248/248 通过），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
+- 文档中文为主；TypeScript + Node 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0，249/249 通过），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
 - 开发流程：分支 → PR → 验证 → squash merge。
 - 部署：从仓库复制到 `%ProgramData%\anc\`（命令见 REBUILD §3），主机上手改线上文件视为事故。
 - 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/checks/check-public.mjs` 并人工过一遍全量 diff。
