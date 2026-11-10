@@ -45,10 +45,10 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 | `docs/DECISIONS.md` | 设计裁决台账（D1–D52，其中 D46–D52 为 BATCH-20261110 登记）；与代码冲突时先改代码或改决策，不要两边漂 |
 | `docs/modules/` | 13 份模块契约：职责/拥有/公开接口/不变量/失败模式/测试 |
 | `docs/LOCAL-SERVICE.md` | CLI / HTTP 契约 |
-| `docs/RENDERER.md` / `docs/INGEST.md` / `docs/WORKBUDDY-PATCH.md` | 渲染 / 入库 / 补丁契约 |
+| `docs/CONTENT-PIPELINE.md` / `docs/WORKBUDDY-PATCH.md` | 渲染 / 入库 / 补丁契约 |
 | `docs/DEPLOY-COMPANY.md` / `docs/DEPLOY-EMPLOYEE.md` | 给 agent 的部署手册 |
 | `docs/OPS.md` / `docs/REBUILD.md` / `docs/RELEASE-CHECKLIST.md` | 主机运维 / 重建 / 发布门禁 |
-| `docs/UPSTREAM.md` + `docs/upstreams/` | 上游/参考来源、许可证、用了什么 |
+| `docs/UPSTREAM.md` | 上游/参考来源、许可证、用了什么 |
 | `docs/archive/` | 历史计划、验收、实测、交接；只读，不再当现行契约 |
 
 ## 3. 关键裁决（不要偏离）
@@ -82,7 +82,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
 - **代码**：TypeScript + 设计基线 Node 22 LTS；当前环境 v22.22.2 跑 252/252（v26.13.0 为 2026-11-09 另一台本机历史实测）；零或极少运行时依赖；主机脚本 PowerShell 5.1。
 - **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。
-- **上游**：借代码/设计前先查 `docs/UPSTREAM.md` 与 `docs/upstreams/`；许可证不明只学概念，不拷代码。
+- **上游**：借代码/设计前先查 `docs/UPSTREAM.md`；许可证不明只学概念，不拷代码。
 - **计划可变，但改要留痕**：`PLAN` 是当前最佳判断，不是合同；调整理由写进 `PLAN` 顶部或 `STATUS`，不要静默改。
 - **AGENTS.md 是唯一正文**；`CLAUDE.md` 只是指针。
 

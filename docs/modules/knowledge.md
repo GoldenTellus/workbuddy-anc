@@ -59,7 +59,7 @@ Vault 的读写边界：入库批次校验与写入、覆盖保护、vault 锁�
 
 ## 改动指南
 
-- 改 vault 规范：同步 `docs/INGEST.md`、`anc-ingest-company` 技能、`DECISIONS` §5.4。
+- 改 vault 规范：同步 `docs/CONTENT-PIPELINE.md`、`anc-ingest-company` 技能、`DECISIONS` §5.4。
 - 加校验：先加 `validate.ts` 的纯函数与测试，再进 `apply.ts` 的 plan。
 - 改摘要：不能引入网络/模型；D19 是硬约束。
 

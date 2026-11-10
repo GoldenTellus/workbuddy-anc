@@ -60,7 +60,7 @@
 
 ## 改动指南
 
-- 改模板变量：同步 `light/templates/*.md`、`light/personas/*`、本文件、`docs/RENDERER.md`。
+- 改模板变量：同步 `light/templates/*.md`、`light/personas/*`、本文件、`docs/CONTENT-PIPELINE.md`。
 - 改长度闸门：同步 `DECISIONS` §5.9 与 `VERIFY` 里的实测（T19）。
 - 加产物：必须同时进 `outputs`（才能被对拍）与 `manifest`（才能查手改）。
 

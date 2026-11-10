@@ -61,7 +61,7 @@ patch    dayend  eval  backup  config  project  serve  loop
 | `EXIT_1` | 业务拒绝（模块状态机/策略抛错） | 看 `ERROR` 行；按业务状态处理，不改参数重试 |
 | `EXIT_2` | 参数/权限/环境错误（`ctx.fail()`，含缺文件、DB 打不开） | 看 `ERROR` 行；`FIX` 指向文档 |
 | `token-not-configured` | 没配 service-token | 写 `secrets\service-token.txt` 后重启 `anc-http` |
-| `missing-batch` / `bad-json` | 入库请求体不对 | 按 `docs/INGEST.md` 重投 |
+| `missing-batch` / `bad-json` | 入库请求体不对 | 按 `docs/CONTENT-PIPELINE.md` 重投 |
 | `body-too-large` | 超过 64 KB | 批次描述不该这么大；查是否传了文件内容 |
 
 ## 依赖

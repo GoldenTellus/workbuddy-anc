@@ -74,16 +74,10 @@
       "role": "Main ↔ 本地服务 / subagent 契约"
     },
     {
-      "id": "renderer",
-      "path": "docs/RENDERER.md",
+      "id": "content-pipeline",
+      "path": "docs/CONTENT-PIPELINE.md",
       "type": "接口契约",
-      "role": "org → persona"
-    },
-    {
-      "id": "ingest",
-      "path": "docs/INGEST.md",
-      "type": "接口契约",
-      "role": "入库进程"
+      "role": "渲染器 + 入库"
     },
     {
       "id": "workbuddy-patch",
@@ -122,34 +116,10 @@
       "role": "发布前检查"
     },
     {
-      "id": "onboarding",
-      "path": "docs/ONBOARDING.md",
-      "type": "运维手册",
-      "role": "入职/离职"
-    },
-    {
       "id": "upstream",
       "path": "docs/UPSTREAM.md",
       "type": "来源政策",
       "role": "上游/参考来源政策与索引"
-    },
-    {
-      "id": "upstream-ai-native-company",
-      "path": "docs/upstreams/ai-native-company.md",
-      "type": "来源",
-      "role": "fork 基线"
-    },
-    {
-      "id": "upstream-dsh-superagent",
-      "path": "docs/upstreams/dsh-superagent.md",
-      "type": "来源",
-      "role": "设计参考"
-    },
-    {
-      "id": "upstream-openai-future-of-the-firm",
-      "path": "docs/upstreams/openai-future-of-the-firm.md",
-      "type": "来源",
-      "role": "between us 参考"
     }
   ],
   "modules": {

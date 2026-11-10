@@ -309,7 +309,7 @@ issue
 
 ### 5.5 入职 / 离职
 
-**入职 8 步**（`docs/ONBOARDING.md`）：
+**入职 8 步**（`docs/OPS.md#入职新员工`）：
 
 > 第 0 步的「备齐」不用手抄清单：跑 `deploy-kickoff.ps1 -Phase prepare -Side employee` 会生成一段能直接转发给本人的准备清单（含「怎么算做好了」），`-Phase collect` 给出要问的字段，`-Phase check` 校验齐不齐。
 
@@ -454,7 +454,7 @@ issue
 | 为什么这么设计 | `docs/DECISIONS.md`（改名后是 `DECISIONS.md`） |
 | 做到什么程度 | `docs/archive/history/ACCEPTANCE.md`（40 条 DoD 逐条状态） |
 | 怎么验 | `docs/archive/history/VERIFY.md`（87 节实测记录） |
-| 入职离职 | `docs/ONBOARDING.md` |
+| 入职离职 | `docs/OPS.md#入职新员工` |
 | 主机运维 | `docs/OPS.md`、`docs/REBUILD.md` |
 | 补丁原理 | `docs/WORKBUDDY-PATCH.md` |
 | 发布流程 | `docs/RELEASE-CHECKLIST.md` |

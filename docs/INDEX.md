@@ -30,9 +30,9 @@
 | **联动规则** | 主干完成时哪些文档要跟着更新 | [DOC-SYNC.md](./DOC-SYNC.md) |
 | **现状能力** | 现在能做什么、不做什么 | [PRODUCT.md](./PRODUCT.md) |
 | **现状架构** | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) |
-| **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁 / Main↔Executor 怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)、[RENDERER.md](./RENDERER.md)、[INGEST.md](./INGEST.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
-| **运维手册** | 怎么部署、怎么修、怎么重建 | [../BOOTSTRAP.md](../BOOTSTRAP.md)（零起点部署入口）、[DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[ONBOARDING.md](./ONBOARDING.md) |
-| **来源** | 哪些上游/参考项目、许可证、用了什么 | [UPSTREAM.md](./UPSTREAM.md) + [upstreams/](./upstreams/) |
+| **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁 / Main↔Executor 怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)、[CONTENT-PIPELINE.md](./CONTENT-PIPELINE.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
+| **运维手册** | 怎么部署、怎么修、怎么重建 | [../BOOTSTRAP.md](../BOOTSTRAP.md)（零起点部署入口）、[DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[OPS.md](./OPS.md#入职新员工) |
+| **来源** | 哪些上游/参考项目、许可证、用了什么 | [UPSTREAM.md](./UPSTREAM.md) |
 | **决策** | 为什么这么定 | [DECISIONS.md](./DECISIONS.md) |
 | **历史** | 以前的计划、验收、实测 | [archive/](./archive/) |
 
@@ -73,8 +73,8 @@
 | `docs/PLAN.md` | 当前主干的执行计划 | 一次只写一个主干 |
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险 | `GAP-###` 总账 |
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单 | 文档依赖图 + 审计表 |
-| `docs/UPSTREAM.md` | 上游/参考来源政策与索引 | 一项目一文件，见 `docs/upstreams/` |
-| `docs/upstreams/` | 每个来源一份记录 | URL / 许可证 / 固定版本 / 用了什么 |
+| `docs/UPSTREAM.md` | 上游/参考来源政策、索引与详情 | 一文件一节 |
+
 | `src/core/` | 平台底座：库/schema/迁移/事务、原子写、配置、审计、出站扫描、备份 | 12 个文件；`db.ts` 只留 `openDb` + 时间函数 |
 | `src/interfaces/` | service CLI 的 17 组命令 + 注册表 + HTTP 门面 | 35 个文件；`src/service/cli.ts` 是入口薄壳 |
 | `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`executor`、`improvement`、`knowledge`、`org` | 54 个文件；每个模块有 `index.ts` 公开入口 |

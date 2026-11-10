@@ -3,7 +3,7 @@
 > 类型：接口契约（现行；executor 侧已实现（本机 2026-11-09 部署通过），Main 行为由 `light/skills/anc-executor` 落地）
 > 最后整理：2026-11-09
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 2 / [PLAN.md](./PLAN.md) T2.1–T2.5
-> 参考：[upstreams/dsh-superagent.md](./upstreams/dsh-superagent.md)（只借模型，不拷贝代码）
+> 参考：[UPSTREAM §7.2](./UPSTREAM.md#dsh-superagent)（只借模型，不拷贝代码）
 
 ## 0. 边界
 

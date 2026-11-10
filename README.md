@@ -164,8 +164,8 @@ Windows 主机（7×24）
 | 实测记录 | [docs/archive/history/VERIFY.md](./docs/archive/history/VERIFY.md) |
 | **发布前要查什么** | **[docs/RELEASE-CHECKLIST.md](./docs/RELEASE-CHECKLIST.md)**（bug/漏洞视角，四阶段：补代码缺口 → 证明能自愈 → 清空重装 → 陌生 agent） |
 | 主机怎么运维、怎么重建 | [docs/OPS.md](./docs/OPS.md)、[docs/REBUILD.md](./docs/REBUILD.md) |
-| 各组件用法 | [LOCAL-SERVICE](./docs/LOCAL-SERVICE.md)、[INGEST](./docs/INGEST.md)、[RENDERER](./docs/RENDERER.md)、[ONBOARDING](./docs/ONBOARDING.md)、[WORKBUDDY-PATCH](./docs/WORKBUDDY-PATCH.md) |
-| 借了上游什么、许可证 | [docs/UPSTREAM.md](./docs/UPSTREAM.md) + [docs/upstreams/](./docs/upstreams/) |
+| 各组件用法 | [LOCAL-SERVICE](./docs/LOCAL-SERVICE.md)、[CONTENT-PIPELINE](./docs/CONTENT-PIPELINE.md)、[WORKBUDDY-PATCH](./docs/WORKBUDDY-PATCH.md) |
+| 借了上游什么、许可证 | [docs/UPSTREAM.md](./docs/UPSTREAM.md) |
 | 陌生 agent 接手 / 交班提示词 | [docs/INDEX.md](./docs/INDEX.md)、[docs/archive/history/AGENT-VERIFY-HANDOFF.md](./docs/archive/history/AGENT-VERIFY-HANDOFF.md)（历史坑） |
 | 上游 4 份原样文档什么时候才看 | [docs/UPSTREAM.md](./docs/UPSTREAM.md) |
 | **仓库导航 / 现状数字 / VERIFY 检索** | **[docs/INDEX.md](./docs/INDEX.md)**、[docs/archive/history/VERIFY-INDEX.md](./docs/archive/history/VERIFY-INDEX.md) |
