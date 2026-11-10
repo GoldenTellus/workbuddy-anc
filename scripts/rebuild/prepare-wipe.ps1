@@ -159,7 +159,7 @@ Write-Host '  任务用 register-tasks.ps1 -Apply 重新注册。'
 Write-Host ''
 Write-Host '=== 下一步 ==='
 Write-Host '  1. 让用户开一个新的 DSH 会话（不要继承当前上下文）'
-Write-Host '  2. 把提示词发过去：照 E:\workbuddy-anc 的 AGENT-DEPLOY-COMPANY.md 从零装公司侧'
+Write-Host '  2. 把提示词发过去：照仓库里的 docs/DEPLOY-COMPANY.md 从零装公司侧'
 Write-Host '  3. 逐节计时，记录每次卡点'
 Write-Host ''
 

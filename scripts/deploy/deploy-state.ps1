@@ -66,30 +66,41 @@ if (-not $Root) {
 
 $stateFile = Join-Path $Root 'data\deploy-state.json'
 
-# ── 阶段定义（和 AGENT-DEPLOY-*.md 的章节一一对应）──────────
+# ── 阶段定义（和 docs/DEPLOY-*.md 的章节一一对应）──────────
+# 公司侧顺序与手册一致：装空 WorkBuddy 是「第 0 步」（人做），preflight 在它之后。
+# 2026-11-10 修：原来 preflight 排第一，agent 按 state 的 next 推进会先跑前置检查、
+# 再回头发现手册要求先装 WorkBuddy，两边对不上。
 $Stages = if ($Side -eq 'company') {
     @(
-        @{ id = 'preflight'; title = '前置检查' },
-        @{ id = 'workbuddy'; title = 'WorkBuddy 已装（第 0 步，人做）' },
-        @{ id = 'dirs'; title = '建目录结构' },
-        @{ id = 'files'; title = '部署运行件（deploy.ps1）' },
-        @{ id = 'skills'; title = '部署技能（deploy-skills.ps1）' },
-        @{ id = 'patch'; title = '打补丁（patch-guard / selfheal）' },
-        @{ id = 'tasks'; title = '注册 13 个计划任务' },
-        @{ id = 'vault'; title = '建 vault 两区（共享/内部）' },
-        @{ id = 'org'; title = '写 org 数据（company/members/depts）' },
-        @{ id = 'wecom'; title = '配企微（corpid / 群机器人 webhook）' },
-        @{ id = 'verify'; title = '自证（deploy-verify.ps1）' }
+        @{ id = 'brief'; title = '递准备清单给人（§0，deploy-kickoff -Phase prepare）' },
+        @{ id = 'answers'; title = '收齐并校验信息（§1，deploy-kickoff -Phase check）' },
+        @{ id = 'workbuddy'; title = 'WorkBuddy 已装（§2，第 0 步，人做）' },
+        @{ id = 'preflight'; title = '前置检查（§3）' },
+        @{ id = 'dirs'; title = '建目录结构（§4）' },
+        @{ id = 'files'; title = '部署运行件（§5，deploy.ps1）' },
+        @{ id = 'skills'; title = '部署技能（§6，deploy-skills.ps1）' },
+        @{ id = 'patch'; title = '打补丁（§7，patch-guard / selfheal）' },
+        @{ id = 'tasks'; title = '注册 14 个计划任务（§8）' },
+        @{ id = 'vault'; title = '建 vault 两区（§9）' },
+        @{ id = 'org'; title = '写 org 数据 + 渲染 persona（§10）' },
+        @{ id = 'wecom'; title = '配企微（§11，corpid / 群机器人 webhook）' },
+        @{ id = 'verify'; title = '自证（§12，deploy-verify.ps1）' }
     )
 } else {
     @(
-        @{ id = 'preflight'; title = '前置检查' },
-        @{ id = 'workbuddy'; title = 'WorkBuddy 已装并登录' },
-        @{ id = 'files'; title = '部署运行件（deploy.ps1）' },
-        @{ id = 'skills'; title = '部署技能' },
-        @{ id = 'persona'; title = '部署个人 persona' },
-        @{ id = 'bind'; title = '绑定本人的群' },
-        @{ id = 'verify'; title = '自证' }
+        @{ id = 'brief'; title = '递准备清单给人（§0，deploy-kickoff -Phase prepare）' },
+        @{ id = 'answers'; title = '收齐并校验信息（§1，deploy-kickoff -Phase check）' },
+        @{ id = 'preflight'; title = '前置检查（§2）' },
+        @{ id = 'workbuddy'; title = 'WorkBuddy 已装并登录（§3）' },
+        @{ id = 'files'; title = '部署运行件（§4，deploy.ps1）' },
+        @{ id = 'skills'; title = '部署技能（§5）' },
+        # §5.5 同步渲染产物：persona / groups.json / company.md 只能从公司侧拷，
+        # deploy.ps1 只放渲染器源码、不生成产物。原先没有这个阶段，
+        # agent 做完 skills 直接跳 persona，卡在「没有你的 persona」时也没有地方记录。
+        @{ id = 'sync'; title = '从公司侧同步渲染产物（§5.5）' },
+        @{ id = 'persona'; title = '部署个人 persona（§6）' },
+        @{ id = 'bind'; title = '绑定本人的群（§7）' },
+        @{ id = 'verify'; title = '自证（§8）' }
     )
 }
 
@@ -124,7 +135,8 @@ function Build-View($st) {
     $nextTitle = if ($remaining.Count) { $remaining[0].title } else { '' }
 
     $nextAction = if (-not $st) {
-        '还没开始。先跑 preflight.ps1 -Side ' + $Side + '，通过后从 ' + $nextId + ' 开始。'
+        # 第一步是 brief 不是 preflight：先给人递准备清单，再收信息（GAP-095）。
+        '还没开始。先跑 deploy-kickoff.ps1 -Phase prepare -Side ' + $Side + '，把准备清单递给安装人；信息收齐（-Phase check 返回 ok）再往下装。'
     } elseif ($failedId) {
         '上次卡在 ' + $failedId + '（' + $errText + '）。修好之后重跑那一步，再 -Mark ' + $failedId + ' -AsDone。**不要从头来**。'
     } elseif ($remaining.Count -eq 0) {

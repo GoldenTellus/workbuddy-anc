@@ -1,4 +1,4 @@
-﻿# 注册/修复 13 个计划任务（OPS.md「计划任务」表的可执行版本）
+﻿# 注册/修复 14 个计划任务（OPS.md「计划任务」表的可执行版本）
 # 默认 dry-run；-Apply 才落盘。已存在同名任务会被覆盖（Register-ScheduledTask -Force）。
 #
 # 注意：两个交互类任务（anc-workbuddy-launch / anc-patch-guard）的 principal 是 -BotUser，
@@ -94,6 +94,11 @@ function New-InteractivePrincipal([string]$user) {
 #     定义在后面拿到的是 $null（报 "Argument is null or empty"）。
 $devbotArg = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Repo 'scripts\devbot\devbot-scheduler.ps1') + '" -Apply -Repo "' + $Repo + '"'
 
+# anc-elevate 的参数。Repo 必须在注册时给死（执行器是 SYSTEM，自己猜不到仓库在哪）；
+# 仓库为空时干脆不传，避免 `-Repo ""` 把这个参数变成空串再传给下游脚本。
+$elevArgs = '-Root "' + $Root + '"'
+if ($Repo) { $elevArgs += ' -Repo "' + $Repo + '"' }
+
 $defs = @(
     @{
         Name = 'anc-service'; Desc = '本地小服务：每分钟一次 tick'
@@ -101,6 +106,15 @@ $defs = @(
         Action = (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + (Join-Path $bin 'anc-loop.cmd') + '"'))
         Principal = (New-ServicePrincipal $ServiceAccount)
         Settings = (New-Settings 'PT2M')
+    },
+    @{
+        Name = 'anc-elevate'; Desc = '提权执行器：每分钟处理一条白名单运维请求（SYSTEM）'
+        Triggers = @((New-EveryMinutesTrigger 1))
+        Action = (New-PsAction 'elevate-runner.ps1' $elevArgs)
+        # SYSTEM：bot 是普通权限，只有 SYSTEM 才能在无人值守时写 ProgramData / 注册任务。
+        # 动作被白名单锁死在 elevate-runner.ps1 里，不接受任意命令。
+        Principal = (New-ServicePrincipal 'SYSTEM' 'Highest')
+        Settings = (New-Settings 'PT5M')
     },
     @{
         Name = 'anc-executor-wake'; Desc = '主干2 每分钟检查队列，有 queued 才唤醒 WorkBuddy'

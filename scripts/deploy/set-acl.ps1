@@ -113,6 +113,21 @@ function Set-DataAcl([string]$dir) {
         if (-not (Test-Path -LiteralPath $p)) { continue }
         Invoke-Icacls ('icacls "{0}" /grant:r "{1}:(M)"' -f $p, $SVC) ('data\' + $n + '：LOCAL SERVICE:(M)')
     }
+
+    # 提权队列（2026-11-10）：bot 是普通权限，要靠这个目录把运维请求交给 SYSTEM 执行器。
+    # 只授权 queue\ 与 done\ 两处：
+    #   queue\  部署用户要能写请求（否则通道等于没开）
+    #   done\   部署用户要能读结果（写也可以，读完能删）
+    # 执行器本身（elevate-runner.ps1）在 bin\ 下、由 SYSTEM 任务调用，不需要动这里。
+    $elev = Join-Path $dir 'elevate'
+    if (Test-Path -LiteralPath $elev) {
+        $deployUser = "$env:USERDOMAIN\$env:USERNAME"
+        foreach ($sub in @('queue', 'done')) {
+            $p = Join-Path $elev $sub
+            if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
+            Invoke-Icacls ('icacls "{0}" /grant:r "{1}:(OI)(CI)M"' -f $p, $deployUser) ('data\elevate\' + $sub + '：部署用户 Modify')
+        }
+    }
 }
 
 # ── 三、自检：跑 doctor 的那两项，不自己写判据 ────────────────

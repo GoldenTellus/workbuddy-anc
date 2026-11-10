@@ -86,18 +86,98 @@ if ($psv.Major -lt 5) {
     Warn 'powershell' "PowerShell $psv —— 这套脚本只在 5.1 上验过" '用 powershell.exe（5.1）而不是 pwsh.exe 跑'
 }
 
-# ── 3 管理员权限 ────────────────────────────────────────────
-# 公司侧必须：要注册计划任务、写 ProgramData、改 ACL、杀进程
-# 员工侧不必须：只写用户目录
+# ── 3 运行身份与机器画像 ────────────────────────────────────
+# 为什么不是简单的「是不是管理员」：
+#   这个项目要装到很多台机器上，每台的条件不一样。同样是 isAdmin=false，
+#   可能是「员工在自己账号里装员工侧」（完全正常），也可能是「公司主机用普通权限开了 agent」（必须拦住）。
+#   所以这里输出一个**画像**，再按画像给结论与人话指导，而不是只报 true/false。
+#
+# 关键语义：agent 跑在 WorkBuddy 里，它执行的命令**继承 WorkBuddy 的 token**。
+# 所以 `isAdmin=false` 就等于「WorkBuddy 不是以管理员身份打开的」。
 $isAdmin = $false
 try {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 } catch { }
 $facts['isAdmin'] = $isAdmin
 $facts['user'] = $env:USERNAME
-if ($Side -eq 'company' -and -not $isAdmin) {
-    Block 'admin' "公司侧要以管理员跑（当前是 $env:USERNAME）" '右键"以管理员身份运行"重开 PowerShell，或换管理员账号'
+
+# 账号本身在不在管理员组（和当前 token 提没提权是两件事：不在组里，UAC 也提不上去）
+$inAdminGroup = $false
+try {
+    $inAdminGroup = [bool](@([Security.Principal.WindowsIdentity]::GetCurrent().Groups |
+        Where-Object { $_.Value -eq 'S-1-5-32-544' }).Count)
+} catch { }
+$facts['inAdminGroup'] = $inAdminGroup
+
+# 是不是内置 Administrator（SID 尾号 500）——它和「某个在管理员组的普通账号」不是一回事
+$isBuiltinAdmin = $false
+try { $isBuiltinAdmin = (([Security.Principal.WindowsIdentity]::GetCurrent().User.Value) -match '-500$') } catch { }
+$facts['isBuiltinAdmin'] = $isBuiltinAdmin
+
+# UAC：EnableLUA=0 表示整机没有拦截层（内置 Administrator 登录时默认如此）
+$uacEnabled = $null
+$filterAdminToken = $null
+try {
+    $pol = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction Stop
+    if ($null -ne $pol.EnableLUA) { $uacEnabled = ([int]$pol.EnableLUA -eq 1) }
+    if ($null -ne $pol.FilterAdministratorToken) { $filterAdminToken = ([int]$pol.FilterAdministratorToken -eq 1) }
+} catch { }
+$facts['uacEnabled'] = $uacEnabled
+$facts['filterAdminToken'] = $filterAdminToken
+
+# 本机有几个用户配置目录（粗略判断是不是多人共用一台机器）
+try {
+    $usersDir = Join-Path $env:SystemDrive 'Users'
+    $facts['userProfiles'] = @(Get-ChildItem $usersDir -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin @('Public', 'Default', 'Default User', 'All Users') }).Count
+} catch { $facts['userProfiles'] = $null }
+
+# 画像判定（顺序有讲究：先判最危险的组合）
+$machineProfile = 'standard-user'
+if ($isBuiltinAdmin -and $uacEnabled -eq $false) { $machineProfile = 'builtin-admin-uac-off' }
+elseif ($isBuiltinAdmin) { $machineProfile = 'builtin-admin' }
+elseif ($isAdmin -and $inAdminGroup) { $machineProfile = 'admin-elevated' }
+elseif ($inAdminGroup) { $machineProfile = 'admin-not-elevated' }
+$facts['machineProfile'] = $machineProfile
+
+# 按画像给人话指导。这些会原样进 JSON，agent 直接照着说，不用自己推断。
+$guidance = @()
+switch ($machineProfile) {
+    'builtin-admin-uac-off' {
+        $guidance += '这台机器用内置 Administrator 登录，且 UAC 已关闭：整机没有拦截层，bot 长期以最高权限运行——群里任何人一句话都可能在 root 下执行。'
+        $guidance += '建议改成「在管理员组里的普通账号 + 打开 UAC」再部署；已经装好的，换账号要重做部署（persona 和技能绑在账号的 profile 上）。'
+    }
+    'builtin-admin' {
+        $guidance += '这台机器用内置 Administrator 登录（UAC 开着）：能用，但这个账号是共享身份，多台机器都这样会无法归因。'
+        $guidance += '更推荐用「在管理员组里的普通账号」登录：需要提权时 UAC 弹一次，日常进程不是提权的。'
+    }
+    'admin-elevated' {
+        $guidance += 'agent 以管理员身份运行，账号也在管理员组：公司侧安装条件满足，可以按手册连续做下去。'
+    }
+    'admin-not-elevated' {
+        $guidance += '这个账号在管理员组，但 agent 当前是普通权限。公司侧装不了（写不了 ProgramData、注册不了计划任务），需要重开。'
+        $guidance += '做法：关掉 WorkBuddy → 右键图标 →「以管理员身份运行」→ 重开会话再跑 preflight。'
+    }
+    'standard-user' {
+        $guidance += '当前是标准用户（不在管理员组）。员工侧可以装；公司侧不行，需要换有管理员权限的账号。'
+    }
 }
+
+if ($Side -eq 'company' -and -not $isAdmin) {
+    if (-not $inAdminGroup) {
+        # 不在管理员组时，让用户去点 UAC 是白费劲：根本提不上去
+        Block 'agent-elevated' "agent 是普通权限，且账号 $env:USERNAME 不在管理员组" '换一个在管理员组的账号登录这台机器，再用「以管理员身份运行」打开 WorkBuddy；或者让管理员用他的账号装。当前账号即使 UAC 也提不上去。'
+    } else {
+        Block 'agent-elevated' "agent 不是以管理员身份打开的（$env:USERNAME 在管理员组，但当前是普通权限）" '关掉 WorkBuddy → 右键 WorkBuddy 图标 →「以管理员身份运行」→ 重新打开本会话再跑 preflight。部署要写 %ProgramData%\anc、注册计划任务、设 ACL，普通权限做不到。UAC 弹框点「是」，**不要输入另一个管理员账号的密码**——那会把 %USERPROFILE% 换成别人的，persona 和技能全读不到。'
+    }
+}
+if ($Side -eq 'employee' -and -not $isAdmin) {
+    Warn 'agent-elevated' 'agent 是普通权限（员工侧不需要提权，可以继续）' '员工侧只写你自己的 %LOCALAPPDATA%\anc 和 %USERPROFILE%\.workbuddy\skills，不需要管理员。想省事用管理员打开也行，profile 不会变。'
+}
+if ($Side -eq 'employee' -and $facts['userProfiles'] -ge 3) {
+    Warn 'shared-machine' ("这台机器有 " + $facts['userProfiles'] + ' 个用户配置目录，确认不是多人共用的电脑') '个人 bot 用登录身份工作；共用电脑上装，等于让别人也能用你的身份。确认是本人专用再继续。'
+}
+$facts['guidance'] = $guidance
 
 # ── 4 node / git ────────────────────────────────────────────
 # node：服务本身就是 node 跑的；git：补丁和部署都从仓库读
@@ -162,7 +242,7 @@ $already = if ($dbPath) { Test-Path $dbPath -ErrorAction SilentlyContinue } else
 $facts['alreadyInstalled'] = $already
 if ($already) {
     $sizeKB = [math]::Round((Get-Item $dbPath -ErrorAction SilentlyContinue).Length / 1KB)
-    Warn 'already-installed' "这个根下已经有库了（$dbPath, ${sizeKB}KB）" '如果要重装：先备份，然后确认是要"升级"还是"重建"。要重建请显式加 -Force（见 AGENT-DEPLOY 的回滚节）'
+    Warn 'already-installed' "这个根下已经有库了（$dbPath, ${sizeKB}KB）" '如果要重装：先备份，然后确认是要"升级"还是"重建"。要重建请显式加 -Force（见 docs/DEPLOY-COMPANY.md §14 重装与卸载）'
 }
 
 # ── 7 端口 ──────────────────────────────────────────────────
@@ -185,7 +265,14 @@ if ($Side -eq 'company') {
     $tasks = @(Get-ScheduledTask -TaskName 'anc-*' -ErrorAction SilentlyContinue)
     $facts['existingTasks'] = $tasks.Count
     if ($tasks.Count -gt 0) {
-        Warn 'tasks' "已经有 $($tasks.Count) 个 anc-* 计划任务" '重装会覆盖它们；要保留就先把任务导出'
+        # 非提权会话看不到 LOCAL SERVICE / SYSTEM 的任务，只会看到交互类那 3 个。
+        # 2026-11-10 修：原来直接说「已经有 3 个」—— GAP-081 就是照这句话判断「只注册了 3 个」，
+        # 实际是提权问题，13 个都在。文案必须把「看不到」和「没有」分开。
+        if (-not $facts['isAdmin'] -and $tasks.Count -lt 11) {
+            Warn 'tasks' "非提权会话只看到 $($tasks.Count) 个 anc-* 任务（服务类任务要管理员会话才可见，不代表没注册）" '别据此判断数量：用管理员 PowerShell 跑 Get-ScheduledTask -TaskName anc-*；要补齐就 register-tasks.ps1 -Apply'
+        } else {
+            Warn 'tasks' "已经有 $($tasks.Count) 个 anc-* 计划任务" '重装会覆盖它们；要保留就先把任务导出'
+        }
     }
 }
 
@@ -205,6 +292,20 @@ if ($Side -eq 'employee' -and -not $hasWb) {
     Block 'workbuddy' '没装 WorkBuddy' '先在你这台电脑装 WorkBuddy 并登录，然后重跑这个检查'
 }
 
+# ── 10 部署根是否等于启动器里写死的路径（只影响 company）──────
+# scripts\launch\anc-loop.cmd 和 anc-http.cmd 把 C:\ProgramData\anc 写死了（启动器要幂等、不带变量）。
+# -Root 指到别处时，任务照样注册成功、照样去调 .cmd，而 .cmd 仍从 C:\ProgramData\anc 找 cli.ts 和库 ——
+# 症状是「部署说成功、服务却在跑另一个库」，极难查。演练用自定义根可以，生产必须用默认根。
+if ($Side -eq 'company') {
+    $defaultRoot = Join-Path $env:ProgramData 'anc'
+    try { $sameRoot = ([IO.Path]::GetFullPath($Root).TrimEnd('\') -ieq [IO.Path]::GetFullPath($defaultRoot).TrimEnd('\')) }
+    catch { $sameRoot = $false }
+    $facts['defaultRoot'] = $sameRoot
+    if (-not $sameRoot) {
+        Warn 'root-not-default' "部署根 $Root 不是默认的 $defaultRoot，而 bin\anc-loop.cmd / anc-http.cmd 里写死了默认路径" '演练可以忽略；生产必须用默认根，或先改 scripts\launch\*.cmd 再部署，否则计划任务会指着另一个库跑'
+    }
+}
+
 # ── 输出 ────────────────────────────────────────────────────
 $ok = ($blockers.Count -eq 0)
 
@@ -213,7 +314,7 @@ $next = ''
 if (-not $ok) {
     $next = '先修 blocker，再重跑本检查。清单里的 fix 就是做法。'
     # 如果 blocker 全是"要人给东西"，说清楚要停下来问
-    $needsHuman = @($blockers | Where-Object { $_.check -in @('workbuddy', 'admin') })
+    $needsHuman = @($blockers | Where-Object { $_.check -in @('workbuddy', 'agent-elevated') })
     if ($needsHuman.Count -eq $blockers.Count) {
         $next = '停下来问用户：' + (($blockers | ForEach-Object { $_.check }) -join ' / ') + ' 这几项只有人能处理。'
     }
@@ -249,7 +350,16 @@ if ($Json) {
     Write-Host ("NEXT  {0}" -f $next)
     Write-Host ''
     Write-Host 'FACTS'
-    foreach ($k in $facts.Keys) { Write-Host ("  {0,-18} {1}" -f $k, $facts[$k]) }
+    foreach ($k in $facts.Keys) {
+        # guidance 是数组，直接打会变成 System.Object[]；下面单独整段打印
+        if ($k -eq 'guidance') { continue }
+        Write-Host ("  {0,-18} {1}" -f $k, $facts[$k])
+    }
+    if ($facts['guidance'] -and @($facts['guidance']).Count -gt 0) {
+        Write-Host ''
+        Write-Host 'GUIDANCE（按这台机器的画像给出的做法）'
+        foreach ($g in @($facts['guidance'])) { Write-Host ('  - ' + $g) }
+    }
 }
 
 exit $(if ($ok) { 0 } else { 1 })

@@ -228,7 +228,7 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
                         ContentType = 'application/json; charset=utf-8'; TimeoutSec = 10
                     }
                     # /emit 启用 emit-token.txt 时必须带 X-Anc-Token，否则自证会拿到 401
-                    $emitTokFile = Join-Path $env:ProgramData 'anc\data\emit-token.txt'
+                    $emitTokFile = Join-Path $Root 'data\emit-token.txt'
                     if (Test-Path $emitTokFile) {
                         $emitParams['Headers'] = @{ 'X-Anc-Token' = (Get-Content $emitTokFile -Raw -Encoding UTF8).Trim() }
                     }
@@ -281,16 +281,41 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
         }
     }
 
-    # ④ 计划任务：9 个都在且 Ready/Running
+    # ④ 计划任务：13 个都在且 Ready/Running
+    #
+    # 2026-11-10 修（GAP-081 的教训）：原来只判「拿到的 anc-* 都 Ready/Running」，
+    # 一个都没注册时会 FAIL，但**只注册了 3 个也 PASS** —— 当时 doctor 里就那么漏过去的。
+    # 现在按 OPS 任务表逐个核对名称；交互类任务（登录用户可见）缺失直接 FAIL，
+    # 服务类任务在非提权会话里本来就看不到，这时只 SKIP 不 FAIL。
+    $expectedTasks = @(
+        'anc-service', 'anc-elevate', 'anc-executor-wake', 'anc-executor-new-host', 'anc-executor-host-tick',
+        'anc-backup', 'anc-boot-alert', 'anc-cleanup', 'anc-watchdog',
+        'anc-workbuddy-launch', 'anc-patch-guard', 'anc-http', 'anc-update-watch', 'anc-devbot'
+    )
+    $interactiveTasks = @('anc-workbuddy-launch', 'anc-patch-guard', 'anc-devbot')
     $tasks = @(Get-ScheduledTask -TaskName 'anc-*' -ErrorAction SilentlyContinue)
-    $states = $tasks | Group-Object State
+    $present = @($tasks | ForEach-Object { $_.TaskName })
+    $missingAll = @($expectedTasks | Where-Object { $present -notcontains $_ })
+    $missingCritical = @($missingAll | Where-Object { $interactiveTasks -contains $_ })
     $badTasks = @($tasks | Where-Object { $_.State -notin @('Ready', 'Running') })
+    $isElevated = $false
+    try {
+        $isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch { }
+
     if ($tasks.Count -eq 0) {
-        Add-Check 'tasks' 'FAIL' '一个 anc-* 计划任务都没有' '跑部署的 tasks 阶段（REBUILD §3 / AGENT-DEPLOY 对应小节）'
+        Add-Check 'tasks' 'FAIL' '一个 anc-* 计划任务都没有' '跑 scripts\deploy\register-tasks.ps1 -Apply（要管理员会话）'
+    } elseif ($missingCritical.Count -gt 0) {
+        Add-Check 'tasks' 'FAIL' ('缺交互类任务：' + ($missingCritical -join ', ')) 'register-tasks.ps1 -Apply；这三个决定 WorkBuddy 会不会被拉起、补丁会不会自愈'
     } elseif ($badTasks.Count -gt 0) {
-        Add-Check 'tasks' 'FAIL' ($badTasks.Count.ToString() + ' 个任务不在 Ready/Running：' + (($badTasks | ForEach-Object { $_.TaskName + '=' + $_.State }) -join ', ')) 'Start-ScheduledTask 或删了重建'
+        Add-Check 'tasks' 'FAIL' ($badTasks.Count.ToString() + ' 个任务不在 Ready/Running：' + (($badTasks | ForEach-Object { $_.TaskName + '=' + $_.State }) -join ', ')) 'Start-ScheduledTask；被禁用要查原因，别直接 Enable'
+    } elseif ($missingAll.Count -gt 0 -and -not $isElevated) {
+        Add-Check 'tasks' 'SKIP' ('非提权会话看不到 ' + $missingAll.Count + ' 个服务任务（' + ($missingAll -join ', ') + '），其余 ' + $present.Count + ' 个 Ready/Running') '用管理员会话重跑本项才能核对全量'
+    } elseif ($missingAll.Count -gt 0) {
+        Add-Check 'tasks' 'FAIL' ('缺 ' + $missingAll.Count + ' 个任务：' + ($missingAll -join ', ')) 'register-tasks.ps1 -Apply 重新注册；核对 OPS.md 任务表'
     } else {
-        Add-Check 'tasks' 'PASS' ($tasks.Count.ToString() + ' 个任务全部 Ready/Running') ''
+        Add-Check 'tasks' 'PASS' ($tasks.Count.ToString() + ' 个任务齐全且全部 Ready/Running') ''
     }
 }
 
@@ -324,7 +349,10 @@ if ($Side -eq 'employee') {
         } else {
             $flag = Join-Path $Root 'data\test-emit.flag'
             if (-not (Test-Path $flag)) {
-                Add-Check 'bot-reply' 'SKIP' 'test-emit 关闭（默认）' ('要验：建 ' + $flag + ' 然后重启 WorkBuddy')
+                # 员工侧默认**不装补丁**（DEPLOY-EMPLOYEE §3 不装补丁；§8 专门解释过这一项验不了）：
+                # 没有 preload 就没有 17999，也就没有 test-emit。建 flag 只会白折腾 ——
+                # 早先这里的 fix 是从公司侧抄来的「建 flag 再重启」，在员工机上照着做必然无效。
+                Add-Check 'bot-reply' 'SKIP' '员工侧不装补丁，没有 test-emit（17999 不会监听）' '让本人在群里 @ 一次个人 bot、看有没有回复，把结果写进汇报；SKIP 不是通过'
             } else {
                 try {
                     $emitJson = @{ chatId = $targetChat; user = 'deploy-verify'; content = '自证测试：请回一个「在」' } | ConvertTo-Json
@@ -334,7 +362,7 @@ if ($Side -eq 'employee') {
                         ContentType = 'application/json; charset=utf-8'; TimeoutSec = 10
                     }
                     # /emit 启用 emit-token.txt 时必须带 X-Anc-Token，否则自证会拿到 401
-                    $emitTokFile = Join-Path $env:ProgramData 'anc\data\emit-token.txt'
+                    $emitTokFile = Join-Path $Root 'data\emit-token.txt'
                     if (Test-Path $emitTokFile) {
                         $emitParams['Headers'] = @{ 'X-Anc-Token' = (Get-Content $emitTokFile -Raw -Encoding UTF8).Trim() }
                     }
@@ -400,7 +428,7 @@ if ($Side -eq 'employee') {
             Add-Check 'vault-read' 'FAIL' 'groups.json 解析失败' '重跑 render deploy'
         }
     } else {
-        Add-Check 'vault-read' 'FAIL' "没有 $groupsPath" '用 AGENT-DEPLOY-EMPLOYEE §5.5 从公司侧同步 render\groups.json 和 org\company.md —— deploy.ps1 只放渲染器源码，不生成这两个文件'
+        Add-Check 'vault-read' 'FAIL' "没有 $groupsPath" '按 docs/DEPLOY-EMPLOYEE.md §5.5 从公司侧同步 render\groups.json 和 org\company.md —— deploy.ps1 只放渲染器源码，不生成这两个文件'
     }
 }
 

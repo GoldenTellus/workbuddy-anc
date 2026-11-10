@@ -215,7 +215,9 @@ function Test-DataAcl([string]$Path) {
 
 function Test-DeployLayout([string]$Root, [string]$Src) {
     $bad = @()
-    foreach ($n in @('core', 'interfaces', 'modules', 'ingest', 'render', 'service', 'bin', 'patch')) {
+    # tools\ 是 2026-11-10 起拆出来的装机与维护脚本目录（bin\ 只留运行时）。
+    # 缺它说明这台机器还是旧布局，或者部署清单没跑完 —— 两种都该暴露出来。
+    foreach ($n in @('core', 'interfaces', 'modules', 'ingest', 'render', 'service', 'bin', 'tools', 'patch')) {
         $p = Join-Path $Root $n
         if (-not (Test-Path -LiteralPath $p)) { $bad += "${n}: 缺失" }
         elseif (-not (Get-Item -LiteralPath $p -Force).PSIsContainer) { $bad += "${n}: 是文件（应为目录）" }
@@ -242,6 +244,9 @@ function Test-DeployLayout([string]$Root, [string]$Src) {
     $dstDir = Join-Path $Root 'patch'
     if ($srcDir -and (Test-Path $srcDir) -and (Test-Path $dstDir) -and (Get-Item -LiteralPath $dstDir -Force).PSIsContainer) {
         foreach ($f in @(Get-ChildItem -LiteralPath $srcDir -File)) {
+            # 测试文件不部署（deploy.ps1 的 patch 映射 Exclude 掉的就是它们）。
+            # 两边口径必须一致，否则这里会报「patch/narration.test.mjs 缺失」，看起来像部署坏了。
+            if ($f.Name -like '*.test.mjs' -or $f.Name -like '*.test.cjs') { continue }
             $d = Join-Path $dstDir $f.Name
             if (-not (Test-Path -LiteralPath $d)) { $bad += "patch/$($f.Name): 缺失" }
             elseif ((Get-Sha $f.FullName) -ne (Get-Sha $d)) { $bad += "patch/$($f.Name): hash 与仓库不一致" }
@@ -307,6 +312,7 @@ function Get-TaskCoverage([hashtable]$Expected) {
 
 $ExpectedPrincipal = [ordered]@{
     'anc-service'          = 'LOCAL SERVICE'
+    'anc-elevate'          = 'SYSTEM'
     'anc-executor-new-host'  = 'LOCAL SERVICE'
     'anc-executor-host-tick' = 'LOCAL SERVICE'
     'anc-executor-wake'      = 'LOCAL SERVICE'

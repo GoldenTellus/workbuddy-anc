@@ -51,14 +51,23 @@ if ($Rollback) {
     exit 0
 }
 
-if (-not (Test-Path $Source)) { Fail "源文件不存在: $Source" '确认 light/personas/company-bot/CODEBUDDY.md 在仓库里' 2 }
+if (-not (Test-Path $Source)) {
+    # 部署目录里**没有** light\personas（deploy.ps1 只铺 light\templates），所以从 bin\ 跑必须传 -Source。
+    Fail "源文件不存在: $Source" '仓库里跑：确认 light/personas/company-bot/CODEBUDDY.md 存在；部署目录里跑：必须显式传 -Source "<Root>\render\company-bot\CODEBUDDY.md"（部署目录不含 light\personas，persona 由 render 生成）' 2
+}
 
 $srcSha = Get-Sha $Source
 $oldSha = Get-Sha $Target
 $srcSize = (Get-Item $Source).Length
 
+# 字节闸门必须和渲染器同一口径（src/modules/org/render.ts：LENGTH_WARN=6500 / LENGTH_ERROR=7500）。
+# 2026-11-10 修：这里原来在 6500 直接 Fail，而渲染器只把 6500 当警告、7500 才拒绝 ——
+# 于是渲染「成功」的 persona 到部署这一步装不上（线上那份已经 6470B，差 30 字节就卡死）。
+if ($srcSize -gt 7500) {
+    Fail "CODEBUDDY.md 超过 7500 字节（当前 $srcSize）" '精简 persona：只留身份、职责边界、铁律与输出风格（渲染器闸门同值）' 1
+}
 if ($srcSize -gt 6500) {
-    Fail "CODEBUDDY.md 超过 6500 字节（当前 $srcSize）" '精简 persona：只留身份、职责边界、铁律与输出风格' 1
+    Write-Host "[persona] 警告：$srcSize 字节，已过 6500 提醒线（上限 7500）。建议精简，否则下一次加段落就会装不上。"
 }
 
 if ($oldSha -eq $srcSha) {

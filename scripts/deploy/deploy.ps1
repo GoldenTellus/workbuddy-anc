@@ -44,16 +44,86 @@ function Fail([string]$msg, [string]$fix, [int]$code) {
 
 if (-not (Test-Path (Join-Path $Repo '.git'))) { Fail "不是仓库根: $Repo" '用 -Repo 指向仓库根（含 .git 的目录）' 2 }
 if (-not (Test-Path $Root)) {
-    # FIX 文案按侧分：员工侧不该被指向 %ProgramData%
-    $fixDir = if ($Side -eq 'company') {
-        '先建 %ProgramData%\anc 及各子目录（REBUILD §1 / AGENT-DEPLOY-COMPANY §4）'
-    } else {
-        '先建 ' + $Root + ' 及各子目录（AGENT-DEPLOY-EMPLOYEE §4 有命令）'
+    if ($Side -eq 'company') {
+        # 公司侧故意不自动建：目录的 ACL、vault 盘、secrets 都要先按 DEPLOY-COMPANY §4 立好，
+        # 自动建出一个空目录只会让后面的 set-acl 对着不存在的结构跑。
+        Fail "部署根不存在: $Root" '先按 docs/DEPLOY-COMPANY.md §4 建 %ProgramData%\anc 及各子目录' 2
     }
-    Fail "部署根不存在: $Root" $fixDir 2
+    # 员工侧自动建：目标是用户自己的 %LOCALAPPDATA%\anc，权限不需要预置。
+    # 2026-11-10 修：手册从头到尾没有"建 %LOCALAPPDATA%\anc"这一步，而这里原来一律 Fail，
+    # 新员工机第一次装必然卡在 files 阶段（FIX 还指向已经不存在的 AGENT-DEPLOY-EMPLOYEE §4）。
+    if (-not $Apply) {
+        "注意：部署根还不存在，-Apply 时会创建: $Root"
+    } else {
+        New-Item -ItemType Directory -Path $Root -Force | Out-Null
+        "已创建部署根: $Root"
+    }
 }
 
-# 目标子目录 ← 源；bin 递归收集 scripts/<域>/ 下的 ps1/cmd/vbs，部署时仍扁平到 bin\（文件名不变）。
+# scripts\ 下的脚本按**用途**分两处落盘（2026-11-10 改）：
+#
+#   bin\    运行时 —— 14 个计划任务的动作、.cmd/.vbs 启动器、技能会直接调的脚本。
+#           生产机上「正在被使用」的就这些。
+#   tools\  装机与维护 —— 部署、重装、账号、演练、回归。装完就闲置，需要时人工跑。
+#
+# 为什么改成**显式清单**而不是原来的「递归收 scripts\ 下所有 ps1」：
+#   那个白名单是目录级的，往 scripts\ 里丢一个开发/调试脚本（比如 e2e-loop.ps1、
+#   rebuild-drill.ps1）会自动上生产，装的人根本不知道自己机器上多了什么。
+#   改成清单后，新增运行件必须显式归类；漏了会在部署末尾列出来。
+$BinScripts = @(
+    # 启动器与任务包装
+    'launch/anc-guard.cmd', 'launch/anc-http.cmd', 'launch/anc-launch.cmd',
+    'launch/anc-loop.cmd',
+    'launch/run-hidden.vbs',
+    # 计划任务动作
+    'executor/host-tick.ps1', 'executor/new-host.ps1', 'executor/wake-if-queued.ps1',
+    'backup/backup-anc.ps1', 'backup/cleanup-media.ps1',
+    'selfheal/anc-selfheal.ps1', 'selfheal/boot-alert.ps1', 'selfheal/watchdog.ps1',
+    'workbuddy/check-workbuddy-update.ps1', 'workbuddy/patch-guard.ps1',
+    'devbot/devbot.ps1', 'devbot/devbot-scheduler.ps1',
+    'doctor/doctor.ps1',
+    # 技能会直接调的
+    'accounts/bind-member-identity.ps1',
+    # 提权执行器（SYSTEM 任务动作）+ 投递请求（bot 调）
+    'elevate/elevate-runner.ps1', 'elevate/request-elevate.ps1'
+)
+$ToolScripts = @(
+    # 部署与自证
+    'deploy/deploy.ps1', 'deploy/deploy-kickoff.ps1', 'deploy/deploy-persona.ps1',
+    'deploy/deploy-skills.ps1', 'deploy/deploy-state.ps1', 'deploy/deploy-verify.ps1',
+    'deploy/preflight.ps1', 'deploy/register-tasks.ps1', 'deploy/set-acl.ps1',
+    # 一句话升级（anc-update 技能调它）
+    'deploy/upgrade.ps1',
+    # 从 answers 生成 org 目录
+    'deploy/org-write.ps1',
+    # 一键初始化：目录 / vault 两区 / webhook 文件
+    'deploy/setup-dirs.ps1', 'deploy/vault-init.ps1', 'deploy/wecom-setup.ps1',
+    # 公司侧一条命令装完（编排）
+    'deploy/install-company.ps1',
+    # 零起点引导：装 Node/Git、刷 PATH（agent 部署第一步）
+    'deploy/bootstrap.ps1',
+    # 账号与组织（入职/离职时用）
+    'accounts/provision-vault-accounts.ps1', 'accounts/verify-vault-accounts.ps1',
+    'accounts/offboard-member.ps1', 'accounts/setup-anc-bot.ps1',
+    # 重建与演练
+    'rebuild/prepare-wipe.ps1', 'rebuild/rebuild-drill.ps1', 'rebuild/rebuild-z.ps1',
+    # 升级回归与端到端
+    'workbuddy/verify-upgrade.ps1', 'devbot/e2e-loop.ps1'
+)
+
+# 有意不部署的脚本。显式写出来，免得它们每次部署都跳「未归类」警告，
+# 也免得后人以为漏了。加新条目要写字由。
+$NotDeployed = @(
+    'verify/t3-webhook.ps1'   # 仓库自测：单独验 webhook 签名，生产不需要
+)
+
+# 目标子目录 ← 源。
+#
+# 落盘路径规则（2026-11-10 改）：
+#   - 默认**保留源目录下的相对结构**。给模块加子目录（如 modules/executor/claim/）
+#     不会把文件平铺掉、导致相对 import 断链。历史上只按文件名平铺，因为没有子目录所以没暴露。
+#   - bin / tools 例外：`Flatten = $true`。任务和 .cmd 都按 `<Root>\bin\<文件名>` 引用
+#     （见 OPS 任务表），一旦保留 launch\ 这层，14 个计划任务全部指空。
 $Map = @(
     @{ Target = 'core';    Source = 'src\core';    Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'interfaces'; Source = 'src\interfaces'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
@@ -70,10 +140,18 @@ $Map = @(
     @{ Target = 'service'; Source = 'src\service'; Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'ingest';  Source = 'src\ingest';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
     @{ Target = 'render';  Source = 'src\render';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
-    @{ Target = 'light\templates'; Source = 'light\templates'; Filter = @('*.md'); Exclude = @() },
+    # 渲染模板：两层都要（company-bot.md / member-bot.md 在根，vault/ 下还有 5 份协作模板）。
+    # 2026-11-10 修：原来只收顶层 *.md，light\templates\vault\ 下的「任务看板/决策记录/交接/问题模型」
+    # 一份都没铺 —— 仓库里有、线上没有，建 vault 时也就没模板可铺。
+    @{ Target = 'light\templates'; Source = 'light\templates'; Filter = @('*.md'); Exclude = @(); Recurse = $true },
     @{ Target = 'shared';  Source = 'src\shared';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
-    @{ Target = 'bin';     Source = 'scripts';     Filter = @('*.ps1', '*.cmd', '*.vbs'); Exclude = @(); Recurse = $true; SkipDirs = @('workbuddy-patch', 'anc-bind', 'verify') },
-    @{ Target = 'patch';   Source = 'scripts\workbuddy-patch'; Filter = @('*'); Exclude = @() }
+    # bin / tools 必须扁平：14 个计划任务和 .cmd 都写死 <Root>\bin\<文件名>。
+    # Only = 显式清单；清单外的脚本不会部署（workbuddy-patch 走下面的 patch 映射，
+    # verify/t3-webhook.ps1 是仓库自测脚本，本就不该上生产）。
+    @{ Target = 'bin';     Source = 'scripts';     Filter = @('*'); Exclude = @(); Recurse = $true; Flatten = $true; Only = $BinScripts },
+    @{ Target = 'tools';   Source = 'scripts';     Filter = @('*'); Exclude = @(); Recurse = $true; Flatten = $true; Only = $ToolScripts },
+    # patch 目录不做测试文件过滤会把 *.test.mjs 一起送上生产。
+    @{ Target = 'patch';   Source = 'scripts\workbuddy-patch'; Filter = @('*'); Exclude = @('*.test.mjs', '*.test.cjs') }
 )
 
 # 覆盖检查：src 下每个非测试 .ts 都必须能落到某个映射里。
@@ -92,12 +170,49 @@ if (Test-Path $srcRoot) {
     }
 }
 $plan = @()
+
+# 清单自检：清单里写了的文件必须真的存在。
+# 改了脚本名却忘了改清单，结果是「部署成功、但少一个文件」——比部署直接失败难查得多。
+$scriptsRoot = Join-Path $Repo 'scripts'
+$missingDeclared = @()
+foreach ($x in $BinScripts) {
+    if (-not (Test-Path (Join-Path $scriptsRoot $x.Replace('/', '\')))) { $missingDeclared += ('bin/' + $x) }
+}
+foreach ($x in $ToolScripts) {
+    if (-not (Test-Path (Join-Path $scriptsRoot $x.Replace('/', '\')))) { $missingDeclared += ('tools/' + $x) }
+}
+if ($missingDeclared.Count -gt 0) {
+    Fail ('部署清单里有不存在的脚本: ' + ($missingDeclared -join ', ')) '改名后同步更新 deploy.ps1 的 $BinScripts / $ToolScripts（故意不部署也要从清单里删掉）' 2
+}
+
+# 未归类提醒：scripts 下还有脚本既不在 bin 也不在 tools —— 它们不会部署。
+# 不 Fail 是因为开发期常有临时脚本；但必须让执行者看见，否则「以为部署了」比没部署更糟。
+$declaredAll = @($BinScripts) + @($ToolScripts)
+$unclassified = @()
+foreach ($f in @(Get-ChildItem -LiteralPath $scriptsRoot -Recurse -File |
+        Where-Object { $_.Extension -in @('.ps1', '.cmd', '.vbs') })) {
+    $rel = $f.FullName.Substring($scriptsRoot.Length).TrimStart('\').Replace('\', '/')
+    if ($rel -like 'workbuddy-patch/*') { continue }   # 走单独的 patch 映射
+    if ($NotDeployed -contains $rel) { continue }      # 有意不部署
+    if ($declaredAll -notcontains $rel) { $unclassified += $rel }
+}
+if ($unclassified.Count -gt 0) {
+    'WARN 这些脚本没有归到 bin 或 tools，**不会部署**：'
+    $unclassified | Sort-Object | ForEach-Object { '       scripts\' + $_.Replace('/', '\') }
+    '     要部署就加进 deploy.ps1 的 $BinScripts（运行时）或 $ToolScripts（装机维护）。'
+    ''
+}
+
 foreach ($m in $Map) {
     $srcDir = Join-Path $Repo $m.Source
     if (-not (Test-Path $srcDir)) { Fail "源目录不存在: $srcDir" '确认 -Repo 指向仓库根' 2 }
     $files = if ($m.Recurse) { @(Get-ChildItem -LiteralPath $srcDir -Recurse -File) } else { @(Get-ChildItem -LiteralPath $srcDir -File) }
     foreach ($f in $files) {
         $relPath = $f.FullName.Substring($srcDir.Length).TrimStart('\')
+        # 显式清单：清单外的文件不部署（清单用 / 分隔，跨平台也好对）
+        if ($m.Only) {
+            if ($m.Only -notcontains $relPath.Replace('\', '/')) { continue }
+        }
         if ($m.SkipDirs) {
             $skipDir = $false
             foreach ($d in $m.SkipDirs) { if ($relPath -like ($d + '\*')) { $skipDir = $true; break } }
@@ -110,10 +225,14 @@ foreach ($m in $Map) {
         $skip = $false
         foreach ($p in $m.Exclude) { if ($n -like $p) { $skip = $true; break } }
         if ($skip) { continue }
+        # 落盘相对路径：bin 扁平（只留文件名），其余保留源目录下的结构。
+        $dstRel = if ($m.Flatten) { $n } else { $relPath }
+        $rel = Join-Path $m.Target $dstRel
         $plan += [pscustomobject]@{
             Target = $m.Target
+            Rel    = $rel
             Src    = $f.FullName
-            Dst    = Join-Path (Join-Path $Root $m.Target) $n
+            Dst    = Join-Path $Root $rel
             Hash   = (Get-FileHash $f.FullName -Algorithm SHA256).Hash
             Bytes  = $f.Length
         }
@@ -128,6 +247,23 @@ foreach ($g in $grouped) {
 }
 '合计 {0} 个文件，目标根 {1}' -f $plan.Count, $Root
 ''
+
+# ── 清单收敛：bin\ 里不该留着清单外的脚本 ─────────────────────
+# 老机器是从「目录级递归」迁移来的，bin\ 里还躺着 deploy*/rebuild*/e2e-loop 这些工具脚本。
+# 部署只写不删，不处理的话 bin\ 会一直脏着，正好和「只放运行时」相反。
+# 处理方式：不直接删，移到 backup\migrate-<时间戳>\bin\，确认无误后由人清理。
+$binDir = Join-Path $Root 'bin'
+$staleBin = @()
+if (Test-Path $binDir) {
+    $wantBin = @($BinScripts | ForEach-Object { Split-Path $_ -Leaf })
+    $staleBin = @(Get-ChildItem -LiteralPath $binDir -File |
+        Where-Object { $_.Extension -in @('.ps1', '.cmd', '.vbs') -and $wantBin -notcontains $_.Name })
+}
+if ($staleBin.Count -gt 0) {
+    '注意：bin\ 里有 {0} 个不在运行清单里的脚本（{1}）：' -f $staleBin.Count, $(if ($Apply) { '-Apply 后移到 backup\migrate-<时间戳>\bin\' } else { '-Apply 会把它们移走' })
+    $staleBin | Sort-Object Name | ForEach-Object { '       ' + $_.Name }
+    ''
+}
 
 # ── 回滚：恢复最近一次 deploy-<时间戳> 备份 ───────────────────
 # 判据：备份目录里有的文件 → 原样复制回去；备份里没有的 → 本次部署新增，删掉。
@@ -158,7 +294,8 @@ if ($Rollback) {
     $removed = 0
     $rbFail = @()
     foreach ($p in $plan) {
-        $b = Join-Path (Join-Path $srcBak $p.Target) (Split-Path $p.Dst -Leaf)
+        # 备份按「相对 Root 的路径」存，保留结构；按文件名存会让不同子目录的同名文件互相覆盖
+        $b = Join-Path $srcBak $p.Rel
         try {
             if (Test-Path -LiteralPath $b) {
                 Copy-Item -LiteralPath $b -Destination $p.Dst -Force -ErrorAction Stop
@@ -208,7 +345,7 @@ function Restore-Deploy([object[]]$Items, [string]$BackupRoot) {
     # 且不查 $? —— 文件被占用 / ACL 拒绝 / 盘满时静默跳过，脚本照样打印「已回滚」。
     $failed = @()
     foreach ($p in $Items) {
-        $b = Join-Path (Join-Path $BackupRoot $p.Target) (Split-Path $p.Dst -Leaf)
+        $b = Join-Path $BackupRoot $p.Rel
         try {
             if (Test-Path -LiteralPath $b) {
                 Copy-Item -LiteralPath $b -Destination $p.Dst -Force -ErrorAction Stop
@@ -250,7 +387,7 @@ try {
             $createdDirs += $dstDir
         }
         if (Test-Path $p.Dst) {
-            $bak = Join-Path (Join-Path $bakRoot $p.Target) (Split-Path $p.Dst -Leaf)
+            $bak = Join-Path $bakRoot $p.Rel
             $bakDir = Split-Path $bak -Parent
             if (-not (Test-Path $bakDir)) { New-Item -ItemType Directory -Path $bakDir -Force | Out-Null }
             Copy-Item -LiteralPath $p.Dst -Destination $bak -Force
@@ -283,5 +420,17 @@ if ($bad.Count -gt 0) {
 }
 
 'OK：{0} 个文件已部署并逐一校验通过。备份: {1}' -f $plan.Count, $bakRoot
+
+if ($staleBin.Count -gt 0) {
+    $migDir = Join-Path (Join-Path $Root 'backup') ('migrate-' + $stamp + '\bin')
+    New-Item -ItemType Directory -Path $migDir -Force | Out-Null
+    $moved = 0
+    foreach ($f in $staleBin) {
+        try { Move-Item -LiteralPath $f.FullName -Destination (Join-Path $migDir $f.Name) -Force -ErrorAction Stop; $moved++ }
+        catch { Write-Host ('WARN 移不动 ' + $f.Name + '：' + $_.Exception.Message) }
+    }
+    '已把 {0} 个清单外脚本从 bin\ 移到 {1}' -f $moved, $migDir
+    '（没删，确认任务是 Ready 之后自行清理这个 migrate 目录）'
+}
 '提示：跑一次 bin\doctor.ps1（部署目录里的那份），deploy-layout 应转 PASS。'
 exit 0
