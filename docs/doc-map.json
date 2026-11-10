@@ -20,6 +20,12 @@
       "role": "设计树与完成状态"
     },
     {
+      "id": "trunk-0",
+      "path": "docs/TRUNK-0.md",
+      "type": "活文档",
+      "role": "主干 0 / 所有未完成项 / 当前清债批次"
+    },
+    {
       "id": "plan",
       "path": "docs/PLAN.md",
       "type": "执行",

@@ -25,6 +25,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 | 从零部署一套（部署者，不是开发者） | [BOOTSTRAP.md](./BOOTSTRAP.md) |
 | 要建什么、完成到哪 | [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md) |
 | 当前主干怎么干 | [docs/PLAN.md](./docs/PLAN.md) |
+| 所有主干未完成项 / 主干 0 清债 | [docs/TRUNK-0.md](./docs/TRUNK-0.md) |
 | 做完什么、还缺什么 | [docs/STATUS.md](./docs/STATUS.md) |
 | 主干完成时文档怎么联动 | [docs/DOC-SYNC.md](./docs/DOC-SYNC.md) |
 | 现在代码怎么组织 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) + [docs/modules/](./docs/modules/) |

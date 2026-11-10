@@ -5,7 +5,7 @@
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 0 §0.0；[STATUS.md](./STATUS.md) §2 / §3.5
 > 账本：[STATUS.md](./STATUS.md)
 > 决策：[DECISIONS.md](./DECISIONS.md) D25 / D32 / D35 / D36 / D40–D52
-> 上一个批次：[archive/plans/BATCH-20261110-FINAL.md](./archive/plans/BATCH-20261110-FINAL.md)
+> 上一个批次：[archive/completed/BATCH-20261110-FINAL.md](./archive/completed/BATCH-20261110-FINAL.md)
 > 完成后：快照到 `archive/plans/BATCH-DEPLOY-<日期>.md`
 
 ## 1. 目标

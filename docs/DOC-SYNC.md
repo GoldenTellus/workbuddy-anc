@@ -13,6 +13,7 @@
 |---|---|---|
 | 要建什么、完成到哪 | [FUTURE-DESIGN.md](./FUTURE-DESIGN.md) | 引用，不复制结论 |
 | 当前主干怎么干 | [PLAN.md](./PLAN.md) | 引用，不另写计划 |
+| 未完成项 / 主干 0 清债 | [TRUNK-0.md](./TRUNK-0.md) | 所有主干未完成项只在这里汇总；完成项进 `archive/completed/` |
 | 做完什么、缺什么 | [STATUS.md](./STATUS.md) | 引用 `GAP-###`，不重复记 |
 | 现在能做什么 | [PRODUCT.md](./PRODUCT.md) | 引用，不重写能力清单 |
 | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) | 模块细节只写模块契约 |

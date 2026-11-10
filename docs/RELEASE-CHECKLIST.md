@@ -30,7 +30,7 @@
 | 体检 | `doctor` **FAIL=0** | ✅ **35 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
 | 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
 | ACC 判定 | `STATUS §3.5` 的 **ACC-01..22 如实判定**：未跑就是未达成，`SKIP` 不是通过（判定以 `STATUS §3.5` 为准） | ✅ ACC-07/09/10/11 本机达成；ACC-02/03/04/05/06/12 用户实测通过（口述，无机器日志，D35）；ACC-08 人工对账书面例外（D36）；备份恢复通过 |
-| 主干 0 收口 | 8 分支设计/实现/验收、ACC 全部通过或书面例外、文档联动、门禁 | ✅ 2026-11-09 收口；快照 `docs/archive/plans/TRUNK-0-20261109.md`；正式对外发布仍由用户决定；**主干 1/2/3 已收口、主干 4 未做** |
+| 主干 0 收口 | 8 分支设计/实现/验收、ACC 全部通过或书面例外、文档联动、门禁 | ✅ 2026-11-09 收口；快照 `docs/archive/completed/TRUNK-0-20261109.md`；正式对外发布仍由用户决定；**主干 1/2/3 已收口、主干 4 未做** |
 | BOOTSTRAP 四步 | 零起点按 `BOOTSTRAP.md` 四步可走通 | ✅ 2026-11-10 公司侧完成 |
 | install-company 11 步 | `install-company.ps1 -Apply` 一次装完 11 步（含 `executor`，`patch` 排最后） | ✅ 2026-11-10 公司侧完成；`preflight` 只跑不记账 |
 | anc-elevate 白名单与 TTL | 白名单仅 upgrade / register-tasks / deploy；GUID 文件名、TTL 30 分钟、每小时最多 6 条 | ✅ 投递端 `bin\request-elevate.ps1`，白名单与 TTL 生效 |

@@ -104,7 +104,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 
 ### 1.8 主干 3：设计、实现与真实群验收（2026-11-09）
 
-- [x] **主干 3 已收口**：T3.1–T3.6 + ACC-13/14/15 真实群通过；快照 [archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)。
+- [x] **主干 3 已收口**：T3.1–T3.6 + ACC-13/14/15 真实群通过；快照 [archive/completed/TRUNK-3-20261109.md](./archive/completed/TRUNK-3-20261109.md)。
 - [x] 确认协议：短号 `A12` 为主，引用文本增强；必须 @；匹配顺序/歧义规则定稿（D40）。
 - [x] 通知通道：Attention 通知走 outbox 群机器人，`attention_id` 关联，不新建 Notification 表（D41）。
 - [x] `require_ack`：默认关；责任转给具体人 / 跨部门 / 对外财务生产三类开；2h/8h/24h 升级，不自动转移（D42）。
@@ -127,7 +127,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 
 ### 1.10 本批收口补齐 + 公司主机侧全量回归（BATCH-20261110，2026-11-10）
 
-> 证据根：`%ProgramData%\anc\stage\batch-20261110\`（dev01/dev02/dev04/regression/gates）；部署备份 `%ProgramData%\anc\backup\deploy-20261110-011736` 等。PLAN 快照：[archive/plans/BATCH-20261110.md](./archive/plans/BATCH-20261110.md)。
+> 证据根：`%ProgramData%\anc\stage\batch-20261110\`（dev01/dev02/dev04/regression/gates）；部署备份 `%ProgramData%\anc\backup\deploy-20261110-011736` 等。PLAN 快照：[archive/completed/BATCH-20261110.md](./archive/completed/BATCH-20261110.md)。
 
 - [x] **DEV-01 单一日对话（D46）**：wake bridge 2.0 改走 renderer `window.wb` API —— `/new` 用 `wb.conversations.create()`（可指定 conversationId/workspace/title）、`/wake` 用 `conversation.get(id).sendPrompt()` 定向发 prompt，不再切窗口/点 DOM；`wake-if-queued.ps1` 读到 active host 的真实 UUID 就定向 `/wake`，只有 03:00 `new-host.ps1` 才 `/new`。实测：`h-ed2b1b65…`（conversation `47695768…`，真实 UUID）承接 3 个 Ticket，3 个 subagent（`agent-acda2b89…` / `agent-a777c714…` / `agent-c5068f71…`），全部同一 host 会话；wake 日志 5 次 `wake ok via=wb conversation=47695768…`；测试窗口内没有新建任何会话（`createdAt` 最新即 host 会话）；`executor_hosts` 总量 4→4。证据 `dev01/EVIDENCE.md`（E1–E6：wb API 探测、bootstrap、3 票、部署重启、清理）。
 - [x] **DEV-02 GAP-079**：补丁在原型层捕获 `handleTextMessage/handleMixedMessage/handleMediaMessage` 的 `e.body.quote` 与 `msg_id`，入站前缀追加可选 ` msg=`/`quote=`（单行化、去 ASCII 方括号、300 字截断；旧 `[anc:chat= from=]` 不变、捕获失败不影响入站）；`attention match` 无短号时用 `--quote-text` 兜底、正文短号优先；`anc-task` 技能与 company persona 写明解析规则（persona 6470B ≤6500）。`npm test` 新增 10 条补丁/匹配用例；`narration.test.mjs` 26 PASS。真实入站/引用样本已由 **ACC-18 真实群**补齐（11:43–11:51：5 条入站带 `msg=`，引用 A11/A12 只回「可以」→ approved）。证据 `dev02/EVIDENCE.md` E1–E17 + `dev01/acc18/`。

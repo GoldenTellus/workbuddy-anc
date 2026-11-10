@@ -5,7 +5,7 @@
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 4 / 横切；[STATUS.md](./STATUS.md) §3.3b / §3.5
 > 账本：[STATUS.md](./STATUS.md)
 > 决策：[DECISIONS.md](./DECISIONS.md) D40–D45；GAP-079/080/084/087
-> 上一个主干：[archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)
+> 上一个主干：[archive/completed/TRUNK-3-20261109.md](./archive/completed/TRUNK-3-20261109.md)
 > 完成后：快照到 `archive/plans/BATCH-<日期>.md`
 
 ## 1. 目标
@@ -238,7 +238,7 @@ deploy-verify.ps1
 | 2026-11-10 | PLAN 切“收口补齐 + 双机全量回归” | 写入主干 0 复检、DEV-01..06、双机矩阵 | 本文件 | 待开工 |
 | 2026-11-10 | 本批开工 | T5.1 沿用 §3 主干 0 结论；DEV-01 改为 `wb.conversations` / `sendPrompt` 定向唤醒（不再每票 `/new`）；DEV-02/03/04 并行；公司主机侧回归由 teammate 跑 | `STATUS` §3.4；`%ProgramData%\anc\stage\batch-20261110\` | 进行中；部署+重启点在 DEV-01/02 代码齐后统一做 |
 | 2026-11-10 | 本批部署 + 重启 + 验收 | 142 文件 ×3 部署 hash 全过；patch-state applied=true runId=78eecdc3…；wake bridge 2.0；DEV-01 3 Ticket/1 host/3 subagent；DEV-02/03/04 完成；回归 70/70×2 + ING 16/16；GAP-088/089 修复，090/092 接受，091 留后续 | `STATUS` §1.10；`dev01/EVIDENCE.md`、`dev02/EVIDENCE.md`、`dev04/EVIDENCE.md`、`regression/REPORT.md`、`gates/` | 门禁：248/248、coverage 88.87/78.87/93.85、check、check-public 0、doctor FAIL=0 WARN=3、deploy-state 11/11 |
-| 2026-11-10 | 本批快照 | PLAN 归档到 `archive/plans/BATCH-20261110.md`；双机项转 ACC-17/18/20/21（D48） | 本文件 | 批次收口（公司侧） |
+| 2026-11-10 | 本批快照 | PLAN 归档到 `archive/completed/BATCH-20261110.md`；双机项转 ACC-17/18/20/21（D48） | 本文件 | 批次收口（公司侧） |
 | 2026-11-10 | ACC-18 真实群补丁/引用/@ 通过 | 真实群 5 条入站带 `msg=`；引用 A11/A12 只回「可以」→ approved；`A13可以` 短号 → approved；老板 `mention_userid` 配置并实发 mentions 通知 | `STATUS` §1.10/§3.5；`%ProgramData%\anc\stage\batch-20261110\dev01\acc18\` | 测试 Attention/outbox 已清理；当时剩 ACC-17/20/21，其中 20/21 已于当日后续达成（见下方执行记录） |
 | 2026-11-10 | 主干 2 D46 后复验 | EXE-01 真实 Main 群链路（Task#20 → Ticket → 定向 wake → subagent `trunk2-accept.md` → A11 → done）；EXE-04 两次真实重启恢复（interrupted → 同会话新 host → attempt2 完成）；EXE-02/03 复用 70/70；EXE-05 机制已验证 | `STATUS` §1.11；`%ProgramData%\anc\stage\batch-20261110\trunk2-accept\EVIDENCE.md` | 发现 GAP-106（wake 重复唤醒窗口）open；真实 03:00 跨夜归 ACC-20 |
 | 2026-11-10 | ACC-20 日切补测（模拟 03:00） | `new-host.ps1 -Now` 触发：新会话 `827caa80…`、新 host `h-435a1107…`（11-11）、旧 host closing；旧任务切后仍 start/report；新任务 wake 定向新 host 完成 | `STATUS` §1.13；`%ProgramData%\anc\stage\batch-20261110\acc20\` | 未改系统时钟；明早真实 03:00 幂等跳过，下一次真实日切 11-12 |

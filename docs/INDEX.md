@@ -25,6 +25,7 @@
 |---|---|---|
 | **方向** | 要建什么、为什么、完成到哪 | [FUTURE-DESIGN.md](./FUTURE-DESIGN.md) |
 | **执行** | 当前主干怎么干 | [PLAN.md](./PLAN.md) |
+| **清债/未完成** | 所有主干未完成项、主干 0 活文档 | [TRUNK-0.md](./TRUNK-0.md) |
 | **账本** | 已完成什么、还缺什么 | [STATUS.md](./STATUS.md) |
 | **联动规则** | 主干完成时哪些文档要跟着更新 | [DOC-SYNC.md](./DOC-SYNC.md) |
 | **现状能力** | 现在能做什么、不做什么 | [PRODUCT.md](./PRODUCT.md) |
@@ -68,6 +69,7 @@
 | `docs/` | 方向、执行、账本、现状契约、运维手册、历史 | 现行文档 + `modules/` + `upstreams/` + `archive/` |
 | `docs/modules/` | 每个模块一份契约（目的/拥有/公开接口/不变量/失败模式） | 13 份；由 `module-map.json` 引用 |
 | `docs/FUTURE-DESIGN.md` | 未来发展设计（设计树） | 主干/分支/叶子；不是现状 |
+| `docs/TRUNK-0.md` | 所有主干未完成项 + 主干 0 清债活文档 | 完成项移入 `archive/completed/` |
 | `docs/PLAN.md` | 当前主干的执行计划 | 一次只写一个主干 |
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险 | `GAP-###` 总账 |
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单 | 文档依赖图 + 审计表 |
