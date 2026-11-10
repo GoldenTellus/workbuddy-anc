@@ -188,7 +188,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11，**设计基线**）；当前环境 **v22.22.2** 实测 252/252 通过（v26.13.0 为 2026-11-09 另一台本机历史读数）。`node:sqlite` 与类型剥离自 v22.22.2 起默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；当前环境 **v22.22.2** 实测 253/253 通过（v26.13.0 为 2026-11-09 另一台本机历史读数）。`node:sqlite` 与类型剥离自 v22.22.2 起默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

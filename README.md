@@ -147,7 +147,7 @@ Windows 主机（7×24）
 
 ## 现状
 
-- 13 个模块全部 `current`；`npm test` **252/252**；`npm run check`（模块边界 + 文档检查）通过。
+- 13 个模块全部 `current`；`npm test` **253/253**；`npm run check`（模块边界 + 文档检查）通过。
 - BATCH-20261110 公司侧收口完成（仅 ACC-17 按 D48 书面例外）；主干 0/1/2/3 已收口、主干 4 未做；测试文件 29、覆盖率 88.97/79.03/93.95、脚本 66、技能 9、计划任务 14、部署清单 158、doctor 35 项、D46–D52 已登记
 - 历史计划、验收、实测已归档：见 [历史计划](./docs/archive/history/PLAN-LEGACY.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
@@ -174,7 +174,7 @@ Windows 主机（7×24）
 
 ## 开发约定
 
-- 文档中文为主；TypeScript + 设计基线 Node 22 LTS；当前环境 v22.22.2 跑 252/252（v26.13.0 为 2026-11-09 另一台本机历史实测），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
+- 文档中文为主；TypeScript + 设计基线 Node 22 LTS；当前环境 v22.22.2 跑 253/253（v26.13.0 为 2026-11-09 另一台本机历史实测），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
 - 开发流程：分支 → PR → 验证 → squash merge。
 - 部署：从仓库复制到 `%ProgramData%\anc\`（命令见 REBUILD §3），主机上手改线上文件视为事故。
 - 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/checks/check-public.mjs` 并人工过一遍全量 diff。

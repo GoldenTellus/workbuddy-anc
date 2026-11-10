@@ -568,6 +568,12 @@ export function appendReport(db: DatabaseSync, input: { assignmentId: string; ty
     // 旧 Assignment（已中断/结束）的迟到 Report 只留证，不推进 Ticket；
     // 新 Assignment 可能已经在跑，不能被旧回报覆盖。
     const late = a.state !== 'running' && a.state !== 'pending';
+    if (!late) {
+      const terminal = db.prepare(
+        "SELECT report_id FROM reports WHERE assignment_id = ? AND type IN ('ready','blocked','failed','dropped') LIMIT 1",
+      ).get(a.assignment_id) as { report_id: string } | undefined;
+      if (terminal) throw execError('EXEC_REPORT_DUPLICATE', '同一 Assignment 已有终态 Report，拒绝重复提交');
+    }
     const at = nowIso();
     const report: Report = {
       report_id: 'r-' + randomUUID(),

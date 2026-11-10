@@ -47,7 +47,7 @@ const inbox = arg('--inbox') || inferInbox(batch) || '';
 const dataDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'data');
 const audit = {
   at: new Date().toISOString(),
-  cmd: 'ingest ' + commandName(argv),
+  cmd: 'ingest apply',
   ok: true,
   code: null as string | null,
   targets: [] as string[],
@@ -75,6 +75,7 @@ if (!shared) fail('缺少 --shared', 'USAGE', 2);
 let result;
 try {
   result = applyBatch(batch, shared);
+  audit.targets = [...result.added, ...result.modified, ...result.originals];
 } catch (e) {
   const err = e as IngestError;
   const code = err.code || 'ERROR';

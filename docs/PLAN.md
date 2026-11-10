@@ -26,7 +26,7 @@
 - 主干 1/2/3 符合性矩阵（§6）每项有 `符合 / 偏离且已登记 GAP / 用户裁决接受` 的判定与证据；§6.5 中用户挑定纳入本批的补充项逐项有结论；
 - 部署与检验中发现的每个问题都进 `STATUS` 的 `GAP-###` 并处置，不静默跳过；
 - ACC-17 用员工侧真实机器证据收口，`STATUS` §3.5 的 ACC 行按真实现状更新；
-- `npm test` 全绿（当前 252/252）、`npm run check` 通过、`check-public` 零输出；
+- `npm test` 全绿（当前 253/253）、`npm run check` 通过、`check-public` 零输出；
 - `STATUS` / `FUTURE-DESIGN` / `PLAN` / `PRODUCT` / `ARCHITECTURE` / 模块契约 / 接口 / 运维 / `RELEASE-CHECKLIST` / `DECISIONS` 同步，`STATUS` §4 填审计行；
 - 员工 bot 仍是旧员工侧实现 的部分，明确记为**主干 4 缺口**，不伪装成通过。
 
@@ -301,7 +301,7 @@ ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
 ## 10. 测试与门禁
 
 ```text
-npm test                  # 当前 252/252；新增回归继续加
+npm test                  # 当前 253/253；新增回归继续加
 npm run check             # check:modules:deep + check:docs
 npm run coverage
 node scripts/checks/check-public.mjs   # 零输出且退出码 0

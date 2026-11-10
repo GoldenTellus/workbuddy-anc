@@ -457,3 +457,19 @@ test('executor：start 拒绝 main/self 充当 subagent', () => {
     assert.equal(getTicket(db, t.ticket_id)!.state, 'working');
   } finally { db.close(); }
 });
+test('executor：同一 Assignment 的终态 Report 不允许重复', () => {
+  const db = openDb(':memory:');
+  try {
+    seedTask(db);
+    const h = host(db);
+    createTicket(db, { taskId: 1, departmentId: 'sales', title: 'dup-report' });
+    const a = claim(db, { hostId: h.host_id })!;
+    startAssignment(db, { assignmentId: a.assignment.assignment_id, subagentId: 'agent-dup' });
+    appendReport(db, { assignmentId: a.assignment.assignment_id, type: 'ready', summary: 'first' });
+    assert.throws(
+      () => appendReport(db, { assignmentId: a.assignment.assignment_id, type: 'ready', summary: 'second' }),
+      /已有终态 Report/,
+    );
+  } finally { db.close(); }
+});
+
