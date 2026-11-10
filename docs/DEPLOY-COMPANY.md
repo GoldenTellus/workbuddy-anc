@@ -572,11 +572,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\tools\register-tasks.
 > **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\bin\`），不是仓库里的。
 > 部署目录那份运行时路径正确（§5 已经把它复制过去了）。
 
-**这 13 个是什么**：
+**这 14 个是什么**：
 
 | 任务 | 干什么 | 频率 |
 |---|---|---|
 | `anc-service` | 本地小服务（tick） | 每分钟 |
+| `anc-elevate` | 提权执行器（SYSTEM，白名单运维请求） | 开机 + 每分钟 |
 | `anc-executor-new-host` | 主干2 自动创建新 host 对话（可选） | 每天 03:00 |
 | `anc-executor-host-tick` | 主干2 无新 host 时旧 host 继续接单 | 每天 03:00 |
 | `anc-executor-wake` | 有 queued Ticket 时唤醒当前对话（需 wake bridge） | 每分钟 |
@@ -587,33 +588,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\tools\register-tasks.
 | `anc-cleanup` | 清企微附件（7 天前） | 每天 03:00 |
 | `anc-update-watch` | 查厂商新版 | 每天 09:00 |
 | `anc-workbuddy-launch` | 登录后拉起 WorkBuddy | 登录时 |
-| `anc-patch-guard` | 补丁自愈 | 每分钟 |
+| `anc-patch-guard` | 补丁自愈 + 部署后自动 executor 收尾 | 每分钟 |
 | `anc-devbot` | devbot 自动启动 | 22:00 起每 30 分钟 × 8h |
 
-**主干 2 自动 host（可选，先问用户是否开启）**：
+**主干 2 自动 host（默认开启，安装时自动完成，不需要人手动加工作区）**：
 
-```text
-# 不开启时不要建 wb-wake.flag；new-host / wake 任务存在但会静默跳过
-$data = Join-Path $Root 'data'
-New-Item -ItemType File -Force (Join-Path $data 'wb-wake.flag') | Out-Null
-# 必须是绝对路径：wake bridge 2.0 把该值当 host 会话 cwd 传给 conversations.create
-Set-Content -Path (Join-Path $data 'wb-wake-workspace.txt') -Value 'D:\workbuddy-anc' -Encoding utf8
-# token 由 wake bridge 首次启动时生成；不要手写
-```
+- `install-company` 的 `executor` 阶段（在 `patch` 之前）会调用 `setup-executor.ps1 -PrepareOnly`：
+  - 写 `data\wb-wake.flag`（启用 bridge）；
+  - 写 `data\wb-wake-workspace.txt` = **仓库 checkout 的绝对路径**（`-ExecutorWorkspace` 或 answers 的 `executor.workspace` 可覆盖）；
+  - 写 `data\deploy-executor-pending.json`（交给重启后的 patch-guard）。
+- `patch` 阶段重启 WorkBuddy 后，`anc-patch-guard` 检测到补丁 `applied=true` 且 marker 存在 → 运行 `tools\setup-executor.ps1 -Apply -Marker`：
+  - 用 wake bridge `/new` 在**该工作区**建一个会话并发 `TEST`；bot 回「收到，TEST 正常」；
+  - WorkBuddy 因此**自动把该目录注册成工作区**（无需 UI 手动添加）；
+  - 若还没有 active host，用这个会话注册**当天 host**（`business_date=今天`、`cut_at=明天 03:00`）；
+  - 写 `data\executor-deploy.json`（ok/workspace/conversation_id/test_reply/host）；成功后删 marker，并把 deploy-state 的 `executor` 阶段记为 done。
+- 失败不静默：marker 保留、每分钟重试；`executor-deploy.log` 记原因；20 次仍失败写 `deploy-executor-failed.json`。人工修好后跑 `tools\setup-executor.ps1 -Apply` 即可。
 
-> **工作区不需要先在 WorkBuddy UI 里“添加”**：2.0 的 `/new` 直接按 `cwd` 建会话，只要该目录存在即可；只有旧 DOM fallback（`window.wb` 不可用）才要求 UI 工作区列表里有同名项。
+> **工作区不需要先在 WorkBuddy UI 里“添加”**：2.0 的 `/new` 直接按 `cwd` 建会话并自动注册工作区，只要该目录存在即可；只有旧 DOM fallback（`window.wb` 不可用）才要求 UI 工作区列表里有同名项。
 > **后台任务产物不看这个工作区**：Ticket 的 `task_dir` 由服务端按 `departments/<dept>/tasks/<ticket>/` 推导（相对 §1 第 6 项的 vault 根，本机 `D:\anc`），subagent 直接写绝对路径；WorkBuddy 工作区只决定 host 会话的 cwd/上下文。
 
-> 建完 flag 后**用补丁启动器重启 WorkBuddy**，bridge 才会监听 `127.0.0.1:18187`。
-> 没有 flag / 没重启时：`new-host` 与 `wake` 静默跳过，`anc-executor-host-tick` 仍会把旧 host 标 deferred，旧 host 继续接单。
+> 不想启用自动 host：answers 里 `executor.enabled=否`，或手工不建 `wb-wake.flag`。此时 `new-host` / `wake` 任务存在但静默跳过，等人工开 host。
 
 **成功判据**：
 
 ```powershell
 $t = @(Get-ScheduledTask -TaskName 'anc-*')
-if ($t.Count -ne 13) { throw "应该是 13 个，实际 $($t.Count)" }
+if ($t.Count -ne 14) { throw "应该是 14 个，实际 $($t.Count)" }
 $bad = $t | Where-Object { $_.State -notin @('Ready','Running') }
 if ($bad) { throw ('这些任务状态不对: ' + (($bad | ForEach-Object { $_.TaskName + '=' + $_.State }) -join ', ')) }
+```
+
+主干 2 的部署后证据（patch 重启后 1 分钟内出现）：
+
+```powershell
+Get-Content (Join-Path $Root 'data\executor-deploy.json') -Raw   # ok:true / workspace / conversation_id / test_reply / host
+Get-Content (Join-Path $Root 'data\executor-deploy.log') -Tail 5
 ```
 
 **失败了怎么办**：
@@ -1180,7 +1189,8 @@ NEXT  没有 FAIL，但有 1 项 SKIP——那不是通过，是没验。列在�
 | `doctor` | 34 项体检全过 | 有具体项坏了，看 detail |
 | `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
 | `bot-reply` | 注入一条消息 | 409（还没有实例引用）是 SKIP 不是 FAIL；端口没监听也是 SKIP；只有真正注入失败才 FAIL。**「没等到回复」仍是 PASS**（回复慢是模型行为） |
-| `tasks` | 13 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
+| `tasks` | 14 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
+| `executor` | 主干2 部署后自动收尾 | 有 `data\executor-deploy.json` 且 `ok:true` = 工作区已加入、TEST 已回、当天 host 已建；WARN 表示还等 patch-guard 或需手动 `tools\setup-executor.ps1 -Apply`；SKIP = 未启用主干2（无 `wb-wake.flag`） |
 
 **`SKIP` 不是通过**——它是"没验"。常见 SKIP：
 

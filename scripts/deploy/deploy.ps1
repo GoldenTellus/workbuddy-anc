@@ -89,7 +89,8 @@ $BinScripts = @(
 )
 $ToolScripts = @(
     # 部署与自证
-    'deploy/deploy.ps1', 'deploy/deploy-kickoff.ps1', 'deploy/deploy-persona.ps1',
+    'deploy/deploy.ps1', 'deploy/deploy-kickoff.ps1',
+    'deploy/setup-executor.ps1', 'deploy/deploy-persona.ps1',
     'deploy/deploy-skills.ps1', 'deploy/deploy-state.ps1', 'deploy/deploy-verify.ps1',
     'deploy/preflight.ps1', 'deploy/register-tasks.ps1', 'deploy/set-acl.ps1',
     # 一句话升级（anc-update 技能调它）

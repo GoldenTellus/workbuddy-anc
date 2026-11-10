@@ -84,7 +84,8 @@ $Stages = if ($Side -eq 'company') {
         @{ id = 'vault'; title = '建 vault 两区（§9）' },
         @{ id = 'org'; title = '写 org 数据 + 渲染 persona（§10）' },
         @{ id = 'wecom'; title = '配企微（§11，corpid / 群机器人 webhook）' },
-        @{ id = 'verify'; title = '自证（§12，deploy-verify.ps1）' }
+        @{ id = 'verify'; title = '自证（§12，deploy-verify.ps1）' },
+        @{ id = 'executor'; title = '主干2 host：加入工作区 + TEST 冒烟（§8.5，部署后自动）' }
     )
 } else {
     @(

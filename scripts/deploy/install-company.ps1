@@ -9,7 +9,9 @@
 # 而 webhook / 建群本来就只能人工。它减少的是 agent 的操作成本和装错概率。
 #
 # 顺序（每一步都能单独重跑）：
-#   preflight → dirs → files → skills → tasks → vault → org → wecom → verify → patch
+#   preflight → dirs → files → skills → tasks → vault → org → wecom → verify → executor → patch
+#   executor 在 patch 之前：只写 wake bridge 配置 + marker；patch 重启后由 anc-patch-guard 自动完成
+#   「加入 WorkBuddy 工作区 + 发 TEST + 注册当天 host」（不需要人手动加工作区）。
 #
 # 为什么 patch 放最后：它会重启 WorkBuddy（用补丁启动器拉起新实例），
 # 而 agent 就跑在里面。放在最后，前面全部就位，重启一次就生效；
@@ -21,6 +23,8 @@
 #   install-company.ps1 -VaultRoot D:\anc -Apply -From vault    # 从某阶段续跑
 #   install-company.ps1 -VaultRoot D:\anc -Apply -Skip patch    # 不重启 WorkBuddy
 #   install-company.ps1 -VaultRoot D:\anc -Apply -Webhooks 'a.txt=https://...'
+#   install-company.ps1 -VaultRoot D:\anc -Apply -ExecutorWorkspace D:\anc\executor-ws   # 主干2 host 工作区
+#   install-company.ps1 -VaultRoot D:\anc -Apply -SkipExecutor                            # 不自动启用主干2 host
 #
 # 退出码：0 全部成功 / 1 某阶段失败（已记账，可从失败处续跑）/ 2 用法或环境错误
 
@@ -47,6 +51,26 @@ if (-not $Repo) {
         $c = $p
     }
     $Repo = $c
+}
+
+# 读 answers 里的主干2选项（可选；缺省=启用、工作区=仓库路径、TEST=开、建 host=开）
+$answersPath = Join-Path $Root 'data\deploy-answers.json'
+$ans = $null
+if (Test-Path $answersPath) {
+    try { $ans = ([IO.File]::ReadAllText($answersPath, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)) | ConvertFrom-Json } catch { $ans = $null }
+}
+$execEnabled = -not [bool]$SkipExecutor
+$execSmoke = $true
+$execCreateHost = $true
+if ($ans) {
+    $v = $ans.PSObject.Properties['executor.enabled']
+    if ($v) { $execEnabled = -not ([string]$v.Value -match '^(no|false|0|否|不)$') }
+    $v = $ans.PSObject.Properties['executor.smoke']
+    if ($v) { $execSmoke = -not ([string]$v.Value -match '^(no|false|0|否|不)$') }
+    $v = $ans.PSObject.Properties['executor.createHost']
+    if ($v) { $execCreateHost = -not ([string]$v.Value -match '^(no|false|0|否|不)$') }
+    $v = $ans.PSObject.Properties['executor.workspace']
+    if ($v -and [string]$v.Value -and -not $ExecutorWorkspace) { $ExecutorWorkspace = [string]$v.Value }
 }
 
 $steps = @()
@@ -88,7 +112,7 @@ function Invoke-Cmd([string]$exe, [string[]]$argv) {
 }
 
 # ── 阶段表：id 与 deploy-state 一致，方便自动记账 ─────────────────────────
-$StageOrder = @('preflight', 'dirs', 'files', 'skills', 'tasks', 'vault', 'org', 'wecom', 'verify', 'patch')
+$StageOrder = @('preflight', 'dirs', 'files', 'skills', 'tasks', 'vault', 'org', 'wecom', 'verify', 'executor', 'patch')
 
 $tools = Join-Path $Root 'tools'
 if (-not (Test-Path $tools)) {
@@ -216,6 +240,24 @@ function Run-Stage([string]$id) {
             Add-Step 'verify' 'SKIP' '自证有 FAIL/SKIP（安装本身已完成，逐项看 deploy-verify）'
             return $true
         }
+        'executor' {
+            if (-not $execEnabled) { Add-Step 'executor' 'SKIP' 'answers/参数未启用主干2（或 -SkipExecutor）'; return $true }
+            $setup = Join-Path $stageTools 'setup-executor.ps1'
+            if (-not (Test-Path $setup)) { $setup = Join-Path $Repo 'scripts\deploy\setup-executor.ps1' }
+            if (-not (Test-Path $setup)) { Add-Step 'executor' 'FAIL' '找不到 setup-executor.ps1'; return $false }
+            $ws = $ExecutorWorkspace
+            if (-not $ws) { $ws = $Repo }
+            $execArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $setup, '-Root', $Root, '-Repo', $Repo, '-Workspace', $ws, '-PrepareOnly', '-Apply', '-Json')
+            if (-not $execSmoke) { $execArgs += '-SkipTest' }
+            if (-not $execCreateHost) { $execArgs += '-SkipHost' }
+            $r = Invoke-Cmd 'powershell' $execArgs
+            if ($r.code -eq 0) {
+                Add-Step 'executor' 'OK' ('已排入 patch 重启后自动完成：工作区 ' + $ws + ' + TEST + 当天 host（结果看 data\executor-deploy.json）')
+                return $true
+            }
+            Add-Step 'executor' 'FAIL' (($r.text -split "`n" | Select-Object -Last 2) -join ' ')
+            return $false
+        }
         'patch' {
             $launcher = Join-Path $Root 'patch\launch-patched.ps1'
             if (-not (Test-Path $launcher)) { Add-Step 'patch' 'SKIP' '没有 patch\launch-patched.ps1'; return $true }
@@ -260,7 +302,11 @@ for ($i = 0; $i -lt $StageOrder.Count; $i++) {
     if (-not $Apply) { Add-Step $id 'OK' '(dry) 会执行'; continue }
 
     $ok = Run-Stage $id
-    Mark-State $id $ok $(if (-not $ok) { 'install-company 在 ' + $id + ' 失败' } else { '' })
+    # executor 的完成发生在 patch 重启之后（patch-guard 跑 setup-executor -Marker），
+    # 这里不提前记 done；成功/失败由 setup-executor 写 data\executor-deploy.json 并自己记账。
+    if ($id -ne 'executor') {
+        Mark-State $id $ok $(if (-not $ok) { 'install-company 在 ' + $id + ' 失败' } else { '' })
+    }
     if (-not $ok) {
         Fail ($id + ' 阶段失败，已停止') ('修好这一步后用 -From ' + $id + ' 续跑，不要从头重装') 1
     }

@@ -47,6 +47,26 @@ powershell -File scripts\deploy\deploy.ps1 -Apply
 
 把 `src\core`、`src\interfaces`、`src\modules`、`src\service`、`src\ingest`、`src\render`、`src\shared`、`light\templates`、`scripts\<domain>\*`（部署时扁平到 `bin\`）和 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 对应目录，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
 
+## 部署后自动 executor（主干 2，2026-11-10）
+
+公司侧 `install-company -Apply` 装完 `patch` 重启后，不需要人手动加 WorkBuddy 工作区：
+
+1. install-company 的 `executor` 阶段写 `data\wb-wake.flag`、`data\wb-wake-workspace.txt`（默认=仓库绝对路径），并写 `data\deploy-executor-pending.json`。
+2. `patch` 重启 WorkBuddy；`anc-patch-guard` 每分钟检查，补丁 `applied=true` 且 marker 在 → 调 `tools\setup-executor.ps1 -Apply -Marker`。
+3. 该脚本用 wake bridge `/new` 在工作区建会话并发 `TEST`，bot 回「收到，TEST 正常」（这一动作同时让 WorkBuddy **自动注册工作区**），然后没有 active host 时注册当天 host。
+4. 结果：`data\executor-deploy.json`（`ok:true` + workspace/conversation_id/test_reply/host）；成功删 marker，失败留 marker 自动重试（最多 20 次，然后 `data\deploy-executor-failed.json`）。
+
+排查/手动重跑：
+
+```powershell
+Get-Content (Join-Path $env:ProgramData 'anc\data\executor-deploy.json') -Raw
+Get-Content (Join-Path $env:ProgramData 'anc\data\executor-deploy.log') -Tail 20
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:ProgramData\anc\tools\setup-executor.ps1" -Apply
+```
+
+- 不启用：install-company 加 `-SkipExecutor`，或 answers `executor.enabled=否`；不建 `wb-wake.flag` 时 new-host/wake 静默跳过。
+- 换工作区：`-ExecutorWorkspace D:\anc\executor-ws`（绝对路径；目录不存在会建）。
+
 ## 账号与凭据
 
 - `%ProgramData%\anc\accounts` **只给 Administrators 与 SYSTEM**：里面有 `anc-bot` 密码和按名单开出的只读账号初始密码，bot 账号（标准用户）不得读取；

@@ -189,6 +189,23 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 ---
 
 
+### 1.15 部署后自动 executor：加入 WorkBuddy 工作区 + TEST + 当天 host（2026-11-10 15:45–15:56）
+
+> 用户要求：agent 部署完项目后，部署机的 WorkBuddy **自动加入该工作区并自动发 TEST**，不需要人手动添加。证据根 `%ProgramData%\anc\stage\batch-20261110\acc21\`（`setup-prepare.out`、`setup-smoke.out`、`executor-deploy.json`、`executor-deploy.log`）。
+
+- [x] **新脚本 `scripts\deploy\setup-executor.ps1`**（部署 map 第 158 个文件）：
+  - `-PrepareOnly`：只写 `wb-wake.flag`、`wb-wake-workspace.txt`（绝对路径，默认=仓库）和 `deploy-executor-pending.json`；
+  - `-Marker`：等 wake bridge 2.0 → `/new` 在工作区建会话并发 **TEST** → 等 bot 回复 → 没有 active host 时注册当天 host → 写 `data\executor-deploy.json`、删 marker、把 deploy-state 的 `executor` 记为 done；
+  - 失败留 marker 由 patch-guard 每分钟重试，20 次后写 `deploy-executor-failed.json`；不静默。
+- [x] **安装链路**：`install-company` 新增 `executor` 阶段（在 `patch` 前，dry-run 已见）；`patch` 重启后由 `anc-patch-guard`（补丁 applied 且 marker 在）自动跑 `setup-executor -Apply -Marker`；`deploy-state` 新增 `executor` 阶段；`deploy-verify` 新增 `executor` 项（PASS，detail 含 workspace/host）。
+- [x] **实测（本机）**：
+  - 手动流程：`/new` 到全新目录 `D:\anc\executor-ws-test` → WorkBuddy 自动生成项目 `%USERPROFILE%\.workbuddy\projects\d-anc-executor-ws-test`、会话 cwd 正确，bot 回「收到，TEST 正常」；
+  - 自动链路：`setup-executor -PrepareOnly -Apply -SkipTest -SkipHost` → marker；手工跑 `patch-guard` → 完成（`bridge=2.0`、`host_action=existing`、marker 删除、`executor-deploy.json ok:true`）；
+  - 脚本 TEST 冒烟：`setup-executor -Apply -SkipHost -Workspace D:\anc\executor-ws-test` → 建会话 `ab84bab7…`、bot 回复（`test_reply` 已记录）、`ok:true`；
+  - `deploy-state` **12/14**（剩 brief/answers，存量主机 N/A）；doctor **FAIL=0 WARN=3**；install-company dry-run 含 `executor` 步。
+- [x] **文档**：BOOTSTRAP 第 4 步、DEPLOY-COMPANY §8/§12、OPS 新增「部署后自动 executor」、PRODUCT 能力说明；deploy-kickoff 增加 4 个可选问题（enabled/workspace/smoke/createHost）。
+- [x] **遗留**：本机验证产生了 2 个测试会话（`9d14f5d6…`、`ab84bab7…`，都在 `D:\anc\executor-ws-test` 工作区），可在 WorkBuddy 任务列表删；全新机器的首次完整部署链路（install-company → patch 重启 → patch-guard）尚未在干净机器实跑，下次真实部署时验证。
+
 ## 2. 进行中
 
 | 事项 | 状态 | 证据 / 下一步 |
@@ -198,7 +215,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10）；本批 DEV-01 已把 wake 改成定向 host（D46）；**D46 后复验通过**（EXE-01/EXE-04 + ACC-16，见 §1.11） |
 | 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；本批后 **252/252**；142 文件部署；13 任务 Ready；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；GAP-079/080 本批已实现且 **ACC-18 真实群通过**（msg=、引用兜底、短号；@ 员工侧待 userid） |
 | **当前批次（BATCH-20261110）** | **公司侧收口完成（2026-11-10）；ACC-18 真实群通过；剩 ACC-17（D48 书面例外）** | PLAN §4 DEV-01/02/03/04 全部完成（见 §1.10）；T5.6/T5.7 公司主机侧矩阵 70/70×2 + ING 16/16 + 门禁全绿；OPS-01 备份 FAIL 已修（GAP-089）；ACC-18 真实群补丁/引用/短号/真 @ 实发通过；员工侧/03:00/真实群安全 → ACC-17/20/21 |
-| 公司侧部署（本机） | 已更新部署自动化（14 任务） | 见 §1.5/§1.10/§1.12；新清单 **156 文件**（2026-11-10 14:14 rollout），14 个任务全部 Ready（含 `anc-elevate` SYSTEM）；`deploy-state` **11/13**——`brief`/`answers` 是全新安装的访谈阶段，存量主机 N/A；doctor FAIL=0 WARN=3 |
+| 公司侧部署（本机） | 已更新部署自动化（14 任务 + 部署后自动 executor） | 见 §1.5/§1.10/§1.12/§1.15；新清单 **158 文件**（2026-11-10 15:54），14 个任务全部 Ready（含 `anc-elevate` SYSTEM）；`deploy-state` **12/14**——`brief`/`answers` 是全新安装的访谈阶段，存量主机 N/A，`executor` 已 done；doctor FAIL=0 WARN=3 |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-10 本批审计行见 §4 |
 
 ---
@@ -483,6 +500,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-10 14:1x | **GAP-106 修复（claim reserve 语义）** | 0.6：normal `claim` 即置 Ticket `working`；executor 测试 21/21（新增 claim→working / recover→queued / attempt=2 回归） | **GAP-106 closed**；新增 D50 | 代码已提交；待部署到线上 CLI 后生效（rollout 后复验） |
 | 2026-11-10 14:31 | **ACC-20 日切补测（模拟 03:00）** | 0.6/0.8：`new-host -Now` 建 11-11 host、旧 host closing；旧任务切后 start/report；新任务 wake 定向新 host 完成 | **ACC-20 达成**（模拟触发）；新增 D51 | 未改系统时钟；测试数据已清理；留 active host h-435a1107（11-11）；证据 `acc20/` |
 | 2026-11-10 14:50 | **ACC-21 第一轮（修复前）** | 0.8 安全：注入消息让 bot 直接批准 A11（`attention_answered` 06:49:14，`answer_message_id=null`）；A99 未误批 | **新增 GAP-107（S1，立即修）** | 误批证据 `acc21/patch-in-batch1.log`、`verify-batch1.json`、`audit-failed-attempts.log`；测试数据暂留 |
+| 2026-11-10 15:56 | **部署后自动 executor（工作区+TEST+当天 host）** | 0.4 部署：setup-executor + install-company executor 阶段 + patch-guard 收尾 + deploy-verify；实测 marker 链路与 TEST 冒烟均 ok；deploy-state 12/14 | 无新增 GAP；用户要求已落 | 158 文件部署；证据 acc21/setup-*.out；2 个测试会话待删 |
 | 2026-11-10 15:10 | **GAP-107 修复 + ACC-21 复测通过** | 0.8 安全：`attention answer` 绑定 `--source-msg` + 服务端重推导；注入/A99/非确认人均未动 A12；老板真实消息才 approved（`answer_message_id=379225fe…`） | **GAP-107 closed**；ACC-21 达成；新增 D52 | 全量 252/252；CLI+技能/persona 已部署；测试数据已清理；证据 `acc21/` |
 | 2026-11-10 08:45 | **部署流程与现状适配复检**（用户要求：先查流程还适不适配，再修） | 0.4 部署：清单 142→**146**（补 `light/templates/vault` 5 份、去 `patch/*.test.mjs`）、员工侧 8 阶段（补 `sync`）、公司侧阶段顺序改为与手册一致、`deploy-verify` 的 tasks 改判 13 项齐全、员工侧不再试 17999；0.3 同步 DEPLOY-COMPANY/EMPLOYEE/OPS/PRODUCT/module-map；0.6 **248/248**、`check` 通过；0.1 无新增 bug | **新增并关闭 GAP-094**（11 项漂移，见 §3.2） | 临时根 `D:\tmp\anc-audit` 演练：apply 146 文件 hash 全过 → 首次回滚删 146 → 再 apply → 改文件后回滚恢复旧版本；**生产机本轮未重装**，下次 `deploy.ps1 -Apply` 才会变 146 文件 |
 | 2026-11-10 09:20 | **部署入口改为访谈式**（用户要求：先问身份、再问信息、然后才装） | 0.4 部署：新增 `deploy-kickoff.ps1`（identity/prepare/collect/check）、`deploy-state` 加 `brief`/`answers`（公司 **13** 阶段、员工 **10** 阶段）、两份手册 §1 重写为访谈式、`ops.md` 契约与不变量同步；0.6 **248/248**（改 `deploy-state.test.ts` 的阶段断言）、`check` 通过 | **新增并关闭 GAP-095** | 四段输出实测：身份 4 选项、准备清单 6/5 项、问题集 4/6 项、check 用错误样例（id 大写、webhook 带路径、chatId 6 位）与正确样例各跑一次，errors/warnings 符合预期 |

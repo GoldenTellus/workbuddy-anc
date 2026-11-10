@@ -209,6 +209,26 @@ function Get-Questions([string]$s) {
                 )
                 blocks = '§10 org'
                 hint = 'userid 拿不准就先留空，装完让本人发一条消息，用 bind-member-identity 回填'
+            },
+            [pscustomobject]@{
+                id = 'executor.enabled'; ask = '部署完是否自动启用主干2 host（自动加入 WorkBuddy 工作区、发 TEST、建当天 host）'
+                who = 'installer'; required = $false; format = '是 / 否（默认是）'; blocks = '§8.5 executor（主干2）'
+                hint = '默认是：patch 重启后自动完成，部署的人不用手动加工作区。选否就只装文件，等人工开 host。'
+            },
+            [pscustomobject]@{
+                id = 'executor.workspace'; ask = 'host 会话的 WorkBuddy 工作区（绝对路径）'
+                who = 'installer'; required = $false; format = '绝对路径；留空=仓库 checkout 路径'; blocks = '§8.5 executor'
+                hint = '一般留空。要用独立空目录就在这写，例如 D:\anc\executor-ws。'
+            },
+            [pscustomobject]@{
+                id = 'executor.smoke'; ask = '部署后是否自动发 TEST 冒烟（在新建的 WorkBuddy 会话里）'
+                who = 'installer'; required = $false; format = '是 / 否（默认是）'; blocks = '§8.5 executor'
+                hint = 'TEST 只发在 WorkBuddy 冒烟会话，不打扰任何群。'
+            },
+            [pscustomobject]@{
+                id = 'executor.createHost'; ask = '部署后是否立即注册当天 host（部署完即可接单）'
+                who = 'installer'; required = $false; format = '是 / 否（默认是）'; blocks = '§8.5 executor'
+                hint = '默认是。当天 03:00 会因 host 已存在而幂等跳过，下一次真实日切是次日 03:00。'
             }
         )
     }

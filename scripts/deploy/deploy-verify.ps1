@@ -317,6 +317,29 @@ db.prepare('DELETE FROM tasks WHERE chat_id=?').run('$probeChat');
     } else {
         Add-Check 'tasks' 'PASS' ($tasks.Count.ToString() + ' 个任务齐全且全部 Ready/Running') ''
     }
+
+    # 主干2：部署后自动 host 的证据（工作区 + TEST + 当天 host）
+    $wakeFlag = Join-Path $Root 'data\wb-wake.flag'
+    $execState = Join-Path $Root 'data\executor-deploy.json'
+    $execFailed = Join-Path $Root 'data\deploy-executor-failed.json'
+    if (Test-Path $execState) {
+        try {
+            $es = [IO.File]::ReadAllText($execState, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+            if ($es.ok) {
+                Add-Check 'executor' 'PASS' ('ok：workspace=' + $es.workspace + ' conv=' + $es.conversation_id + ' host=' + $es.host_action + '/' + $es.host_id) ''
+            } else {
+                Add-Check 'executor' 'FAIL' ('executor-deploy.json ok=false：' + $es.error) '看 data\executor-deploy.log；修好后跑 tools\setup-executor.ps1 -Apply 重试'
+            }
+        } catch {
+            Add-Check 'executor' 'FAIL' ('executor-deploy.json 解析失败: ' + $_.Exception.Message) '删掉重跑 tools\setup-executor.ps1 -Apply'
+        }
+    } elseif (Test-Path $execFailed) {
+        Add-Check 'executor' 'FAIL' '部署后自动步骤重试超限（deploy-executor-failed.json）' '看 executor-deploy.log；修好后跑 tools\setup-executor.ps1 -Apply'
+    } elseif (Test-Path $wakeFlag) {
+        Add-Check 'executor' 'WARN' '已启用 wake bridge，但还没有 executor-deploy.json（部署后自动步骤可能未完成）' '等 patch-guard 一分钟；或跑 tools\setup-executor.ps1 -Apply'
+    } else {
+        Add-Check 'executor' 'SKIP' '未启用主干2 host（没有 wb-wake.flag）' '要启用：tools\setup-executor.ps1 -Apply'
+    }
 }
 
 # ── 员工侧 ──────────────────────────────────────────────────

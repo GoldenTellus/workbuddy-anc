@@ -58,7 +58,23 @@ if (Test-Path $StateFile) {
         if ($okMode -and $at -ge $main.CreationDate.AddSeconds(-15)) { $patched = $true }
     } catch { }
 }
-if ($patched) { exit 0 }
+if ($patched) {
+    # 部署后一次性动作：install-company 在 patch 前写了 marker，补丁生效后在这里完成
+    # 「自动加入 WorkBuddy 工作区 + 发 TEST 冒烟 + 注册当天 host」。失败会留 marker 重试。
+    $execMarker = "$env:ProgramData\anc\data\deploy-executor-pending.json"
+    if (Test-Path $execMarker) {
+        $setup = "$env:ProgramData\anc\tools\setup-executor.ps1"
+        if (-not (Test-Path $setup)) { $setup = "$env:ProgramData\anc\bin\setup-executor.ps1" }
+        if (Test-Path $setup) {
+            try {
+                $p = Start-Process -FilePath 'powershell.exe' `
+                    -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $setup, '-Apply', '-Marker') `
+                    -WindowStyle Hidden -PassThru -Wait
+            } catch { }
+        }
+    }
+    exit 0
+}
 
 # 有人正在对话（canary 两分钟内有更新）就别打断：等下一分钟的空档再重启
 $canaryFile = "$env:ProgramData\anc\data\patch-canary.json"

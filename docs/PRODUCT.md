@@ -26,6 +26,8 @@
 
 **三层是叠加的**：技能内部调 CLI，CLI 写 SQLite，计划任务读 SQLite 并做时间驱动的事。
 
+**部署完自动就绪（公司侧，主干 2）**：`install-company -Apply` 的 `patch` 重启后，`anc-patch-guard` 会自动把仓库目录加入 WorkBuddy 工作区（建会话发 `TEST`，bot 回「收到，TEST 正常」）、并在没有 active host 时注册当天 host。不用人在 WorkBuddy 里手动“添加工作区”。结果看 `%ProgramData%\anc\data\executor-deploy.json`（`ok:true`）。
+
 ---
 
 ## 2. ① 群里的对话能力 —— 9 个技能
@@ -346,9 +348,9 @@ issue
 | 进度台账 | `deploy-state.ps1 -Mark <step> -AsDone/-AsFailed` | **不要手改 JSON** |
 | 程序化测试 | `POST 127.0.0.1:17999/emit` | 模拟"有人 @ 了 bot"，需 `test-emit.flag` |
 
-**本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **138 个文件**；13 个计划任务已注册（12 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
+**本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **138 个文件**；14 个计划任务已注册（13 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
 
-**本机实测（2026-11-10，临时根演练）**：`deploy.ps1` **156 个文件**（比 138 多：`light/templates/vault/` 下 5 份协作模板、访谈入口 `deploy-kickoff.ps1`；同时 `patch/` 不再部署 `*.test.mjs`），hash 逐一对照通过；`-Rollback` 首次部署删净、升级回滚恢复旧版本均通过。**只部署运行件、不部署仓库**——`docs/`、`_research/`、`reference/`、`AGENTS.md` 一个都不进；脚本按用途分两处：`bin\` 21 个（任务动作 + 启动器 + 技能直接调的），`tools\` 25 个（装机、自检、重装、账号、演练、回归），`scripts\` 用显式清单，清单外不上生产。
+**本机实测（2026-11-10，临时根演练）**：`deploy.ps1` **158 个文件**（比 138 多：`light/templates/vault/` 下 5 份协作模板、访谈入口 `deploy-kickoff.ps1`；同时 `patch/` 不再部署 `*.test.mjs`），hash 逐一对照通过；`-Rollback` 首次部署删净、升级回滚恢复旧版本均通过。**只部署运行件、不部署仓库**——`docs/`、`_research/`、`reference/`、`AGENTS.md` 一个都不进；脚本按用途分两处：`bin\` 21 个（任务动作 + 启动器 + 技能直接调的），`tools\` 25 个（装机、自检、重装、账号、演练、回归），`scripts\` 用显式清单，清单外不上生产。
 
 **`prepare-wipe.ps1` 的回滚**：它把目录改名成 `*-prewipe-<时间戳>`，回滚就是把后缀去掉 + `register-tasks.ps1 -Apply` 重注册任务。
 

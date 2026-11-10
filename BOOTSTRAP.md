@@ -58,9 +58,23 @@ powershell -File scripts\deploy\deploy-kickoff.ps1 -Phase check   -Side company 
 powershell -File scripts\deploy\install-company.ps1 -VaultRoot D:\anc -Apply
 ```
 
-10 个阶段按固定顺序跑，每步自动记账，失败即停；续跑用 `-From <阶段>`，别从头重装。
+11 个阶段按固定顺序跑，每步自动记账，失败即停；续跑用 `-From <阶段>`，别从头重装。
 
 `patch` 排在最后，因为它会用启动器重启 WorkBuddy——当前会话会断，这是预期的。
+
+**重启后不需要任何人再做手工步骤**：`anc-patch-guard` 会在一分钟内完成主干 2 收尾——
+自动把仓库目录加入 WorkBuddy 工作区（用 wake bridge 在该目录建会话并发 `TEST`，bot 回「收到，TEST 正常」），
+然后自动注册当天的 host。结果看：
+
+```powershell
+Get-Content (Join-Path $env:ProgramData 'anc\data\executor-deploy.json') -Raw
+```
+
+`ok:true` 即部署完成。失败会自动重试，原因在 `data\executor-deploy.log`；人工修好后跑
+`tools\setup-executor.ps1 -Apply` 重试。不想自动启用：`-SkipExecutor`，或 answers 里 `executor.enabled=否`。
+
+> 默认工作区 = **仓库 checkout 的绝对路径**；想换独立空目录传 `-ExecutorWorkspace D:\anc\executor-ws`。
+> 不需要在 WorkBuddy UI 里手动“添加工作区”。
 
 ## 只有人能做，别硬扛
 
