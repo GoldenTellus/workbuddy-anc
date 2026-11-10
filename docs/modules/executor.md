@@ -63,6 +63,7 @@
 - `answerAttention` 幂等：同一人、同一动作、同一内容重复投递返回当前状态。
 - Report `question` → Ticket `waiting_answer`；human-slot Assignment 不计入 `max_attempts`（D43）。
 - `startAssignment` 只接受 Agent tool 返回的 subagent id；`main` / `self` / `company-bot` 一律拒绝，防止 Main 自己干活。
+- CLI `attention answer` 的确认动作必须由 `--source-msg` 绑定 `patch-in.log` 的真实入站消息；动作、发送人、聊天从该行重新推导，模型自述的 `--action/--userid/--text` 一律不采信（GAP-107）。
 - normal `claim` 即把 Ticket 从 `queued` 置 `working`（reserve，GAP-106）；`startAssignment` 再写 working 幂等；`interrupt`/`recover`/`sweep` 把 Ticket 放回 `queued`。claim 后只剩 `pending/running` Assignment，不存在“queued+pending assignment”中间态。
 - `closeTicket` / `expireTickets` 会把该 Ticket 还挂着的 `open`/`notified` Attention 置 `cancelled`/`expired`。
 

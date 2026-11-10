@@ -275,8 +275,8 @@ node src/service/cli.ts --json executor attention match `
 
 # 匹配到唯一一条且 allowed=true 才执行
 node src/service/cli.ts --json executor attention answer `
-  --code A12 --chat-id <chatid> --userid <userid> `
-  --action answer|approve|reject|ack [--text "<内容>"]
+  --code A12 --source-msg <消息前缀里的 msg= 值> `
+  # 动作由服务端从真实入站消息推导；不再传 --action/--userid/--text（GAP-107）
 
 # 恢复同一 Ticket 前取上下文
 node src/service/cli.ts --json executor attention context --ticket-id <ticket>

@@ -208,7 +208,7 @@ content     独立：只依赖 CLI 命令契约
 不涉及部署：
 
 ```powershell
-npm test                       # 249/249，不得少
+npm test                       # 252/252，不得少
 npm run check:modules          # 0 违规
 ```
 

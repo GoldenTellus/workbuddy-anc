@@ -3,6 +3,7 @@ import * as executor from '../../modules/executor/index.ts';
 import * as identity from '../../modules/identity/index.ts';
 import * as tasks from '../../modules/tasks/index.ts';
 import { matchAttention } from './attention-match.ts';
+import { verifyAttentionSource } from './attention-source.ts';
 import { notifyAttentionAsk, notifyDueAttention } from './attention-notify.ts';
 import type { CliContext } from './context.ts';
 
@@ -115,40 +116,46 @@ export default function attentionGroup(ctx: CliContext): void {
 
   if (sub === 'answer') {
     const a = attentionArg(ctx);
-    const chatId = str(args['chat-id']);
-    const userid = str(args.userid);
-    const action = str(args.action) as executor.AttentionAction;
-    if (!chatId) fail('缺少 --chat-id');
-    if (!userid) fail('缺少 --userid');
-    if (!action) fail('缺少 --action（answer/approve/reject/ack）');
-    const actor = identity.resolveActor(db, chatId, userid).person;
-    if (!actor) fail('找不到操作人；先 bind actor 或完成首次绑定');
-    const inChat = a.origin_chat_id === chatId || a.notified_chat_id === chatId;
-    if (!identity.isBoss(actor) && !inChat) fail('这条要在原会话确认，不能在其他群处理');
-    if (!identity.canConfirmAttention(actor, { requiredConfirmerId: a.required_confirmer_id, deptId: a.department_id })) {
-      const confirmer = identity.resolvePerson(db, a.required_confirmer_id);
-      fail('这条需要 ' + (confirmer?.name ?? a.required_confirmer_id) + ' 确认');
+    // GAP-107：确认动作必须绑定 patch-in.log 的真实入站消息。模型自述的
+    // chat/userid/action/text 一律不作为依据（群消息里的注入文本无法伪造动作词与发送人）。
+    const sourceMsg = str(args['source-msg']);
+    if (!sourceMsg) fail('缺少 --source-msg（必须传补丁前缀里的 msg=；确认动作只认真实入站消息）');
+    let verified: ReturnType<typeof verifyAttentionSource>;
+    try {
+      verified = verifyAttentionSource(db, ctx.dataDir, a, sourceMsg);
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e));
     }
-    const onBehalf = identity.isBoss(actor) && a.required_confirmer_id !== actor.person_id
-      ? a.required_confirmer_id
-      : null;
+    const declaredAction = str(args.action);
+    if (declaredAction && declaredAction !== verified.action) {
+      fail('声明的 --action 与入站消息推导不一致（消息 -> ' + verified.action + '）');
+    }
     const answered = executor.answerAttention(db, {
       attentionId: a.attention_id,
-      action,
-      answeredBy: actor.person_id,
-      text: str(args.text) || null,
-      onBehalfOf: onBehalf,
-      answerMessageId: str(args['message-id']) || null,
+      action: verified.action,
+      answeredBy: verified.actor.person_id,
+      text: verified.answerText ?? null,
+      onBehalfOf: identity.isBoss(verified.actor) && a.required_confirmer_id !== verified.actor.person_id
+        ? a.required_confirmer_id
+        : null,
+      answerMessageId: verified.line.msg,
     });
     let taskDone = false;
-    if ((action === 'approve' || action === 'ack') && answered.ticket_id) {
+    if ((verified.action === 'approve' || verified.action === 'ack') && answered.ticket_id) {
       const ticket = executor.getTicket(db, answered.ticket_id);
       if (ticket) {
-        tasks.completeTaskFromExecution(db, ticket.task_id, 'attention-' + action);
+        tasks.completeTaskFromExecution(db, ticket.task_id, 'attention-' + verified.action);
         taskDone = true;
       }
     }
-    out({ ok: true, attention: answered, on_behalf_of: onBehalf, task_done: taskDone });
+    out({
+      ok: true,
+      attention: answered,
+      on_behalf_of: answered.on_behalf_of,
+      task_done: taskDone,
+      source_msg: verified.line.msg,
+      action_from_message: verified.action,
+    });
     return;
   }
 

@@ -87,7 +87,7 @@ npm run service -- --json executor attention create --purpose answer --question 
 npm run service -- --json executor attention list [--status open] [--confirmer <person-id>] [--ticket-id <id>]
 npm run service -- --json executor attention show --id <id> | --code A12
 npm run service -- --json executor attention match --chat-id <chatid> --userid <userid> --text "<消息>" [--quote-text "<引用文本>"]
-npm run service -- --json executor attention answer --code A12 --chat-id <chatid> --userid <userid> --action approve|reject|answer|ack [--text "<内容>"]
+npm run service -- --json executor attention answer --code A12 --source-msg <patch-in.log 的 msg= 值>   # 动作/发送人/正文由服务端从真实入站消息核验；不再接受 --action/--userid/--text（GAP-107）
 npm run service -- --json executor attention cancel --code A12 [--reason "<原因>"]
 npm run service -- --json executor attention context --ticket-id <id>
 npm run service -- --json executor attention sweep [--apply] [--now "<iso>"]
@@ -185,7 +185,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 249/249 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 252/252 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

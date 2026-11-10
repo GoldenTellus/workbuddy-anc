@@ -21,7 +21,7 @@
 - 主干 2 的 D45 偏差修正：wake 定向唤醒**已有 daily host**，不再每个 Ticket 新建 host；`/new` 只用于 03:00 日切。
 - GAP-079（`msgId`/引用文本增强）、GAP-080（通知 @ 真 userid）补齐；8h/24h 实际投递补测。
 - 双机全量回归矩阵全部通过，或有**书面例外**并登记 GAP；不能拿口述/单测冒充真实验收。
-- `npm test` 全绿（当前 249/249，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
+- `npm test` 全绿（当前 252/252，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
 - `STATUS` / `FUTURE-DESIGN` / `PLAN` / 模块契约 / `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `OPS` / `PRODUCT` / `DECISIONS` 同步。
 - 员工 bot 仍是旧 1.0 的部分，明确记为**主干 4 缺口**，不伪装成通过。
 
@@ -29,7 +29,7 @@
 
 ```text
 主干：0 / 1 / 2 / 3 已收口（主干 2 ACC-16、主干 3 ACC-13/14/15 真实群通过）
-测试：249 / 249
+测试：252 / 252
 模块：13 / 13 current
 CLI：17 组
 技能：8
@@ -201,7 +201,7 @@ open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验�
 ## 8. 测试与门禁
 
 ```text
-npm test                  # 当前 249/249；新增项继续加
+npm test                  # 当前 252/252；新增项继续加
 npm run check             # modules + docs
 npm run coverage
 node scripts/checks/check-public.mjs
@@ -242,4 +242,5 @@ deploy-verify.ps1
 | 2026-11-10 | ACC-18 真实群补丁/引用/@ 通过 | 真实群 5 条入站带 `msg=`；引用 A11/A12 只回「可以」→ approved；`A13可以` 短号 → approved；老板 `mention_userid` 配置并实发 mentions 通知 | `STATUS` §1.10/§3.5；`%ProgramData%\anc\stage\batch-20261110\dev01\acc18\` | 测试 Attention/outbox 已清理；剩 ACC-17/20/21 |
 | 2026-11-10 | 主干 2 D46 后复验 | EXE-01 真实 Main 群链路（Task#20 → Ticket → 定向 wake → subagent `trunk2-accept.md` → A11 → done）；EXE-04 两次真实重启恢复（interrupted → 同会话新 host → attempt2 完成）；EXE-02/03 复用 70/70；EXE-05 机制已验证 | `STATUS` §1.11；`%ProgramData%\anc\stage\batch-20261110\trunk2-accept\EVIDENCE.md` | 发现 GAP-106（wake 重复唤醒窗口）open；真实 03:00 跨夜归 ACC-20 |
 | 2026-11-10 | ACC-20 日切补测（模拟 03:00） | `new-host.ps1 -Now` 触发：新会话 `827caa80…`、新 host `h-435a1107…`（11-11）、旧 host closing；旧任务切后仍 start/report；新任务 wake 定向新 host 完成 | `STATUS` §1.13；`%ProgramData%\anc\stage\batch-20261110\acc20\` | 未改系统时钟；明早真实 03:00 幂等跳过，下一次真实日切 11-12 |
+| 2026-11-10 | ACC-21 安全回归（注入→误批→修复→复测） | 第一轮注入让 bot 直接批准 A11（GAP-107，S1）；修复 `attention answer` 绑定 `--source-msg` + 服务端重推导；复测注入/伪短号/非确认人均失效、老板真实消息才通过 | `STATUS` §1.14/§3.5；`%ProgramData%\anc\stage\batch-20261110\acc21\` | 全量 252/252；CLI/技能/persona 已部署；ACC-21 达成 |
 | 2026-11-10 | GAP-106 修复 + 部署自动化 rollout | normal `claim` 即置 Ticket working（D50）；新增回归测试（249/249）；新清单 156 文件部署、14 任务注册（含 `anc-elevate` SYSTEM）、doctor FAIL=0 WARN=3、deploy-verify PASS（1 SKIP）、部署版 CLI claim 冒烟通过 | `STATUS` §1.12；`%ProgramData%\anc\stage\batch-20261110\rollout-20261110-1420\` | 部署自动化 rollout 完成；`deploy-state` 11/13（brief/answers 存量 N/A） |
