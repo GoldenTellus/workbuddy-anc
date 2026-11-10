@@ -122,7 +122,7 @@
 
 | 文档 | 内容 | 现在由谁取代 |
 |---|---|---|
-| [archive/history/PLAN-1.0.md](./archive/history/PLAN-1.0.md) | 1.0 产品目标与 DoD | `FUTURE-DESIGN` + `PRODUCT` |
+| [archive/history/PLAN-1.0.md](./archive/history/PLAN-1.0.md) | 历史产品目标与 DoD | `FUTURE-DESIGN` + `PRODUCT` |
 | [archive/history/REFACTOR-ROADMAP.md](./archive/history/REFACTOR-ROADMAP.md) | P0–P7 模块化重构 | `FUTURE-DESIGN` 的完成状态 |
 | [archive/history/ACCEPTANCE.md](./archive/history/ACCEPTANCE.md) | V1 40 条验收矩阵 | `STATUS` |
 | [archive/history/VERIFY.md](./archive/history/VERIFY.md) | 87 节实测记录 | `STATUS` 的证据链接 |

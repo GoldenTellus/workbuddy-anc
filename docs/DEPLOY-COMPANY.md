@@ -374,7 +374,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy.ps1 -S
 
 **这一步做什么**：把**运行件**复制到 `%ProgramData%\anc\`，落盘前备份、落盘后**逐文件对拍 hash**、任一失败**整体回滚**。
 
-> **只部署运行件，不部署仓库。** `docs/`、`_research/`、`reference/`、`AGENTS.md`、`SPEC.md`、`package.json` 这些开发维护内容一个都不进来；`src/**/*.test.ts` 和 `patch/*.test.mjs` 也被排除。现在一共 158 个文件。
+> **只部署运行件，不部署仓库。** `docs/`、`_research/`、`reference/`、`AGENTS.md`、`reference/upstream/SPEC.md`、`package.json` 这些开发维护内容一个都不进来；`src/**/*.test.ts` 和 `patch/*.test.mjs` 也被排除。现在一共 158 个文件。
 
 落盘分两处，看目录名就知道哪些是「系统在跑」、哪些是「工具」：
 

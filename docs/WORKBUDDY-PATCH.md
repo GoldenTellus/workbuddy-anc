@@ -96,7 +96,7 @@ content = "[anc:chat=<chatid> from=<userid> msg=<msgId> quote=<引用文本>] " 
   - `POST /new {prompt, workspace?, conversationId?, title?}`：`wb.conversations.create()`（可指定会话 id/工作区/标题）建任务会话 → `sendPrompt()` 发第一条 → 返回真实 `conversationId`；**只用于 03:00 日切/兼容**；
   - `POST /wake {prompt, conversationId?}`：有 `conversationId` → `wb.conversations.get(id).sendPrompt([{type:'text',text}])` 定向发 prompt，**不新建会话、不切可见窗口、不点 DOM**；无 `conversationId` → 旧 composer 注入（composer 非空时拒绝）；
   - `GET /health` → `{ok,pid,port,bridge:"2.0"}`；
-  - `window.wb` 不可用（升级/异常）时自动退回 1.0 的 DOM 流程：`/new` 点“新建任务”→选 workspace→输入→发送；`/wake` 注入当前 composer。日志写 `wb-wake.log`（`new ok via=wb` / `wake ok via=wb` / `FAILED ...`）。
+  - `window.wb` 不可用（升级/异常）时自动退回旧 DOM 流程：`/new` 点“新建任务”→选 workspace→输入→发送；`/wake` 注入当前 composer。日志写 `wb-wake.log`（`new ok via=wb` / `wake ok via=wb` / `FAILED ...`）。
 - 不覆盖人的草稿、不执行任意调用方 JS；token 鉴权 + loopback。
 - `anc-executor-wake` 每分钟检查 queued，只有有任务才调用；bridge 未启用时静默；每次动作写 `executor-wake.log`。
 - **默认关闭**；它是“自动兜底”，不是无条件自动。

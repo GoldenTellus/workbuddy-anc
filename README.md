@@ -136,7 +136,7 @@ Windows 主机（7×24）
   ├─ vault 共享区（全员只读，SMB）/ 内部区（只有公司侧读写），各是一个 git 目录
   └─ inbox：公司 bot 投递 → 入库进程校验后写入
 
-员工电脑：员工 bot（WorkBuddy），只服务本人，只读 vault 共享区（旧 1.0；主干 4 设计改为不查公司库，未实现）
+员工电脑：员工 bot（WorkBuddy），只服务本人，只读 vault 共享区（旧员工侧实现；主干 4 设计改为不查公司库，未实现）
 ```
 
 群/人/角色的真相在 `people` / `groups` / `manager_scopes`；`chat_bindings` 只保留为员工群的兼容层。**未识别/未绑定的群不猜人、不退回默认群。**
@@ -149,7 +149,7 @@ Windows 主机（7×24）
 
 - 13 个模块全部 `current`；`npm test` **252/252**；`npm run check`（模块边界 + 文档检查）通过。
 - BATCH-20261110 公司侧收口完成（仅 ACC-17 按 D48 书面例外）；主干 0/1/2/3 已收口、主干 4 未做；测试文件 29、覆盖率 88.97/79.03/93.95、脚本 66、技能 9、计划任务 14、部署清单 158、doctor 35 项、D46–D52 已登记
-- 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
+- 历史计划、验收、实测已归档：见 [历史计划](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。
 
@@ -170,7 +170,7 @@ Windows 主机（7×24）
 | 上游 4 份原样文档什么时候才看 | [docs/UPSTREAM.md](./docs/UPSTREAM.md) |
 | **仓库导航 / 现状数字 / VERIFY 检索** | **[docs/INDEX.md](./docs/INDEX.md)**、[docs/archive/history/VERIFY-INDEX.md](./docs/archive/history/VERIFY-INDEX.md) |
 
-上游原文（仅作参考）：[SPEC.md](./SPEC.md)、[reference/upstream/originals/M1-DESIGN.md](./reference/upstream/originals/M1-DESIGN.md)、[reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md](./reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md)、[reference/upstream/originals/LIGHT-MVP.md](./reference/upstream/originals/LIGHT-MVP.md)、[reference/upstream/originals/RESEARCH.md](./reference/upstream/originals/RESEARCH.md)。
+上游原文（仅作参考）：[SPEC.md](./reference/upstream/SPEC.md)、[reference/upstream/originals/M1-DESIGN.md](./reference/upstream/originals/M1-DESIGN.md)、[reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md](./reference/upstream/originals/LESSONS-MANUFACTURING-PILOT.md)、[reference/upstream/originals/LIGHT-MVP.md](./reference/upstream/originals/LIGHT-MVP.md)、[reference/upstream/originals/RESEARCH.md](./reference/upstream/originals/RESEARCH.md)。
 
 ## 开发约定
 
