@@ -13,10 +13,10 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- 主干 0/1/2/3 已收口（2026-11-10）；本批 BATCH-20261110 公司侧完成：ACC-16/18/19/20/21/22 达成，仅 ACC-17（员工侧双机全量）按 D48 书面例外；员工 bot 仍是旧员工侧实现、主干 4 未实现；决策 D46–D52 已登记；主干 0 复检开放 GAP=0
+- 主干 1/2/3 已收口（2026-11-10）；主干 0 是常驻活文档，当前正式生产部署批次进行中，见 [TRUNK-0.md](./docs/TRUNK-0.md)。BATCH-20261110 公司侧完成：ACC-16/18/19/20/21/22 达成，仅 ACC-17（员工侧双机全量）按 D48 书面例外；员工 bot 仍是旧员工侧实现、主干 4 未实现；决策 D46–D52 已登记
 - `npm test` **252/252**；覆盖率 **88.97 / 79.03 / 93.95**（行/分支/函数，2026-11-10 实测）；`npm run check`（`check:modules:deep` + `check:docs`）通过；`check-public` 零输出。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
-- 历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
+- 历史计划、路线图、验收、实测已归档；不要再把 `PLAN-LEGACY` 当现行计划。
 
 **现行入口**：
 
@@ -37,7 +37,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 | 文件 | 内容 |
 |---|---|
 | **`docs/ARCHITECTURE.md`** | 13 个模块、依赖规则、源码/部署布局；`module-map.json` + `check:modules` 可执行 |
-| **`docs/FUTURE-DESIGN.md`** | 未来设计树：主干/分支/叶子；主干 0 是常驻清债 |
+| **`docs/FUTURE-DESIGN.md`** | 未来设计树：从主干 1 开始；主干 0 见 TRUNK-0 |
 | `docs/PLAN.md` | 当前主干的执行计划；一次只写一个主干 |
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险；`GAP-###` 总账 |
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单与审计表 |
@@ -76,7 +76,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 - **模块边界**：新代码按 `ARCHITECTURE` 归块；跨模块只 import 对方 `index.ts`；不直接读别人的表。改完跑 `npm run check:modules:deep`。
 - **主干流程**：从 `FUTURE-DESIGN` 选主干 → 写 `PLAN` → 做 → `STATUS` 记证据 → 按 `DOC-SYNC` 全量核对文档 → 标 `FUTURE-DESIGN` → 归档 PLAN 快照。
 - **设计反哺**：未来主干如果纠正旧行为/旧契约，必须在 `STATUS` §3.3 登记 `GAP`（旧行为/目标行为/影响文件），并同步改受影响的现状文档；不能在新主干里静默改掉旧行为。
-- **主干 0 复检**：每次讨论形成结论、或完成一个任务/主干后，逐项看 `FUTURE-DESIGN` 0.1–0.8，有新增/关闭就更新 `STATUS` 的 `GAP`，没有变化也在 `STATUS` §3.4 留一行“已核对无变化”。
+- **主干 0 复检**：每次讨论形成结论、或完成一个任务/主干后，逐项看 [TRUNK-0.md](./docs/TRUNK-0.md) 0.1–0.8，有新增/关闭就更新 `STATUS` 的 `GAP`，没有变化也在 `STATUS` §3.4 留一行“已核对无变化”。
 - **真实环境验收不阻塞**：需要真实群、凭据、公司主机或现场动作的，登记到 `STATUS` §3.5 的 ACC 批次，继续做能做的；统一收尾时一次跑，通过前主干保持 🟡 待验收。
 - **完成即更新**：任何完成都按 `STATUS` §3.6 更新 `GAP`、`FUTURE-DESIGN` 分支/主干、`PLAN`、模块契约/审计行和测试数；只改代码或文档，不算完成。
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。

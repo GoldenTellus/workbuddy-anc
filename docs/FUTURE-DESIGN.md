@@ -226,7 +226,7 @@ flowchart TB
 | 取消 | 任何 | 本部门 | 自己的 |
 | 代确认 `on_behalf_of` | ✅ | ❌ | ❌ |
 
-### 未定项（叶子，不计入分支）
+### 未定项（主干 1 的叶子，不计入分支）
 
 - 老板 1:1：D32 已定用真 1:1；私有群 fallback 不做。
 - 企微实际群成员对账：本地 org→DB 同步已完成；ACC-08 采用人工对账书面例外（D36），API 对账不做。
@@ -613,7 +613,7 @@ Report 到 Ticket 的默认映射：`progress` 不改状态；`waiting` → `wai
 - 审计字段：`actor`、`at`、`from_status`、`to_status`、`reason`、`effect_key`、`session_id`。
 - 与 `5.3 失败、恢复、审计` 的关系：5.3 是横切摘要，本节是 Executor 的具体契约。
 
-### 未定项（叶子，不计入分支）
+### 未定项（主干 2 的叶子，不计入分支）
 
 - WorkBuddy 怎么启动/恢复/中断任务 subagent；host 会话 id、任务目录、并发、超时怎么管（6.2 #6）。
 - 任务工作区 C 盘具体路径、命名、清理、备份、权限、产物保留（6.2 #7）。
@@ -731,7 +731,7 @@ created_at, answered_at, expires_at
 
 如果第 3 步发现“报价缺一个成本数，只有张三知道”，subagent 报 `question` → Ticket `waiting_answer`；Main 建 Attention（purpose=answer、`required_confirmer`=张三，短号 `A13`），发到员工群；张三回 `@公司bot A13 成本是 …` → Attention `answered`；Main 用 `executor claim --slot human --ticket-id <id>` 定向领取 → `start` → 同一 Ticket 继续，不重开任务。
 
-### 未定项（叶子，不计入分支）
+### 未定项（主干 3 的叶子，不计入分支）
 
 - 隐私分级标注：谁给 vault/任务打公司级/部门级/个人级/内部级标签；部门级全员可见后怎么识别敏感数据。
 - 哪些任务类型必须 `require_ack`；没回执多久升级、升级给谁。
@@ -780,7 +780,7 @@ created_at, answered_at, expires_at
 - 员工电脑离线时，handoff/任务怎么排队、怎么恢复？
 - 本地文件权限、工作目录边界、日志与清理。
 
-### 未定项（叶子，不计入分支）
+### 未定项（主干 4 的叶子，不计入分支）
 
 - 本地执行范围与离线行为。
 - `anc-dayend` 是否保留。

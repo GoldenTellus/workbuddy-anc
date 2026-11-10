@@ -54,7 +54,7 @@ FUTURE-DESIGN
 
 - [ ] **STATUS**：完成项写进“已完成”，带证据（提交、测试、部署、实测）。
 - [ ] **FUTURE-DESIGN**：先标该主干的**所有分支**，再标主干；状态必须有 STATUS 证据。
-- [ ] **PLAN**：任务勾完；快照到 `archive/plans/TRUNK-<N>-<YYYYMMDD>.md`；本文件切下一个主干。
+- [ ] **PLAN**：任务勾完；快照到 `archive/completed/TRUNK-<N>-<YYYYMMDD>.md`；本文件切下一个主干。
 - [ ] **PRODUCT**：能力/限制有没有变？
 - [ ] **ARCHITECTURE**：模块、依赖、源码/部署布局有没有变？
 - [ ] **modules/***：契约、不变量、失败模式、测试有没有变？
@@ -65,7 +65,7 @@ FUTURE-DESIGN
 - [ ] **UPSTREAM**：有没有新来源、许可证、拷贝代码需要登记？
 - [ ] **设计反哺**：未来主干纠正了哪些旧行为/旧契约？是否已在 STATUS §3.3 登记，并同步改受影响的现状文档？
 - [ ] **完成即更新**：`STATUS` 的 `GAP` / 分支进度 / `PLAN` / 模块契约 / 审计行 / 测试数都改了吗？只改代码不算完成。
-- [ ] **主干 0 复检**：0.1–0.8 有没有新增/关闭的缺口？在 STATUS §3.4 留一行；没有变化也写“已核对无变化”。
+- [ ] **主干 0 复检**：看 [TRUNK-0.md](./TRUNK-0.md) 0.1–0.8 有没有新增/关闭的缺口？在 STATUS §3.4 留一行；没有变化也写“已核对无变化”。
 - [ ] **真实环境验收**：需要真实群/凭据/主机的已登记到 STATUS §3.5 的 ACC 批次；本地测试不能替代。
 - [ ] **STATUS §4 文档同步审计**：每份文档标 `✅ 已更新 / ◎ 已核对无变化 / — 不适用`。
 - [ ] `npm run check`：`check:modules:deep` + `check:docs` 全过。
@@ -88,7 +88,7 @@ FUTURE-DESIGN
 | `src/interfaces` | `LOCAL-SERVICE`、`ARCHITECTURE`、`modules/interfaces.md` |
 | `scripts/` 下任一域（deploy / doctor / selfheal / backup / rebuild / accounts / devbot / workbuddy / executor / elevate / launch / workbuddy-patch / checks / anc-bind / verify，共 15 域） | `OPS`、`REBUILD`、`DEPLOY-*`、`RELEASE-CHECKLIST`；入口变化另查 `BOOTSTRAP.md` |
 | 新表/迁移 | `ARCHITECTURE`、相关 `modules/*`、`STATUS`（数据/迁移缺口） |
-| 未来主干修正现状 | `FUTURE-DESIGN` 主干 0.7、`STATUS` §3.3、受影响的 `PRODUCT` / `ARCHITECTURE` / 模块 / 接口 / 运维文档；行为改变时补 `DECISIONS` |
+| 未来主干修正现状 | `TRUNK-0` 0.7 / `STATUS` §3.3、受影响的 `PRODUCT` / `ARCHITECTURE` / 模块 / 接口 / 运维文档；行为改变时补 `DECISIONS` |
 | 新上游/拷贝代码 | `UPSTREAM` §7、`THIRD_PARTY_NOTICES.md`、`DECISIONS` |
 | 只改文档 | `INDEX`、`doc-map.json`、`check:docs` |
 | 新增根目录文档 / 部署入口 | `doc-map.json`、`INDEX.md`、`BOOTSTRAP.md`、两份 `DEPLOY-*` §1、`RELEASE-CHECKLIST` 门禁表 |

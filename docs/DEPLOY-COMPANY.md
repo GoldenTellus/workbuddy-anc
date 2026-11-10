@@ -37,7 +37,7 @@
 
 ---
 
-## 0. 你要装出什么
+## 0. 公司侧装出什么
 
 **整个部署分三段，不是一口气 11 步**：
 
@@ -107,7 +107,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 
 **等他说做完再往下。** 这一步的唯一目的就是把串行打断改成一次并行。
 
-### 1.3 收信息
+### 1.3 公司侧收信息
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase collect -Side company -Json

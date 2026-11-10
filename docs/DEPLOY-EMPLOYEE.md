@@ -37,7 +37,7 @@
 
 ---
 
-## 0. 你要装出什么
+## 0. 员工侧装出什么
 
 **整个部署分三段，不是一口气 8 步**：
 
@@ -88,7 +88,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 
 五项：确认不是共用电脑、确认 WorkBuddy 已登录、抄群 chatId、拿到自己的 userid、问公司侧要共享区路径。每项都带「怎么算做好了」。
 
-### 1.3 收信息
+### 1.3 员工侧收信息
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase collect -Side employee -Json

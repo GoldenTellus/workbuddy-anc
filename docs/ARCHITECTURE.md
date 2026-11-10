@@ -4,7 +4,7 @@
 
 > **读者**：要改这个项目的人 / agent。
 > **状态**：2026-11-06 立项。fork 阶段（对齐上游、证明能跑）已收口；本文定义"从现状往下走"的模块划分。**最后整理：2026-11-10（BATCH-20261110 后；主干 0/1/2/3 已收口）**
-> **关系**：本文管**现在代码怎么分、边界在哪**；未来方向看 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)；当前主干看 [PLAN.md](./PLAN.md)；完成/缺口看 [STATUS.md](./STATUS.md)。旧 `PLAN-1.0` / `REFACTOR-ROADMAP` / `ACCEPTANCE` / `VERIFY` 已进 [archive/history/](./archive/history/)，只读。
+> **关系**：本文管**现在代码怎么分、边界在哪**；未来方向看 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)；当前主干看 [PLAN.md](./PLAN.md)；完成/缺口看 [STATUS.md](./STATUS.md)。旧 `PLAN-LEGACY` / `REFACTOR-ROADMAP` / `ACCEPTANCE` / `VERIFY` 已进 [archive/history/](./archive/history/)，只读。
 > **可执行部分**：`module-map.json` + `scripts/checks/check-modules.mjs`。边界不是口号，能跑出报告、能进 CI。
 
 ---

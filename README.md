@@ -149,7 +149,7 @@ Windows 主机（7×24）
 
 - 13 个模块全部 `current`；`npm test` **252/252**；`npm run check`（模块边界 + 文档检查）通过。
 - BATCH-20261110 公司侧收口完成（仅 ACC-17 按 D48 书面例外）；主干 0/1/2/3 已收口、主干 4 未做；测试文件 29、覆盖率 88.97/79.03/93.95、脚本 66、技能 9、计划任务 14、部署清单 158、doctor 35 项、D46–D52 已登记
-- 历史计划、验收、实测已归档：见 [历史计划](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
+- 历史计划、验收、实测已归档：见 [历史计划](./docs/archive/history/PLAN-LEGACY.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。
 

@@ -6,7 +6,7 @@
 
 > **历史基线（2026-11-06）**：本文件记录当时的实测/计划，行号、文件路径、脚本目录可能已随 P1–P5 迁移失效；现行契约以 [ARCHITECTURE.md](./ARCHITECTURE.md)、[module-map.json](../module-map.json) 和 [modules/](./modules/) 为准。
 
-版本:0.8(2026-11-10)。0.8 记 D46–D52(BATCH-20261110 收口:单一日对话 / mention_userid / 双机书面例外 / 备份 schema / claim reserve / -Now 补测 / 确认绑定真实入站消息);0.7 记 D27–D45(四类群 + 三角色、主干 2/3 收口);0.6 加 D22–D23(后台长任务形态、A2A 默认员工转发),阶段 A 收口;0.5 加 D19–D21(资料不上云、不放宽 @、复核保留);里程碑见 [PLAN.md](./archive/history/PLAN-1.0.md) 2.0(阶段 A/R/H/C/V)。0.4 记下企业版与个人版实测结果一样(D18)。0.3 取消「不修改、不封装 WorkBuddy」的禁令,改为裁决 D16 + §11 改动台账。0.2 按 [REUSE-MAP.md](./archive/history/REUSE-MAP.md) §5 补齐了复用上游之后的设计。**状态:主干 0/1/2/3 已收口;本批 BATCH-20261110 公司侧完成(仅 ACC-17 按 D48 书面例外);主干 4 未做。历史实测见 `archive/history/`,现行裁决见 D27–D52。**
+版本:0.8(2026-11-10)。0.8 记 D46–D52(BATCH-20261110 收口:单一日对话 / mention_userid / 双机书面例外 / 备份 schema / claim reserve / -Now 补测 / 确认绑定真实入站消息);0.7 记 D27–D45(四类群 + 三角色、主干 2/3 收口);0.6 加 D22–D23(后台长任务形态、A2A 默认员工转发),阶段 A 收口;0.5 加 D19–D21(资料不上云、不放宽 @、复核保留);里程碑见 [PLAN.md](./archive/history/PLAN-LEGACY.md) 2.0(阶段 A/R/H/C/V)。0.4 记下企业版与个人版实测结果一样(D18)。0.3 取消「不修改、不封装 WorkBuddy」的禁令,改为裁决 D16 + §11 改动台账。0.2 按 [REUSE-MAP.md](./archive/history/REUSE-MAP.md) §5 补齐了复用上游之后的设计。**状态:主干 0/1/2/3 已收口;本批 BATCH-20261110 公司侧完成(仅 ACC-17 按 D48 书面例外);主干 4 未做。历史实测见 `archive/history/`,现行裁决见 D27–D52。**
 
 本库基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2` 二次开发。只有 `../reference/upstream/SPEC.md` 与 `reference/upstream/` 保留上游原文(Mac mini + cc-connect + Claude Code,仅作参考);`README.md` 是本库现行入口、`CLAUDE.md` 只是 [AGENTS.md](../AGENTS.md) 的短指针。**与本文冲突时以现行裁决 D27–D52 和 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 为准**,早期改写列在 §9。
 
@@ -323,7 +323,7 @@ T16 的口径:IM 读取工具被拦只说明工具不可用,不算 T16 不通过
 
 ## 9. 待定事项
 
-- ~~公司资料能否上云~~:**已裁决 D19(2026-11-02):资料不上云。** WorkBuddy 的推理在腾讯云上完成,所以「不上云」= 任何 vault 正文都不作为对话内容提交给模型;公司 bot 只回答路径、标题与本地脚本生成的摘要,需要正文时由人在本机打开文件。落地与验收见 [PLAN.md](./archive/history/PLAN-1.0.md) C13。
+- ~~公司资料能否上云~~:**已裁决 D19(2026-11-02):资料不上云。** WorkBuddy 的推理在腾讯云上完成,所以「不上云」= 任何 vault 正文都不作为对话内容提交给模型;公司 bot 只回答路径、标题与本地脚本生成的摘要,需要正文时由人在本机打开文件。落地与验收见 [PLAN.md](./archive/history/PLAN-LEGACY.md) C13。
 - ~~员工访谈 bot 与后台长任务的具体设计~~(依赖 T6):**形态已裁决 D22**——执行器仍是 WorkBuddy,小服务只管状态机;访谈作为一类后台任务沿用该形态。
 - 按本文改写上游的 `../reference/upstream/SPEC.md`(README 已重写;SPEC 仍是上游原文)。
 - ~~公司 bot 在员工群里是否放宽到不用 @~~(T7 已通过):**已裁决 D20(2026-11-02):不放宽。**

@@ -91,7 +91,7 @@ webhook_file: hook-dept-sales.txt
 - **缺 userid**：该成员不出个人 persona，只告警（`groups.json` 里仍列出，`userid: null`），补上后重渲染；
 - **落盘**：先备份 `.bak-<毫秒时间戳>`（同名不覆盖、每个产物只留最近 10 份）→ 临时文件 → 读回对拍 sha256 → 重命名（被占用时重试 5 次）；`groups.json` 与 `manifest.json` 同样原子写。
 
-## 用法
+### 渲染用法
 
 ```powershell
 node src\render\cli.ts render --org org.example --out %TEMP%\anc-render
@@ -136,7 +136,7 @@ node src\render\cli.ts verify  --home %USERPROFILE%
 - `verify` 对拍记录：被手改或缺失即列出并以退出码 1 结束；
 - 名片只放触发词与安全底线，正文留在共享区 `skills/`。
 
-## 已实现 / 未实现
+### 渲染已实现 / 未实现
 
 - 已实现：org 解析与校验（成员 id/文本字段/webhook 文件名）、公司/个人 persona 渲染、groups.json（members + 四类 groups）、指纹、长度闸门、原子写与备份（名字不撞、保留 10 份）、手改检测、个人接入包与技能名片（`--adopt` 闸门、`verify` 对拍）、**整组事务部署与回滚**（`deploy` / `rollback`，失败整体还原）；
 - 未实现：渲染器自动把公司 persona 装到 WorkBuddy（仍由 `deploy-persona.ps1` 复制）；四类群的真实成员 API 校验。
@@ -194,7 +194,7 @@ inbox\pending\<batch_id>\
 - 每个文件先写同目录临时文件再改名，进程中途退出不会留下写了一半的目标；
 - 中途失败按反序回滚（删新建的文件与目录、恢复被覆盖的文件）；**回滚本身失败时报 `ROLLBACK_INCOMPLETE`**，错误信息列出没恢复的文件，vault 需人工检查。
 
-## 用法
+### 入库用法
 
 ```powershell
 node src\ingest\cli.ts apply --batch D:\anc\inbox\pending\20261031-001 --shared D:\anc\vault-shared --inbox D:\anc\inbox
@@ -220,7 +220,7 @@ node src\ingest\cli.ts apply --batch D:\anc\inbox\pending\20261031-001 --shared 
 
 失败批次转移到 `failed\` 本身失败时，错误信息会注明「批次仍在 pending」，避免调度反复重试同一个坏批次而无人察觉。
 
-## 已实现 / 未实现
+### 入库已实现 / 未实现
 
 - 已实现：批次读取、全部校验（含 `.git`、短名、非法字符、重复目标、链接越界）、vault 级锁、锁内复核、事务写入（临时文件 + 改名，失败回滚并报告回滚失败）、只提交本批文件的 git 提交（关 hooks）、失败批次进 `inbox\failed\` 并写 `reason.txt`、`added/modified/original` 结果；
 - 未实现：写入前的 journal（进程被强杀或断电后自动恢复 vault；目前靠临时文件 + 改名把残留降到最低，回滚失败会明确报 `ROLLBACK_INCOMPLETE`）、管理员复核的交互界面（现在是人工看 diff）、`reproject` 投影。
