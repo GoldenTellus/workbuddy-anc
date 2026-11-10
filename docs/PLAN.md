@@ -1,7 +1,7 @@
 # PLAN — 当前批次：收口补齐 + 双机全量回归
 
 > 类型：执行（当前批次）
-> 状态：**公司侧收口完成（2026-11-10）；双机/真实群项待 ACC-17/18/20/21（D48 书面例外）**
+> 状态：**公司侧收口完成（2026-11-10）；ACC-18 真实群通过；剩 ACC-17/20/21（D48 书面例外）**
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 4 / 横切；[STATUS.md](./STATUS.md) §3.3b / §3.5
 > 账本：[STATUS.md](./STATUS.md)
 > 决策：[DECISIONS.md](./DECISIONS.md) D40–D45；GAP-079/080/084/087
@@ -72,10 +72,10 @@ open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验�
 
 **本批结论（2026-11-10）**：
 - DEV-01 ✅ 单一日对话（D46）：wake bridge 2.0 定向 host，真实 3 Ticket / 1 host / 3 subagent；`/new` 只用于 03:00。证据 `STATUS` §1.10。
-- DEV-02 ✅ GAP-079：补丁注入 `msg=`/`quote=`，match 引用兜底；真实群样本转 ACC-18。
-- DEV-03 ✅ GAP-080：`mention_userid` + webhook `mentioned_list` + 回退；真实“收到 @”转 ACC-18。
+- DEV-02 ✅ GAP-079：补丁注入 `msg=`/`quote=`，match 引用兜底；**真实群引用「可以」不带短号 approved（ACC-18）**。
+- DEV-03 ✅ GAP-080：`mention_userid` + webhook `mentioned_list` + 回退；老板账号已配并实发带 mentions 通知；**员工侧真 @ 归 ACC-17**。
 - DEV-04 ✅ 8h/24h 实际投递：A12/A13 sweep + outbox sent=2 + webhook errcode 0（ACC-19 达成）。
-- DEV-05 ✅（公司侧机器证据）/ ACC：矩阵 70/70×2、ING 16/16、门禁全绿；员工侧/真实群/03:00 → ACC-17/18/20/21（D48）。
+- DEV-05 ✅（公司侧机器证据）/ ACC：矩阵 70/70×2、ING 16/16、门禁全绿；员工侧/03:00/真实群安全 → ACC-17/20/21（D48）。
 - DEV-06 记录：员工 bot 仍是旧 1.0，主干 4 未实现；本批不伪装通过（ACC-17）。
 
 ## 5. 双机全量回归：环境与角色
@@ -196,7 +196,7 @@ open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验�
 | **T5.8** 缺口收口 | 新 GAP 修/接受/移出；文档同步 | STATUS/FUTURE/模块/接口同步 |
 | **T5.9** 发布门禁 | 测试 3 次、check、check-public、doctor、快照 | 全绿；PLAN 快照 |
 
-**任务状态（2026-11-10）**：T5.1 ✅ / T5.2 ✅（DEV-01）/ T5.3 ✅（DEV-02）/ T5.4 ✅（DEV-03）/ T5.5 ✅（DEV-04）/ T5.6 ✅ 公司主机侧（员工侧 ACC-17）/ T5.7 ✅ 公司主机侧矩阵（真实群/03:00 → ACC-18/20/21，D48 书面例外）/ T5.8 ✅（本批新 GAP 已处置；GAP-091 留后续）/ T5.9 ✅（248/248、check、check-public、doctor、deploy-state、快照）。
+**任务状态（2026-11-10）**：T5.1 ✅ / T5.2 ✅（DEV-01）/ T5.3 ✅（DEV-02）/ T5.4 ✅（DEV-03）/ T5.5 ✅（DEV-04）/ T5.6 ✅ 公司主机侧（员工侧 ACC-17）/ T5.7 ✅ 公司主机侧矩阵 + **ACC-18 真实群通过**（ACC-17/20/21 书面例外，D48）/ T5.8 ✅（本批新 GAP 已处置；GAP-091 留后续）/ T5.9 ✅（248/248、check、check-public、doctor、deploy-state、快照）。
 
 ## 8. 测试与门禁
 
@@ -239,3 +239,4 @@ deploy-verify.ps1
 | 2026-11-10 | 本批开工 | T5.1 沿用 §3 主干 0 结论；DEV-01 改为 `wb.conversations` / `sendPrompt` 定向唤醒（不再每票 `/new`）；DEV-02/03/04 并行；公司主机侧回归由 teammate 跑 | `STATUS` §3.4；`%ProgramData%\anc\stage\batch-20261110\` | 进行中；部署+重启点在 DEV-01/02 代码齐后统一做 |
 | 2026-11-10 | 本批部署 + 重启 + 验收 | 142 文件 ×3 部署 hash 全过；patch-state applied=true runId=78eecdc3…；wake bridge 2.0；DEV-01 3 Ticket/1 host/3 subagent；DEV-02/03/04 完成；回归 70/70×2 + ING 16/16；GAP-088/089 修复，090/092 接受，091 留后续 | `STATUS` §1.10；`dev01/EVIDENCE.md`、`dev02/EVIDENCE.md`、`dev04/EVIDENCE.md`、`regression/REPORT.md`、`gates/` | 门禁：248/248、coverage 88.87/78.87/93.85、check、check-public 0、doctor FAIL=0 WARN=3、deploy-state 11/11 |
 | 2026-11-10 | 本批快照 | PLAN 归档到 `archive/plans/BATCH-20261110.md`；双机项转 ACC-17/18/20/21（D48） | 本文件 | 批次收口（公司侧） |
+| 2026-11-10 | ACC-18 真实群补丁/引用/@ 通过 | 真实群 5 条入站带 `msg=`；引用 A11/A12 只回「可以」→ approved；`A13可以` 短号 → approved；老板 `mention_userid` 配置并实发 mentions 通知 | `STATUS` §1.10/§3.5；`%ProgramData%\anc\stage\batch-20261110\dev01\acc18\` | 测试 Attention/outbox 已清理；剩 ACC-17/20/21 |
