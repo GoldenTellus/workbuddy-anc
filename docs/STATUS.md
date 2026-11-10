@@ -140,6 +140,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **T5.9 门禁**：`npm test` **248/248**、coverage **88.87/78.87/93.85**、`npm run check` 通过、`check-public` 零输出、doctor 提权 FAIL=0 WARN=3、deploy-state 11/11；部署 `142 文件 hash 全过` × 3 次（`deploy-20261110-010510` / `010935` / `011736`），技能 `deploy-skills` 1 文件更新，persona `deploy-persona` 最终版 6470B 已落盘。证据 `gates/`。
 - [x] **部署 + 真实 WorkBuddy 重启**：`deploy.ps1 -Apply` → `anc-selfheal.ps1 -Apply` → 新主进程 pid=22468、patch-state `applied=true mode=hash runId=78eecdc3…`、wake bridge `/health` `{"bridge":"2.0"}`；13 任务恢复 Ready/Running；host 会话在重启后仍可用。证据 `dev01/deploy/`、`gates/`。
 - [x] **清理**：DEV-01 测试 Task/Ticket/Assignment/Report/Attention/outbox/events 全部删除（0 残留；`attention_seq` 回 10；outbox 历史 #6 已取消），产物 `dev01/artifacts/` 留证后从 `D:\anc\departments\tech\tasks` 移除；研究用探测会话 3 个已删；生产库回到测试前计数（tasks 12 / tickets 12 / attentions 10 / outbox 6 / events 122）。证据 `dev01/cleanup/cleanup-report.json`、`post-cleanup-snapshot.db`。
+- [x] **03:00 过夜检查（2026-11-10 08:30，ACC-20 准备）**：`anc-executor-new-host` 03:00:01 返回 0 —— 因当日 host（business_date 2026-11-10）已在 00:54 的 DEV-01 演练中提前建立，脚本按幂等跳过创建（无日志），**真实跨日切仍是 2026-11-11 03:00**；`anc-executor-wake` 整夜每分钟运行、队列 0 静默、无新建会话/无 outbox；host 仍为 `h-ed2b1b65…`/真实会话 UUID；WorkBuddy 未重启、bridge 2.0 健康、patch runId 未变；`patch-in.log` 自 16:24 无真实入站（ACC-18 仍待真人）。**发现并修复 GAP-093**：`anc-executor-host-tick` 任务 03:00 结果 -196608（0xFFFD0000），原因是 `register-tasks.ps1` 指向不存在的 `executor-host-tick.ps1`（实际部署文件是 `host-tick.ps1`），03:00 兜底自始未真正运行；改为正确脚本后重新注册 13 任务，手动触发 **result=0**、日志 `deferred:false`、DB 未变。另回修 GAP-088 遗留的 host `last_heartbeat_at` 未来值（该字段无读取者，纯数据质量；active=started_at、closing=切换时刻）。证据 `dev01/morning/`（register-tasks-apply.log、host-tick-manual-run.log、host-tick-rerun.log、host-heartbeat-repair.json）。
 
 ---
 
@@ -226,6 +227,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-090 | CLI 退出码文档与实现不一致：`ctx.fail()` 参数/权限=2，模块 throw 业务拒绝=1；文档只写“1 业务 / 2 参数” | 文档/契约 | S3 | 主干 0（本批回归） | 否 | **accepted（文档对齐）**：`LOCAL-SERVICE` 改为写清两类失败（业务=1、参数/权限校验=2），不在此批重排退出码 |
 | GAP-091 | `ingest` 审计 `targets` 恒空，且 `cmd` 记录成绝对路径（INGEST 契约说记录路径） | Bug/文档 | S3 | 主干 0（本批回归） | 否 | open：后续修 ingest 审计字段；不影响入库本职与权限 |
 | GAP-092 | “多义只反问一次（最多 3 条）”只有 CLI `ambiguous` 证据，Main 话术无审计 | 实现/审计 | S3 | 主干 0（本批回归） | 否 | accepted：CLI 契约已测；话术层无机器审计，留后续（不阻塞） |
+| GAP-093 | `anc-executor-host-tick` 计划任务指向不存在的 `executor-host-tick.ps1`（部署文件名是 `host-tick.ps1`），03:00 兜底从 trunk 2 起从未真正运行 | Bug/运维 | S1 | 主干 0（2026-11-10 过夜检查） | 否 | **closed**：`register-tasks.ps1` 改为 `host-tick.ps1`，重新 `-Apply` 注册 13 任务；手动触发 result=0、日志 `deferred:false`、DB 未变。证据 `dev01/morning/` |
 
 > `S0` 阻断主流程；`S1` 高；`S2` 中；`S3` 低。`阻塞=是` 表示不解决就不能完成对应主干/分支。
 
@@ -415,6 +417,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 2026-11-10 | **DEV-01 单 host 3 Ticket 真实通过** | 0.8：同一 host 会话 `47695768…` 连续接 3 Ticket、3 subagent；wake log 5 次 `via=wb` 同会话；会话数不随 Ticket 增长；host 总量不变 | 无新增 GAP | EXE-01 主路径达成；EXE-05 03:00 留 ACC-20 |
 | 2026-11-10 | 公司主机侧全量回归（T5.6/T5.7） | 0.6/0.4/0.8：矩阵 70/70×2、ING 16/16、门禁全绿；**发现 OPS-01 备份 FAIL** | **新增 GAP-089（已修）/090（接受）/091（open）/092（接受）**；GAP-003/ACC-01 员工部门群 chatId 覆盖继续留 ACC | 见 §1.10、`regression/REPORT.md` |
 | 2026-11-10 | 收口门禁 | 0.6：`npm test` 248/248、coverage 88.87/78.87/93.85、check 通过、check-public 零输出、doctor FAIL=0 WARN=3、deploy-state 11/11 | GAP-089 关闭；本批公司侧收口 | 双机项转 ACC-17/18/20/21（D48 书面例外） |
+| 2026-11-10 08:30 | 03:00 过夜检查 | 0.4：new-host 03:00 幂等跳过（当日 host 已提前建立）；wake 整夜静默；**host-tick 03:00 失败（-196608）** | **新增并关闭 GAP-093**（任务指向不存在的脚本）；回修 GAP-088 遗留 heartbeat 未来值 | 真实跨日切仍待 2026-11-11 03:00（ACC-20）；ACC-18 仍待真实入站 |
 
 ### 3.5 真实环境验收批次（统一收尾）
 
