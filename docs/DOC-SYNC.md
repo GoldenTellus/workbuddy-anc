@@ -17,7 +17,7 @@
 | 做完什么、缺什么 | [STATUS.md](./STATUS.md) | 引用 `GAP-###`，不重复记 |
 | 现在能做什么 | [PRODUCT.md](./PRODUCT.md) | 引用，不重写能力清单 |
 | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) | 模块细节只写模块契约 |
-| 接口怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[CONTENT-PIPELINE.md](./CONTENT-PIPELINE.md)、[CONTENT-PIPELINE.md](./CONTENT-PIPELINE.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) | 不在别处复制参数表 |
+| 接口怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[CONTENT-PIPELINE.md](./CONTENT-PIPELINE.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) | 不在别处复制参数表 |
 | 从零部署（部署者入口） | [../BOOTSTRAP.md](../BOOTSTRAP.md) | 四步装完；逐段手册是排障参考 |
 | 怎么部署运维 | [DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[OPS.md](./OPS.md#入职新员工) | 运维步骤只写一处 |
 | 为什么这么定 | [DECISIONS.md](./DECISIONS.md) | 设计文档只引用决策编号 |
@@ -89,7 +89,7 @@ FUTURE-DESIGN
 | `scripts/` 下任一域（deploy / doctor / selfheal / backup / rebuild / accounts / devbot / workbuddy / executor / elevate / launch / workbuddy-patch / checks / anc-bind / verify，共 15 域） | `OPS`、`REBUILD`、`DEPLOY-*`、`RELEASE-CHECKLIST`；入口变化另查 `BOOTSTRAP.md` |
 | 新表/迁移 | `ARCHITECTURE`、相关 `modules/*`、`STATUS`（数据/迁移缺口） |
 | 未来主干修正现状 | `FUTURE-DESIGN` 主干 0.7、`STATUS` §3.3、受影响的 `PRODUCT` / `ARCHITECTURE` / 模块 / 接口 / 运维文档；行为改变时补 `DECISIONS` |
-| 新上游/拷贝代码 | `UPSTREAM`、`UPSTREAM.md` §7、`THIRD_PARTY_NOTICES.md`、`DECISIONS` |
+| 新上游/拷贝代码 | `UPSTREAM` §7、`THIRD_PARTY_NOTICES.md`、`DECISIONS` |
 | 只改文档 | `INDEX`、`doc-map.json`、`check:docs` |
 | 新增根目录文档 / 部署入口 | `doc-map.json`、`INDEX.md`、`BOOTSTRAP.md`、两份 `DEPLOY-*` §1、`RELEASE-CHECKLIST` 门禁表 |
 
