@@ -13,6 +13,7 @@
 | `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <bin>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
 | `anc-elevate` | 开机 + 每分钟 | `SYSTEM` | `elevate-runner.ps1 -Root <Root> -Repo <仓库>` | **给 bot 的提权通道**：从 `data\elevate\queue\` 取一条白名单请求（`upgrade` / `register-tasks` / `deploy`）以 SYSTEM 执行，结果写 `done\`、审计写 `elevate.log`。**不接受任意命令**：脚本路径固定从 `tools\` 取，请求里的路径字段一概忽略；请求文件必须是 `<GUID>.json`、不能是链接；TTL 30 分钟、每小时最多 6 条 |
 | `anc-executor-new-host` | 每天 03:00 | `LOCAL SERVICE` | `new-host.ps1` | 主干2 自动创建新 host 对话；失败由 `anc-executor-host-tick` 标 deferred，旧 host 继续接单 |
+|  |  |  |  | > 演练/补测：`new-host.ps1 -Now "2026-11-11T03:00:05+08:00"` 可模拟指定时刻的 03:00（只影响 date/cut-at/title，**不改系统时钟**）；仅用于 ACC-20 这类补测 |
 | `anc-executor-host-tick` | 每天 03:00 | `LOCAL SERVICE` | `host-tick.ps1` | 主干2 自动兜底：没有新 host 时只标 `cut_deferred`，旧 host 继续接单（**文件名是 `host-tick.ps1`**：GAP-093 之前写 `executor-host-tick.ps1`，而部署目录里从来没有这个文件，任务一直启动失败） |
 | `anc-executor-wake` | 每分钟 | `LOCAL SERVICE` | `wake-if-queued.ps1` | 先跑 `executor expire` + `executor attention sweep --apply`（2h/8h/24h 提醒/升级，不依赖 bridge）；有 queued Ticket 时读 active host：`conversation_id` 是真实 UUID → `/wake` **定向现有 daily host**（D46）；只有旧占位 id 才回退 `/new`；无队列或 bridge 未启用时静默；每次动作写 `executor-wake.log` |
 | `anc-backup` | 每天 02:00 起每 1 小时（幂等：距上次成功不足 20h 跳过） | `LOCAL SERVICE` | `backup-anc.ps1 -Destination <第二块盘>` | `VACUUM INTO` 快照 + 完整性校验，保留 14 份并复制到第二块盘；错过 02:00 会自动补 |

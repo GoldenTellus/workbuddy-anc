@@ -2,6 +2,10 @@
 # 生成的 conversation id 由本脚本预先生成（UUID），随 bootstrap prompt 传给新会话里的 bot，
 # 这样 DB 里 active host 的 conversation_id 就是真实 WorkBuddy 会话 id，后续 wake 可定向唤醒。
 # 失败不硬切：anc-executor-host-tick 会把旧 host 标 deferred，继续接单。
+param(
+    # 演练/补测用：把「现在」当成指定时间（默认真实时间）。只影响 date/cut-at/title，不碰系统时钟。
+    [datetime]$Now = (Get-Date)
+)
 $ErrorActionPreference = 'Stop'
 $root = Join-Path $env:ProgramData 'anc'
 $db = Join-Path $root 'data\anc.db'
@@ -15,7 +19,7 @@ function Log([string]$m) {
 if (-not (Test-Path $node) -or -not (Test-Path $db) -or -not (Test-Path $tokenFile) -or -not (Test-Path $workspaceFile)) { exit 0 }
 try {
     $active = & $node --no-warnings (Join-Path $root 'service\cli.ts') executor host status --db $db --json 2>$null | ConvertFrom-Json
-    $today = (Get-Date).ToString('yyyy-MM-dd')
+    $today = $Now.ToString('yyyy-MM-dd')
     $already = @($active.hosts | Where-Object { $_.status -eq 'active' -and $_.business_date -ge $today }).Count
     if ($already -gt 0) { exit 0 }
     $workspace = (Get-Content $workspaceFile -Raw).Trim()
@@ -26,7 +30,7 @@ try {
         Log "invalid workspace (need absolute path, e.g. D:\workbuddy-anc): $workspace"
         exit 0
     }
-    $cutAt = (Get-Date).Date.AddDays(1).AddHours(3).ToString('o')
+    $cutAt = $Now.Date.AddDays(1).AddHours(3).ToString('o')
     # 预生成真实会话 id：new-host 只负责"日期边界的新会话"，不负责每个 Ticket
     $conv = [guid]::NewGuid().ToString()
     $title = 'anc-host-' + $today
