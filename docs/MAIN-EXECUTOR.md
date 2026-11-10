@@ -344,6 +344,7 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 2. `anc-executor-wake` 计划任务每分钟跑一次：先查 `executor ticket list --state queued`，**只有 queued > 0** 才唤醒 Host：
    - 读 `executor host status` 的 active host：若 `conversation_id` 是真实 UUID → 调 **`POST /wake`**（body `{prompt, conversationId}`），bridge 用 `wb.conversations.get(id).sendPrompt()` 向该会话定向发 prompt，**不新建会话、不切换可见窗口**（D46）；
    - 只有 host 没有真实会话 id（旧数据）时：有 `wb-wake-workspace.txt` → 调 `POST /new`（旧行为，D46 兜底）；否则回退 `/wake` 注入当前会话（仅兼容旧部署）。
+- `wb-wake-workspace.txt` 里写的是 **host 会话的 cwd 绝对路径**（如 `D:\workbuddy-anc`），不是 WorkBuddy UI 的显示名：bridge 2.0 原样传给 `conversations.create({cwd})`；`new-host.ps1` 已加绝对路径守卫。**WorkBuddy 侧不需要提前“添加工作区”**，只要目录存在；只有旧 DOM fallback 才要求 UI 列表里有同名项。
 
 依赖 opt-in 的 WorkBuddy wake bridge（2.0）：
 

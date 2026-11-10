@@ -20,6 +20,12 @@ try {
     if ($already -gt 0) { exit 0 }
     $workspace = (Get-Content $workspaceFile -Raw).Trim()
     if (-not $workspace) { exit 0 }
+    # wake bridge 2.0 把该值当 host 会话 cwd 传给 conversations.create（D46）。
+    # 只接受绝对路径：显示名会被 WorkBuddy 解析到自动生成工作区（或建会话失败），03:00 就会悄悄建错 host。
+    if ($workspace -notmatch '^[A-Za-z]:[\\/]') {
+        Log "invalid workspace (need absolute path, e.g. D:\workbuddy-anc): $workspace"
+        exit 0
+    }
     $cutAt = (Get-Date).Date.AddDays(1).AddHours(3).ToString('o')
     # 预生成真实会话 id：new-host 只负责"日期边界的新会话"，不负责每个 Ticket
     $conv = [guid]::NewGuid().ToString()

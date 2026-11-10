@@ -156,7 +156,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 | 10 | **每个员工的员工群 chatId** | 员工群绑定 | 建群后从群设置里拿；**32 字符，不要截断** | 见 §10 |
 | 10b | **部门群 / 公司大群 / 老板 1:1 的 chatId + webhook 文件名** | org 群配置 | 企微群设置；`boss_dm` 真 1:1 不可用时用私有群 | 见 §10 |
 | 11 | **老板自己的 userid** | `boss_dm` / 全局权限 | 企微通讯录 | `________________` |
-| 12 | **主干2 host 工作区名**（可选） | `new-host.ps1` 新建对话 | 问人；不启用自动建 host 就留空 | `workbuddy-anc` / 空 |
+| 12 | **主干2 host 工作区（绝对路径，可选）** | `new-host.ps1` 新建对话 | 问人；不启用自动建 host 就留空。**写绝对路径**（如 `D:\workbuddy-anc`），不要写 WorkBuddy 里的显示名——wake bridge 2.0 把它当会话 `cwd` 传给 `conversations.create`；显示名会被解析到自动生成工作区 | `D:\workbuddy-anc` / 空 |
 | 13 | **是否开启 wake bridge**（可选） | 有 queued 时唤醒当前对话 | 问人；默认关闭 | ☐ 开 / ☑ 关 |
 
 **填不全时的行为**：
@@ -596,9 +596,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\tools\register-tasks.
 # 不开启时不要建 wb-wake.flag；new-host / wake 任务存在但会静默跳过
 $data = Join-Path $Root 'data'
 New-Item -ItemType File -Force (Join-Path $data 'wb-wake.flag') | Out-Null
-Set-Content -Path (Join-Path $data 'wb-wake-workspace.txt') -Value '<§1 第 12 项的工作区名>' -Encoding utf8
+# 必须是绝对路径：wake bridge 2.0 把该值当 host 会话 cwd 传给 conversations.create
+Set-Content -Path (Join-Path $data 'wb-wake-workspace.txt') -Value 'D:\workbuddy-anc' -Encoding utf8
 # token 由 wake bridge 首次启动时生成；不要手写
 ```
+
+> **工作区不需要先在 WorkBuddy UI 里“添加”**：2.0 的 `/new` 直接按 `cwd` 建会话，只要该目录存在即可；只有旧 DOM fallback（`window.wb` 不可用）才要求 UI 工作区列表里有同名项。
+> **后台任务产物不看这个工作区**：Ticket 的 `task_dir` 由服务端按 `departments/<dept>/tasks/<ticket>/` 推导（相对 §1 第 6 项的 vault 根，本机 `D:\anc`），subagent 直接写绝对路径；WorkBuddy 工作区只决定 host 会话的 cwd/上下文。
 
 > 建完 flag 后**用补丁启动器重启 WorkBuddy**，bridge 才会监听 `127.0.0.1:18187`。
 > 没有 flag / 没重启时：`new-host` 与 `wake` 静默跳过，`anc-executor-host-tick` 仍会把旧 host 标 deferred，旧 host 继续接单。
