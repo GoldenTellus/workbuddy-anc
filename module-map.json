@@ -84,9 +84,9 @@
       "paths": [
         "src/modules/org/",
         "src/render/cli.ts",
-        "scripts/deploy-persona.ps1",
-        "scripts/deploy-skills.ps1",
-        "scripts/offboard-member.ps1"
+        "scripts/deploy/deploy-persona.ps1",
+        "scripts/deploy/deploy-skills.ps1",
+        "scripts/accounts/offboard-member.ps1"
       ],
       "dependsOn": ["core"],
       "owns": ["org 输入", "render 产物", "manifest.json", "groups.json"]
@@ -99,9 +99,7 @@
       "status": "current",
       "paths": [
         "src/modules/improvement/",
-        "scripts/devbot.ps1",
-        "scripts/devbot-scheduler.ps1",
-        "scripts/e2e-loop.ps1"
+        "scripts/devbot/"
       ],
       "dependsOn": ["core"],
       "owns": ["submissions 表", "issues 表", "patch_drafts 表", "eval_runs 表", "dayend 表"]
@@ -140,10 +138,8 @@
       "status": "current",
       "paths": [
         "scripts/workbuddy-patch/",
-        "scripts/check-workbuddy-update.ps1",
-        "scripts/verify-upgrade.ps1",
-        "scripts/patch-guard.ps1",
-        "scripts/anc-selfheal.ps1"
+        "scripts/workbuddy/",
+        "scripts/selfheal/"
       ],
       "dependsOn": [],
       "owns": ["patch-state.json", "patch-canary.json", "patch-run.json", "patch-out.log", "群身份前缀格式"]

@@ -22,9 +22,11 @@
 
 ## 公开契约
 
-- `deploy.ps1`（默认 dry-run；`-Apply` 落盘；备份 → 复制 → 逐文件 SHA-256 对拍 → 失败整体回滚）
+- `deploy-kickoff.ps1 -Phase identity|prepare|collect|check [-Side company|employee] [-Json]` → 访谈入口：身份定 side、准备清单给人、问题集给 agent、校验 `data\deploy-answers.json`（exit 1 = 必填项没齐）
+- `preflight.ps1 -Side company|employee -Json` → `ok` + `blockers` + `warnings` + `facts`。`facts.machineProfile` 是机器画像（`admin-elevated` / `admin-not-elevated` / `standard-user` / `builtin-admin` / `builtin-admin-uac-off`），`facts.guidance` 是给人看的做法。公司侧 `agent-elevated` 是 blocker（agent 必须是管理员打开的）
+- `deploy.ps1`（默认 dry-run；`-Apply` 落盘；备份 → 复制 → 逐文件 SHA-256 对拍 → 失败整体回滚；落盘保留源目录结构，仅 `bin` 扁平）
 - `deploy-verify.ps1 -Side company|employee -Json` → `ok: true`
-- `doctor.ps1 -Root <r> -Repo <r> -VaultRoot <r> -Json` → **34 项**，`FAIL=0`
+- `doctor.ps1 -Root <r> -Repo <r> -VaultRoot <r> -Json` → **34 项**，`FAIL=0`；`deploy-layout` 现在也要求 `tools\` 存在（旧布局会 FAIL，重新部署即可）
 - `doctor.ps1 -SelfTest`：用 `%TEMP%` 夹具证明每类检查能 FAIL
 - `backup-anc.ps1 -Destination <盘>`；`register-tasks.ps1 -Apply`；`prepare-wipe.ps1 -Apply`；`rebuild-*.ps1`
 - 退出码：0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已回滚
@@ -32,6 +34,8 @@
 ## 不变量
 
 - **默认 dry-run**；改配置/动目录的命令必须显式 `-Apply`。
+- **部署清单保留源目录相对结构**，只有 `bin` / `tools` 显式扁平（13 个计划任务与 `.cmd` 都写死 `<Root>\bin\<文件名>`）；备份同样按「相对 Root 的路径」存，不按文件名。
+- **`bin\` 只放运行时，`tools\` 放装机与维护**：`scripts\` 用显式清单（`$BinScripts` / `$ToolScripts`）决定落点，目录级递归已取消 —— 往开发目录加脚本不会自动上生产。清单外的脚本在部署末尾列为「未归类」。
 - 任何落盘前先备份/快照；失败**整体回滚**，不留半套。
 - `doctor` 每一项都必须能 FAIL（`-SelfTest` + 故障矩阵证明），否则就是假绿。
 - **`bin` 扁平化、文件名不变**：计划任务与文档都按 `<bin>\<name>.ps1` 引用。

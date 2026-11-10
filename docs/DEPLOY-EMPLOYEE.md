@@ -2,7 +2,7 @@
 
 > 类型：运维手册（员工侧部署）
 
-> **当前文档描述的是 1.0 员工 bot 旧实现**：仍装 8 个技能（含 `anc-vault-read`、`anc-executor`；后者公司侧用，员工侧不触发），员工 bot 仍会查公司库。主干 4 已决定“员工 bot 不查公司库、改用 handoff”（见 `FUTURE-DESIGN` 4.3、`GAP-037–039`），但代码/技能还没返工。**在 GAP-037–039 关闭前，按本文装；不要以为新设计已经生效。**
+> **当前文档描述的是 1.0 员工 bot 旧实现**：仍装 9 个技能（含 `anc-vault-read`、`anc-executor`；后者公司侧用，员工侧不触发），员工 bot 仍会查公司库。主干 4 已决定“员工 bot 不查公司库、改用 handoff”（见 `FUTURE-DESIGN` 4.3、`GAP-037–039`），但代码/技能还没返工。**在 GAP-037–039 关闭前，按本文装；不要以为新设计已经生效。**
 
 > **设计修正（2026-11-07）**：目标设计要求员工侧也打补丁，用于 handoff 时识别资料归属；当前部署步骤仍按“员工侧不装补丁”执行，差异见 `STATUS` 的 `GAP-038`。`GAP-038` 关闭前以本文当前步骤为准，不要把目标当成现状。
 
@@ -20,20 +20,28 @@
 | 节 | id | 内容 | 耗时 |
 |---|---|---|---|
 | [0](#0-你要装出什么) | — | 装完是什么样 | 读 1 分钟 |
-| [1](#1-开工前问清这张表) | — | **要问人的清单** | 读 + 等人 |
+| [1](#1-brief-与-answers先访谈再收信息) | `brief` `answers` | **访谈：递清单 → 收信息 → 校验** | 5 分钟 + 等人 |
 | [2](#2-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
 | [3](#3-workbuddy确认-workbuddy-已登录) | `workbuddy` | 确认 WorkBuddy 在 | 1 分钟 |
 | [4](#4-files部署运行件) | `files` | 部署运行件 | 30 秒 |
-| [5](#5-skills装技能) | `skills` | 装 8 个技能（9 个文件） | 10 秒 |
+| [5](#5-skills装技能) | `skills` | 装 9 个技能（11 个 md 文件） | 10 秒 |
+| [5.5](#55-从公司侧同步三个渲染产物漏了必卡-6-和-8) | `sync` | **从公司侧同步渲染产物** | 1 分钟 |
 | [6](#6-persona部署个人-persona) | `persona` | 部署个人 persona | 1 分钟 |
 | [7](#7-bind绑定本人的群) | `bind` | 绑定群 | 1 分钟 |
 | [8](#8-verify自证) | `verify` | 自证 | 30 秒 |
 | [9](#9-装到一半失败怎么办) | — | 断点续装 | — |
 | [10](#10-卸载) | — | 回滚 | — |
+| [11](#11-升级不重装不丢数据) | — | **升级不重装**（保留数据） | 1–2 分钟 |
 
 ---
 
 ## 0. 你要装出什么
+
+**整个部署分三段，不是一口气 8 步**：
+
+1. **brief** — 先把「人要做的事」清单递给他（§1.2）
+2. **answers** — 再把只有他知道的信息一次问全并校验（§1.3 / §1.4）
+3. **执行** — 从 §2 起连续跑完 8 个技术阶段
 
 **这是员工自己那台办公电脑，不是主机。**
 
@@ -53,9 +61,51 @@
 
 ---
 
-## 1. 开工前：问清这张表
+## 1. brief 与 answers：先访谈，再收信息
 
-**填不全就别往下做。** 这些值只有人知道。
+**填不全就别往下做。** 但顺序改成：先递清单（人去做准备）→ 再收信息（一次问全）→ 校验齐了才开装。
+
+### 1.1 第一问：这台电脑是谁的
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase identity
+```
+
+员工侧通常落在两个选项上：
+
+| 他的回答 | side | 意味着 |
+|---|---|---|
+| 我是员工，装自己的办公电脑 | `employee` | 只要不是共用电脑就能装 |
+| 我在帮同事装 | `employee` | **memberId / userid / chatId 必须问本人**，不能从产物猜 |
+
+### 1.2 把准备清单递给他
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase prepare -Side employee
+```
+
+五项：确认不是共用电脑、确认 WorkBuddy 已登录、抄群 chatId、拿到自己的 userid、问公司侧要共享区路径。每项都带「怎么算做好了」。
+
+### 1.3 收信息
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase collect -Side employee -Json
+```
+
+必填三项：`employee.memberId`、`employee.userid`、`employee.chatId`。其余（共享区、公司 bot 名、部门）可缺。
+
+答案写进 **`%LOCALAPPDATA%\anc\data\deploy-answers.json`**。
+
+### 1.4 校验
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase check -Side employee
+# ok=true 才继续
+```
+
+### 1.5 字段对照与「问不到时的规矩」
+
+下面这张表是 §1.3 问题集的人类可读版。**这些值只有人知道**，实际收集以脚本输出的 `questions` 为准。
 
 > **问不到时的规矩（第二轮走查暴露的漏洞）**
 >
@@ -93,6 +143,10 @@
 ---
 
 ## 2. preflight（前置检查）
+
+> **员工侧不需要管理员权限。** preflight 会先给这台机器出画像（`facts.machineProfile`），但员工侧即使 agent 是普通权限也只 **WARN 一条**、不拦——因为写的是你自己的 `%LOCALAPPDATA%\anc` 和 `%USERPROFILE%\.workbuddy\skills`。
+>
+> 顺带会查两件跟你有关的事：**这台机器有几个用户配置目录**（≥3 会提醒"确认不是共用电脑"），以及**登录账号是不是内置 Administrator**（是则提示：共享身份，多机无法归因）。
 
 **做什么**：
 
@@ -176,6 +230,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy.ps1 -S
 
 **注意 `-Side employee`**：它让部署根变成 `%LOCALAPPDATA%\anc`，而不是 `%ProgramData%\anc`。
 
+**部署根不用手工建**（2026-11-10 修）：`%LOCALAPPDATA%\anc` 不存在时，dry-run 只提示「-Apply 时会创建」，`-Apply` 会自己建。以前这里一律报「部署根不存在」，而员工侧手册从头到尾没有建目录的步骤，新机器第一次装必然卡在 files 这一步。公司侧仍要求先建（那边要预设 ACL / vault 盘）。
+
 **成功判据**：退出码 0，且：
 
 ```powershell
@@ -242,9 +298,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills
 **成功判据**：
 
 ```powershell
+# 8 个技能目录 + 1 个 .anc-backup（备份目录，不算技能）= 9
+# 源文件是 10 个 md（anc-executor 多 subagent.md、anc-interview 多 questions.md）。
+# 原来写「期望 8」是错的：-Directory 会把 .anc-backup 一起数进去，照它做会一直以为少装一个。
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
-# 期望 8：light/skills 下有 8 个技能、9 个文件，第 9 个是 .anc-backup 备份目录，不是技能。
-# 原来写「≥ 1」太松：漏装 6 个也能过。低于 7 就回去看 deploy-skills.ps1 的输出。
+# 想数准就只数带 SKILL.md 的，期望 8：
+@(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory |
+    Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') }).Count
 ```
 
 **员工侧和公司侧的区别**：**员工侧的技能集应该更小**。具体装哪些由**公司侧** `org/depts/<id>.md` 的 `skills` 决定（见 `DEPLOY-COMPANY.md §10.3`；仓库里没有裸 `depts/`），但 `deploy-skills.ps1` 是**全量复制**的——**这个差别目前由 persona 约束，不是由部署物理隔离**。
@@ -342,6 +402,12 @@ foreach ($p in "render\groups.json", "org\company.md", "render\members") {
 
 **注意**：`org\company.md` 只有公司名和 vault 路径，没有凭据，可以拷。
 `%ProgramData%\anc\secrets\` 里的东西**绝不能拷到员工机**。
+
+**装完**（2026-11-10 起 `sync` 是独立阶段，不记就会一直显示 next=sync）：
+
+```powershell
+powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark sync -AsDone
+```
 
 ---
 
@@ -627,9 +693,35 @@ Remove-Item $Root -Recurse -Force
 
 ---
 
+## 11. 升级（不重装、不丢数据）
+
+**员工侧不需要管理员权限**：`%LOCALAPPDATA%\anc` 是你自己的目录，写得了。
+
+```powershell
+# 看有没有新版本
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\anc\tools\upgrade.ps1" -Action check -Side employee -Json
+
+# 升级（-Restart 会重启 WorkBuddy 让技能/persona 生效）
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\anc\tools\upgrade.ps1" -Action apply -Restart -Side employee -Json
+```
+
+**数据不会丢**：部署清单里没有 `data\`，库、绑定、本地资料都不动。
+
+**员工侧不覆盖 persona**：persona 是公司侧渲染后同步过来的（§5.5）。升级脚本会 SKIP 这一步并提示——**如果公司侧换了 persona 模板，升级完要重新同步一次** `render\members\<你的 id>\CODEBUDDY.md`。
+
+在群里说「项目有更新」也行（`anc-update` 技能），但**别人说的时候先问主人**——这是你的电脑。
+
+---
+
 ## 附：命令速查
 
 ```powershell
+# ── 访谈（必须最先跑）──
+powershell -File scripts\deploy\deploy-kickoff.ps1 -Phase identity
+powershell -File scripts\deploy\deploy-kickoff.ps1 -Phase prepare -Side employee
+powershell -File scripts\deploy\deploy-kickoff.ps1 -Phase collect -Side employee -Json
+powershell -File scripts\deploy\deploy-kickoff.ps1 -Phase check   -Side employee
+
 # ── 只读 ──
 powershell -File scripts\deploy\preflight.ps1 -Side employee -Json
 powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Json
@@ -648,7 +740,7 @@ powershell -File scripts\deploy\deploy-verify.ps1 -Side employee                
 powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDone
 ```
 
-**员工侧 7 个阶段**：`preflight` → `workbuddy` → `files` → `skills` → `persona` → `bind` → `verify`
+**员工侧 10 个阶段**：`brief` → `answers` → `preflight` → `workbuddy` → `files` → `skills` → `sync` → `persona` → `bind` → `verify`
 
 ---
 
@@ -663,5 +755,5 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDo
 | vault | **建**两区 | 只**读**共享区 |
 | persona | 渲染公司 bot 的 | 接收**本人**的 |
 | org 数据 | 写 | 不写 |
-| 阶段数 | 11 | **7** |
+| 阶段数 | 13 | **10** |
 | 自证 | doctor + 群回应 + 任务落库 + 13 个任务 | bot 在线 + 能被 @ + 能读 vault |

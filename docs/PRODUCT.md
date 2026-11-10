@@ -20,7 +20,7 @@
 
 | 层 | 谁 | 在哪用 | 能力来源 |
 |---|---|---|---|
-| **① 群里的对话能力** | 员工 | 企微群里 @ bot | **8 个技能**（`light/skills/`） |
+| **① 群里的对话能力** | 员工 | 企微群里 @ bot | **9 个技能**（`light/skills/`） |
 | **② 命令行能力** | 管理员 / 脚本 | 主机上 `node service\cli.ts` | **17 个命令组** |
 | **③ 自动运行能力** | 没人 | 主机后台 | **13 个计划任务** |
 
@@ -28,7 +28,7 @@
 
 ---
 
-## 2. ① 群里的对话能力 —— 8 个技能
+## 2. ① 群里的对话能力 —— 9 个技能
 
 **每个技能 = 一类能被自然语言触发的动作。** 触发词由技能的 `description` 声明，模型按语义匹配（不是关键词硬匹配）。
 
@@ -110,6 +110,21 @@
 | 发现 WorkBuddy 版本变化、日志出现 `INJECTED mode=anchor` 或 `ANCHOR-MISS`、`doctor` 报补丁失败 | 重放补丁 + 做回归 |
 
 **这是唯一一个"修自己"的技能** —— 用来应对厂商升级把补丁打坏。
+
+### 2.8 `anc-update` —— 一句话升级（运维用）
+
+| 你能说 | 它做什么 |
+|---|---|
+| 「项目有更新吗」 | 只读检查远端有没有新提交，报当前版本和落后几个提交 |
+| 「升级一下」/「更新到最新」 | 备份库 → `git pull` → 铺运行件（hash 对拍，失败整体回滚）→ 同步技能 → 重渲染 persona → 重启 → 自证 |
+
+**只有 boss / manager 能触发**（公司侧）：升级会重启主机上的 WorkBuddy，群里任何成员都能发消息，不能让人随便重启公司主机。员工侧本人说就做。
+
+**数据不动**：部署清单里没有 `data\`、`org\`、`backup\`、`secrets\`、vault 两区；库 schema 变化由 cli 打开时自动迁移（只增不改），升级前还强制备份一份。
+
+**权限怎么解决**：bot 在群里是普通权限，写不了 `%ProgramData%\anc`。两条路——① 管理员跑一次 `upgrade.ps1 -Action apply -GrantDeployWrite`（只授运行件目录）；② 更彻底：`anc-elevate` 提权通道（SYSTEM 计划任务），bot 把请求写成 `data\elevate\queue\<guid>.json`，执行器每分钟取一条执行。**只接受 upgrade / register-tasks / deploy 三个白名单动作**，脚本路径固定、请求不能指定路径、TTL 30 分钟、每小时最多 6 条、每条有审计。
+
+> **这个通道的代价要讲清**：能以部署用户身份写 `queue\` 的进程，就能触发这三个动作提权执行。这是刻意选的取舍（换来「一句话就能升级」），所以动作清单必须保持短——**不要往里加「执行任意命令」**。
 
 ---
 
@@ -293,6 +308,8 @@ issue
 
 **入职 8 步**（`docs/ONBOARDING.md`）：
 
+> 第 0 步的「备齐」不用手抄清单：跑 `deploy-kickoff.ps1 -Phase prepare -Side employee` 会生成一段能直接转发给本人的准备清单（含「怎么算做好了」），`-Phase collect` 给出要问的字段，`-Phase check` 校验齐不齐。
+
 | # | 做什么 | 谁做 |
 |---|---|---|
 | 0 | 备齐：姓名 + ASCII id + 企微 userid + 员工群 + 部门 + 该群 webhook 文件 | 人 |
@@ -329,6 +346,8 @@ issue
 | 程序化测试 | `POST 127.0.0.1:17999/emit` | 模拟"有人 @ 了 bot"，需 `test-emit.flag` |
 
 **本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **138 个文件**；13 个计划任务已注册（12 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
+
+**本机实测（2026-11-10，临时根演练）**：`deploy.ps1` **156 个文件**（比 138 多：`light/templates/vault/` 下 5 份协作模板、访谈入口 `deploy-kickoff.ps1`；同时 `patch/` 不再部署 `*.test.mjs`），hash 逐一对照通过；`-Rollback` 首次部署删净、升级回滚恢复旧版本均通过。**只部署运行件、不部署仓库**——`docs/`、`_research/`、`reference/`、`AGENTS.md` 一个都不进；脚本按用途分两处：`bin\` 21 个（任务动作 + 启动器 + 技能直接调的），`tools\` 25 个（装机、自检、重装、账号、演练、回归），`scripts\` 用显式清单，清单外不上生产。
 
 **`prepare-wipe.ps1` 的回滚**：它把目录改名成 `*-prewipe-<时间戳>`，回滚就是把后缀去掉 + `register-tasks.ps1 -Apply` 重注册任务。
 

@@ -3,6 +3,8 @@
 > 类型：agent 规则（canonical）· 最后整理：2026-11-10
 >
 > 本文件是 agent 开工前的最小必读。`CLAUDE.md` 只是指向本文件的短指针，不再维护第二份正文。
+>
+> **如果你是来部署这套东西的（不是来改代码）**：看 `BOOTSTRAP.md`，四步走完。本文件讲的是开发规则与模块边界，读了会浪费时间。
 
 GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://github.com/HA7CH/ai-native-company)@`90e4fb2`（MIT）。目标：小团队用一台 7×24 的 Windows 主机跑**公司 bot**，每个员工电脑跑**员工 bot**；执行引擎是腾讯 **WorkBuddy**，IM 是**企业微信**，公司知识放在 markdown vault 里。
 
