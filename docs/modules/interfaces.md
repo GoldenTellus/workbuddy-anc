@@ -16,7 +16,7 @@
 |---|---|
 | service CLI 命令面 | 组名、子命令、参数、`--json` 输出形状 |
 | HTTP 路由 | `/__anc_health`、`/__anc_status`、`/__anc_ingest` |
-| 退出码 | 0 成功 / 1 运行失败 / 2 用法错误 |
+| 退出码 | 0 成功 / 1 业务拒绝（模块状态机或策略抛错）/ 2 参数、权限、环境错误（`ctx.fail()`，含缺文件、DB 打不开） |
 | 审计包装 | 每次 CLI 调用写一行；`fail()` 直接退出时用退出码补记 |
 
 ## 公开契约
@@ -35,6 +35,7 @@ patch    dayend  eval  backup  config  project  serve  loop
 - `bind sync-org` / `verify-org` / `backfill` / `group-set` / `group-list` / `person-list`：主干 1 的群/人/角色接口
 - `task request` / `approve` / `accept` / `reject`：两阶段任务请求；拒绝必须带 `--reason`
 - `executor host|ticket|claim|start|report|notify|end`：主干 2 日对话/任务 subagent 的本地状态机
+- `executor attention`（create/list/show/match/answer/cancel/context/sweep）与 `evaluate/evaluations/brief/close/scope/expire/sweep/recover`：主干 3 人在环路确认与调度收口
 
 **HTTP**：
 
@@ -57,7 +58,8 @@ patch    dayend  eval  backup  config  project  serve  loop
 
 | 错误码 | 含义 | 出路 |
 |---|---|---|
-| `EXIT_2` | 参数/用法错误 | 看 `ERROR` 行；`FIX` 指向文档 |
+| `EXIT_1` | 业务拒绝（模块状态机/策略抛错） | 看 `ERROR` 行；按业务状态处理，不改参数重试 |
+| `EXIT_2` | 参数/权限/环境错误（`ctx.fail()`，含缺文件、DB 打不开） | 看 `ERROR` 行；`FIX` 指向文档 |
 | `token-not-configured` | 没配 service-token | 写 `secrets\service-token.txt` 后重启 `anc-http` |
 | `missing-batch` / `bad-json` | 入库请求体不对 | 按 `docs/INGEST.md` 重投 |
 | `body-too-large` | 超过 64 KB | 批次描述不该这么大；查是否传了文件内容 |
@@ -86,3 +88,4 @@ patch    dayend  eval  backup  config  project  serve  loop
 | 2026-11-06 | P2 拆分 CLI 与 HTTP；P4 依赖改为 modules 入口 | 模块化 |
 | 2026-11-07 | `bind sync-org` 组合 org + identity；interfaces 允许 import org | 主干 1 |
 | 2026-11-09 | 加 `executor` 命令组；依赖加 executor | 主干 2 T2.3 |
+| 2026-11-10 | `executor` 补 `attention` 子命令与 `--source-msg`/`--quote-text`；退出码对齐业务拒绝/参数错误（`EXIT_1`/`EXIT_2`） | 主干 3 T3.5（GAP-107 / D52、GAP-079） |

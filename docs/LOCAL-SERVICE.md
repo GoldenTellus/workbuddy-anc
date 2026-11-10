@@ -87,7 +87,10 @@ npm run service -- --json executor attention create --purpose answer --question 
 npm run service -- --json executor attention list [--status open] [--confirmer <person-id>] [--ticket-id <id>]
 npm run service -- --json executor attention show --id <id> | --code A12
 npm run service -- --json executor attention match --chat-id <chatid> --userid <userid> --text "<消息>" [--quote-text "<引用文本>"]
-npm run service -- --json executor attention answer --code A12 --source-msg <patch-in.log 的 msg= 值>   # 动作/发送人/正文由服务端从真实入站消息核验；不再接受 --action/--userid/--text（GAP-107）
+npm run service -- --json executor attention answer --code A12 --source-msg <patch-in.log 的 msg= 值>
+# --source-msg：必填，值取 patch-in.log 入站行的 msg=；服务端据此重推导入站消息
+# 动作只认中文：可以/同意/通过→approve；不行/不可以/不通过/驳回/拒绝→reject；收到/确认→ack（英文 approved 不认）
+# 消息须晚于 Attention 创建（60s 容差）且 15 分钟内；--action/--userid/--text 不采信，--action 仅做一致性校验（GAP-107 / D52）
 npm run service -- --json executor attention cancel --code A12 [--reason "<原因>"]
 npm run service -- --json executor attention context --ticket-id <id>
 npm run service -- --json executor attention sweep [--apply] [--now "<iso>"]
@@ -185,7 +188,7 @@ npm run service -- serve
 
 ## 运行要求
 
-- Node 22 LTS（D11，**设计基线**）；本机 2026-11-09 在 **v26.13.0** 实测 252/252 通过，正式主机仍建议锁 22 LTS（`node:sqlite` 跨版本行为差异待验证）。实测 v22.22.2 起 `node:sqlite` 与类型剥离均默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
+- Node 22 LTS（D11，**设计基线**）；当前环境 **v22.22.2** 实测 252/252 通过（v26.13.0 为 2026-11-09 另一台本机历史读数）。`node:sqlite` 与类型剥离自 v22.22.2 起默认可用，直接 `node src/service/cli.ts`（`process.features.typescript === 'strip'`）；更老的 22.x 才需 `--experimental-sqlite --experimental-strip-types`。
 - 零运行时依赖（只用 Node 内置模块）。
 
 ## 测试

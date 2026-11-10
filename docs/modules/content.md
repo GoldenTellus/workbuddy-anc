@@ -4,7 +4,7 @@
 
 > 状态：现行
 > 代码：`light/`
-> 入口：`light/skills/`（8 个技能）
+> 入口：`light/skills/`（9 个技能）
 
 ## 职责
 
@@ -14,7 +14,7 @@
 
 | 数据/文件 | 说明 |
 |---|---|
-| `light/skills/` | 8 个技能：anc-task / anc-dayend / anc-feedback / anc-ingest-company / anc-interview / anc-vault-read / anc-wb-patch / anc-executor |
+| `light/skills/` | 9 个技能：anc-task / anc-dayend / anc-feedback / anc-ingest-company / anc-interview / anc-vault-read / anc-wb-patch / anc-executor / anc-update |
 | `light/skill-cards/` | 员工侧名片：anc-handoff / anc-vault-read |
 | `light/personas/` | 公司 bot、devbot 的手写 persona（与模板必须一致） |
 | `light/templates/` | 公司/个人 persona 模板、vault 模板 |
@@ -68,3 +68,4 @@
 | 2026-11-06 | 建档 | 模块化立项 |
 | 2026-11-06 | P6 文档收口；无代码变化 | 模块化 |
 | 2026-11-09 | `anc-task` / `anc-executor` / `subagent.md` / 公司 persona 加 Attention 短号确认、question Report、三类通知 | 主干 3 T3.5 |
+| 2026-11-10 | 新增 `anc-update` 技能（一句话升级本项目） | 技能数 8 → 9 |

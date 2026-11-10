@@ -3,7 +3,7 @@
 > 类型：现状架构（不是未来设计）
 
 > **读者**：要改这个项目的人 / agent。
-> **状态**：2026-11-06 立项。fork 阶段（对齐上游、证明能跑）已收口；本文定义"从现状往下走"的模块划分。
+> **状态**：2026-11-06 立项。fork 阶段（对齐上游、证明能跑）已收口；本文定义"从现状往下走"的模块划分。**最后整理：2026-11-10（BATCH-20261110 后；主干 0/1/2/3 已收口）**
 > **关系**：本文管**现在代码怎么分、边界在哪**；未来方向看 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)；当前主干看 [PLAN.md](./PLAN.md)；完成/缺口看 [STATUS.md](./STATUS.md)。旧 `PLAN-1.0` / `REFACTOR-ROADMAP` / `ACCEPTANCE` / `VERIFY` 已进 [archive/history/](./archive/history/)，只读。
 > **可执行部分**：`module-map.json` + `scripts/checks/check-modules.mjs`。边界不是口号，能跑出报告、能进 CI。
 
@@ -36,7 +36,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 2. **一块一个契约。** 跨块只认 `index.ts` 导出的函数/类型；文件路径、表名、内部函数都不是契约。
 3. **数据有主。** 每张表、每类文件只有一个模块能写；别的模块要读，走拥有者的查询函数。
 4. **依赖单向。** `core ← 能力 ← 编排 ← 接口`；`ops` 只通过 CLI/文件契约调用，不 import `src`。
-5. **部署路径是公开契约。** `%ProgramData%\anc\service\cli.ts`、`render\cli.ts`、`ingest\cli.ts`、`bin\*.ps1` 被技能、persona、计划任务引用，**不能改**；源码怎么搬都行，入口用薄壳保住。
+5. **部署路径是公开契约。** `%ProgramData%\anc\service\cli.ts`、`render\cli.ts`、`ingest\cli.ts`、`bin\*.ps1`、`tools\*.ps1` 被技能、persona、计划任务引用，**不能改**；源码怎么搬都行，入口用薄壳保住。
 6. **不为分而分。** 小于约 150 行、只被一个模块用的文件，不单独成块。
 
 ---
@@ -114,10 +114,11 @@ content     独立：只依赖 CLI 命令契约
 | `src/core/*` | `%ProgramData%\anc\core\*` | 底座 |
 | `src/render/cli.ts`（薄壳） | `%ProgramData%\anc\render\cli.ts` | 稳定入口 |
 | `src/ingest/cli.ts`（薄壳） | `%ProgramData%\anc\ingest\cli.ts` | 稳定入口 |
-| `scripts/<domain>/*.ps1` | `%ProgramData%\anc\bin\<name>.ps1`（**扁平**） | 文件名不变，计划任务引用 |
+| `scripts/<domain>/*.ps1`（运行时） | `%ProgramData%\anc\bin\<name>.ps1`（**扁平**） | 文件名不变，计划任务引用 |
+| `scripts/deploy/*.ps1`（装机维护） | `%ProgramData%\anc\tools\<name>.ps1`（**显式清单**） | 清单外不上生产 |
 | `light/*` | 由 `deploy-skills.ps1` / 渲染器部署 | 内容 |
 
-`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射；本机 dry-run = **138 个文件**，`bin` 36 个）；`bin` 继续扁平化（同名冲突由检查脚本拦）。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
+`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射）；**部署清单 158 文件（2026-11-10）；`bin\` 21 个运行时、`tools\` 26 个装机维护；用显式清单，清单外不上生产**。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
 
 ---
 
@@ -271,5 +272,6 @@ powershell -File scripts\doctor\doctor.ps1 -Repo <仓库> -Json            # FAI
 | 日期 | 改了什么 | 为什么 |
 |---|---|---|
 | 2026-11-06 | 建档：12 个模块、依赖规则、源码/部署布局、P0–P7 迁移路线 | fork 阶段收口，后续按块迭代 |
-| 2026-11-09 | executor 的 owns 补 `executor_events`/`executor_evaluations`；§11 补 executor 行；§5 补部署实测 137 文件 | 主干 0 文档收口（GAP-066，13 模块现状对齐） |
+| 2026-11-09 | executor 的 owns 补 `executor_events`/`executor_evaluations`；§11 补 executor 行；§5 补部署实测 158 文件（2026-11-10 部署清单） | 主干 0 文档收口（GAP-066，13 模块现状对齐） |
 | 2026-11-09 | executor 增加 `attentions` 表与 Attention API | 主干 3 T3.1 数据层 |
+| 2026-11-10 | `attention answer` 强制 `--source-msg`、服务端从 `patch-in.log` 重推导入站消息；补丁入站前缀补 `msg=` / `quote=`；部署清单拆 `bin\`（运行时）/ `tools\`（装机维护）；D46–D52 已登记 | BATCH-20261110 公司侧收口（主干 0/1/2/3 已收口），ACC-17 按 D48 书面例外 |

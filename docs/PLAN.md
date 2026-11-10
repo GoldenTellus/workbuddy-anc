@@ -1,247 +1,350 @@
-# PLAN — 当前批次：收口补齐 + 双机全量回归
+# PLAN — 当前批次：正式生产部署 + 零起点装机 + 主干 1/2/3 设计符合性检验
 
 > 类型：执行（当前批次）
-> 状态：**公司侧收口完成（2026-11-10）；ACC-18 真实群通过；剩 ACC-17/20/21（D48 书面例外）**
-> 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 4 / 横切；[STATUS.md](./STATUS.md) §3.3b / §3.5
+> 状态：**待开工（2026-11-10）；阶段 1 公司侧部署 + 零起点装机检验**
+> 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 0 §0.0；[STATUS.md](./STATUS.md) §2 / §3.5
 > 账本：[STATUS.md](./STATUS.md)
-> 决策：[DECISIONS.md](./DECISIONS.md) D40–D45；GAP-079/080/084/087
-> 上一个主干：[archive/plans/TRUNK-3-20261109.md](./archive/plans/TRUNK-3-20261109.md)
-> 完成后：快照到 `archive/plans/BATCH-<日期>.md`
+> 决策：[DECISIONS.md](./DECISIONS.md) D25 / D32 / D35 / D36 / D40–D52
+> 上一个批次：[archive/plans/BATCH-20261110-FINAL.md](./archive/plans/BATCH-20261110-FINAL.md)
+> 完成后：快照到 `archive/plans/BATCH-DEPLOY-<日期>.md`
 
 ## 1. 目标
 
-这轮不是新功能主干，是**收口批次**，做三件事：
+用户决定（2026-11-10，原话）：「正式给我的公司部署这个项目，并且在部署过程中看看有什么问题，并检验主干 1/2/3 是否符合了我的设计」；规划「先部署公司侧，公司侧没问题了再去部署员工侧」。同日追加：还要检验「**一台主机从 0 开始部署这个项目的过程**」，并请项目侧补充他没想到的检验维度（见 §6.5）。
 
-1. 把主干 0 的复检结论写进 PLAN，作为本批的起始账本。
-2. 把主干 2/3 留下的偏差补齐，不把“已收口”当成“没有欠账”。
-3. 用**两台电脑**（公司侧 + 员工侧）从环境、部署、群、任务、执行、确认、入库、运维到员工 bot，做一次全量回归，产出机器证据。
+本批**不是新功能主干**，仍归主干 0（常驻清债），做四件事：
+
+1. 把**公司侧**按 `BOOTSTRAP.md` 四步正式装到生产主机，走通部署自动化全链路；
+2. **单独验一台主机从 0 开始的完整装机链路**（干净机 + 未参与过开发的 agent），补上 GAP-104 留的遗留；
+3. 在真实生产运行里**逐项检验主干 1/2/3 是否符合设计**，并按 §6.5 补充维度检验长期运行、真实负载、安全、可移交等（范围由用户挑定）；
+4. 公司侧**准出后**再部署员工侧，补齐 ACC-17（此前为 D48 书面例外）。
 
 **完成定义**：
 
-- 主干 2 的 D45 偏差修正：wake 定向唤醒**已有 daily host**，不再每个 Ticket 新建 host；`/new` 只用于 03:00 日切。
-- GAP-079（`msgId`/引用文本增强）、GAP-080（通知 @ 真 userid）补齐；8h/24h 实际投递补测。
-- 双机全量回归矩阵全部通过，或有**书面例外**并登记 GAP；不能拿口述/单测冒充真实验收。
-- `npm test` 全绿（当前 252/252，新增项继续加）、`npm run check` 通过、`check-public` 零输出。
-- `STATUS` / `FUTURE-DESIGN` / `PLAN` / 模块契约 / `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `OPS` / `PRODUCT` / `DECISIONS` 同步。
+- 公司侧与员工侧部署均有机器证据；公司侧 7 条准出条件逐项有结论；
+- **零起点装机链路有独立证据**（`Z-01..Z-12`），且卡点记录完整；
+- 主干 1/2/3 符合性矩阵（§6）每项有 `符合 / 偏离且已登记 GAP / 用户裁决接受` 的判定与证据；§6.5 中用户挑定纳入本批的补充项逐项有结论；
+- 部署与检验中发现的每个问题都进 `STATUS` 的 `GAP-###` 并处置，不静默跳过；
+- ACC-17 用员工侧真实机器证据收口，`STATUS` §3.5 的 ACC 行按真实现状更新；
+- `npm test` 全绿（当前 252/252）、`npm run check` 通过、`check-public` 零输出；
+- `STATUS` / `FUTURE-DESIGN` / `PLAN` / `PRODUCT` / `ARCHITECTURE` / 模块契约 / 接口 / 运维 / `RELEASE-CHECKLIST` / `DECISIONS` 同步，`STATUS` §4 填审计行；
 - 员工 bot 仍是旧 1.0 的部分，明确记为**主干 4 缺口**，不伪装成通过。
 
-## 2. 起始基线（2026-11-10）
+## 2. 起始基线（2026-11-10 18:00）
 
 ```text
-主干：0 / 1 / 2 / 3 已收口（主干 2 ACC-16、主干 3 ACC-13/14/15 真实群通过）
-测试：252 / 252
-模块：13 / 13 current
-CLI：17 组
-技能：8
-计划任务：13
-公司主机：deploy 142 文件；doctor 非提权 FAIL=0 WARN=13
-员工电脑：旧 1.0，已按 D35 用户实测；主干 4 未实现
-open：D45 单一日对话偏差；GAP-079/080 接受但未做；8h/24h 只验级别
+主干：0 / 1 / 2 / 3 已收口；主干 4（员工 bot handoff / 本地执行）未实现
+测试：252 / 252；覆盖率 88.97 / 79.03 / 93.95；测试文件 29
+模块：13 / 13 current；CLI 17 组；技能 9（含 anc-update）；运行时依赖 0
+计划任务：14（9 LOCAL SERVICE / 2 SYSTEM / 3 交互，含 anc-elevate）
+部署清单：158 文件（bin 21 运行时 / tools 26 装机维护）；deploy-state 12/14
+doctor：35 项（21 字面量 + 14 个 task-* 覆盖项）
+Node：v22.22.2（设计基线 22 LTS）
+ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
+员工电脑：旧 1.0，未正式部署
+开放 GAP：091（ingest 审计字段，S3，不阻塞）；090 / 092 已接受
+遗留：全新机器首次完整部署链路（install-company → patch 重启 → patch-guard）
+      仅在存量本机验过，干净机未实跑（GAP-104）
+文档：2026-11-10 已完成全量核对（GAP-108 已修，check:docs 41 份通过）
 ```
 
-## 3. 主干 0 当前状态（2026-11-10 复检）
+## 3. 主干 0 本批定位
 
-> 详细判定见 `STATUS` §3.3b / §3.4；这里只留本批 PLAN 要用的结论。
+方向、准出条件、符合性判据与归账规则**以 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md) §0.0 为唯一来源**，本文件不复制结论，只写怎么执行、怎么留证据。
 
-**已关闭 / 已接受**：
+- 主干 0 验收状态已由 ✅ 回到 **🟡 待验收**，直到 §1 完成定义全部满足。
+- 0.4（运维/部署）、0.7（设计反哺）、0.8（真实环境验收）三个分支随本批保持 🟡。
+- 主干 1/2/3 的设计与实现状态保持 ✅；本批复核的是**生产环境符合性**，发现偏离按 0.7 登记 `GAP`，不改设计去迁就实现。
 
-| 处理 | GAP | 结论 |
-|---|---|---|
-| 关闭 | 026 / 029 / 036 / 056 | 主干 2/3 已落四表、Attention/outbox、确认接口 |
-| 关闭 | 084 | A10 中文问题落库/群显示正常；A1 乱码是本机直传参数，不是 bot 路径 |
-| 接受 | 079 | 短号主路径已通过；`msgId`/引用增强留本轮补齐 |
-| 接受 | 080 | v1 不 @；本轮补 `mention_userid` 或明确回退 |
-| 接受 | 071 | running 允许多条 report、late=1；不改状态机 |
-| 关闭 | 087 | 非提权 doctor 对服务任务报 WARN，不再假 FAIL；FAIL=0 WARN=13 |
-| 移出 | 005 / 016 / 017 / 018 / 019 / 020 / 037 / 038 / 039 | 归主干 4，不计入主干 0 |
+## 4. 两阶段与闸门
 
-**当前结论**：按现有范围，主干 0 开放 GAP = 0，保持 ✅。本批双机回归如果发现新缺口，**自动重开主干 0**，不压到下一轮。
-
-## 4. 需要补齐的偏差（不是重做主干）
-
-| ID | 现状 | 目标 | 验收 |
+| 阶段 | 内容 | 准入 | 准出 |
 |---|---|---|---|
-| **DEV-01** D45 单一日对话 | wake 每个 queued Ticket 用 `/new` 新建一个 Agent host；`sessions` 会随 Ticket 增长 | wake 定向唤醒**已有 active daily host**；`/new` 只用于 03:00 日切；host conversation id 稳定 | 连续 3 个 Ticket：只产生 1 个 daily host 会话；3 个 subagent；无重复 host；`sessions` 不按 Ticket 增长 |
-| **DEV-02** GAP-079 msgId/quote | 补丁只注入 `chat/from`；短号主路径可用，引用文本不能兜底 | 补丁注入 `msgId`/quote 文本；`attention match` 在无短号时可用引用文本命中；短号仍是主路径 | 真实群引用 A10 回复“可以”不带短号 → 命中；短号路径不回归 |
-| **DEV-03** GAP-080 mention userid | v1 通知不 @ 人；`people.userid` 是会话级 `wok…` | org 增加/采集 `mention_userid`；webhook `mentioned_list` 真 @；拿不到就回退中性短号 | 真实员工收到 @；失败时回退不报错 |
-| **DEV-04** 8h/24h 实际投递 | 2h 真实群已过；8h/24h 只算级别，没真发 | 回拨 Attention 时间，跑 sweep --apply，测试群收到 8h 管理者/24h 老板文案 | outbox `sent`；文案/收件人正确；不重复 |
-| **DEV-05** ACC-01/06/08 证据 | 口述/书面例外，无机器日志 | 双机回归用日志/截图/DB 证据重跑 | 每项有机器证据；不能口述 |
-| **DEV-06** 员工 bot 旧 1.0 | 员工侧仍是旧实现，主干 4 未做 | 本批只按现状测，缺口登记；**不在本批实现主干 4** | EMP 项通过或登记 GAP，不伪装通过 |
+| **阶段 1** | 公司侧正式部署（§5）+ **零起点装机检验（§5.1）** | 生产主机就绪、WorkBuddy 以管理员打开、企微后台已配好群机器人 | 14 任务 Ready、doctor 35 项 FAIL=0、deploy-verify PASS、`executor-deploy.json ok:true`；Z 系列有独立证据 |
+| **阶段 2** | 主干 1/2/3 设计符合性检验（§6.1–6.3）+ 补充维度（§6.5 中用户挑定部分） | 阶段 1 准出 | 符合性矩阵逐项有证据与判定；偏离项已登记 `GAP` 并处置或由用户裁决 |
+| **闸门** | 公司侧准出评审（§4.1） | 阶段 1 + 2 完成 | **7 条全过才允许开阶段 3** |
+| **阶段 3** | 员工侧部署 + ACC-17（§7） | 闸门通过 | 员工侧 EMP 项通过、ACC-17 有机器证据 |
+| **阶段 4** | 问题收口 + 文档同步 + 门禁 + 快照（§8–§11） | 阶段 3 完成 | §1 完成定义全满足 |
 
-**规则**：DEV-01/02/03/04 是本批必须补齐的偏差；DEV-05 用双机回归补证据；DEV-06 只记录，不扩成本批实现。
+### 4.1 准出评审（公司侧 → 员工侧的闸门）
 
-**本批结论（2026-11-10）**：
-- DEV-01 ✅ 单一日对话（D46）：wake bridge 2.0 定向 host，真实 3 Ticket / 1 host / 3 subagent；`/new` 只用于 03:00。证据 `STATUS` §1.10。
-- DEV-02 ✅ GAP-079：补丁注入 `msg=`/`quote=`，match 引用兜底；**真实群引用「可以」不带短号 approved（ACC-18）**。
-- DEV-03 ✅ GAP-080：`mention_userid` + webhook `mentioned_list` + 回退；老板账号已配并实发带 mentions 通知；**员工侧真 @ 归 ACC-17**。
-- DEV-04 ✅ 8h/24h 实际投递：A12/A13 sweep + outbox sent=2 + webhook errcode 0（ACC-19 达成）。
-- DEV-05 ✅（公司侧机器证据）/ ACC：矩阵 70/70×2、ING 16/16、门禁全绿；员工侧/03:00/真实群安全 → ACC-17/20/21（D48）。
-- DEV-06 记录：员工 bot 仍是旧 1.0，主干 4 未实现；本批不伪装通过（ACC-17）。
+按 `FUTURE-DESIGN` §0.0 的 7 条逐项判定，每条写 `符合 / 不符合 / 例外（须用户书面确认）`：
 
-## 5. 双机全量回归：环境与角色
+1. 14 个计划任务 Ready、doctor 35 项 FAIL=0、`deploy-verify` PASS、`setup-executor` 自动收尾 `ok:true`；
+2. 四类群 + 三角色在生产环境 `bind actor` 全部正确，隐私路由不串群；
+3. 主干 1/2/3 符合性清单在生产环境逐项有证据，偏离项已登记 `GAP` 并完成处置或由用户明确接受；
+4. 至少一次真实任务全链路：派活 → Main 只建 Ticket → 定向 wake → host 起 subagent 产物 → review 短号确认 → Task done；
+5. 备份/恢复、升级、回滚各演练一次，生产数据零丢失；
+6. 没有 `S0` / `S1` 的开放 `GAP`；
+7. **零起点装机链路有独立证据**：干净机（或备用机）上由未参与过开发的 agent 只拿仓库链接 + `BOOTSTRAP.md` 独立装完，记录卡点；生产机不是干净机时不得拿生产机充当此证据。
 
-### 5.1 两台机器
+评审结论写进 `STATUS` §1 与 §3.4；**未过闸门不得开员工侧**，若用户决定带例外推进，必须写进 `DECISIONS` 并在 §13 留痕。
 
-| 机器 | 角色 | 要求 |
+## 5. 阶段 1：公司侧正式部署
+
+> 证据根：`%ProgramData%\anc\stage\deploy-<日期>\company\`。每台机器一个目录，按步骤建子目录；命令输出、JSON、DB 快照、截图都留原文件。
+
+| ID | 步骤 | 命令 / 动作 | 预期 | 证据 |
+|---|---|---|---|---|
+| **C-01** | 定 side 与身份 | 确认这是「公司那台常开的主机」；WorkBuddy 以管理员身份打开 | `preflight` 的 `agent-elevated` 不是 blocker；机器画像 `admin-elevated` | `preflight.json` |
+| **C-02** | 环境 | `scripts\deploy\bootstrap.ps1 -InstallDeps` | Node ≥22 / Git 就绪，缺的由 winget 装好并刷 PATH | `bootstrap.json` |
+| **C-03** | 体检 | `preflight.ps1 -Side company -Json` | `ok:true`，`blockers:[]`；5 类画像与 `guidance` 正常 | `preflight.json` |
+| **C-04** | 访谈 | `deploy-kickoff.ps1 -Phase identity/prepare/collect/check` | 准备清单已给人且确认做完；`deploy-answers.json` 通过校验（webhook 只存文件名） | `kickoff/` |
+| **C-05** | 一条命令装 | `scripts\deploy\install-company.ps1 -VaultRoot <vault 根> -Apply` | 11 步按序跑完（`preflight` 只跑不记账）；失败即停，用 `-From` 续跑不从头来 | `install-company.log`、`deploy-state.json` |
+| **C-06** | 补丁重启后自动收尾 | `patch` 重启 WorkBuddy → `anc-patch-guard` 自动跑 `setup-executor -Apply -Marker` | 工作区自动加入、TEST 收到回复、当天 host 注册；`executor-deploy.json ok:true`、marker 已删 | `executor-deploy.json`、`wb-wake.log` |
+| **C-07** | 自证 | `tools\deploy-verify.ps1 -Side company -Json`；`doctor.ps1 -Json` | 14/14 任务 Ready；doctor 35 项 FAIL=0；`deploy-verify` PASS（`bot-reply` 无绑定群可 SKIP） | `deploy-verify.json`、`doctor.json` |
+| **C-08** | 安全边界 | 检查 secrets ACL、vault 两区权限、webhook 文件内容无 BOM/换行、`check-public` 零输出 | secrets 不进 git；共享区只读、内部区仅公司侧 | `acl/`、`check-public.out` |
+| **C-09** | 演练 | 备份 → 副本恢复 → `upgrade -Action apply` → `rollback` 各一次 | 生产 DB / org / vault 数据零丢失；`version.json` 记 rev/prevRev | `drill/` |
+| **C-10** | 真实群接线 | 四类群加机器人、采集真实 sender id、`org-write` / `sync-org` / `verify-org` | 四类群 `bind actor` 正确；首次绑定可由 bot 自动完成 | `bind-actor/`、`verify-org.json` |
+
+**易踩的坑**（来自本机实测，正式机要复核）：`wb-wake-workspace.txt` 必须是**绝对路径**；`register-tasks.ps1` 从部署根 `tools\` 跑要传 `-Repo`；员工侧部署根不存在会卡在 files；`anc-executor-host-tick` 指向 `host-tick.ps1`；`backup-anc.ps1` 默认 20h 间隔会跳过迁移后备份，部署/迁移后要 `-MinIntervalHours 0`。
+
+### 5.1 零起点装机检验（Z 系列，用户点名）
+
+此前所有部署都在**存量本机**（已有 Node / Git / WorkBuddy / 项目数据），GAP-104 明确留了「全新机器首次完整部署链路尚未在干净机实跑」。这项要单独留证据：
+
+| 情形 | 怎么做 | 证据 |
 |---|---|---|
-| **公司主机** | 公司 bot / Main / Executor host / 计划任务 | 7×24 Windows；管理员只用于部署/注册任务；日常 WorkBuddy 用普通权限；`D:\anc` 数据；13 任务；webhook 可用 |
-| **员工电脑** | 员工 bot | Windows；普通用户；WorkBuddy 普通权限；员工群；本地资料；员工侧补丁；不查公司库 |
+| **A** 生产主机本身是干净机 | C-01..C-10 即为零起点全过程，额外按 Z-01..Z-12 逐项记录 | `zero/` |
+| **B** 生产主机已有环境 | 另用备用机 / 虚拟机做独立演练，**不碰生产数据**；生产机只验 C 系列 | `zero/` + `company/` |
 
-### 5.2 账号与群
+| ID | 检验点 | 预期 |
+|---|---|---|
+| Z-01 | 起点干净：无 Node / Git / WorkBuddy / `%ProgramData%\anc` / vault / org | 现场截图 + 目录清单 |
+| Z-02 | 让**未参与过开发的 agent 或人**，只拿仓库链接 + `BOOTSTRAP.md`，不额外口述提示，独立装完 | 记录每一步问了什么、卡在哪、是否要靠仓库外的信息；这是 README「第二个人能不能独立装起来」的真答案 |
+| Z-03 | `bootstrap.ps1 -InstallDeps` 自动装 Node/Git 并刷 PATH | 同一会话内 `node -v` / `git --version` 可用；无 winget 时给出官方链接 |
+| Z-04 | `preflight` 的 5 类机器画像与 blocker/fix | 与实际机器一致；未提权时公司侧确实拦住 |
+| Z-05 | `deploy-kickoff` 四段访谈 | 准备清单人能看懂、问题集够用、缺信息时明确卡在哪节 |
+| Z-06 | `install-company -Apply` 11 步一次跑完 | 每步 `deploy-state` 记账；`preflight` 只跑不记账 |
+| Z-07 | 中途失败 → `-From <阶段>` 续跑 | 已完成阶段不重做、数据不丢（断点续装的核心承诺） |
+| Z-08 | `patch` 重启 → `anc-patch-guard` 自动 `setup-executor -Marker` | 工作区自动加入、TEST 收到回复、当天 host 注册、`ok:true`、marker 删除——**全新机器首次完整链路，此前未验** |
+| Z-09 | 全新机的 `deploy-state` | `brief` / `answers` / `executor` 应有值（存量机为 N/A），目标 14/14 或明确说明例外 |
+| Z-10 | 产物自证与边界 | 158 文件 hash 全过、bin 21 / tools 26、清单外脚本不上生产、secrets 不进 git、check-public 零输出 |
+| Z-11 | 重装 / 回滚幂等 | 再跑一次 `-Apply` 或 `-Rollback` 后仍能自证，数据不丢 |
+| Z-12 | 卸载 | 卸载清单能回到干净状态，vault 数据按规则保留 |
+
+> **Z-02 的卡点记录是本批最有价值的产物之一**：它直接回答部署手册是否真的够用。发现一处就按 §8 登记 `GAP`，不要现场口头补一句就过去。
+
+## 6. 阶段 2：主干 1/2/3 设计符合性检验
+
+> **判据来自 `FUTURE-DESIGN` §0.0 的符合性清单**；下表是把它拆成可在生产环境逐项跑的动作。每项都要有机器证据，口述不算。
+> 证据根：`%ProgramData%\anc\stage\deploy-<日期>\conformance\`，按 ID 建子目录。
+
+### 6.1 主干 1：四类群 + 三角色 + 隐私路由
+
+| ID | 设计点 | 生产环境验证动作 | 预期 / 证据 |
+|---|---|---|---|
+| TR1-1 | 四类群、三角色 | 在员工群 / 部门群 / 公司大群 / 老板 1:1 各发一条 @，跑 `bind actor` | 四个 JSON 的 type/role 正确；`verify-org ok` |
+| TR1-2 | 公司大群可答公司级 + 部门级 | 公司大群问公司级问题、部门级问题 | 直接答，不转私聊 |
+| TR1-3 | 个人级转员工群、内部级只回 1:1 | 公司大群问个人级 / 内部级数据 | 个人级不在大群泄露；内部级只在 1:1；群截图 |
+| TR1-4 | 同部门接受 / 跨部门审批 | A 请同部门 B；A 请跨部门 C | `pending_acceptance` → 接受 → `open`；`pending_approval` → 管理者批准 → 接受 → `open`；状态/审计 JSON |
+| TR1-5 | 角色越权 | 员工查别人/别部门；管理者查别部门 | 拒绝回复 + DB 无越权记录 |
+| TR1-6 | org 是真相 | 改一个成员后 `render deploy --db` | `sync-org` / `verify-org` 通过；`people/groups/manager_scopes` 与 org 一致 |
+| TR1-7 | 老板 1:1 用真 1:1（D32） | 老板 1:1 发内部问题 | 可识别、可答；不建私有群；无主动推送（D32 已知限制） |
+| TR1-8 | 未知人 fail closed | 未绑定群发一句 | 不猜人、不退回默认群 |
+
+### 6.2 主干 2：两层结构、单一日对话、执行与恢复
+
+| ID | 设计点 | 生产环境验证动作 | 预期 / 证据 |
+|---|---|---|---|
+| TR2-1 | Main 只建 Ticket、只对人说话 | 公司群派一个真实任务 | Task open + Ticket `queued`，Main 不执行；`task list` / DB |
+| TR2-2 | 单一日对话（D46） | 连续派 3 个 Ticket，观察 host 与会话 | 1 个 daily host、3 个 subagent；wake 日志 `via=wb` 同一会话；窗口内无新建会话；`executor_hosts` 总量不按 Ticket 增长 |
+| TR2-3 | `/new` 只用于 03:00 | 观察一个工作日 + 03:00 前后 | 日切前不新建；03:00 由 `new-host` / `host-tick` 触发；`host_cut` 事件 |
+| TR2-4 | 一 Ticket 一 subagent | 查 Assignment 与产物 | `subagent_id` 不是 main/self；产物 + Report 落在 `departments/<dept>/tasks/<ticket>` |
+| TR2-5 | 4+1 slot、P0 队首、同优先级 FIFO | 造 5+ 个不同优先级 Ticket | 不抢占、顺序正确；DB 快照 |
+| TR2-6 | 失败自动重试至 `max_attempts` | 造一次 failed Report | 回 `queued` 重派（attempt+1），到上限才 `failed`；Task 不假 done |
+| TR2-7 | 真实重启恢复 | 重启 WorkBuddy 后 `recover` | 旧 Assignment `interrupted`、Ticket 回 `queued`、新 host 重派完成 |
+| TR2-8 | 03:00 日切语义 | 真实跨夜观察（不用 `-Now` 模拟） | 旧任务继续、新任务进新 host；`business_date` 正确 |
+| TR2-9 | 确认后 Task done | review 短号通过 | Ticket/Task 单向终止（D38） |
+
+### 6.3 主干 3：确认协议、通知、安全
+
+| ID | 设计点 | 生产环境验证动作 | 预期 / 证据 |
+|---|---|---|---|
+| TR3-1 | 短号为主 | 真实群 `A12 可以` | approve → Ticket/Task done；`answer_message_id` 指向真实 `msg=` |
+| TR3-2 | 引用文本增强 | 引用通知只回「可以」不带短号 | 补丁入站带 `quote=`；`attention match --quote-text` 命中；短号路径不回归 |
+| TR3-3 | 只有 `required_confirmer`/老板能确认 | 非确认人、伪造短号、提示注入三类 | 均不能改动 Attention（D52 / GAP-107 修复后）；审计 `EXIT_2` |
+| TR3-4 | 老板代确认 | 老板代管理者回执 | `on_behalf_of` 落库并通知本人 |
+| TR3-5 | `question` → human slot | 造一个缺信息任务并回答 | 同一 Ticket 恢复不重开；human 不计 `max_attempts` |
+| TR3-6 | 2h / 8h / 24h 升级 | 回拨 Attention 时间跑 `sweep --apply` | 2h 本人、8h 管理者、24h 老板；outbox `sent`，webhook `errcode 0`，不重复 |
+| TR3-7 | 降噪 | 静默时段 / 每日上限 | 22–08 顺延；每日 10 条；首条 ask 不占上限 |
+| TR3-8 | `require_ack` 默认关 + 三类开 | 分别造普通交接与三类交接 | 普通只记 `notified`；三类进待办并回执 |
+| TR3-9 | 真 @ | 填 `mention_userid` 后发通知 | webhook `mentioned_list` 真 @；拿不到时回退不 @、不报错 |
+
+### 6.4 证据与判定规范
+
+- 每项至少一条：DB 查询 JSON / 日志原文件 / 群截图 / 产物路径。**口述、单测通过、本机历史 ACC 都不能替代生产环境证据**。
+- 判定只有三种：`符合` / `偏离（已登记 GAP-###）` / `接受（用户裁决，写进 DECISIONS）`。
+- 测试数据只进测试 Task / Ticket / 测试群；生产数据先备份；跑完清理测试行并留清理报告。
+- 发现实现与设计不符 → 按 §8 处置，**不在现场改设计去迁就实现**。
+
+### 6.5 补充检验维度（项目侧建议，范围由用户挑定）
+
+以下是主干 1/2/3 设计点之外的横切风险，用户的原话是「还有一些我没有想到，你可以帮我想想」。**不默认全做**：标 `本批` 的建议纳入，标 `后置` 的建议另开观察期；用户可以删减，删掉的项目在 §13 留一行「用户决定不纳入本批」。
+
+**A. 长期运行（7×24 主机的真实风险，此前都是短时演练）**
+
+| ID | 检验点 | 为什么要验 | 建议 |
+|---|---|---|---|
+| S-A1 | 连续运行 ≥48h 不重启 | 计划任务是否漏跑、wake 是否重复唤醒、DB/日志增长、句柄泄漏 | 本批 |
+| S-A2 | 连续 ≥2 次真实 03:00 日切 | host 不重复创建、旧任务不丢、`business_date` 连续 | 本批 |
+| S-A3 | 22–08 静默与工作时段跨日 | 半夜把人叫醒是最容易挨骂的事故 | 本批 |
+| S-A4 | 主机重启 / 断电后恢复 | D5「不开自动登录」的代价：开机提醒是否真能把人叫回来 | 本批 |
+| S-A5 | 备份轮换跑满周期（日档 60 / 月档 12） | 不炸盘、旧档真能恢复 | 后置 |
+| S-A6 | 7 天连续运行 + 一次任务耗时 / token 成本基线 | D37 金额预算未设，正式用起来才知道贵不贵 | 后置 |
+
+**B. 真实业务负载（此前产物都是 `hello*.md` 之类测试件）**
+
+| ID | 检验点 | 为什么要验 | 建议 |
+|---|---|---|---|
+| S-B1 | 至少一个**真任务**全链路 | 产物质量、目录规范、确认话术在真实内容下是否可用 | 本批 |
+| S-B2 | 并发多任务跨部门 / 跨优先级 | 4+1 slot 在真实负载下不串写 | 本批 |
+| S-B3 | 大文件 / PDF 入库 + 覆盖写 base hash + 原件不进 git | ING 16/16 只在本机验过 | 本批 |
+| S-B4 | 中文 / 长文本 / 特殊字符 / 表情 | GAP-084 只验过一例，正式群消息更复杂 | 本批 |
+| S-B5 | webhook 失败 / 限流 / 重复消息 | outbox 退避重试、dedupe、幂等 | 本批 |
+| S-B6 | AI Bot 与群机器人两个发送者 | 用户能否分清、通知与回复不打架（D41 已知代价） | 本批 |
+| S-B7 | 高频消息 / 刷屏 / 大量 Attention 压测 | 上限与降噪在压力下是否仍有效 | 后置 |
+
+**C. 安全与隐私（第一次有真实公司数据）**
+
+| ID | 检验点 | 为什么要验 | 建议 |
+|---|---|---|---|
+| S-C1 | 文档 / PDF / 文件名里夹带指令 | ACC-21 只验了群消息确认注入，**入库文档注入未验** | 本批 |
+| S-C2 | 出站凭据扫描 | webhook / token / 真实姓名不出现在群消息、日志、git | 本批 |
+| S-C3 | 在**生产机**跑 `check-public` | 此前只在仓库扫 | 本批 |
+| S-C4 | secrets ACL 在真实部署账号下 | 本机管理员账号可能掩盖权限问题 | 本批 |
+| S-C5 | `anc-elevate` SYSTEM 提权通道 | 白名单 / TTL / GUID / 每小时 6 条 / 审计（GAP-102 只在临时根验过） | 本批 |
+| S-C6 | 伪造 sender id / 冒用老板 | GAP-072 的会话级 id 是真实攻击面 | 本批 |
+| S-C7 | 入职 → 离职 → 成员变更全流程 | 档案不动、open 任务转交、groups 停用 | 本批 |
+| S-C8 | 内部区数据不出现在员工侧 | D12 / D19 在生产 ACL 下复核 | 本批 |
+
+**D. 可运维 / 可移交**
+
+| ID | 检验点 | 为什么要验 | 建议 |
+|---|---|---|---|
+| S-D1 | 陌生人接手（与 Z-02 合并取证） | 只给仓库链接 + 文档，能否看懂现状、找到日志、处理常见故障 | 本批 |
+| S-D2 | 故障注入：doctor 每项故意弄坏一处 | 是否都能 FAIL（RELEASE-CHECKLIST 四阶段之一） | 本批 |
+| S-D3 | 备份恢复到**另一台**机器 | REBUILD 路径真实可用 | 本批 |
+| S-D4 | 升级后配置与数据保留 | `upgrade` 数据零覆盖只在临时根验过 | 本批 |
+| S-D5 | 出问题时能否从日志 / DB / audit 快速定位 | GAP-025 审计面板未做，记录实际排查耗时就知道要不要补 | 本批 |
+| S-D6 | 审计面板 / 最小可观测字段 | 设计叶子 GAP-025，正式用起来暴露痛点再定 | 后置 |
+
+**E. 设计元约束与验收口径**
+
+| ID | 检验点 | 为什么要验 | 建议 |
+|---|---|---|---|
+| S-E1 | 「只有 Main 对人说话」 | 生产里是否有 subagent / devbot / 群机器人越权对人说话 | 本批 |
+| S-E2 | 「确定性的事不交给模型」 | 抽查状态 / 计时 / 完成判定 / 出站是否真在本地服务 | 本批 |
+| S-E3 | 「SQLite 是真相、markdown 是投影」 | 手改 vault 后是否被正确覆盖回去 | 本批 |
+| S-E4 | D35/D36 的口述 / 人工对账例外逐条换机器证据 | 历史验收口径偏软，正式部署要补硬证据 | 本批 |
+| S-E5 | 已定但未实现的设计项清点 | 自动评估器（D29）、强 ACL（D28）、通知合并/日报（D41）、金额预算（D37）逐项标「有意不做 / 漏做」 | 本批 |
+| S-E6 | 主干 4 缺口书面确认 | 员工 bot 哪些能力明确不做，写进 STATUS / PRODUCT，避免部署后被当成 bug | 本批 |
+
+> 标「本批」的约 30 项多数可**共用取证**：S-A1/A2/A3 在同一个连续运行窗口里看，S-B1/B2/B4/B6 在同一轮真实任务里跑，S-C1/C2/C6 在同一轮安全回归里跑，S-D1 与 Z-02 合并。不是 30 个独立大工程。标「后置」的 4 项需要长周期或额外机器，不阻塞本批准出。
+
+## 7. 阶段 3：员工侧部署（闸门通过后）
+
+| ID | 步骤 | 预期 / 证据 |
+|---|---|---|
+| **E-01** | 按 [BOOTSTRAP.md](../BOOTSTRAP.md) 四步 + [DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md) 装员工侧 | 员工电脑 WorkBuddy 普通权限；员工侧 `deploy-state` 10 阶段；首次绑定成功 |
+| **E-02** | EMP-01 员工群边界 | 只服务本人；不查公司库（旧 1.0 按现状验）；不越权 |
+| **E-03** | EMP-02 handoff | 旧 1.0 没有 handoff → 明确登记为**主干 4 缺口**，不算通过 |
+| **E-04** | 两机真实群/任务（ACC-17） | 真实员工群 / 部门群 / 公司群；任务产物只在对应目录；**机器证据**替代 D48 书面例外 |
+| **E-05** | 员工侧自证 | doctor、群回应、任务落库、补丁/前缀按员工侧口径（员工侧不装补丁不试 17999） |
+
+> 员工侧发现的问题单独登记，不回退公司侧准出结论；若需改公司侧配置，重新走一次 §4.1 的相关项。
+
+## 8. 问题登记与处置流程
 
 ```text
-老板：guoshuai（全局）
-管理者：zhangjiayi（tech）
-员工：wuqiong（tech）
-群：员工群（wuqiong）、部门群（tech）、公司大群、老板 1:1、anc测试群
+发现问题 → 现场留证据 → STATUS §3 建 GAP-###（类型/严重度/来源/阻塞/下一步）
+  → 分类：实现偏离设计 → §3.3 设计反哺 + 0.7
+          部署 / 运维问题 → 0.4
+          真实验收缺口 → §3.5 ACC 行
+          安全 / 合规 → 0.5
+  → 处置：S0/S1 立即修；S2/S3 排期或进主干 0；接受不修须用户裁决并写 DECISIONS
+  → 回写：受影响文档（PRODUCT / ARCHITECTURE / 模块契约 / 接口 / 运维）
+          + STATUS §3.4 复检行 + §4 审计行 + 测试数
 ```
 
-### 5.3 前置
+**问题登记表**（放在证据根 `issues.md`，每发现一条就追加一行）：
 
-- 两台机器在同一企业微信主体；公司主机 webhook / secrets 可用。
-- 公司主机：`deploy.ps1 -Apply`、`register-tasks.ps1 -Apply`、doctor FAIL=0；patch/bridge 正常。
-- 员工电脑：WorkBuddy 安装、员工侧部署、补丁、首次绑定；`bind actor` 能返回 employee。
-- 测试数据只进测试群/测试 Task；生产 vault 只读；跑完清理测试 Task/Ticket/Attention。
-- 开始前备份 `C:\ProgramData\anc\data\anc.db` 与 `D:\anc` 测试目录。
+| ID | 发现阶段 | 现象 | 证据路径 | GAP | 分类 | 处置 | 状态 |
+|---|---|---|---|---|---|---|---|
 
-### 5.4 干净部署路径（可选，不碰生产）
+规则：
 
-如果要验“从零装起来”，用独立根（例如 `%ProgramData%\anc-e2e` + `D:\anc-e2e`）跑 `deploy.ps1` / `render deploy` / `doctor` / `backup`；不接真实群，只验安装/渲染/权限/回滚。真实群回归仍用生产测试群。
+- **S0/S1 未关闭，公司侧不准出**；带例外推进必须用户书面确认并写 `DECISIONS`。
+- 修 bug 必须有回归测试；新代码必须带测试。
+- 每个 GAP 都要有「修掉 / 接受 / 移出主干 4」的结论，不允许悬空。
+- 部署过程中若发现「设计本身定错了」，由用户裁决：改设计则同步 `FUTURE-DESIGN` + `DECISIONS` + 受影响的现状文档，不允许静默改。
 
-## 6. 双机全量回归：测试矩阵
-
-> 每项都要有证据：DB 查询、日志、截图、产物路径。没有证据 = 未通过。
-
-### 6.1 环境与身份
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| ENV-01 | 公司主机干净部署 | 142 文件 hash 全过；13 任务 Ready；doctor FAIL=0 | deploy 日志、doctor |
-| ENV-02 | 员工电脑干净部署 | WorkBuddy + 员工侧部署 + 补丁；首次绑定成功 | 安装日志、bind actor |
-| ENV-03 | 补丁/前缀 | 群消息带 `[anc:chat/from]`；不是“身份识别暂不可用” | 消息截图、patch 日志 |
-| ID-01 | 四类群 bind actor | employee/department/company/boss_dm 的 type/role 正确 | `bind actor` JSON |
-| ID-02 | 角色越权 | 员工不能看别人/别部门；管理者只本部门 | 拒绝回复、DB |
-
-### 6.2 任务与请求
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| TASK-01 | 老板派任务 | Task open，assignee 正确 | `task list` |
-| TASK-02 | 员工自建任务 | 只登记给自己 | `task list` |
-| TASK-03 | 同部门请求 | `pending_acceptance` → 接受 → open | 状态/审计 |
-| TASK-04 | 跨部门审批 | `pending_approval` → 管理者批准 → 接受 → open | 状态/审计 |
-| TASK-05 | 完成/取消权限 | 只有执行人/交办人可操作；越权拒绝 | CLI/群回复 |
-
-### 6.3 Main / Executor
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| EXE-01 | background 全链路 | Main 只建 Ticket；wake 定向 daily host；host 起真实 subagent；产物；review；done | Task/Ticket/Assignment/Report、产物 |
-| EXE-02 | 队列与 slot | 4+1 slot；P0 队首；不抢占；同优先级 FIFO | DB/日志 |
-| EXE-03 | 失败与重试 | failed 自动重试至 max_attempts；不假成功 | DB/Report |
-| EXE-04 | 窗口重启恢复 | 旧 Assignment interrupted；Ticket queued；新 host 重派 | recover 日志 |
-| EXE-05 | 03:00 日切 | `/new` 建新 host；旧任务继续；新任务进新 host | host/日志 |
-
-### 6.4 Attention / 确认
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| ATT-01 | review approve | Ticket/Task done | A 短号、审计 |
-| ATT-02 | review reject | Ticket 回 queued，带返工意见 | 状态/审计 |
-| ATT-03 | answer + human slot | 同一 Ticket 恢复，不重开 | Assignment/Ticket |
-| ATT-04 | responsibility ack | 责任转移；Ticket done | 审计 |
-| ATT-05 | 非确认人拒绝 | 只回“需要 XX 确认”，不执行、不泄露 | 群截图 |
-| ATT-06 | 老板代确认 | `on_behalf_of` 记录 | 审计 |
-| ATT-07 | 2h/8h/24h | 2h 本人；8h 管理者；24h 老板；不重复 | outbox/截图 |
-| ATT-08 | 多义/多短号 | 只反问一次，最多列 3 条 | 群截图 |
-| ATT-09 | 静默/上限 | 22–08 顺延；每日上限 10；首条 ask 不占 | 配置/日志 |
-
-### 6.5 入库 / 知识
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| ING-01 | 文件入库 | 共享区批次、审计、原件不入 git | git/审计 |
-| ING-02 | 覆盖写 base hash | 不带 base hash 拒绝；带对才写 | 错误/审计 |
-| ING-03 | 权限边界 | 员工只读共享区；内部区只有公司侧 | ACL/拒绝 |
-
-### 6.6 运维 / 安全
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| OPS-01 | 备份/恢复 | 备份可读；恢复演练通过 | backup 日志 |
-| OPS-02 | doctor / patch guard | 管理员 13 任务 PASS；非提权 WARN 不假 FAIL | doctor 输出 |
-| OPS-03 | 重启 | 服务恢复；Task/Ticket 不丢 | 重启前后 DB |
-| SEC-01 | 跨群泄露 | 个人/内部数据不出正确群 | 群截图 |
-| SEC-02 | 注入 | 文档/群消息里的指令不执行 | 回复/审计 |
-| SEC-03 | 伪造确认 | 非确认人/伪造短号不生效 | 状态不变 |
-
-### 6.7 员工 bot（现状）
-
-| ID | 场景 | 预期 | 证据 |
-|---|---|---|---|
-| EMP-01 | 员工群边界 | 只服务本人；不查公司库；不越权 | 群截图 |
-| EMP-02 | 员工→公司 handoff | 若旧 1.0 没有 handoff，登记为**主干 4 缺口**，不算通过 | GAP |
-
-## 7. 任务分解
+## 9. 任务分解
 
 | 任务 | 内容 | 完成条件 |
 |---|---|---|
-| **T5.1** 主干 0 记录 | 把 §3.3b 复检、GAP-087、trunk-4 移出写进 PLAN/STATUS | 账本一致；check 通过 |
-| **T5.2** 单一日对话 | 改 wake 定向已有 daily host；`/new` 只 03:00 | 3 Ticket 只 1 host；无重复；EXE-01/05 通过 |
-| **T5.3** GAP-079 | 补丁 `msgId`/quote；match 兜底 | 引用无短号命中；短号不回归 |
-| **T5.4** GAP-080 | org `mention_userid` + webhook mention | 真人员工收到 @；回退可用 |
-| **T5.5** 8h/24h | 回拨 Attention；sweep 真发 | 8h/24h 文案/收件人正确 |
-| **T5.6** 双机环境 | 公司主机 + 员工电脑按 §5 准备 | ENV-01/02/03、ID-01 通过 |
-| **T5.7** 全量回归 | 按 §6 矩阵跑 | 全部通过或书面例外 + GAP |
-| **T5.8** 缺口收口 | 新 GAP 修/接受/移出；文档同步 | STATUS/FUTURE/模块/接口同步 |
-| **T5.9** 发布门禁 | 测试 3 次、check、check-public、doctor、快照 | 全绿；PLAN 快照 |
+| **T6.1** | 开批留痕 | 本 PLAN + `FUTURE-DESIGN` 主干 0 + `STATUS` §3.4 复检行已落盘；旧 PLAN 已快照 |
+| **T6.2** | **零起点装机检验** | Z-01..Z-12 有独立证据（干净机 / 备用机，不碰生产）；Z-02 卡点记录完整 |
+| **T6.3** | 公司侧环境准备 | C-01..04 全过，证据齐 |
+| **T6.4** | 公司侧安装与自证 | C-05..07 全过；14 任务 / doctor 35 项 / deploy-verify / executor-deploy |
+| **T6.5** | 安全、演练、真实群接线 | C-08..10 全过；备份/恢复/升级/回滚数据零丢失 |
+| **T6.6** | 主干 1 符合性 | TR1-1..8 逐项判定 + 证据 |
+| **T6.7** | 主干 2 符合性 | TR2-1..9 逐项判定 + 证据（含真实 03:00 跨夜） |
+| **T6.8** | 主干 3 符合性 | TR3-1..9 逐项判定 + 证据 |
+| **T6.9** | 补充检验维度 | §6.5 中**用户挑定**的「本批」项逐项有结论；未纳入项在 §13 留痕 |
+| **T6.10** | 公司侧准出评审 | §4.1 七条逐项结论；闸门通过或有用户书面例外 |
+| **T6.11** | 员工侧部署 | E-01..05；ACC-17 机器证据 |
+| **T6.12** | 收口 | 新增 GAP 全部处置；文档全量同步；门禁全绿；PLAN 快照 |
 
-**任务状态（2026-11-10）**：T5.1 ✅ / T5.2 ✅（DEV-01）/ T5.3 ✅（DEV-02）/ T5.4 ✅（DEV-03）/ T5.5 ✅（DEV-04）/ T5.6 ✅ 公司主机侧（员工侧 ACC-17）/ T5.7 ✅ 公司主机侧矩阵 + **ACC-18 真实群通过**（ACC-17/20/21 书面例外，D48）/ T5.8 ✅（本批新 GAP 已处置；GAP-091 留后续）/ T5.9 ✅（248/248、check、check-public、doctor、deploy-state、快照）。
+**任务状态（2026-11-10）**：T6.1 ✅（本文件）；T6.2–T6.12 待开工；T6.9 的范围待用户挑定。
 
-## 8. 测试与门禁
+## 10. 测试与门禁
 
 ```text
-npm test                  # 当前 252/252；新增项继续加
-npm run check             # modules + docs
+npm test                  # 当前 252/252；新增回归继续加
+npm run check             # check:modules:deep + check:docs
 npm run coverage
-node scripts/checks/check-public.mjs
-doctor.ps1 -Repo ...      # 管理员 + 非提权各一次
-deploy-verify.ps1
+node scripts/checks/check-public.mjs   # 零输出且退出码 0
+doctor.ps1 -Json          # 公司侧 35 项 FAIL=0；非提权 FAIL=0 WARN=13
+deploy-verify.ps1 -Side company -Json
+deploy-state.ps1 -Side company -Status -Json
+backup-anc.ps1 -MinIntervalHours 0    # 迁移/部署后强制备份
 ```
 
-- 双机矩阵每项必须有证据；口述不算。
+- 生产环境每项要有证据；本地 `npm test` 通过只证明代码，不证明部署与真实群。
 - 新增代码必须有测试；修 bug 必须有回归。
 - 失败项进 `STATUS` GAP，不静默跳过。
 - 测试数据清理；生产 vault 不被测试写。
 
-## 9. 文档联动
+## 11. 文档联动
 
-- `STATUS` §3.3b（主干 0 复检）、§3.4（本批执行记录）、§3.5（双机 ACC/矩阵）。
-- `FUTURE-DESIGN` 主干 4 / 横切：员工 bot 缺口、单一日对话、GAP-079/080。
-- `DECISIONS`：D45 修订/补充；如单一日对话实现方式变化，登记 D46。
-- `MAIN-EXECUTOR` / `OPS` / `LOCAL-SERVICE`：wake 定向、mention、8h/24h。
-- `PRODUCT`：补齐后的能力边界。
-- 完成后归档 `archive/plans/BATCH-<日期>.md`。
+按 [DOC-SYNC.md](./DOC-SYNC.md) §3 清单全量核对：
 
-## 10. 风险与不做
+- `STATUS`：§1 证据、§3.2/§3.3 新 GAP、§3.4 复检行、§3.5 ACC-17 与新增 ACC、§4 审计行、§5 风险。
+- `FUTURE-DESIGN`：本批完成时把主干 0 汇总与 0.4/0.7/0.8 分支标回 ✅（或按新缺口保持 🟡）。
+- `DECISIONS`：部署中的新裁决（尤其「接受不修」与「改设计」）。
+- `PRODUCT` / `ARCHITECTURE` / `modules/*`：若生产行为与契约不符，先修实现或登记 0.7，再改文档。
+- `LOCAL-SERVICE` / `MAIN-EXECUTOR` / `WORKBUDDY-PATCH` / `RENDERER`：命令、前缀、状态机若有变化。
+- `DEPLOY-COMPANY` / `DEPLOY-EMPLOYEE` / `OPS` / `REBUILD` / `BOOTSTRAP` / `RELEASE-CHECKLIST`：部署步骤、门禁、ACC 判定；**零起点 Z 系列的卡点要回写手册**。
+- `INDEX` / `README` / `AGENTS`：现状数字与「现在到哪了」。
+- 完成后归档 `archive/plans/BATCH-DEPLOY-<日期>.md`，并在 `archive/plans/README.md` 登记。
 
-- **员工 bot 旧 1.0**：双机回归会暴露主干 4 缺口；本批只记录，不实现主干 4。若要“全部功能通过”，需另开主干 4 PLAN。
-- **定向唤醒 UI 脆弱**：如果 WorkBuddy 无法稳定定位 daily host tab，先做 `/new` 兜底但必须书面登记 D46，不静默接受。
-- **GAP-080 可能拿不到通讯录 userid**：拿不到就回退中性短号，明确记录“未 @”，不算通过。
-- **测试数据**：只用测试群/测试 Task；生产数据先备份；跑完清理。
-- **不重做已收口主干**：除 DEV-01..06 外，不改主干 1/2/3 的已验收行为；发现缺陷按 GAP 修。
+## 12. 风险与不做
 
-## 11. 执行记录
+- **不在本批实现主干 4**：员工 bot handoff / 本地执行 / 双 bot 路由继续记缺口；员工侧按旧 1.0 能力验。
+- **公司侧没准出就不开员工侧**：这是用户定的顺序，不因为进度压力跳过。
+- **零起点演练不碰生产**：生产机不是干净机时用备用机 / 虚拟机；绝不为了拿证据重装生产机。
+- **§6.5 补充维度范围由用户挑定**：项目侧只给建议，不默认把 30 项全塞进本批，也不因为「后置」就悄悄漏掉——删减要在 §13 留痕。
+- **不改设计迁就实现**：发现偏离先登记 GAP；要改设计必须用户裁决并写 `DECISIONS`。
+- **D35/D36 的历史验收口径偏软**（口述 / 人工对账书面例外）：正式部署很可能暴露未覆盖的问题，按 GAP 登记而不是掩盖；ACC-17 要补机器证据。
+- **生产数据**：先备份；测试只进测试 Task/Ticket/测试群；跑完清理并留报告。
+- **WorkBuddy 内部 `window.wb` API 无公开契约（D46）**：正式机若版本不同，wake bridge 2.0 可能失效；bridge 有 DOM fallback，升级后按 `WORKBUDDY-PATCH` 回归。
+- **真实 03:00 跨夜**：TR2-8 / S-A2 要等真实跨夜，不能用 `new-host -Now` 模拟顶替（D51 只允许用于补测）。
+- **首次正式部署链路**：`install-company` → `patch` 重启 → `patch-guard` 自动收尾此前只在本机验过，干净机第一次跑要重点看 Z-08 / C-06。
+
+## 13. 执行记录
 
 | 日期 | 事项 | 变更 | 证据 | 备注 |
 |---|---|---|---|---|
-| 2026-11-10 | PLAN 切“收口补齐 + 双机全量回归” | 写入主干 0 复检、DEV-01..06、双机矩阵 | 本文件 | 待开工 |
-| 2026-11-10 | 本批开工 | T5.1 沿用 §3 主干 0 结论；DEV-01 改为 `wb.conversations` / `sendPrompt` 定向唤醒（不再每票 `/new`）；DEV-02/03/04 并行；公司主机侧回归由 teammate 跑 | `STATUS` §3.4；`%ProgramData%\anc\stage\batch-20261110\` | 进行中；部署+重启点在 DEV-01/02 代码齐后统一做 |
-| 2026-11-10 | 本批部署 + 重启 + 验收 | 142 文件 ×3 部署 hash 全过；patch-state applied=true runId=78eecdc3…；wake bridge 2.0；DEV-01 3 Ticket/1 host/3 subagent；DEV-02/03/04 完成；回归 70/70×2 + ING 16/16；GAP-088/089 修复，090/092 接受，091 留后续 | `STATUS` §1.10；`dev01/EVIDENCE.md`、`dev02/EVIDENCE.md`、`dev04/EVIDENCE.md`、`regression/REPORT.md`、`gates/` | 门禁：248/248、coverage 88.87/78.87/93.85、check、check-public 0、doctor FAIL=0 WARN=3、deploy-state 11/11 |
-| 2026-11-10 | 本批快照 | PLAN 归档到 `archive/plans/BATCH-20261110.md`；双机项转 ACC-17/18/20/21（D48） | 本文件 | 批次收口（公司侧） |
-| 2026-11-10 | ACC-18 真实群补丁/引用/@ 通过 | 真实群 5 条入站带 `msg=`；引用 A11/A12 只回「可以」→ approved；`A13可以` 短号 → approved；老板 `mention_userid` 配置并实发 mentions 通知 | `STATUS` §1.10/§3.5；`%ProgramData%\anc\stage\batch-20261110\dev01\acc18\` | 测试 Attention/outbox 已清理；剩 ACC-17/20/21 |
-| 2026-11-10 | 主干 2 D46 后复验 | EXE-01 真实 Main 群链路（Task#20 → Ticket → 定向 wake → subagent `trunk2-accept.md` → A11 → done）；EXE-04 两次真实重启恢复（interrupted → 同会话新 host → attempt2 完成）；EXE-02/03 复用 70/70；EXE-05 机制已验证 | `STATUS` §1.11；`%ProgramData%\anc\stage\batch-20261110\trunk2-accept\EVIDENCE.md` | 发现 GAP-106（wake 重复唤醒窗口）open；真实 03:00 跨夜归 ACC-20 |
-| 2026-11-10 | ACC-20 日切补测（模拟 03:00） | `new-host.ps1 -Now` 触发：新会话 `827caa80…`、新 host `h-435a1107…`（11-11）、旧 host closing；旧任务切后仍 start/report；新任务 wake 定向新 host 完成 | `STATUS` §1.13；`%ProgramData%\anc\stage\batch-20261110\acc20\` | 未改系统时钟；明早真实 03:00 幂等跳过，下一次真实日切 11-12 |
-| 2026-11-10 | 部署后自动 executor（工作区+TEST+当天 host） | 用户要求：部署完自动加入 WorkBuddy 工作区并发 TEST，不用手动添加。实现：setup-executor.ps1 + install-company executor 阶段 + patch-guard 收尾 + deploy-verify 检查；实测 marker 链路/TEST 冒烟通过 | `STATUS` §1.15；`%ProgramData%\anc\stage\batch-20261110\acc21\` | 158 文件；deploy-state 12/14；2 个测试会话待删 |
-| 2026-11-10 | ACC-21 安全回归（注入→误批→修复→复测） | 第一轮注入让 bot 直接批准 A11（GAP-107，S1）；修复 `attention answer` 绑定 `--source-msg` + 服务端重推导；复测注入/伪短号/非确认人均失效、老板真实消息才通过 | `STATUS` §1.14/§3.5；`%ProgramData%\anc\stage\batch-20261110\acc21\` | 全量 252/252；CLI/技能/persona 已部署；ACC-21 达成 |
-| 2026-11-10 | GAP-106 修复 + 部署自动化 rollout | normal `claim` 即置 Ticket working（D50）；新增回归测试（249/249）；新清单 156 文件部署、14 任务注册（含 `anc-elevate` SYSTEM）、doctor FAIL=0 WARN=3、deploy-verify PASS（1 SKIP）、部署版 CLI claim 冒烟通过 | `STATUS` §1.12；`%ProgramData%\anc\stage\batch-20261110\rollout-20261110-1420\` | 部署自动化 rollout 完成；`deploy-state` 11/13（brief/answers 存量 N/A） |
+| 2026-11-10 18:1x | 开启正式生产部署批次 | 按用户决定更新 `FUTURE-DESIGN` 主干 0（当前批次 / 准出闸门 / 主干 1/2/3 符合性清单 / 规则 15）；PLAN 切本批；旧 PLAN 归档 `BATCH-20261110-FINAL.md` | 本文件、`FUTURE-DESIGN` §0 | T6.1 完成；待 C-01 开工 |
+| 2026-11-10 18:2x | 追加零起点与补充检验维度 | 用户追加「一台主机从 0 开始部署的过程」并请项目侧补充未想到的检验项；`FUTURE-DESIGN` §0.0 加目标 1/5 与准出第 7 条；PLAN 加 §5.1（Z-01..12）与 §6.5（S-A/B/C/D/E 五类，本批 / 后置分层）；任务分解重排 T6.1–T6.12 | 本文件、`FUTURE-DESIGN` §0.0 | **T6.9 范围待用户挑定**；闸门由 6 条变 7 条 |

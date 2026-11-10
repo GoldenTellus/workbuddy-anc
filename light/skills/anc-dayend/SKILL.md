@@ -22,7 +22,7 @@ description: 员工说「下班 / 我走了 / 收工」时，把这次下班记�
 
 ## 记录
 
-每条消息开头有 `[anc:chat=<chatid> from=<userid>]`。先解析出这两个值：
+每条消息开头有 `[anc:chat=<chatid> from=<userid>]`，可能带可选的 `msg=` / `quote=` 字段。先解析出这两个值：
 
 ```powershell
 node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json dayend add --employee "<员工名>" --chat-id "<chatid>" --user-id "<userid>"

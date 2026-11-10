@@ -2,6 +2,12 @@
   "version": 1,
   "docs": [
     {
+      "id": "bootstrap",
+      "path": "BOOTSTRAP.md",
+      "type": "部署入口",
+      "role": "零起点四步装入口（部署者先读）"
+    },
+    {
       "id": "index",
       "path": "docs/INDEX.md",
       "type": "导航",

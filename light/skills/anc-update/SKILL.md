@@ -57,12 +57,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\anc\tools\upg
 6. 重启 WorkBuddy（`-Restart`）
 7. 自证（`deploy-verify`）
 
+公司侧普通权限自动经 anc-elevate 排队、异步完成。
+
 ## 3. 结果怎么回
 
 | 退出码 | 意思 | 怎么跟人说 |
 |---|---|---|
-| `0` + `ok:true` | 成功 | 「已升到 `<rev>`，数据都在。重启后恢复正常了」 |
-| `3` | **权限不足**（最常见） | 「这次要管理员授权一次：管理员跑 `upgrade.ps1 -Action apply -GrantDeployWrite`，之后我就能自己升了」 |
+| `0` + `ok:true`（`next` 含「已排队」） | 升级已排队 | 「升级已排队，1–2 分钟内完成，用 `request-elevate.ps1 -Check <id>` 查回执」 |
+| `0` + `ok:true`（本地执行完成） | 成功 | 「已升到 `<rev>`，数据都在。重启后恢复正常了」 |
+| `3` | 提权通道未启用 / git 失败 | 公司侧普通权限会自动经 `anc-elevate` 投递并 exit 0，按 NEXT 原文转告；两条路：启用 anc-elevate，或管理员跑 -GrantDeployWrite |
 | `1` | 失败、**已自动回滚** | 「升级失败，运行件已回滚到原版本，**数据没动**。原因：`<FAIL 那行的 detail>`」 |
 | `2` | 环境问题（git/node/路径） | 把 `NEXT` 那行原样告诉人 |
 

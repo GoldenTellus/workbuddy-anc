@@ -2,6 +2,8 @@
 
 > 类型：运维手册（公司侧部署）
 
+> **零起点先读 [../BOOTSTRAP.md](../BOOTSTRAP.md) 四步；本文件是逐段排障参考。**
+>
 > **这份文档的读者是 agent，不是人。**
 >
 > 如果你是人：把仓库链接发给这台机器上的 agent，让它自己读这份文档。
@@ -49,7 +51,7 @@
 > powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\install-company.ps1 -VaultRoot D:\anc -Apply
 > ```
 >
-> 它按固定顺序跑 `preflight → dirs → files → skills → tasks → vault → org → wecom → verify → patch`，每步自动 `deploy-state -Mark`，失败即停。修好后用 `-From <阶段>` 续跑，**不要从头重装**。
+> 它按固定顺序跑 `preflight → dirs → files → skills → tasks → vault → org → wecom → verify → executor → patch`（11 步），每步自动 `deploy-state -Mark`，失败即停。修好后用 `-From <阶段>` 续跑，**不要从头重装**。其中 `executor` 只写 marker（不真正建 host），`patch` 重启 WorkBuddy 后由 `anc-patch-guard` 收尾。
 >
 > 两个注意：① 必须管理员会话（首次部署的固有限制，注册 SYSTEM 任务本身要提权）；② `patch` 放在最后，因为它会用启动器重启 WorkBuddy，当前会话会断——不想重启就加 `-Skip patch`。
 >
@@ -67,7 +69,7 @@ D:\anc\                    vault + org + build
 
 - **公司 bot 在企微群里能回话**
 - **14 个计划任务在跑**
-- **`doctor` 34 项 FAIL=0**
+- **`doctor` 35 项（21 字面量 + 14 个 task-* 覆盖项）FAIL=0**
 - **能登记任务、能到点提醒、能入库**
 
 **你不会做的事**：不装员工侧（那是另一份文档）、不配企微后台（人做，见 §11）。
@@ -90,7 +92,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 
 | 他的回答 | side | 意味着 |
 |---|---|---|
-| 我是老板/负责人，装公司那台常开的机器 | `company` | 要管理员、13 个任务、两区 vault、配企微后台 |
+| 我是老板/负责人，装公司那台常开的机器 | `company` | 要管理员、14 个任务、两区 vault、配企微后台 |
 | 我是公司 IT，装或重装公司主机 | `company` | 同上，另外可能要处理重装与回滚 |
 | 我是员工，装自己的办公电脑 | `employee` | 不要管理员、0 任务、只读共享区 |
 | 我在帮同事装 | `employee` | 同上，但 memberId / userid / chatId 必须问本人 |
@@ -133,6 +135,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase check -Side company
 # exit 0 且 ok=true 才继续；exit 1 = 有必填项没齐
 ```
+
+`check` 通过后，把访谈两阶段记账（手工分步时装）：
+
+```powershell
+powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark brief -AsDone
+powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark answers -AsDone
+```
+
+> 走 `install-company.ps1 -Apply` 一条命令时由脚本自动记账，不用手敲上面两条。
 
 `errors` 必须补齐；`warnings` 是提醒（例如 chatId 不是 32 字符——截断值会被静默接受，绑完 bot 认不出群）。
 
@@ -363,7 +374,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy.ps1 -S
 
 **这一步做什么**：把**运行件**复制到 `%ProgramData%\anc\`，落盘前备份、落盘后**逐文件对拍 hash**、任一失败**整体回滚**。
 
-> **只部署运行件，不部署仓库。** `docs/`、`_research/`、`reference/`、`AGENTS.md`、`SPEC.md`、`package.json` 这些开发维护内容一个都不进来；`src/**/*.test.ts` 和 `patch/*.test.mjs` 也被排除。现在一共 156 个文件。
+> **只部署运行件，不部署仓库。** `docs/`、`_research/`、`reference/`、`AGENTS.md`、`SPEC.md`、`package.json` 这些开发维护内容一个都不进来；`src/**/*.test.ts` 和 `patch/*.test.mjs` 也被排除。现在一共 158 个文件。
 
 落盘分两处，看目录名就知道哪些是「系统在跑」、哪些是「工具」：
 
@@ -452,15 +463,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills
 **成功判据**：
 
 ```powershell
-# 应该是 9 个技能目录 + 1 个 .anc-backup（备份目录，不算技能）：
-#   anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-executor / anc-vault-read / anc-wb-patch
-# 源文件是 10 个 md（anc-executor 多一份 subagent.md、anc-interview 多一份 questions.md）。
+# 应该是 9 个技能目录 + 1 个 .anc-backup（备份目录，不算技能）= 10：
+#   anc-dayend / anc-feedback / anc-ingest / anc-interview / anc-task / anc-executor / anc-vault-read / anc-wb-patch / anc-update
+# 源文件是 11 个 md（9 个 SKILL.md + anc-executor 多一份 subagent.md、anc-interview 多一份 questions.md）。
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
-# 期望 9（8 技能 + .anc-backup）。第一次装还没有备份目录时是 8，两种都正常。
+# 期望 10（9 技能 + .anc-backup）。第一次装还没有备份目录时是 9，两种都正常。
 # 想数准就只数带 SKILL.md 的：
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') }).Count
-# 期望 8
+# 期望 9
 ```
 
 **失败了怎么办**：
@@ -546,7 +557,7 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark patch -AsDo
 **做什么**：
 
 ```powershell
-# dry-run：列出 13 个任务和它们的 principal，先看
+# dry-run：列出 14 个任务和它们的 principal，先看
 # 从部署目录跑必须显式传 -Repo（部署目录里探测不到仓库根；仓库内跑可省略）
 powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\tools\register-tasks.ps1" -Root $Root -Repo '<仓库根>'
 
@@ -569,7 +580,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\tools\register-tasks.
 > `scripts\devbot\devbot-scheduler.ps1`。本机实测要从部署目录跑 `-Repo D:\workbuddy-anc`；
 > 在仓库里直接跑可自动探测、不用传。
 
-> **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\bin\`），不是仓库里的。
+> **注意**：这里用的是**部署目录里的** `register-tasks.ps1`（`%ProgramData%\anc\tools\`），不是仓库里的。
 > 部署目录那份运行时路径正确（§5 已经把它复制过去了）。
 
 **这 14 个是什么**：
@@ -1159,23 +1170,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-verify
 根: C:\ProgramData\anc
 
   database       PASS  库存在: C:\ProgramData\anc\data\anc.db
-  doctor         PASS  FAIL=0 WARN=3（34 项）
+  doctor         PASS  FAIL=0 WARN=3（34 项；2026-11-09 历史实测，现状 35 项 = 21 字面量 + 14 个 task-* 覆盖项）
   task-write     PASS  task #2 写进去了，查得回来
   bot-reply      SKIP  没有已绑定的群，也没有传 -ChatId
-  tasks          PASS  13 个任务全部 Ready/Running
+  tasks          PASS  14 个任务全部 Ready/Running
 
 结果  PASS=4  FAIL=0  SKIP=1
 NEXT  没有 FAIL，但有 1 项 SKIP——那不是通过，是没验。列在下面了。
 
 # 说明（2026-11-09 本机实测；早先 2026-11-05 读数见 VERIFY §62）：
-#  · doctor 直跑 34 项 FAIL=0 WARN=3：work-hours（未配工作时段）、patch（没有补丁日志）、
+#  · doctor 直跑 34 项（2026-11-09 历史实测；现状 35 项 = 21 字面量 + 14 个 task-* 覆盖项）FAIL=0 WARN=3：work-hours（未配工作时段）、patch（没有补丁日志）、
 #    bindings（没有群绑定）——都是设计内的，不是缺陷。
 #  · canary 在 15:37 快照时还是 WARN；15:38 收到首条真实群消息（补丁注入到前缀）后转 PASS，
 #    所以复跑 doctor 是 WARN=3。这也证明补丁的群身份注入在真实消息路径上生效。
 #  · deploy-verify 2026-11-09 起给 doctor 传 -Repo；此前不传时 secrets-in-git 会多报一条 WARN（5 vs 4）。
 #  · bot-reply 在「干净的机器上」通常是 SKIP 而不是 PASS —— 没有已绑定的群、也没有传 -ChatId。
 #    这不是故障（VERIFY §62.5）。
-#  · 任务是 13 个：9 LOCAL SERVICE / 1 SYSTEM / 3 交互类（DNT）。
+#  · 任务是 14 个：9 LOCAL SERVICE / 2 SYSTEM / 3 交互类（DNT）。
 #  · tasks 这项 2026-11-10 起按 OPS 任务表逐个核对名称（原来只判「拿到的都 Ready」，
 #    只注册 3 个也会 PASS —— GAP-081 就是这么漏过去的）。非提权会话看不到服务任务时
 #    这项是 SKIP 而不是 PASS/FAIL，要用管理员会话重跑才能核对全量。
@@ -1186,7 +1197,7 @@ NEXT  没有 FAIL，但有 1 项 SKIP——那不是通过，是没验。列在�
 | 项 | 验什么 | FAIL 说明什么 |
 |---|---|---|
 | `database` | 库在 | 部署没做完 |
-| `doctor` | 34 项体检全过 | 有具体项坏了，看 detail |
+| `doctor` | 35 项（21 字面量 + 14 个 task-* 覆盖项）体检全过 | 有具体项坏了，看 detail |
 | `task-write` | 写一条能查回来 | **库能写才是真能干活**；写不进去说明服务起不来或库锁了 |
 | `bot-reply` | 注入一条消息 | 409（还没有实例引用）是 SKIP 不是 FAIL；端口没监听也是 SKIP；只有真正注入失败才 FAIL。**「没等到回复」仍是 PASS**（回复慢是模型行为） |
 | `tasks` | 14 个任务 Ready/Running | 有一个卡住就说明装机不完整 |
@@ -1215,10 +1226,10 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark verify -AsD
 
 ```
 公司侧部署完成。
-  doctor: FAIL=0 WARN=3（34 项）
+  doctor: FAIL=0 WARN=3（35 项，21 字面量 + 14 个 task-* 覆盖项）
   群回应: <PASS/SKIP 及原因>
   任务落库: OK
-  计划任务: 13/13
+  计划任务: 14/14
 未完成: <列出来，没有就写"无">
 ```
 

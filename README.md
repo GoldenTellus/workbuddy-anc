@@ -1,6 +1,6 @@
 # workbuddy-anc
 
-> 类型：入口（项目概览）
+> 类型：入口（项目概览） · 最后整理：2026-11-10
 
 小团队的「AI native 公司」落地仓库：一台 7×24 的 Windows 主机跑一个**公司 bot**，每个员工电脑跑一个**个人 bot**，执行引擎是腾讯 **WorkBuddy（企业版）**，IM 是**企业微信**，公司知识放在主机上的 markdown vault 里。
 
@@ -9,6 +9,8 @@
 ## 想装一套？把仓库链接发给你的 agent
 
 > **先读这份**：[`docs/PRODUCT.md`](./docs/PRODUCT.md) —— 部署完能干什么、每项能力怎么用。
+
+**从零装机的部署者**：先读 [BOOTSTRAP.md](./BOOTSTRAP.md) 四步（`bootstrap.ps1` 自动装 Node/Git → `preflight` 体检 → `deploy-kickoff` 访谈 → `install-company -Apply` 11 步装完）
 
 **不用照文档一步步做。** 把这个链接发给本机的 agent（**首选这台机器上的 WorkBuddy 自己**，
 也可以用 Claude Code / Codex），让它读完仓库自己装：
@@ -25,20 +27,19 @@ https://github.com/GoldenTellus/workbuddy-anc
 
 **agent 会问你这几件事**（提前准备好）：群机器人 webhook（每群一个，值只进主机 secrets、不进 git）、部门划分、员工名单与 userid、各群 chatId 与老板 userid。
 
-细节见 [docs/PRODUCT.md](./docs/PRODUCT.md)（能做什么）与 [docs/DEPLOY-COMPANY.md](./docs/DEPLOY-COMPANY.md) / [docs/DEPLOY-EMPLOYEE.md](./docs/DEPLOY-EMPLOYEE.md)（怎么装）。
+细节见 [BOOTSTRAP.md](./BOOTSTRAP.md)（从零部署）、[docs/PRODUCT.md](./docs/PRODUCT.md)（能做什么）与 [docs/DEPLOY-COMPANY.md](./docs/DEPLOY-COMPANY.md) / [docs/DEPLOY-EMPLOYEE.md](./docs/DEPLOY-EMPLOYEE.md)（怎么装）。
 
 ### 装完之后：验一遍（★ 新机器必读）
 
-**如果你是一台新机器、一个新 agent**，除了装，还请你帮忙验证——这个项目现在最缺的就是"第二个人能不能独立装起来"这件事被真正验过。
+**如果你是一台新机器、一个新 agent**，除了装，还请你帮忙验证——公司侧已由 BATCH-20261110 收口（ACC-16/18/19/20/21/22 达成），唯一未覆盖的是 **ACC-17 员工侧双机全量**（D48 书面例外）。
 
 **读这份**：[docs/RELEASE-CHECKLIST.md](./docs/RELEASE-CHECKLIST.md)（现行发布门禁）；历史交接记录在 [docs/archive/history/AGENT-VERIFY-HANDOFF.md](./docs/archive/history/AGENT-VERIFY-HANDOFF.md)。
 
 它包含：
 
 - **这台机器能验什么、不能验什么**（先确认角色，别白干）
-- **待验证任务清单**（D4.6 / O-5 / E-1 的员工机一半 / devbot 22:00 自动触发 / REBUILD 复验）
-- **25 条踩过的坑**（PowerShell 大小写敏感、CRLF、`if` 解包数组、Interactive 任务静默不执行…）
-- **6 个可复用的测试方法**（故障注入、注入时间而不是改系统时间、真关掉而不是伪造 SKIP…）
+- **现行发布门禁的四阶段**：补代码缺口 → 证明能自愈 → 清空重装 → 陌生 agent
+- **发布门禁 / 历史坑**（PowerShell 大小写敏感、CRLF、`if` 解包数组、Interactive 任务静默不执行…）
 
 **装的时候会问你的**：机器是干净机还是员工机、有没有管理员权限。
 
@@ -58,7 +59,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 | 入库进程 | `src/modules/knowledge/ingest/` | 校验公司 bot 整理好的批次并写进 vault：路径校验、覆盖写必须带 base hash、原件只许新建、事务回滚。不调模型 |
 | 渲染器 | `src/modules/org/` | 从 org 数据（角色 × 成员）生成 persona（`CODEBUDDY.md`）、个人接入包、群映射 |
 | WorkBuddy 补丁 | `scripts/workbuddy-patch/`、`scripts/workbuddy/` | 把群标识与发送人注入消息正文（D17）、拦自动升级；带版本绑定、一键关闭、自愈与守卫 |
-| 主机运维 | `scripts/<domain>/` | 体检、watchdog、备份、开机提醒、附件清理、更新探测、自愈；部署仍扁平到 `bin\` |
+| 主机运维 | `scripts/<domain>/` | 体检、watchdog、备份、开机提醒、附件清理、更新探测、自愈；部署按用途分 `bin\`（运行时 21）与 `tools\`（装机维护 26），显式清单 |
 | 技能与 persona | `light/` | 公司 bot 的技能、persona、渲染模板、vault 模板、个人 bot 的技能名片 |
 
 ## 架构与进度
@@ -107,7 +108,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 | 改 `org/members/*.md` 后 `render deploy --db ...` | 整组事务：快照 → 渲染 → 逐产物读回对拍 → org→DB 同步/校验 → 任一失败**整体还原**，不会留"一半新一半旧" |
 | `render verify` | 用指纹 + manifest 检出产物被手改（改过就说明线上与 git 不一致） |
 | 有人离职：org 加 `disabled: true` 再跑 `offboard-member.ps1` | 清掉他的 persona 产物、从 `groups.json` 移除、解绑员工群（groups 表停用还没自动化）、open 任务转交新人；**vault 里的档案不动** |
-| `doctor.ps1` | **34 项**体检：13 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
+| `doctor.ps1` | **35 项**体检（21 字面量 + 14 个 task-* 覆盖项）：14 个计划任务的运行主体、补丁 `APPLIED`、secrets 目录 ACL、备份新鲜度、**入库绕过检测** 等；故意弄坏一处必须能 FAIL |
 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 + 完整性校验；离机目标与本地**同盘时告警**（同盘不算离机）；失败必发运维告警；日档 60 份 + 每月 1 号留 12 份 |
 | 查"谁动过库" | `%ProgramData%\anc\data\audit.log` 每次 CLI 调用留一行（只记命令与目标，不记参数值） |
 | 查"资料是不是被绕过入库" | vault 里出现未跟踪文件、但 1 小时内没有成功的 `ingest apply` 记录 → `doctor` 直接 WARN |
@@ -118,7 +119,7 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
 - **不产出文档内容**：入库只做校验、归档与索引，整理稿由 bot 写、由人复核。
 - **没有公网入口**：HTTP 面只绑 `127.0.0.1`，公司 bot 与本机服务都在内网。
 - **模型的旁白挡不住**：多步工具链里它仍会说「我先看一下」这类过程话，persona 禁止词表已验证无效。**2026-11-04 查清：出站过滤在代码层也做不到**——企微走流式（`sendStreamChunk`），整句在发出前就发完了（`VERIFY §17`）。所以这条降级成 persona 约束，是**已知代价**，不是待办。
-- **未实测的四项**：员工转发的 A2A 通道（T14）、技能同步到员工机（T15）、两个群同时提问（T8）、企微真 1:1 的 `boss_dm` 通道（T11）。**全卡外部条件**——要员工机、企业版后台、第二个群、企微管理后台，不是代码没写完。
+- **仍需员工机 / 企微后台的验收统一归 ACC-17（D48 书面例外）**；原 T11 老板 1:1 已按 D32 验证，T14/T15/T8 仍卡外部条件。
 
 ## 架构一览
 
@@ -127,15 +128,15 @@ agent 用 WorkBuddy 本身（迭代闭环里的 devbot 也用它，不另造一�
   ├─ 员工群：本人 + 公司 bot + 本人的员工 bot（加提醒用群机器人）
   ├─ 部门群：部门员工 + 部门管理者 + 老板 + 公司 bot
   ├─ 公司大群：老板 + 全体员工 + 公司 bot
-  └─ 老板 1:1（不可用时退化为“老板 + 公司 bot”的私有群）
+  └─ 老板 1:1（真 1:1，D32 不建私有群）
 
 Windows 主机（7×24）
-  ├─ 公司 bot：WorkBuddy + D17 补丁（消息开头带 [anc:chat=<chatid> from=<userid>]）
+  ├─ 公司 bot：WorkBuddy + D17 补丁（消息开头带 [anc:chat=<chatid> from=<userid>]）（可带 `msg=` / `quote=`）
   ├─ 本地小服务：计划任务每分钟一次 tick
   ├─ vault 共享区（全员只读，SMB）/ 内部区（只有公司侧读写），各是一个 git 目录
   └─ inbox：公司 bot 投递 → 入库进程校验后写入
 
-员工电脑：员工 bot（WorkBuddy），只服务本人，只读 vault 共享区
+员工电脑：员工 bot（WorkBuddy），只服务本人，只读 vault 共享区（旧 1.0；主干 4 设计改为不查公司库，未实现）
 ```
 
 群/人/角色的真相在 `people` / `groups` / `manager_scopes`；`chat_bindings` 只保留为员工群的兼容层。**未识别/未绑定的群不猜人、不退回默认群。**
@@ -147,6 +148,7 @@ Windows 主机（7×24）
 ## 现状
 
 - 13 个模块全部 `current`；`npm test` **252/252**；`npm run check`（模块边界 + 文档检查）通过。
+- BATCH-20261110 公司侧收口完成（仅 ACC-17 按 D48 书面例外）；主干 0/1/2/3 已收口、主干 4 未做；测试文件 29、覆盖率 88.97/79.03/93.95、脚本 66、技能 9、计划任务 14、部署清单 158、doctor 35 项、D46–D52 已登记
 - 1.0 的历史计划、验收、实测已归档：见 [PLAN-1.0](./docs/archive/history/PLAN-1.0.md)、[ACCEPTANCE](./docs/archive/history/ACCEPTANCE.md)、[VERIFY](./docs/archive/history/VERIFY.md)。
 - **未来方向**看 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md)；**当前主干**看 [docs/PLAN.md](./docs/PLAN.md)；**已完成/缺口**看 [docs/STATUS.md](./docs/STATUS.md)。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史；入口是 [docs/INDEX.md](./docs/INDEX.md)。
@@ -172,7 +174,7 @@ Windows 主机（7×24）
 
 ## 开发约定
 
-- 文档中文为主；TypeScript + Node 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0，252/252 通过），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
+- 文档中文为主；TypeScript + 设计基线 Node 22 LTS；当前环境 v22.22.2 跑 252/252（v26.13.0 为 2026-11-09 另一台本机历史实测），零运行时依赖；主机脚本用 PowerShell 5.1（`.ps1` 必须带 UTF-8 BOM，`.json` 不带）。
 - 开发流程：分支 → PR → 验证 → squash merge。
 - 部署：从仓库复制到 `%ProgramData%\anc\`（命令见 REBUILD §3），主机上手改线上文件视为事故。
 - 泄密防线：生产细节只放 `_research/`（不进 git）；转公开前跑 `node scripts/checks/check-public.mjs` 并人工过一遍全量 diff。

@@ -4,6 +4,16 @@
 
 主机坏了，按这份在新机器上重建。目标：**数据不丢、提醒照常、bot 能上线**。
 
+## 重建首选路径
+
+零起点先读 [../BOOTSTRAP.md](../BOOTSTRAP.md) 四步；重建优先走一条命令，别从下面的手工清单开头：
+
+1. `install-company.ps1 -Apply`：按 11 步一次装完（含 `executor`，`patch` 排最后）。
+2. `upgrade.ps1 -Action check / apply / rollback`：日常升级走它，数据零覆盖（部署清单不含 `data\`、`org\`、`secrets\`、vault 两区）。
+3. 重建装完、`patch` 重启后由 `setup-executor.ps1` 自动收尾：加 WorkBuddy 工作区 + 发 `TEST` + 建当天 host；失败留 marker，由 `anc-patch-guard` 每分钟重试。
+
+下面 §0–§7 是逐段手工对照与排障参考。
+
 ## 0. 先分清哪些东西不在 git 里
 
 | 资产 | 位置 | 是否有副本 |
@@ -17,15 +27,21 @@
 ## 1. 新机准备
 
 1. Windows + 管理员账号；
-2. Node.js 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0 亦可跑 252/252）、Git for Windows；
+2. Node.js 22 LTS；本机实测 v22.22.2（Node 22 LTS，与设计基线一致）、Git for Windows；
 3. 把仓库 clone 到 `E:\workbuddy-anc`（或任意路径，下面用变量）；
-4. 建目录。**完整清单在这里，别按 §3 那句命令行抄**（那段只建 deploy 要写的 7 个，其余要手工建）：
+4. 建目录。**优先跑脚本**（幂等，`-Json` 出核对结果）：
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup-dirs.ps1 -Root C:\ProgramData\anc -VaultRoot D:\anc -Apply -Json
+   ```
+
+   下面是**核对表**（脚本跑完逐项确认，不要手工照抄重建）：
 
    ```
    C:\ProgramData\anc\   accounts  backup  bin  data  evals  inbox  ingest
                           light     patch   render  secrets  service  shared
-                          skills    stage
-   （15 个，2026-11-04 按实际部署核对）
+                          skills    stage  tools
+   （16 个，2026-11-04 按实际部署核对；2026-11-10 补 tools）
 
    D:\anc\               vault-shared  vault-internal  inbox  org  build
    ```
@@ -153,8 +169,8 @@ powershell -File E:\workbuddy-anc\scripts\doctor\doctor.ps1
 
 ```powershell
 $R = '<仓库>'; $A = 'C:\ProgramData\anc'
-# 目标目录先建好（root 不存在时 deploy 会 Fail）
-'service','ingest','render','shared','bin','backup','patch' | ForEach-Object { New-Item -ItemType Directory -Force "$A\$_" | Out-Null }
+# 目标目录先建好（root 不存在时 deploy 会 Fail）——优先跑脚本，不要手工列清单
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup-dirs.ps1 -Root $A -VaultRoot D:\anc -Apply -Json
 powershell -File "$R\scripts\deploy\deploy.ps1" -Repo $R -Root $A -Apply
 ```
 
@@ -164,7 +180,7 @@ powershell -File "$R\scripts\deploy\deploy.ps1" -Repo $R -Root $A -Apply
 
 补丁（线上补丁的唯一来源）也由 deploy 一并复制到 `patch\`。
 
-按 [OPS.md](./OPS.md) 重新注册计划任务（现 **13 个**，以 OPS 的计划任务表为准）：`anc-service`、`anc-backup`、
+按 [OPS.md](./OPS.md) 重新注册计划任务（现 **14 个**，以 OPS 的计划任务表为准）：`anc-service`、`anc-elevate`（SYSTEM/Highest，`bin\elevate-runner.ps1`）、`anc-backup`、
 `anc-boot-alert`、`anc-cleanup`、`anc-watchdog`、`anc-http`、`anc-workbuddy-launch`、`anc-patch-guard`、
 `anc-update-watch`，以及 `anc-executor-wake`、`anc-executor-new-host`、`anc-executor-host-tick`、`anc-devbot`。
 

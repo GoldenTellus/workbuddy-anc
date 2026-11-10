@@ -20,7 +20,7 @@ description: 员工在群里报问题时，把问题落成一条记录（迭代�
 
 ## 记录
 
-每条消息开头有 `[anc:chat=<chatid> from=<userid>]`。先解析出这两个值，然后：
+每条消息开头有 `[anc:chat=<chatid> from=<userid>]`，可能带可选的 `msg=` / `quote=` 字段。先解析出这两个值，然后：
 
 ```powershell
 node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --json submission add --text "<员工原话>" --chat-id "<chatid>" --user-id "<userid>"

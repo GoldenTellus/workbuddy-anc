@@ -25,7 +25,7 @@ const rel = (p) => relative(ROOT, p).replace(/\\/g, '/');
 
 // ── 1. 链接 ──────────────────────────────────────────────
 const files = [];
-for (const name of ['README.md', 'AGENTS.md', 'CLAUDE.md']) {
+for (const name of ['README.md', 'AGENTS.md', 'CLAUDE.md', 'BOOTSTRAP.md']) {
   const p = join(ROOT, name);
   if (existsSync(p)) files.push(p);
 }
@@ -77,11 +77,14 @@ if (!existsSync(mapPath)) {
     }
   }
 
-  // 现行根文档必须登记
+  // 现行根文档必须登记（docs/ 下 + 根目录的部署入口）
   for (const name of readdirSync(join(ROOT, 'docs'))) {
     if (!name.endsWith('.md')) continue;
     const p = 'docs/' + name;
     if (!mapped.has(p)) add('doc-map 未登记根文档: ' + p);
+  }
+  for (const name of ['BOOTSTRAP.md']) {
+    if (existsSync(join(ROOT, name)) && !mapped.has(name)) add('doc-map 未登记根文档: ' + name);
   }
   // upstreams 必须登记
   for (const name of readdirSync(join(ROOT, 'docs/upstreams'))) {
@@ -90,13 +93,15 @@ if (!existsSync(mapPath)) {
     if (!mapped.has(p)) add('doc-map 未登记来源: ' + p);
   }
 
-  // INDEX 链接到每份现行根文档
+  // INDEX 链接到每份现行文档（根目录文档用 ../ 前缀）
   const indexText = existsSync(join(ROOT, 'docs/INDEX.md')) ? readFileSync(join(ROOT, 'docs/INDEX.md'), 'utf8') : '';
   for (const d of docs) {
     if (d.path === 'docs/INDEX.md') continue;
     if (d.path.startsWith('docs/upstreams/')) continue;
-    const base = d.path.slice('docs/'.length);
-    if (!indexText.includes('(./' + base + ')')) add('INDEX.md 未链接: ' + d.path);
+    const link = d.path.startsWith('docs/')
+      ? '(./' + d.path.slice('docs/'.length) + ')'
+      : '(../' + d.path + ')';
+    if (!indexText.includes(link)) add('INDEX.md 未链接: ' + d.path);
   }
 
   // UPSTREAM.md 链接到每份来源

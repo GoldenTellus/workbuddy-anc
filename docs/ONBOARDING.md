@@ -2,6 +2,8 @@
 
 > 类型：运维手册（入职/离职）
 
+> **全新装机先走 ../BOOTSTRAP.md 四步 + `deploy-kickoff.ps1` 访谈 + `tools\org-write.ps1` 生成 org；以下手工命令仅作对照/兜底。**
+
 对应 [DECISIONS.md](./DECISIONS.md) §5.8、[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 1 与主干 4。目标：新员工一小时内拿到员工 bot、员工群，并知道部门群/公司群/老板 1:1 的配置方式。
 
 ## 入职
@@ -18,7 +20,9 @@
 
 ```powershell
 # 名单 CSV：name,id
-powershell -ExecutionPolicy Bypass -File scripts\provision-vault-accounts.ps1 -Csv .\team.csv
+# 先 -DryRun 预演看计划，再正式执行
+powershell -ExecutionPolicy Bypass -File scripts\accounts\provision-vault-accounts.ps1 -Csv .\team.csv -DryRun
+powershell -ExecutionPolicy Bypass -File scripts\accounts\provision-vault-accounts.ps1 -Csv .\team.csv
 ```
 
 凭据写到 `%ProgramData%\anc\accounts\provisioned-<时间>.csv`，发给本人后删除。

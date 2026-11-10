@@ -52,13 +52,14 @@ function run(root, args) {
   return { code, json, raw: text };
 }
 
-test('deploy-state: 初始状态是 0/13 且 next 指向第一步', () => {
+test('deploy-state: 初始状态是 0/14 且 next 指向第一步', () => {
   withRoot((root) => {
     const { code, json } = run(root, ['-Side', 'company']);
     assert.equal(code, 0, '没有 failed 时退出码应为 0');
     assert.ok(json, 'JSON 必须能解析');
     assert.equal(json.ok, false, '没做完时 ok 是 false');
-    assert.equal(json.progress, '0/13');
+    // 2026-11-10 部署后自动 executor 成为第 14 个阶段（此前 13）。
+    assert.equal(json.progress, '0/14');
     // 第一步是 brief：先给人递准备清单（建群、拿 chatId、拿 webhook），再收信息。
     // 2026-11-10 之前直接让人从 preflight 开始，缺的信息要装到 §5.5/§6/§10.5 才回头问。
     assert.equal(json.stage, 'brief');
@@ -71,17 +72,17 @@ test('deploy-state: 连续 mark 三个阶段，done 必须累积（这是解包 
   withRoot((root) => {
     // 第一步
     let r = run(root, ['-Side', 'company', '-Mark', 'brief', '-AsDone']);
-    assert.equal(r.json.progress, '1/13');
+    assert.equal(r.json.progress, '1/14');
     assert.deepEqual(r.json.done, ['brief']);
 
-    // 第二步：如果 done 被解包成字符串，这里会变成 0/13
+    // 第二步：如果 done 被解包成字符串，这里会变成 0/14
     r = run(root, ['-Side', 'company', '-Mark', 'answers', '-AsDone']);
-    assert.equal(r.json.progress, '2/13', 'mark 第二个之后 done 不能丢');
+    assert.equal(r.json.progress, '2/14', 'mark 第二个之后 done 不能丢');
     assert.deepEqual(r.json.done, ['brief', 'answers']);
 
     // 第三步
     r = run(root, ['-Side', 'company', '-Mark', 'workbuddy', '-AsDone']);
-    assert.equal(r.json.progress, '3/13');
+    assert.equal(r.json.progress, '3/14');
     assert.deepEqual(r.json.done, ['brief', 'answers', 'workbuddy']);
   });
 });
@@ -97,11 +98,11 @@ test('deploy-state: 中途失败后，已完成阶段必须保住（断点续装
     assert.equal(fail.code, 1, 'AsFailed 退出码应为 1');
     assert.equal(fail.json.failed, 'files');
     assert.equal(fail.json.error, '目标文件被锁');
-    assert.equal(fail.json.progress, '3/13', '失败不能把前 3 步清掉');
+    assert.equal(fail.json.progress, '3/14', '失败不能把前 3 步清掉');
 
     // 重跑查状态：必须告诉 agent「不要从头来」
     const st = run(root, ['-Side', 'company']);
-    assert.equal(st.json.progress, '3/13');
+    assert.equal(st.json.progress, '3/14');
     assert.deepEqual(st.json.done, ['brief', 'answers', 'workbuddy']);
     assert.equal(st.json.failed, 'files');
     assert.match(st.json.next, /不要从头来/, 'next 要明确劝阻从头重装');
@@ -109,18 +110,19 @@ test('deploy-state: 中途失败后，已完成阶段必须保住（断点续装
 
     // 修好后继续，不该重做前 3 步
     const fixed = run(root, ['-Side', 'company', '-Mark', 'files', '-AsDone']);
-    assert.equal(fixed.json.progress, '4/13');
+    assert.equal(fixed.json.progress, '4/14');
     assert.equal(fixed.json.failed, '', 'done 之后 failed 要清掉');
   });
 });
 
 test('deploy-state: 全部做完后 ok=true 且 next 说明完成', () => {
   withRoot((root) => {
-    const all = ['brief', 'answers', 'workbuddy', 'preflight', 'dirs', 'files', 'skills', 'patch', 'tasks', 'vault', 'org', 'wecom', 'verify'];
+    // 公司侧 14 阶段（2026-11-10 加 executor）；少 mark 一个就到不了 ok=true。
+    const all = ['brief', 'answers', 'workbuddy', 'preflight', 'dirs', 'files', 'skills', 'patch', 'tasks', 'vault', 'org', 'wecom', 'verify', 'executor'];
     let r;
     for (const s of all) r = run(root, ['-Side', 'company', '-Mark', s, '-AsDone']);
     assert.equal(r.json.ok, true);
-    assert.equal(r.json.progress, '13/13');
+    assert.equal(r.json.progress, '14/14');
     assert.equal(r.json.remaining.length, 0);
     assert.match(r.json.next, /全部/);
   });

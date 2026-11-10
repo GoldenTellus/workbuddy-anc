@@ -18,7 +18,7 @@ description: 把群里的资料入库到公司知识库。用户说「入库」�
 
 ```powershell
 $id = "batch-" + (Get-Date -Format "yyyyMMdd-HHmmss")
-New-Item -ItemType Directory "D:\anc\inbox\pending\$id" -Force
+New-Item -ItemType Directory "$env:ProgramData\anc\inbox\pending\$id" -Force
 ```
 
 1. 把附件**复制**进批次目录（原件，不修改）；
@@ -63,8 +63,8 @@ $tk = (Get-Content C:\ProgramData\anc\secrets\service-token.txt -Raw).Trim()
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:17891/__anc_ingest -Headers @{ Authorization = "Bearer $tk" } -ContentType 'application/json' -Body (@{ batch = 'C:\ProgramData\anc\inbox\pending\<id>' } | ConvertTo-Json -Compress)
 ```
 
-- 成功：批次会自动移到 `D:\anc\inbox\done\`；把 `added` / `modified` / `original` 转成中文摘要；
-- 失败：批次自动移到 `D:\anc\inbox\failed\` 并附 `reason.txt`；把错误码与原因**原样转告**。
+- 成功：批次会自动移到 `%ProgramData%\anc\inbox\done\`；把 `added` / `modified` / `original` 转成中文摘要；
+- 失败：批次自动移到 `%ProgramData%\anc\inbox\failed\` 并附 `reason.txt`；把错误码与原因**原样转告**。
 - **`failed` 里的批次一个字节都不要改**：不要补 frontmatter、不要改 `meta.json`、不要重跑它。那批已经作废，正确的做法是**重新建一个批次**从头来。改 failed 批次等于绕过校验，是事故。
 
 ## 执行方式（硬约束，违反即事故）
@@ -117,10 +117,10 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:17891/__anc_ingest -Headers
 
 ## 4. 回执
 
-在群里回一条短摘要：文件名、落到哪个目录、新增还是更新、原件是否已存。不贴 JSON，不贴内部绝对路径。
+回复只走上面的『回复模板』硬约束，不另写短摘要。
 
 ## 边界
 
-- 只写 `D:\anc\inbox\` 与调用上面的 CLI；不手改 `D:\anc\vault-shared`；
+- 只写 `%ProgramData%\anc\inbox\` 与调用上面的 CLI；不手改 `D:\anc\vault-shared`；
 - 不覆盖原件、不改附件；
 - 不确定归哪个目录、或内容里含个人敏感信息（应进内部区）时，先问管理员。

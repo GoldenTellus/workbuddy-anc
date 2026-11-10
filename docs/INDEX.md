@@ -1,6 +1,6 @@
 # 文档与仓库索引
 
-> 类型：导航 · 最后整理：2026-11-07
+> 类型：导航 · 最后整理：2026-11-10
 >
 > **这是什么**：一份给「刚打开这个仓库的人 / agent」用的索引——文档按什么顺序读、目录各管什么、常用命令怎么跑。
 > **不替代契约**：改代码前先读 [AGENTS.md](../AGENTS.md)；现状架构看 [ARCHITECTURE.md](./ARCHITECTURE.md)；未来方向看 [FUTURE-DESIGN.md](./FUTURE-DESIGN.md)。
@@ -9,6 +9,7 @@
 
 ## 先读（按顺序）
 
+0. [../BOOTSTRAP.md](../BOOTSTRAP.md)：**来部署的**先读（四步装完）；开发/改代码看 AGENTS.md。
 1. [../README.md](../README.md)：项目入口，装什么、能做什么。
 2. [../AGENTS.md](../AGENTS.md)：agent 开工规则；[../CLAUDE.md](../CLAUDE.md) 只是短指针。
 3. 本文件：文档与目录导航。
@@ -29,7 +30,7 @@
 | **现状能力** | 现在能做什么、不做什么 | [PRODUCT.md](./PRODUCT.md) |
 | **现状架构** | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) |
 | **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁 / Main↔Executor 怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)、[RENDERER.md](./RENDERER.md)、[INGEST.md](./INGEST.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
-| **运维手册** | 怎么部署、怎么修、怎么重建 | [DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[ONBOARDING.md](./ONBOARDING.md) |
+| **运维手册** | 怎么部署、怎么修、怎么重建 | [../BOOTSTRAP.md](../BOOTSTRAP.md)（零起点部署入口）、[DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[ONBOARDING.md](./ONBOARDING.md) |
 | **来源** | 哪些上游/参考项目、许可证、用了什么 | [UPSTREAM.md](./UPSTREAM.md) + [upstreams/](./upstreams/) |
 | **决策** | 为什么这么定 | [DECISIONS.md](./DECISIONS.md) |
 | **历史** | 以前的计划、验收、实测 | [archive/](./archive/) |
@@ -40,17 +41,19 @@
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **252 / 252 pass** | `npm test`（`pretest` 自动跑 `npm run check`） |
-| 覆盖率（行 / 分支 / 函数） | **88.87% / 78.87% / 93.85%** | `npm run coverage`（2026-11-09 干净树 `0ed1938` 实测，217 测试时；主干 3 后未重跑） |
-| 测试文件 | **28** 个 | `package.json` 的 `scripts.test` 列表 |
-| doctor 检查项 | **34** 项 | 21 个 `Add-Result` 字面量 + 13 个 `task-*` 循环项 |
-| 计划任务 | **13** 个 | `grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
-| 技能目录 | **8** 个 | `ls -d light/skills/*/ \| wc -l` |
+| 测试 | **252 / 252 pass** | `npm test`（`pretest` 自动跑 `npm run check`；deploy-state 断言已同步） |
+| 覆盖率（行 / 分支 / 函数） | **88.97% / 79.03% / 93.95%** | `npm run coverage`（2026-11-10 实测） |
+| 测试文件 | **29** 个 | `package.json` 的 `scripts.test` 列表 |
+| doctor 检查项 | **35** 项 | 21 个 `Add-Result` 字面量 + 14 个 `task-*` 循环覆盖项（第 14 个任务 `anc-elevate` 加入后由 34 增至 35） |
+| 计划任务 | **14** 个 | 9 LOCAL SERVICE / 2 SYSTEM / 3 交互（含 `anc-elevate` SYSTEM）；`grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
+| 技能目录 | **9** 个（含 `anc-update`） | `ls -d light/skills/*/ \| wc -l`；`light/skills` 下 11 个 md |
 | 本地服务命令组 | **17** 组 | `node -e "import('./src/interfaces/cli/registry.ts').then(m => console.log(m.order.length))"` |
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
-| Node | **v26.13.0**（本机实测；设计基线 Node 22 LTS） | `node -v`（`node:sqlite` 与类型剥离默认可用） |
-| 脚本 | **55** 个 | `(git ls-files scripts \| Measure-Object -Line).Lines`（文件系统同为 55） |
+| Node | **v22.22.2**（当前环境；设计基线 Node 22 LTS） | `node -v`（v26.13.0 为 2026-11-09 另一台本机历史实测） |
+| 脚本 | **66** 个（46 ps1 / 11 mjs / 4 cmd / 3 cjs / 1 vbs / 1 json；15 个域） | `(git ls-files scripts \| Measure-Object -Line).Lines` |
+| 部署清单 | **158** 文件 | `bin\` 运行时 21 / `tools\` 装机维护 26（显式清单） |
+| deploy-state 阶段 | 公司 **14** 阶段 / 员工 **10** 阶段 | 当前 **12/14**（`brief`/`answers` 为全新安装访谈阶段，存量机 N/A） |
 
 > 历史验收（38 ✅ / 2 🟡）在 [archive/history/ACCEPTANCE.md](./archive/history/ACCEPTANCE.md)；历史实测在 [archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -60,6 +63,7 @@
 
 | 路径 | 管什么 | 备注 |
 |---|---|---|
+| `BOOTSTRAP.md` | 零起点部署入口 | 四步装完，部署者先读 |
 | `module-map.json` | 模块边界真相源（`ARCHITECTURE.md` 的可执行版） | `check:modules` 读它；13 个模块的 paths/dependsOn |
 | `docs/` | 方向、执行、账本、现状契约、运维手册、历史 | 现行文档 + `modules/` + `upstreams/` + `archive/` |
 | `docs/modules/` | 每个模块一份契约（目的/拥有/公开接口/不变量/失败模式） | 13 份；由 `module-map.json` 引用 |
@@ -69,16 +73,16 @@
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单 | 文档依赖图 + 审计表 |
 | `docs/UPSTREAM.md` | 上游/参考来源政策与索引 | 一项目一文件，见 `docs/upstreams/` |
 | `docs/upstreams/` | 每个来源一份记录 | URL / 许可证 / 固定版本 / 用了什么 |
-| `src/core/` | 平台底座：库/schema/迁移/事务、原子写、配置、审计、出站扫描、备份 | 11 个文件；`db.ts` 只留 `openDb` + 时间函数 |
-| `src/interfaces/` | service CLI 的 17 组命令 + 注册表 + HTTP 门面 | 26 个文件；`src/service/cli.ts` 是入口薄壳 |
-| `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`executor`、`improvement`、`knowledge`、`org` | 52 个文件；每个模块有 `index.ts` 公开入口 |
+| `src/core/` | 平台底座：库/schema/迁移/事务、原子写、配置、审计、出站扫描、备份 | 12 个文件；`db.ts` 只留 `openDb` + 时间函数 |
+| `src/interfaces/` | service CLI 的 17 组命令 + 注册表 + HTTP 门面 | 35 个文件；`src/service/cli.ts` 是入口薄壳 |
+| `src/modules/` | 能力模块：`runtime`、`delivery`、`identity`、`tasks`、`executor`、`improvement`、`knowledge`、`org` | 54 个文件；每个模块有 `index.ts` 公开入口 |
 | `src/service/` | 只剩入口薄壳（`cli.ts` / `loop.ts`）与集成测试 | 8 个文件；部署时只复制 3 个 |
 | `src/render/` | 只剩 `cli.ts` 薄壳与渲染器测试 | 8 个文件；部署时只复制 2 个 |
 | `src/ingest/` | 只剩 `cli.ts` 薄壳与入库测试 | 3 个文件；部署时只复制 2 个 |
 | `src/shared/` | 只剩 summarize 测试与 package | 3 个文件；运行代码已迁 `modules/knowledge` |
-| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 55 个文件，按域分组；部署仍扁平到 `bin\`，文件名不变；`.ps1` **必须 UTF-8 BOM** |
+| `scripts/` | PowerShell 5.1 主机脚本、计划任务、体检、部署自证 | 66 个文件、15 个域；分别扁平到 `bin\`（运行时 21）与 `tools\`（装机维护 26），显式清单；`.ps1` **必须 UTF-8 BOM** |
 | `scripts/workbuddy-patch/` | WorkBuddy 补丁体、启动器、注入测试口 | 见 [WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
-| `light/` | 技能名片、persona、模板、eval 用例 | 9 个技能目录 |
+| `light/` | 技能名片、persona、模板、eval 用例 | 9 个技能目录 / 11 个 md |
 | `reference/upstream/` | 上游原样文档与未合并分支 | **不参与构建**；来源登记见 [UPSTREAM.md](./UPSTREAM.md) |
 | `org.example/` | org 真相源的示例结构 | 渲染器输入样例 |
 | `docs/archive/` | 历史计划、验收、实测、交接 | 见 [archive/README.md](./archive/README.md) |
@@ -103,6 +107,10 @@
 | 渲染器 / 入库 | `node src/render/cli.ts ...` / `node src/ingest/cli.ts apply` |
 | 主机体检 | `powershell -File scripts/doctor/doctor.ps1 -Root <部署根> -VaultRoot <vault 根> -Json` |
 | 体检自测 | `powershell -File scripts/doctor/doctor.ps1 -SelfTest` |
+| 升级（检查 / 应用 / 回滚） | `tools\upgrade.ps1 -Action check\|apply\|rollback` |
+| 公司侧一键安装（11 步） | `tools\install-company.ps1 -Apply` |
+| 部署访谈（四阶段） | `deploy-kickoff.ps1 -Phase identity\|prepare\|collect\|check` |
+| 重装 / 重试 executor | `tools\setup-executor.ps1 -Apply` |
 
 > `-Root` 是 `%ProgramData%\anc` 部署根，`-VaultRoot` 是 `D:\anc` 原件根，**两个根不同**（REBUILD §1）。
 
@@ -130,7 +138,7 @@
 
 1. **文档分层**：方向、执行、账本、现状、运维、来源、历史，不混用。
 2. **主干完成顺序**：先写 `STATUS` 证据 → 再标 `FUTURE-DESIGN` 分支/主干 → 归档 `PLAN` 快照 → 按 `DOC-SYNC` 全量核对下游文档 → 跑 `npm run check`。
-3. **每份现行文档顶部有一行 `> 类型：...`**；新增文档必须登记到 `docs/doc-map.json`，并能从本文件链到。
+3. **每份现行文档顶部有一行 `> 类型：...`**；新增文档必须登记到 `docs/doc-map.json` 并能从本文件链到，根目录现行文档（`BOOTSTRAP.md`）同样适用；改技能文档的章节标题时，要同步 `src/modules/improvement/issues.ts` 的分诊规则与 `src/service/closure.test.ts`（有机器检查）。
 4. **移动/改名**：同步改 `INDEX.md`、`doc-map.json` 和所有引用；改完跑 `npm run check:docs`。
 5. `.ps1` 必须 UTF-8 BOM、`.json` 必须无 BOM（`check-public` 会查）。
 6. 历史文档只追加说明，不改写事实；归档进 `archive/history/`，并在 `archive/README.md` 登记。

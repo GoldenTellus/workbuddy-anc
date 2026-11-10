@@ -1,6 +1,6 @@
 # @ha7ch/ai-native-company — 架构规范(SPEC)
 
-> **上游原文，仅作参考**（HA7CH/ai-native-company@`90e4fb2`，原样保留）。写的是上游的 Mac mini + cc-connect + Claude Code 形态，不是本库的现状；本库的设计以 [FORK-DIRECTION.md](./docs/FORK-DIRECTION.md) 为准，逐项能不能用见 [REUSE-MAP.md](./docs/REUSE-MAP.md)。
+> **上游原文，仅作参考**（HA7CH/ai-native-company@`90e4fb2`，原样保留）。写的是上游的 Mac mini + cc-connect + Claude Code 形态，不是本库的现状；本库设计以 [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md) 为准，上游复用盘点见 [docs/archive/history/REUSE-MAP.md](./docs/archive/history/REUSE-MAP.md)。正文里的链接指向上游仓库目录结构，仅作参考。
 
 版本:0.1(2026-07-24,立项稿)
 状态:Draft。基于 Climax Racing reference deployment 的生产经验(markdown vault 13+ 周、6-bot 矩阵 8 周、现行 gateway 形态 5 周)+ 六路调研(见 [docs/RESEARCH.md](./docs/RESEARCH.md));2026-09 起并入第二个 reference deployment(制造企业四部门试点,Linux 服务器 + 全员 Windows 个人 agent + 第三方模型,见 [docs/LESSONS-MANUFACTURING-PILOT.md](./docs/LESSONS-MANUFACTURING-PILOT.md))的裁决,下文以「试点」指代。

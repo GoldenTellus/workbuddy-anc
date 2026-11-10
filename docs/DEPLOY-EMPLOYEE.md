@@ -2,6 +2,8 @@
 
 > 类型：运维手册（员工侧部署）
 
+> **零起点先读 ../BOOTSTRAP.md 四步；访谈走 `deploy-kickoff.ps1`，逐节手工命令仅作对照。**
+
 > **当前文档描述的是 1.0 员工 bot 旧实现**：仍装 9 个技能（含 `anc-vault-read`、`anc-executor`；后者公司侧用，员工侧不触发），员工 bot 仍会查公司库。主干 4 已决定“员工 bot 不查公司库、改用 handoff”（见 `FUTURE-DESIGN` 4.3、`GAP-037–039`），但代码/技能还没返工。**在 GAP-037–039 关闭前，按本文装；不要以为新设计已经生效。**
 
 > **设计修正（2026-11-07）**：目标设计要求员工侧也打补丁，用于 handoff 时识别资料归属；当前部署步骤仍按“员工侧不装补丁”执行，差异见 `STATUS` 的 `GAP-038`。`GAP-038` 关闭前以本文当前步骤为准，不要把目标当成现状。
@@ -101,6 +103,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase check -Side employee
 # ok=true 才继续
+```
+
+`ok=true` 通过后，把访谈两阶段记账：
+
+```powershell
+powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark brief -AsDone
+powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark answers -AsDone
 ```
 
 ### 1.5 字段对照与「问不到时的规矩」
@@ -298,11 +307,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills
 **成功判据**：
 
 ```powershell
-# 8 个技能目录 + 1 个 .anc-backup（备份目录，不算技能）= 9
-# 源文件是 10 个 md（anc-executor 多 subagent.md、anc-interview 多 questions.md）。
+# 9 个技能目录 + 1 个 .anc-backup（备份目录，不算技能）= 10
+# 源文件是 11 个 md（9 个 SKILL.md + anc-executor 多 subagent.md、anc-interview 多 questions.md）。
 # 原来写「期望 8」是错的：-Directory 会把 .anc-backup 一起数进去，照它做会一直以为少装一个。
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
-# 想数准就只数带 SKILL.md 的，期望 8：
+# 想数准就只数带 SKILL.md 的，期望 9：
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') }).Count
 ```
@@ -750,10 +759,10 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDo
 |---|---|---|
 | 部署根 | `%ProgramData%\anc` | **`%LOCALAPPDATA%\anc`** |
 | 管理员权限 | 必需 | 不需要 |
-| 计划任务 | 13 个 | **0 个** |
+| 计划任务 | 14 个 | **0 个** |
 | 补丁 | 要装（群身份注入） | **不装**（除非认不出主人） |
 | vault | **建**两区 | 只**读**共享区 |
 | persona | 渲染公司 bot 的 | 接收**本人**的 |
 | org 数据 | 写 | 不写 |
-| 阶段数 | 13 | **10** |
-| 自证 | doctor + 群回应 + 任务落库 + 13 个任务 | bot 在线 + 能被 @ + 能读 vault |
+| 阶段数 | 14 | **10** |
+| 自证 | doctor + 群回应 + 任务落库 + 14 个任务 | bot 在线 + 能被 @ + 能读 vault |

@@ -5,6 +5,8 @@ description: 把本机整理好的资料交给公司 bot 入库。用户说「�
 
 # anc-handoff（个人 bot 侧名片）
 
+> 未实现（主干 4 待设计，旧 1.0 名片）：仓库内没有该技能正文，handoff 协议与归属确认尚未定，不要当成可直接调用的入库流程。
+
 正文在共享区：`{{vault_shared}}/skills/anc-handoff/SKILL.md`。先读正文，再按它做。
 
 ## 底线（不依赖正文）

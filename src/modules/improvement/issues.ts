@@ -57,7 +57,7 @@ export const RULES: Rule[] = [
 
   // anc-wb-patch
   { skill: 'anc-wb-patch', section: '2. 分三种情况', keywords: ['补丁', 'patch', '注入', 'manifest'] },
-  { skill: 'anc-wb-patch', section: '3. 回归（测试群里做，四条）', keywords: ['回归', '升级后'] },
+  { skill: 'anc-wb-patch', section: '3. 回归（测试群里做，五条）', keywords: ['回归', '升级后'] },
 
   // anc-feedback 自身（员工嫌它记错/多记时）
   { skill: 'anc-feedback', section: '记录', keywords: ['记错了', '不该记', '多记了', '没记下来'] },

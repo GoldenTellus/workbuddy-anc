@@ -3,7 +3,7 @@
 > 类型：模块契约
 
 > 状态：现行（P5 后按域分组到 `scripts/<domain>/`，部署仍扁平到 `bin/`）
-> 代码：`scripts/`（55 个文件）
+> 代码：`scripts/`（66 个文件）
 > 入口：`scripts/deploy/deploy.ps1`
 
 ## 职责
@@ -15,7 +15,7 @@
 | 数据/文件 | 说明 |
 |---|---|
 | `%ProgramData%\anc\` 布局 | `service/ingest/render/shared/bin/patch/data/secrets/inbox` |
-| 13 个计划任务 | 见 `docs/OPS.md`；principal 与触发器是契约 |
+| 14 个计划任务（含 `anc-elevate` SYSTEM） | 见 `docs/OPS.md`；principal 与触发器是契约 |
 | ACL | `secrets` 断继承；`data` 保留继承；vault 对 bot 只读 |
 | 备份 | `VACUUM INTO` 快照、保留策略、离机复制、同盘告警 |
 | 日志轮转 | `loop.log` / `http.log` >5 MB 转 `.1`，只留一份 |
@@ -26,7 +26,7 @@
 - `preflight.ps1 -Side company|employee -Json` → `ok` + `blockers` + `warnings` + `facts`。`facts.machineProfile` 是机器画像（`admin-elevated` / `admin-not-elevated` / `standard-user` / `builtin-admin` / `builtin-admin-uac-off`），`facts.guidance` 是给人看的做法。公司侧 `agent-elevated` 是 blocker（agent 必须是管理员打开的）
 - `deploy.ps1`（默认 dry-run；`-Apply` 落盘；备份 → 复制 → 逐文件 SHA-256 对拍 → 失败整体回滚；落盘保留源目录结构，仅 `bin` 扁平）
 - `deploy-verify.ps1 -Side company|employee -Json` → `ok: true`
-- `doctor.ps1 -Root <r> -Repo <r> -VaultRoot <r> -Json` → **34 项**，`FAIL=0`；`deploy-layout` 现在也要求 `tools\` 存在（旧布局会 FAIL，重新部署即可）
+- `doctor.ps1 -Root <r> -Repo <r> -VaultRoot <r> -Json` → **35 项（21 字面量 + 14 个 task-* 覆盖项）**，`FAIL=0`；`deploy-layout` 现在也要求 `tools\` 存在（旧布局会 FAIL，重新部署即可）
 - `doctor.ps1 -SelfTest`：用 `%TEMP%` 夹具证明每类检查能 FAIL
 - `backup-anc.ps1 -Destination <盘>`；`register-tasks.ps1 -Apply`；`prepare-wipe.ps1 -Apply`；`rebuild-*.ps1`
 - 退出码：0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已回滚
@@ -34,7 +34,7 @@
 ## 不变量
 
 - **默认 dry-run**；改配置/动目录的命令必须显式 `-Apply`。
-- **部署清单保留源目录相对结构**，只有 `bin` / `tools` 显式扁平（13 个计划任务与 `.cmd` 都写死 `<Root>\bin\<文件名>`）；备份同样按「相对 Root 的路径」存，不按文件名。
+- **部署清单保留源目录相对结构**，只有 `bin` / `tools` 显式扁平（14 个计划任务含 `anc-elevate` SYSTEM，与 `.cmd` 都写死 `<Root>\bin\<文件名>`）；备份同样按「相对 Root 的路径」存，不按文件名。
 - **`bin\` 只放运行时，`tools\` 放装机与维护**：`scripts\` 用显式清单（`$BinScripts` / `$ToolScripts`）决定落点，目录级递归已取消 —— 往开发目录加脚本不会自动上生产。清单外的脚本在部署末尾列为「未归类」。
 - 任何落盘前先备份/快照；失败**整体回滚**，不留半套。
 - `doctor` 每一项都必须能 FAIL（`-SelfTest` + 故障矩阵证明），否则就是假绿。
@@ -74,3 +74,4 @@
 | 2026-11-06 | 建档；P5 目标为按域分组、部署扁平化 | 模块化立项 |
 | 2026-11-06 | P5 完成：49 个脚本分 10 域，部署扁平到 `bin\` | 模块化 |
 | 2026-11-09 | 计数同步：54 个脚本、doctor 34 项；故障矩阵基数 34 待重跑 | 主干 0 文档收口（GAP-066） |
+| 2026-11-10 | 计数同步：66 个脚本、14 个计划任务、部署清单 158 文件（`bin` 21 运行时 / `tools` 26 装机维护）；doctor 35 项；修复 GAP-089 / GAP-093 | 2026-11-10 实测口径 |

@@ -1,7 +1,7 @@
 # 文档联动规则
 
 > 类型：联动规则（主干完成时怎么全量更新文档）
-> 最后更新：2026-11-08
+> 最后更新：2026-11-10
 >
 > 一句话：**聊天是临时，文件是持久；结论不落盘 = 没发生。** 全量核对，只改受影响内容，其余留“已核对无变化”记录。不是每份文档都重写。
 
@@ -17,7 +17,8 @@
 | 现在能做什么 | [PRODUCT.md](./PRODUCT.md) | 引用，不重写能力清单 |
 | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) | 模块细节只写模块契约 |
 | 接口怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[RENDERER.md](./RENDERER.md)、[INGEST.md](./INGEST.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) | 不在别处复制参数表 |
-| 怎么部署运维 | [DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md) | 运维步骤只写一处 |
+| 从零部署（部署者入口） | [../BOOTSTRAP.md](../BOOTSTRAP.md) | 四步装完；逐段手册是排障参考 |
+| 怎么部署运维 | [DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[ONBOARDING.md](./ONBOARDING.md) | 运维步骤只写一处 |
 | 为什么这么定 | [DECISIONS.md](./DECISIONS.md) | 设计文档只引用决策编号 |
 | 来源/许可证 | [UPSTREAM.md](./UPSTREAM.md) + [upstreams/](./upstreams/) | 代码/文档引用 `upstream:<slug>` |
 
@@ -84,11 +85,12 @@ FUTURE-DESIGN
 | `src/modules/org` | `modules/org.md`、`RENDERER.md`、`DEPLOY-*`（若产物变） |
 | `src/modules/improvement` | `modules/improvement.md`、`DECISIONS`（若流程变） |
 | `src/interfaces` | `LOCAL-SERVICE`、`ARCHITECTURE`、`modules/interfaces.md` |
-| `scripts/deploy|doctor|selfheal|backup|rebuild|accounts|devbot|workbuddy` | `OPS`、`REBUILD`、`DEPLOY-*`、`RELEASE-CHECKLIST` |
+| `scripts/` 下任一域（deploy / doctor / selfheal / backup / rebuild / accounts / devbot / workbuddy / executor / elevate / launch / workbuddy-patch / checks / anc-bind / verify，共 15 域） | `OPS`、`REBUILD`、`DEPLOY-*`、`RELEASE-CHECKLIST`；入口变化另查 `BOOTSTRAP.md` |
 | 新表/迁移 | `ARCHITECTURE`、相关 `modules/*`、`STATUS`（数据/迁移缺口） |
 | 未来主干修正现状 | `FUTURE-DESIGN` 主干 0.7、`STATUS` §3.3、受影响的 `PRODUCT` / `ARCHITECTURE` / 模块 / 接口 / 运维文档；行为改变时补 `DECISIONS` |
 | 新上游/拷贝代码 | `UPSTREAM`、`upstreams/<slug>.md`、`THIRD_PARTY_NOTICES.md`、`DECISIONS` |
 | 只改文档 | `INDEX`、`doc-map.json`、`check:docs` |
+| 新增根目录文档 / 部署入口 | `doc-map.json`、`INDEX.md`、`BOOTSTRAP.md`、两份 `DEPLOY-*` §1、`RELEASE-CHECKLIST` 门禁表 |
 
 ---
 
@@ -117,6 +119,7 @@ FUTURE-DESIGN
   - 相对链接存在；
   - 每份现行文档在 `doc-map.json` 里；
   - 类型 banner 与 map 一致；
-  - 每份现行文档能从 `INDEX.md` 链到。
+  - 每份现行文档能从 `INDEX.md` 链到；
+  - 根目录现行文档（`BOOTSTRAP.md`）同样要登记 `doc-map.json`、从 `INDEX.md` 以 `../` 链接（`check-docs.mjs` 2026-11-10 起覆盖）。
 
-新增/移动文档时，先改 `doc-map.json`，再改 `INDEX.md`，最后跑 `check:docs`。
+新增/移动文档时（含根目录文档），先改 `doc-map.json`，再改 `INDEX.md`，最后跑 `check:docs`。

@@ -1,5 +1,7 @@
 # BOOTSTRAP — agent 的部署入口
 
+> 类型：部署入口 · 最后整理：2026-11-10
+>
 > 读到这份文件，说明有人给了你一个仓库链接，让你在这台机器上装这个项目。
 > **先读完这一页再动手。** `docs/DEPLOY-COMPANY.md` 是 1200 行的逐段手册，是排障参考，不是入口。
 
@@ -58,7 +60,7 @@ powershell -File scripts\deploy\deploy-kickoff.ps1 -Phase check   -Side company 
 powershell -File scripts\deploy\install-company.ps1 -VaultRoot D:\anc -Apply
 ```
 
-11 个阶段按固定顺序跑，每步自动记账，失败即停；续跑用 `-From <阶段>`，别从头重装。
+按固定顺序跑 **11 步**（`preflight → dirs → files → skills → tasks → vault → org → wecom → verify → executor → patch`）；`preflight` 只是前置检查、**不记账**，其余每步自动记账，失败即停；续跑用 `-From <阶段>`。`deploy-state` 公司侧共 14 阶段（另含 `brief`/`answers`/`workbuddy`），员工侧 10 阶段
 
 `patch` 排在最后，因为它会用启动器重启 WorkBuddy——当前会话会断，这是预期的。
 
@@ -71,7 +73,7 @@ Get-Content (Join-Path $env:ProgramData 'anc\data\executor-deploy.json') -Raw
 ```
 
 `ok:true` 即部署完成。失败会自动重试，原因在 `data\executor-deploy.log`；人工修好后跑
-`tools\setup-executor.ps1 -Apply` 重试。不想自动启用：`-SkipExecutor`，或 answers 里 `executor.enabled=否`。
+`tools\setup-executor.ps1 -Apply`（仓库源文件 `scripts\deploy\setup-executor.ps1`）重试。不想自动启用：`-SkipExecutor`，或 answers 里 `executor.enabled=否`。
 
 > 默认工作区 = **仓库 checkout 的绝对路径**；想换独立空目录传 `-ExecutorWorkspace D:\anc\executor-ws`。
 > 不需要在 WorkBuddy UI 里手动“添加工作区”。

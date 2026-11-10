@@ -172,7 +172,7 @@ node src/service/cli.ts --json executor start `
       "task_id": 12,
       "department_id": "sales",
       "title": "整理报价",
-      "state": "queued",
+      "state": "working",   // claim 返回时 Ticket 已 reserve 为 working
       "priority": "P1",
       "task_dir": "departments/sales/tasks/t-..."
     },
@@ -190,7 +190,7 @@ node src/service/cli.ts --json executor start `
 ```
 
 - `claim` 原子创建 `pending` Assignment，并保留 slot；唯一索引保证一个 Ticket 只有一个 active Assignment。
-- `pending` 超过 60 秒未 `start`，回到 `queued`，Assignment 标 `failed`（reason `start-timeout`）。
+- `claim` 后 Ticket 即 `working`；未 start 就崩溃/超时由 `interrupt` / `recover` / `sweepStaleAssignments`（默认 grace 10 分钟，reason `grace-timeout`）中断 Assignment 并回 `queued`；没有 60 秒自动回退。
 - `start` 只能把 `pending → running`；重复 start 幂等返回当前状态。
 
 **Ticket 授权字段（GAP-054 / D31）**：DDL 兜底默认值为 `tools=[]`、`vault_paths=[]`、`budget=null`、`max_attempts=3`、`expires_at=null`（`src/core/schema.ts` 的 `tickets` 段）。**这些默认值不是授权**——Main 每次派单建 Ticket 时必须显式填写上述字段，并在决策输出与 claim 返回里展示；不得先建空授权 Ticket、再靠 DDL 默认值放行。
@@ -290,6 +290,16 @@ node src/service/cli.ts --json executor attention context --ticket-id <ticket>
 - review `approve` / responsibility `ack` 会收口 Ticket 并同步 Task；`reject` 把 Ticket 回 `queued`，下一次 claim 带退回意见。
 - `attention sweep` 默认只算到期/升级级别；带 `--apply` 才入 outbox。生产由 `anc-executor-wake` 每分钟跑 `--apply`，Main 不直接发群。
 
+### 2.5.1 `--source-msg` 硬约束（GAP-107 / D52）
+
+`attention answer` 的 `--source-msg` 是必填项，约束如下：
+
+- **必填**：不传直接拒绝；值取 `%ProgramData%\anc\data\patch-in.log` 入站行的 `msg=`（消息前缀里的 `msg=` 值），服务端据此重推导入站消息。
+- **中文动作词白名单**：动作只认中文——`可以 / 同意 / 通过` → `approve`；`不行 / 不可以 / 不通过 / 驳回 / 拒绝` → `reject`；`收到 / 确认` → `ack`；英文 `approved` 等不认。
+- **时间窗口**：消息须晚于 Attention 创建（60s 容差），且在 15 分钟内。
+- **不采信模型自述**：`--action` / `--userid` / `--text` 一律不采信；`--action` 仅做一致性校验。
+- **回归测试**：新增 3 条回归测试覆盖上述约束。
+
 ## 3. Subagent Report JSON
 
 Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
@@ -363,7 +373,7 @@ Main 给 subagent 的 prompt 要求最后输出一个 fenced JSON：
 
 ## 5. 03:00 Host bootstrap
 
-自动创建（**唯一允许新建 host 会话的路径**）：`anc-executor-new-host` 每天 03:00 预生成 UUID，调 wake bridge `/new`（body 带 `conversationId`/`workspace`/`title`）建会话并发 bootstrap prompt；新会话首个 turn 执行 `executor host bootstrap --conversation-id <UUID> --date <今天> --cut-at <明天03:00>`，DB 里的 host `conversation_id` 因此是**真实会话 id**。03:00 之后所有 wake 都定向这个会话（D46）。
+自动创建（**唯一允许新建 host 会话的路径**）：`anc-executor-new-host` 每天 03:00 预生成 UUID，调 wake bridge `/new`（body 带 `conversationId`/`workspace`/`title`）建会话并发 bootstrap prompt；新会话首个 turn 执行 `executor host bootstrap --conversation-id <UUID> --date <今天> --cut-at <明天03:00>`，DB 里的 host `conversation_id` 因此是**真实会话 id**。03:00 之后所有 wake 都定向这个会话（D46）。`new-host.ps1 -Now <datetime>` 仅演练用，不改变 03:00 定时。
 
 兜底：如果 `/new` 失败或新对话没出现，`host tick` 只把旧 host 标成 `cut_deferred=1`，**不切、不停止接单**；旧 host 继续接新 Ticket。等新对话出现后 `host bootstrap` 再切。
 

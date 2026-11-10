@@ -116,3 +116,4 @@
 | 2026-11-10 | normal `claim` 即置 Ticket `working`（reserve），`start` 幂等；`interrupt/recover/sweep` 回 queued | GAP-106（wake 重复唤醒窗口）+ D50 |
 | 2026-11-09 | 加 `attentions` 表与 Attention API/不变量/错误码；短号、status、入口状态 | 主干 3 T3.1 数据层 |
 | 2026-11-09 | 加 `question` Report、human slot 定向领取、human 不计 `max_attempts`、收口 Attention | 主干 3 T3.4 执行器接线 |
+| 2026-11-10 | `attention answer` 强制 `--source-msg` 绑定 `patch-in.log` 真实入站消息；动作/发送人/聊天由服务端重推，模型自述 `--action/--userid/--text` 不采信 | GAP-107 / D52 |

@@ -6,12 +6,12 @@
 
 ## 计划任务
 
-共 13 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
+共 14 个，全部 `MultipleInstances = IgnoreNew`（上一次没跑完，新触发直接丢弃，不叠跑）。`<bin>` = `%ProgramData%\anc\bin`，`<svc>` = `%ProgramData%\anc\service`。
 
 | 任务 | 触发 | 身份 | 执行 | 作用 |
 |---|---|---|---|---|
 | `anc-service` | 开机 + 每天 00:00 起每 1 分钟 | `LOCAL SERVICE` | `cmd /c <bin>\anc-loop.cmd` | 跑 `loop --once`：到期提醒 → outbox → 群机器人 |
-| `anc-elevate` | 开机 + 每分钟 | `SYSTEM` | `elevate-runner.ps1 -Root <Root> -Repo <仓库>` | **给 bot 的提权通道**：从 `data\elevate\queue\` 取一条白名单请求（`upgrade` / `register-tasks` / `deploy`）以 SYSTEM 执行，结果写 `done\`、审计写 `elevate.log`。**不接受任意命令**：脚本路径固定从 `tools\` 取，请求里的路径字段一概忽略；请求文件必须是 `<GUID>.json`、不能是链接；TTL 30 分钟、每小时最多 6 条 |
+| `anc-elevate` | 开机 + 每分钟 | `SYSTEM` | `elevate-runner.ps1 -Root <Root> -Repo <仓库>` | **给 bot 的提权通道**：从 `data\elevate\queue\` 取一条白名单请求（`upgrade` / `register-tasks` / `deploy`）以 SYSTEM 执行，结果写 `done\`、审计写 `elevate.log`。**不接受任意命令**：脚本路径固定从 `tools\` 取，请求里的路径字段一概忽略；请求文件必须是 `<GUID>.json`、不能是链接；TTL 30 分钟、每小时最多 6 条；投递端 `bin\request-elevate.ps1`；白名单仅 upgrade / register-tasks / deploy，GUID 文件名、TTL 30 分钟、每小时最多 6 条 |
 | `anc-executor-new-host` | 每天 03:00 | `LOCAL SERVICE` | `new-host.ps1` | 主干2 自动创建新 host 对话；失败由 `anc-executor-host-tick` 标 deferred，旧 host 继续接单 |
 |  |  |  |  | > 演练/补测：`new-host.ps1 -Now "2026-11-11T03:00:05+08:00"` 可模拟指定时刻的 03:00（只影响 date/cut-at/title，**不改系统时钟**）；仅用于 ACC-20 这类补测 |
 | `anc-executor-host-tick` | 每天 03:00 | `LOCAL SERVICE` | `host-tick.ps1` | 主干2 自动兜底：没有新 host 时只标 `cut_deferred`，旧 host 继续接单（**文件名是 `host-tick.ps1`**：GAP-093 之前写 `executor-host-tick.ps1`，而部署目录里从来没有这个文件，任务一直启动失败） |
@@ -32,7 +32,7 @@ PowerShell 任务统一是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -F
 > - **`-BotUser` 默认取「当前部署账号」（`$env:USERNAME`，D25）**，不再硬编码 `anc-bot` / `Administrator`；
 >   本机实测 `BotUser=DNT`。早先默认值与 D25 矛盾（照默认值跑会要求一个不存在/没登录过的用户配置目录），
 >   换账号部署时才需要显式传。
-> - **从部署目录 `%ProgramData%\anc\bin` 跑必须显式传 `-Repo <仓库根>`**：脚本按「向上找 `.git`」探测仓库根，
+> - **从部署目录 `%ProgramData%\anc\tools\` 跑必须显式传 `-Repo <仓库根>`**：脚本按「向上找 `.git`」探测仓库根，
 >   部署目录里找不到，`anc-devbot` 的动作会指不到 `scripts\devbot\devbot-scheduler.ps1`；
 >   本机实测要传 `-Repo D:\workbuddy-anc`。仓库里直接跑可自动探测。
 
@@ -45,7 +45,7 @@ powershell -File scripts\deploy\deploy.ps1
 powershell -File scripts\deploy\deploy.ps1 -Apply
 ```
 
-把 `src\core`、`src\interfaces`、`src\modules`、`src\service`、`src\ingest`、`src\render`、`src\shared`、`light\templates`、`scripts\<domain>\*`（部署时扁平到 `bin\`）和 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 对应目录，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
+把 `src\core`、`src\interfaces`、`src\modules`、`src\service`、`src\ingest`、`src\render`、`src\shared`、`light\templates`、`scripts\<domain>\*`（按 `$BinScripts` / `$ToolScripts` 分别扁平到 `bin\`（运行时 21）与 `tools\`（装机维护 26））和 `scripts\workbuddy-patch\*` 复制到 `%ProgramData%\anc\` 对应目录，排除 `*.test.ts`。落盘前备份到 `%ProgramData%\anc\backup\deploy-<时间>\`，落盘后逐文件比对 SHA-256，不一致就整体回滚。备份目录目前不自动清理，按需删旧的。
 
 ## 部署后自动 executor（主干 2，2026-11-10）
 
@@ -173,7 +173,7 @@ Remove-Item "$env:LOCALAPPDATA\Programs\WorkBuddy"
 ## 体检与告警
 
 ```powershell
-powershell -File scripts\doctor\doctor.ps1              # 只读体检（34 项）：部署账号（D25 用管理员账号）、进程 owner、14 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
+powershell -File scripts\doctor\doctor.ps1              # 只读体检（35 项）：部署账号（D25 用管理员账号）、进程 owner、14 个任务与 principal、心跳、版本、补丁、SMB/NTFS、secrets ACL、部署布局、密钥、时区、数据库、绑定、canary
 
 > 非提权会话通常看不到 `LOCAL SERVICE` / `SYSTEM` 的任务，doctor 会把它们报 `WARN 非提权会话看不到服务任务`，不是 FAIL。核对 14 个任务请用**管理员会话**；`FAIL=0` 在两种会话下都成立。
 powershell -File scripts\doctor\doctor.ps1 -SelfTest    # 自测：用 %TEMP% 夹具证明每类检查会 FAIL，不碰生产

@@ -68,7 +68,7 @@ content = "[anc:chat=<chatid> from=<userid> msg=<msgId> quote=<引用文本>] " 
 ### 4) 升级侦察与技能
 
 - `scripts/workbuddy-patch/inspect.mjs`：直接读 asar，报告版本、目标 hash、`emitMessage`/`WecomAiBotClient` 锚点数量、bootstrap 锚点是否还在，并给出建议；
-- `light/skills/anc-wb-patch`：升级当天给 agent 用的重放与回归流程（侦察 → 三种情况 → 四条回归 → 更新台账 → 回滚）。
+- `light/skills/anc-wb-patch`：升级当天给 agent 用的重放与回归流程（侦察 → 三种情况 → 五条回归 → 更新台账 → 回滚）。第 5 条为 bridge 2.0 可用性：`GET /health` 得 `bridge:"2.0"`、定向 `/wake` 命中已有 host 且不新建会话。
 
 ### 5) 自愈与守卫（不依赖模型）
 
@@ -114,7 +114,7 @@ content = "[anc:chat=<chatid> from=<userid> msg=<msgId> quote=<引用文本>] " 
 
 ### 为什么要有身份表
 
-agent 在消息开头能看到 `[anc:chat=<chatid> from=<userid>]`（D17 的注入），但**它不该自己记住谁是谁** —— 名单是易变事实，模型记不住也不该记。
+agent 在消息开头能看到 `[anc:chat=<chatid> from=<userid>]`（可再带 ` msg=… quote=…`，清洗规则见 §1b；D17 的注入），但**它不该自己记住谁是谁** —— 名单是易变事实，模型记不住也不该记。
 
 主干 1 起，真相是：
 
@@ -179,7 +179,7 @@ node scripts\anc-bind\bind.mjs list
 
 ### agent 侧怎么用
 
-1. 每轮消息开头有 `[anc:chat=<chatid> from=<userid>]`；
+1. 每轮消息开头有 `[anc:chat=<chatid> from=<userid>]`（可再带 ` msg=… quote=…`，见 §1b）；
 2. persona 规则：**先跑 `bind actor` 拿 group.type / person.system_role / manager_scopes**；查不到按「未识别」处理，不猜；
 3. 具体查法在本地工具/技能里实现，不在 prompt 里塞名单。
 

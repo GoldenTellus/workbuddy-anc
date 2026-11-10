@@ -2,7 +2,9 @@
 
 > 类型：发布门禁（现行）
 
-> **2026-11-08 起**：本清单仍是 1.0 的发布门禁；**2026-11-09 主干 0 收口**后，当前主干发布前还必须跑 `STATUS §3.5` 的 **ACC-01..12**（四类群/角色/两阶段任务/隐私/部署/executor）。本地测试通过不能代替真实验收。
+> **历史读数，现状见 STATUS**（带明确日期的历史读数保留原值）；现状：`npm test` 252/252、29 个测试文件。
+
+> **2026-11-08 起**：本清单仍是 1.0 的发布门禁；**2026-11-09 主干 0 收口**后，当前主干发布前还必须跑 `STATUS §3.5` 的 **ACC-01..22**（四类群/角色/两阶段任务/隐私/部署/executor）。本地测试通过不能代替真实验收。**本批（BATCH-20261110，公司侧完成）：ACC-16/18/19/20/21/22 达成，仅 ACC-17（员工侧双机全量）按 D48 书面例外；判定以 `STATUS §3.5` 为准。**
 
 > **读者是 agent，不是人。** 每一项都有可执行的判据；判据不成立就停在这一项，不要往下走。
 >
@@ -20,17 +22,23 @@
 
 | 门禁项 | 判据 | 本机实测（2026-11-09） |
 |---|---|---|
-| 测试 | `npm test` **252/252**，连跑 3 次不挂起 | ✅ 最近一次 252/252、0 fail（单次约 44 s） |
+| 测试 | `npm test` **252/252**，连跑 3 次不挂起 | ✅ 最近一次 252/252、0 fail（29 个测试文件，单次约 44 s） |
 | 静态检查 | `npm run check`（`check:modules:deep` + `check:docs`） | ✅ 通过（13 模块边界干净 + 40 份 Markdown 检查） |
 | 密钥扫描 | `node scripts/checks/check-public.mjs` | ✅ 零输出、exit 0 |
-| 计划任务 | **13 个**全部 Ready/Running，principal 正确 | ✅ 13/13（9 LOCAL SERVICE / 1 SYSTEM / 3 交互，`anc-http` Running） |
-| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **138 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP） |
-| 体检 | `doctor` **FAIL=0** | ✅ **34 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
+| 计划任务 | **14 个**全部 Ready/Running，principal 正确 | ✅ 14/14（9 LOCAL SERVICE / 2 SYSTEM / 3 交互，`anc-http` Running） |
+| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **158 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP）；`deploy-verify` 含 `executor` 项 |
+| 体检 | `doctor` **FAIL=0** | ✅ **35 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
 | 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
-| ACC 判定 | `STATUS §3.5` 的 **ACC-01..12 如实判定**：未跑就是未达成，`SKIP` 不是通过 | ✅ ACC-07/09/10/11 本机达成；ACC-02/03/04/05/06/12 用户实测通过（口述，无机器日志，D35）；ACC-08 人工对账书面例外（D36）；备份恢复通过 |
-| 主干 0 收口 | 8 分支设计/实现/验收、ACC 全部通过或书面例外、文档联动、门禁 | ✅ 2026-11-09 收口；快照 `docs/archive/plans/TRUNK-0-20261109.md`；正式对外发布仍由用户决定 |
+| ACC 判定 | `STATUS §3.5` 的 **ACC-01..22 如实判定**：未跑就是未达成，`SKIP` 不是通过（判定以 `STATUS §3.5` 为准） | ✅ ACC-07/09/10/11 本机达成；ACC-02/03/04/05/06/12 用户实测通过（口述，无机器日志，D35）；ACC-08 人工对账书面例外（D36）；备份恢复通过 |
+| 主干 0 收口 | 8 分支设计/实现/验收、ACC 全部通过或书面例外、文档联动、门禁 | ✅ 2026-11-09 收口；快照 `docs/archive/plans/TRUNK-0-20261109.md`；正式对外发布仍由用户决定；**主干 1/2/3 已收口、主干 4 未做** |
+| BOOTSTRAP 四步 | 零起点按 `BOOTSTRAP.md` 四步可走通 | ✅ 2026-11-10 公司侧完成 |
+| install-company 11 步 | `install-company.ps1 -Apply` 一次装完 11 步（含 `executor`，`patch` 排最后） | ✅ 2026-11-10 公司侧完成；`preflight` 只跑不记账 |
+| anc-elevate 白名单与 TTL | 白名单仅 upgrade / register-tasks / deploy；GUID 文件名、TTL 30 分钟、每小时最多 6 条 | ✅ 投递端 `bin\request-elevate.ps1`，白名单与 TTL 生效 |
+| setup-executor 收尾 | `data\executor-deploy.json` `ok:true`（工作区 + TEST + 当天 host） | ✅ 2026-11-10 实测 `ok:true`；失败留 marker 由 `anc-patch-guard` 重试 |
+| deploy-state 公司侧 14 阶段 | 公司侧 14 阶段（brief·answers·executor 已记账） | ✅ 当前 12/14；`brief`/`answers` 仅全新安装访谈阶段，存量机 N/A |
+| deploy-verify 含 executor 项 | `deploy-verify` 含 `executor` 项 | ✅ 含 `executor` 项，`executor-deploy.json ok:true` |
 
-**发布结论（2026-11-09）**：主干 0 已收口（ACC 全部通过或书面例外）；本表面向正式对外发布，仍需用户确认后再放行。**主干 0 已完成，正式发布待定。**
+**发布结论（2026-11-09）**：主干 0 已收口（ACC 全部通过或书面例外）；本表面向正式对外发布，仍需用户确认后再放行。**主干 0 已完成，正式发布待定。主干 1/2/3 已收口、主干 4 未做。**
 **不得把未跑写成通过**——`deploy-verify` 的 SKIP 只能记「未验」，验收项的判定以 `STATUS §3.5` 为准。
 
 ---
@@ -302,7 +310,7 @@ powershell -File scripts\deploy.ps1 -Side company
 | 装公司侧 | **墙钟 59 分钟**（含等问值表 4m37s），**可计量执行 22 分钟**，逐节台账 11446 B |
 | `doctor` | `ok=True fails=0 warns=2`（`work-hours` + `canary`，都要真实群消息） |
 | 补丁 | `applied=true mode=hash 5.9.3`，pid 活着 |
-| 任务 | 10/10 Ready，principal 全对（**历史读数**，2026-11-05；2026-11-09 为 13/13） |
+| 任务 | 10/10 Ready，principal 全对（**历史读数**，2026-11-05；2026-11-09 为 13/13；2026-11-10 起为 14/14） |
 
 ### ★ 关于「且全程没有问你『这一步该填什么』」这条判据
 

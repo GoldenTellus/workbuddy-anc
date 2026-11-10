@@ -26,7 +26,7 @@
 
 **三层是叠加的**：技能内部调 CLI，CLI 写 SQLite，计划任务读 SQLite 并做时间驱动的事。
 
-**部署完自动就绪（公司侧，主干 2）**：`install-company -Apply` 的 `patch` 重启后，`anc-patch-guard` 会自动把仓库目录加入 WorkBuddy 工作区（建会话发 `TEST`，bot 回「收到，TEST 正常」）、并在没有 active host 时注册当天 host。不用人在 WorkBuddy 里手动“添加工作区”。结果看 `%ProgramData%\anc\data\executor-deploy.json`（`ok:true`）。
+**部署完自动就绪（公司侧，主干 2）**：`install-company.ps1 -Apply` 一条命令跑完 11 步；`patch` 重启后，`anc-patch-guard` 调 `scripts\deploy\setup-executor.ps1`（部署后在 `tools\`）自动把仓库目录加入 WorkBuddy 工作区（建会话发 `TEST`，bot 回「收到，TEST 正常」）、并在没有 active host 时注册当天 host。不用人在 WorkBuddy 里手动“添加工作区”。结果看 `%ProgramData%\anc\data\executor-deploy.json`（`ok:true`）。
 
 ---
 
@@ -137,7 +137,7 @@
 | 命令组 | 子命令 | 能做什么 |
 |---|---|---|
 | **`task`** | `add` `list` `get` `done` `start` `reassign` `cancel` `review` `request` `approve` `accept` `reject` | 任务生命周期 + 两阶段请求：同部门待接受，跨部门先审批；拒绝必须带原因 |
-| **`executor`** | `host` `ticket` `claim` `start` `report` `notify` `end` `attention` | 主干 2 日对话/Ticket/Assignment/Report；4+1 slot 与 03:00 日切；wake 定向已有 daily host（D46，不按 Ticket 新建会话）；`attention` 子命令管人在环路的待确认（短号 + 引用文本兜底 + mention_userid @） |
+| **`executor`** | `host` `ticket` `claim` `start` `report` `notify` `end` `attention` | 主干 2 日对话/Ticket/Assignment/Report；4+1 slot 与 03:00 日切；wake 定向已有 daily host（D46，不按 Ticket 新建会话）；`attention` 子命令管人在环路的待确认（短号 + 引用文本兜底 + mention_userid @）；wake bridge 2.0 用 `window.wb` API 定向唤醒已有 daily host；`/new` 仅 03:00；`wb-wake-workspace.txt` 必须为 cwd 绝对路径（GAP-105） |
 | **`reminder`** | `add` `due` `sent` | 计时提醒的入队与发送记录 |
 | **`outbox`** | `list` `flush` `create` `submit` `status` | 出站消息队列。**真正的发送通道**，所有提醒都经它 |
 | **`submission`** | `add` `list` `set-status` | 员工报的问题（原始记录） |
@@ -169,7 +169,7 @@
 | **`anc-service`** | 每日 + 开机 | LOCAL SERVICE | 主服务（状态、提醒、完成判定） | — |
 | **`anc-executor-new-host`** | 每天 03:00 | LOCAL SERVICE | 预生成会话 UUID 并建新 host 对话（唯一允许建 host 的路径）；失败由 host-tick 兜底 | — |
 | **`anc-executor-host-tick`** | 每天 03:00 | LOCAL SERVICE | 主干2 host 兜底：无新对话时旧 host 继续接单 | — |
-| **`anc-executor-wake`** | 每分钟 | LOCAL SERVICE | 先跑 `executor expire` + `attention sweep --apply`；有 queued Ticket 时 `/wake` 定向当前 daily host 会话（需开启 wake bridge） | — |
+| **`anc-executor-wake`** | 每分钟 | LOCAL SERVICE | 先跑 `executor expire` + `attention sweep --apply`；有 queued Ticket 时 `/wake` 定向当前 daily host 会话（需开启 wake bridge）；wake bridge 2.0 用 `window.wb` API 定向唤醒已有 daily host；`/new` 仅 03:00；`wb-wake-workspace.txt` 必须为 cwd 绝对路径（GAP-105） | — |
 | **`anc-http`** | 每日 + 开机 | LOCAL SERVICE | 定时触发 `loop` 跑一轮（发到点的提醒） | — |
 | **`anc-backup`** | 每日 | LOCAL SERVICE | 数据库一致性快照（`VACUUM INTO`）+ 本地保留 + 可选离机复制 | 离机失败但本地成功 = 仍算成功 |
 | **`anc-watchdog`** | 每日 | LOCAL SERVICE | 盯心跳、outbox 积压、WorkBuddy 进程；异常发运维群（带冷却） | 每 10 分钟一轮，5 项检查 |
@@ -234,7 +234,7 @@ WOULD SKIP
 | 需要人回答 | bot 发 `A12 <问题>` | 只有 `required_confirmer` 或老板能答 |
 | 需要人核查 | 结果出来后发 `A12 可以提交吗？` | 通过 → Ticket/Task done；退回 → Ticket 回队列重做 |
 | 责任交接 | 发 `A12 后续由你接手` | 默认只通知；责任转移/跨部门/对外财务生产才要求“收到”回执 |
-| 群回复确认 | `@公司bot A12 可以` / `A12 不行 <原因>` / `A12 <回答>` / `A12 收到` | 必须 @；短号为主；**引用带 A12 的通知只回「可以」也认**（补丁注入 `quote=`，Main 传 `--quote-text`）；正文短号优先；多条只反问一次 |
+| 群回复确认 | `@公司bot A12 可以` / `A12 不行 <原因>` / `A12 <回答>` / `A12 收到` | 必须 @；短号为主；**引用带 A12 的通知只回「可以」也认**（补丁注入 `quote=`，Main 传 `--quote-text`）；正文短号优先；多条只反问一次；补丁入站前缀含 `msg=` / `quote=`（GAP-079）；`attention answer` 强制 `--source-msg`，服务端从 patch-in.log 重推导入站消息，只认中文动作词（D52/GAP-107） |
 | 老板代确认 | 老板回 `A12 可以` | 自动记 `on_behalf_of`，通知原确认人 |
 | 提醒/升级 | 自动：2h 本人 → 8h 部门管理者 → 24h 老板 | 只提醒，不自动拒绝/转移；22–08 静默，每人每日上限 10 条；首条提问不占上限；8h/24h 已做真实投递验收（文案/收件人/不重复） |
 | 通知频道 | 优先私密员工群；老板 1:1 不主动推 | 私密群要有 webhook；没有则回原群中性短号，老板回 1:1 问“待办”看详情；原群通知填了 `mention_userid` 会真 @（企微 webhook `mentioned_list`），没填则只发短号不 @ |
@@ -338,17 +338,17 @@ issue
 
 | 能力 | 命令 / 触发 | 说明 |
 |---|---|---|
-| 体检 | `doctor.ps1 -Root <r> -Repo <r> -Json` | **34 项检查**，`ok=True fails=0` 才算好 |
+| 体检 | `doctor.ps1 -Root <r> -Repo <r> -Json` | **35 项检查**，`ok=True fails=0` 才算好 |
 | 部署 | `deploy.ps1 -Side company [-Apply]` | 逐文件对拍 hash，任一失败整体回滚 |
 | 设权限 | `set-acl.ps1 -Root <r> -Apply` | `secrets` 断继承 + 三方授权；`data` 保留继承 |
 | 备份 | `backup-anc.ps1` | `VACUUM INTO` 一致性快照 |
 | 重建 | `prepare-wipe.ps1 [-Apply]` | **只改名不删除**，回滚 = 去掉 `-prewipe` 后缀 |
 | 自愈 | `anc-selfheal.ps1 -DryRun / -Apply` | 先 dry-run 看锚点，再决定是否重启 |
 | 故障注入 | `doctor-fault-matrix.mjs` | 故障矩阵基数已变（34），覆盖待重跑（历史 30/31 只代表旧基数） |
-| 进度台账 | `deploy-state.ps1 -Mark <step> -AsDone/-AsFailed` | **不要手改 JSON** |
+| 进度台账 | `deploy-state.ps1 -Mark <step> -AsDone/-AsFailed` | **不要手改 JSON**；当前 deploy-state **12/14**；`brief`/`answers` 仅全新安装访谈阶段，存量机 N/A |
 | 程序化测试 | `POST 127.0.0.1:17999/emit` | 模拟"有人 @ 了 bot"，需 `test-emit.flag` |
 
-**本机实测（2026-11-09，公司侧部署）**：`deploy.ps1` dry-run **138 个文件**；14 个计划任务已注册（13 `Ready` + `anc-http` `Running`）；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。
+**本机实测（2026-11-09，公司侧部署；历史读数）**：`deploy.ps1` dry-run **138 个文件**；**13** 个计划任务全部 `Ready`；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。**现状（2026-11-10）**：部署清单 **158 文件**、计划任务 **14 个**（含 `anc-elevate` SYSTEM）、doctor **35 项**、`deploy-state` **12/14**。
 
 **本机实测（2026-11-10，临时根演练）**：`deploy.ps1` **158 个文件**（比 138 多：`light/templates/vault/` 下 5 份协作模板、访谈入口 `deploy-kickoff.ps1`；同时 `patch/` 不再部署 `*.test.mjs`），hash 逐一对照通过；`-Rollback` 首次部署删净、升级回滚恢复旧版本均通过。**只部署运行件、不部署仓库**——`docs/`、`_research/`、`reference/`、`AGENTS.md` 一个都不进；脚本按用途分两处：`bin\` 21 个（任务动作 + 启动器 + 技能直接调的），`tools\` 25 个（装机、自检、重装、账号、演练、回归），`scripts\` 用显式清单，清单外不上生产。
 
@@ -364,7 +364,7 @@ issue
 | 关闭补丁 | `launch-patched.ps1 -NoPatch` | 或设环境变量 |
 | 重放 | `anc-wb-patch` 技能 | 升级后重放并回归 |
 
-**补丁做什么**：在 WorkBuddy 收到的每条群消息前加 `[anc:chat=<chatid> from=<userid>]`，让 bot 知道"这条消息来自哪个群、谁发的" —— **这是四类群身份隔离的基础**。
+**补丁做什么**：在 WorkBuddy 收到的每条群消息前加 `[anc:chat=<chatid> from=<userid> msg=<msgid> quote=<被引用原文>]`，让 bot 知道"这条消息来自哪个群、谁发的、是哪一条、引用了什么" —— **这是四类群身份隔离的基础**。`msg=` 给每条入站消息一个稳定 id（`patch-in.log` 可按它重推、`attention answer --source-msg` 靠它定位原消息）；`quote=` 把被引用原文带进来（群里只回「可以」也能认定答的是哪条通知，Main 传 `--quote-text`）。
 
 ---
 
@@ -450,7 +450,7 @@ issue
 
 | 想知道什么 | 读哪份 |
 |---|---|
-| 怎么装 | `docs/DEPLOY-COMPANY.md`（给 agent）、`docs/REBUILD.md`（手工步骤） |
+| 怎么装 | `BOOTSTRAP.md`（零起点四步）、`docs/DEPLOY-COMPANY.md`（给 agent）、`docs/REBUILD.md`（手工步骤） |
 | 为什么这么设计 | `docs/DECISIONS.md`（改名后是 `DECISIONS.md`） |
 | 做到什么程度 | `docs/archive/history/ACCEPTANCE.md`（40 条 DoD 逐条状态） |
 | 怎么验 | `docs/archive/history/VERIFY.md`（87 节实测记录） |

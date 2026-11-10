@@ -13,8 +13,8 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- 主干 0/1/2/3 已收口（2026-11-10）：主干 2 真实 Main 群全链路（ACC-16）、主干 3 Attention 短号确认；下一个主干待选。
-- `npm test` **252/252**；`npm run check`（`check:modules:deep` + `check:docs`）通过。
+- 主干 0/1/2/3 已收口（2026-11-10）；本批 BATCH-20261110 公司侧完成：ACC-16/18/19/20/21/22 达成，仅 ACC-17（员工侧双机全量）按 D48 书面例外；员工 bot 仍是旧 1.0、主干 4 未实现；决策 D46–D52 已登记；主干 0 复检开放 GAP=0
+- `npm test` **252/252**；覆盖率 **88.97 / 79.03 / 93.95**（行/分支/函数，2026-11-10 实测）；`npm run check`（`check:modules:deep` + `check:docs`）通过；`check-public` 零输出。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 1.0 的历史计划、路线图、验收、实测已归档；不要再把 `PLAN-1.0` 当现行计划。
 
@@ -22,6 +22,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 
 | 问题 | 文档 |
 |---|---|
+| 从零部署一套（部署者，不是开发者） | [BOOTSTRAP.md](./BOOTSTRAP.md) |
 | 要建什么、完成到哪 | [docs/FUTURE-DESIGN.md](./docs/FUTURE-DESIGN.md) |
 | 当前主干怎么干 | [docs/PLAN.md](./docs/PLAN.md) |
 | 做完什么、还缺什么 | [docs/STATUS.md](./docs/STATUS.md) |
@@ -40,7 +41,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险；`GAP-###` 总账 |
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单与审计表 |
 | `docs/PRODUCT.md` | 部署完能干什么：技能、命令组、计划任务、能力边界 |
-| `docs/DECISIONS.md` | 设计裁决台账（D1–D26 及后续）；与代码冲突时先改代码或改决策，不要两边漂 |
+| `docs/DECISIONS.md` | 设计裁决台账（D1–D52，其中 D46–D52 为 BATCH-20261110 登记）；与代码冲突时先改代码或改决策，不要两边漂 |
 | `docs/modules/` | 13 份模块契约：职责/拥有/公开接口/不变量/失败模式/测试 |
 | `docs/LOCAL-SERVICE.md` | CLI / HTTP 契约 |
 | `docs/RENDERER.md` / `docs/INGEST.md` / `docs/WORKBUDDY-PATCH.md` | 渲染 / 入库 / 补丁契约 |
@@ -78,7 +79,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 - **真实环境验收不阻塞**：需要真实群、凭据、公司主机或现场动作的，登记到 `STATUS` §3.5 的 ACC 批次，继续做能做的；统一收尾时一次跑，通过前主干保持 🟡 待验收。
 - **完成即更新**：任何完成都按 `STATUS` §3.6 更新 `GAP`、`FUTURE-DESIGN` 分支/主干、`PLAN`、模块契约/审计行和测试数；只改代码或文档，不算完成。
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
-- **代码**：TypeScript + Node 22 LTS（设计基线；本机 2026-11-09 实测 v26.13.0 亦可跑 252/252）；零或极少运行时依赖；主机脚本 PowerShell 5.1。
+- **代码**：TypeScript + 设计基线 Node 22 LTS；当前环境 v22.22.2 跑 252/252（v26.13.0 为 2026-11-09 另一台本机历史实测）；零或极少运行时依赖；主机脚本 PowerShell 5.1。
 - **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。
 - **上游**：借代码/设计前先查 `docs/UPSTREAM.md` 与 `docs/upstreams/`；许可证不明只学概念，不拷代码。
 - **计划可变，但改要留痕**：`PLAN` 是当前最佳判断，不是合同；调整理由写进 `PLAN` 顶部或 `STATUS`，不要静默改。

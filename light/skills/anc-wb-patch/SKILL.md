@@ -62,14 +62,15 @@ powershell -ExecutionPolicy Bypass -File C:\ProgramData\anc\patch\launch-patched
 
 `inspect.mjs` 的 `bootstrapOk=false`：升级检查的拦截点变了。按 B 的方式重找 `runStartupForceAutoUpdate` / 同类调用，更新 `manifest.bootstrapReplacements`。
 
-## 3. 回归（测试群里做，四条）
+## 3. 回归（测试群里做，五条）
 
 1. 让 bot 复述它看到的消息前缀，应含 `[anc:chat=` 和 `from=`；
 2. 登记一条 2 分钟后到点的任务 → 到点被 @；
 3. 引用一个文件说「入库」→ 有入库摘要；
 4. 说「开始访谈」→ 能建调查并问第一题。
+5. bridge 2.0：`GET /health` 得 `bridge:"2.0"`、`window.wb` 可用、定向 `/wake` 命中已有 daily host 且不新建会话。
 
-四条都过，才算升级可用。
+五条都过，才算升级可用。
 
 ## 4. 更新台账
 
@@ -80,8 +81,8 @@ powershell -ExecutionPolicy Bypass -File C:\ProgramData\anc\patch\launch-patched
 然后同步三处记录：
 
 - `scripts/workbuddy-patch/manifest.json`（version / sha256 / size）；
-- `docs/FORK-DIRECTION.md` §11 台账（版本、hash、改动点）；
-- `docs/VERIFY.md` 的 T4/T16b 行（如涉及行为变化）。
+- `docs/DECISIONS.md` §11 台账（版本、hash、改动点）；
+- `docs/archive/history/VERIFY.md` 的 T4/T16b 行；行为变化另记 `docs/STATUS.md`。
 
 ## 5. 回滚
 
