@@ -119,7 +119,7 @@ $defs = @(
     @{
         Name = 'anc-executor-host-tick'; Desc = '主干2 03:00 host 自动兜底：无新对话时只标 deferred'
         Triggers = @((New-ScheduledTaskTrigger -Daily -At '03:00'))
-        Action = (New-PsAction 'executor-host-tick.ps1')
+        Action = (New-PsAction 'host-tick.ps1')
         Principal = (New-ServicePrincipal $ServiceAccount)
         Settings = (New-Settings 'PT5M')
     },
