@@ -1,7 +1,7 @@
 # PLAN — 当前批次：正式生产部署 + 零起点装机 + 主干 1/2/3 设计符合性检验
 
 > 类型：执行（当前批次）
-> 状态：**待开工（2026-11-10）；阶段 1 公司侧部署 + 零起点装机检验**
+> 状态：**进行中（2026-11-11）**；阶段 1 公司侧已部署并自证，C-01..C-09 已有机器证据；C-10 / Z 待外部输入；阶段 2/3 未开
 > 上游：[FUTURE-DESIGN.md](./FUTURE-DESIGN.md) 主干 0 §0.0；[STATUS.md](./STATUS.md) §2 / §3.5
 > 账本：[STATUS.md](./STATUS.md)
 > 决策：[DECISIONS.md](./DECISIONS.md) D25 / D32 / D35 / D36 / D40–D52
@@ -81,6 +81,8 @@ ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
 评审结论写进 `STATUS` §1 与 §3.4；**未过闸门不得开员工侧**，若用户决定带例外推进，必须写进 `DECISIONS` 并在 §13 留痕。
 
 ## 5. 阶段 1：公司侧正式部署
+
+> 2026-11-11 现场进度：本机 `DESKTOP-9AUHBU9` 已装完公司侧，C-01..C-09 证据在 `%ProgramData%\anc\stage\deploy-20261111\company\`；C-10 四类群未接（只有 `DNT-ANC` 公司群）；Z-01..Z-12 未开始（需干净机/VM，用户已备第二台机器用于员工侧，待确认能否兼作 Z 或另给 VM）。现场修复 GAP-109~114（见 STATUS §1.17/§3.2）。`deploy-verify` PASS、doctor FAIL=0、14 任务 Ready、`deploy-state` 14/14；host 已迁独立工作区 `D:\anc-executor-ws`。
 
 > 证据根：`%ProgramData%\anc\stage\deploy-<日期>\company\`。每台机器一个目录，按步骤建子目录；命令输出、JSON、DB 快照、截图都留原文件。
 
