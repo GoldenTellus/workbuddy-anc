@@ -262,6 +262,30 @@ function Run-Stage([string]$id) {
             $launcher = Join-Path $Root 'patch\launch-patched.ps1'
             if (-not (Test-Path $launcher)) { Add-Step 'patch' 'SKIP' '没有 patch\launch-patched.ps1'; return $true }
             Add-Step 'patch' '..' '用补丁启动器重启 WorkBuddy（当前会话会断）'
+
+            # 2026-11-11 干净机实测：install-company 以管理员身份直接跑 launch-patched 时，
+            # 注入拿到的是提权上下文，而 WorkBuddy 是登录用户拉起的；patch 失败、patch-state
+            # 还写不进去，最后要人手工用 anc-workbuddy-launch 重启。改为优先走用户态任务。
+            $task = Get-ScheduledTask -TaskName 'anc-workbuddy-launch' -ErrorAction SilentlyContinue
+            if ($task) {
+                Add-Step 'patch' '..' '启动用户态任务 anc-workbuddy-launch（补丁启动器随用户上下文运行）'
+                Start-ScheduledTask -TaskName 'anc-workbuddy-launch' -ErrorAction SilentlyContinue
+                $deadline = (Get-Date).AddSeconds(150)
+                $applied = $false
+                while ((Get-Date) -lt $deadline) {
+                    Start-Sleep -Seconds 3
+                    try {
+                        $st = Get-Content (Join-Path $Root 'data\patch-state.json') -Raw -ErrorAction Stop | ConvertFrom-Json
+                        if ($st.applied -eq $true -and [int]$st.pid -gt 0) { $applied = $true; break }
+                    } catch { }
+                }
+                if ($applied) {
+                    Add-Step 'patch' 'OK' '用户态启动器已重启 WorkBuddy，补丁 applied=true（等 patch-guard 自动完成 TEST + host）'
+                    return $true
+                }
+                Add-Step 'patch' 'WARN' '用户态任务已启动但 150s 内没看到 patch-state applied=true；退回直接启动器'
+            }
+
             $r = Invoke-Cmd 'powershell' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launcher)
             # 启动器会杀掉当前进程，返回码不可靠；只要没立刻失败就算已安排
             Add-Step 'patch' 'OK' '已用补丁启动器重启（补丁状态看 data\patch-state.json）'

@@ -115,6 +115,10 @@ function Set-DataAcl([string]$dir) {
     Say ("data: " + $dir)
     # 注意：这里**没有** /inheritance:r。见文件头约束 ②。
     Invoke-Icacls ('icacls "{0}" /grant:r "{1}:(OI)(CI)M"' -f $dir, $SVC) 'data 目录：LOCAL SERVICE:(OI)(CI)M'
+    # 部署/补丁启动器跑在登录用户下，要写 patch-state / patch-run / 日志；只授 LOCAL SERVICE 时
+    # 2026-11-11 干净机实测会「对路径 patch-state.json 访问被拒绝」，patch-guard 随即误判未打补丁。
+    $deployUser = "$env:USERDOMAIN\$env:USERNAME"
+    Invoke-Icacls ('icacls "{0}" /grant:r "{1}:(OI)(CI)M"' -f $dir, $deployUser) ('data 目录：' + $deployUser + ' Modify（补丁启动器写状态/日志）')
 
     foreach ($n in $LOG_FILES) {
         $p = Join-Path $dir $n
