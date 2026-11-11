@@ -230,7 +230,16 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **现场修复（全部已提交）**：GAP-109 ~ GAP-114（见 §3.2）；本次实际补丁：`dfe6487`（入库三阻断）、`c15f746`（host 独立工作区）、`b03a09f`（后台任务触发词）、`d3f7c62`（干净机 patch 链路 + data 用户写权限）。
 - [x] **阶段 2 已启动**：`%ProgramData%\anc\stage\deploy-20261111\conformance\MATRIX.md`；TR2-1/2/4/9、TR3-1 已有生产证据（#7/#10/#15 三个 Ticket 同一 host `7fc8f4be…`、三个不同 subagent、A1 approved）；**TR2-5 实测偏离 GAP-115**：5 Ticket 的 `assignment` 执行窗口零重叠，`max_concurrent=1`，4+1 slot 未实现（P0 队首/同级 FIFO 正确）；**TR2-6 故障注入符合**（retry_scheduled → ticket_failed）；**TR2-7 重启恢复符合**（旧 assignment interrupted、Ticket queued、注册新 host 后重派完成；GAP-116 关闭为测试步骤遗漏）；TR1 三类生产群（部门群后置 D53）与 TR2-8、TR3-2..9 待 C-10 / 跨夜 / 真实群补充。
 - [x] **2026-11-11 用户范围调整（D53）**：员工群设计保留（不改员工侧为 1:1）；本批不建/不验部门群，C-10/TR1 部门级与跨部门项后置，闸门第 2 条按公司群/员工群/老板 1:1 三类评审并记录例外；第二台机子确认干净，先做 Z-01..Z-12，Z-12 卸载后用于员工侧 E-01。
-- 当前 Node **v26.13.0**（设计基线 22 LTS，`bootstrap` 显示本机已装 v26；本批按本机现状记录，不改设计基线）。
+### 1.18 第二台员工侧试装报告审计（2026-11-11）
+
+> 用户提供第二台机器 agent 的只读盘点报告；报告本身明确“本机没有 Z 证据”。按用户 2026-11-11 指示“把两台当干净机”先做员工侧修复，但 Z-01..Z-12 **仍不能拿这份报告充当证据**。
+
+- [x] **已确认的第二台机器事实**：employee 侧；`deploy-state 10/10` 但多为手工 `-Mark`；`deploy-verify` pass 但 `bot-reply=SKIP`；`persona` 有 `pending-persona-reload` 未重启；旧 commit `310087c`；本机 `D:\anc` 有公司侧本地残留，`vault-read` PASS 读的是本地残留而非公司共享。
+- [x] **仓库侧已修（commit `fb38fbd`）**：干净 clone 无 `docs/upstreams` 时 `check-docs` ENOENT；`deploy.ps1` 首次部署打印不存在的 backup 路径；`DEPLOY-EMPLOYEE` 补嵌套 `employee` answers JSON 示例。
+- [ ] **员工侧仍需修复**：更新到当前 main；清掉/隔离本机 `D:\anc` 公司侧残留；从公司共享同步 `render/groups.json`、`org/company.md`、`render/members`；重启 WorkBuddy 让 persona 生效；真实群里 @员工bot 验证回复；补员工群 webhook。
+- [ ] **公司侧缺少 `anc-share`**：`DEPLOY-EMPLOYEE §5.5 A-2` 要求公司主机把 anc 根开成只读共享，但当前只有 `anc-vault-shared`（只含 vault），员工侧没有可用的 render/org 同步共享，导致试装时用了本机 `D:\anc` 残留。登记 GAP-122。
+
+
 
 ## 2. 进行中
 
@@ -327,6 +336,10 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-113 | `anc-executor` 触发词不含「后台任务/background」，Main 只走 `anc-task` 登记后自己在 Claw 执行，队列无 Ticket | Bug/技能 | S2 | 主干 2（真实群任务 #7 复盘） | 否 | **closed**：补触发词与硬规则（公司群后台任务必须建 Ticket，Main 不许代写），`anc-task` 注明转交；重启后 Task #10 实测正常建 Ticket；commit `b03a09f` |
 | GAP-114 | 干净机 patch 链路：install-company 提权直启 launcher 导致注入上下文不匹配；data ACL 不给登录用户写、`%USERPROFILE%\anc` 日志目录缺失 | Bug/部署 | S1 | 主干 0（正式部署实测） | 否 | **closed**：patch 阶段优先 `Start-ScheduledTask anc-workbuddy-launch` 并等 `applied=true`；`set-acl.ps1` 给 data 部署用户 Modify；`launch-patched.ps1` 自建用户日志目录；commit `d3f7c62` |
 | GAP-115 | 主干 2 设计「4+1 slot」生产环境未达到：claim 代码上限为 4，但 host 实际串行，5 个 Ticket 的 assignment 执行窗口零重叠、`max_concurrent=1` | 实现/符合性 | S2 | 主干 2（2026-11-11 TR2-5 生产实测） | 否 | **open**：P0 队首、同优先级 FIFO 正确；并发未实现。证据 `%ProgramData%\anc\stage\deploy-20261111\conformance\TR2-5\`。处置选项：① host 每 tick 多次 claim / 并行 Agent；② 用户接受串行并改设计/文档。未裁决前 TR2-5 记偏离 |
+| GAP-122 | 公司侧没有 `anc-share` 只读共享，员工侧 `DEPLOY-EMPLOYEE §5.5 A-2` 无法同步 `render/groups.json`、`org/company.md`、`render/members`，试装退回本机 `D:\anc` 残留 | 部署/契约 | S2 | 主干 0（第二台员工侧报告） | 否 | **open**：需在公司侧新增只读共享（仅 render/org，不含 data/secrets）并在安装链路/文档固化；现场先由管理员建立后再修员工侧。 |
+| GAP-119 | 干净 clone 缺 `docs/upstreams` 时 `check-docs` 直接 ENOENT，`npm run check` 在员工机必挂 | Bug/测试 | S2 | 主干 0（员工侧报告） | 否 | **closed**：`check-docs.mjs` 对 `docs/upstreams` 做存在性判断；commit `fb38fbd` |
+| GAP-120 | `deploy.ps1` 首次部署提示“备份: <路径>”但目录不存在 | Bug/体验 | S3 | 主干 0（员工侧报告） | 否 | **closed**：`-Apply` 时先建 backup/deploy-<stamp> 目录；commit `fb38fbd` |
+| GAP-121 | `DEPLOY-EMPLOYEE` 未给 employee answers 的嵌套 JSON 示例，扁平点号键被判“employee 整段缺失” | 文档/契约 | S2 | 主干 0（员工侧报告） | 否 | **closed**：文档补嵌套 `employee` 示例；commit `fb38fbd` |
 | GAP-117 | `org-write.ps1` 只输出 company/boss_dm，未把 `members/<id>.md` 的 `chat_id`（以及 dept 的 chat_id/webhook）写进 org，员工群无法进入 groups.json/DB | Bug/部署 | S2 | 主干 0（C-10 真实员工群接入） | 否 | **closed**：补输出 member/dept 的 `chat_id`/`webhook_file`；郭帅员工群 `wrkcDlGwAAa1RDW_PoSpXy3ZA8Qz6IIA` 已渲染并 `bind actor` 为 type=employee / person=guoshuai；commit `3d08de5` |
 | GAP-118 | `anc-task` 触发词不含「我是谁/身份/角色」，员工群新会话未加载技能，把郭帅误答为“新未来的老板” | Bug/技能 | S2 | 主干 0（C-10 真实员工群接入） | 否 | **closed**：补触发词并部署；WorkBuddy 重启后复测，员工群回答“你是郭帅（dnt 部门）…角色是员工”；commit `3d08de5` |
 | GAP-116 | `executor recover` 后 active host 被置 `closed`，系统没有自动重建；后续 Ticket 没有 active host 可接 | 实现/符合性 | S2 | 主干 2（2026-11-11 TR2-7 重启恢复实测） | 否 | **closed**：`recover` 退役旧 host 是设计动作；注册新 host `h-ccb2dda7…` 后，queued Ticket 被重派，`agent-1566a739…` 完成、Ticket done。原记录为测试步骤遗漏（未注册新 host），不是实现缺陷；证据 `conformance\TR2-7\recovery2-*.json` |
