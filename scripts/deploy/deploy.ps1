@@ -322,6 +322,9 @@ if (-not $Apply) {
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $bakRoot = Join-Path (Join-Path $Root 'backup') ('deploy-' + $stamp)
+# 首次部署没有旧文件可备份，仍把目录建出来：最终提示“备份: <路径>”必须指到真实路径，
+# 否则员工侧会看到一条指向不存在目录的误导信息（2026-11-11 员工机实测）。
+if ($Apply) { New-Item -ItemType Directory -Force -Path $bakRoot | Out-Null }
 $createdDirs = @()
 $copied = @()
 

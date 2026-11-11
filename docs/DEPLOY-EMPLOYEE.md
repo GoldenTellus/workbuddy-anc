@@ -96,7 +96,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 
 必填三项：`employee.memberId`、`employee.userid`、`employee.chatId`。其余（共享区、公司 bot 名、部门）可缺。
 
-答案写进 **`%LOCALAPPDATA%\anc\data\deploy-answers.json`**。
+答案写进 **`%LOCALAPPDATA%\anc\data\deploy-answers.json`**。**必须是嵌套的 `employee` 对象，扁平点号键不认**（2026-11-11 员工机实测：`.` 开头的 key 会被判“employee 整段缺失”）：
+
+```json
+{
+  "side": "employee",
+  "employee": {
+    "memberId": "guoshuai",
+    "userid": "guoshuai",
+    "chatId": "<32 字符员工群 chatId>"
+  }
+}
+```
 
 ### 1.4 校验
 

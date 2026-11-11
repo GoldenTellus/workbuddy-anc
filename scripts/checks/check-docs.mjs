@@ -86,11 +86,14 @@ if (!existsSync(mapPath)) {
   for (const name of ['BOOTSTRAP.md']) {
     if (existsSync(join(ROOT, name)) && !mapped.has(name)) add('doc-map 未登记根文档: ' + name);
   }
-  // upstreams 必须登记
-  for (const name of readdirSync(join(ROOT, 'docs/upstreams'))) {
-    if (!name.endsWith('.md')) continue;
-    const p = 'docs/upstreams/' + name;
-    if (!mapped.has(p)) add('doc-map 未登记来源: ' + p);
+  // upstreams 必须登记；干净 clone 里这个目录可能不存在（历史遗留目录/未 tracked），不能因此挂掉
+  const upstreamsDir = join(ROOT, 'docs/upstreams');
+  if (existsSync(upstreamsDir)) {
+    for (const name of readdirSync(upstreamsDir)) {
+      if (!name.endsWith('.md')) continue;
+      const p = 'docs/upstreams/' + name;
+      if (!mapped.has(p)) add('doc-map 未登记来源: ' + p);
+    }
   }
 
   // INDEX 链接到每份现行文档（根目录文档用 ../ 前缀）
