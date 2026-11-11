@@ -33,7 +33,7 @@ export default async function serve(ctx: CliContext): Promise<void> {
       }
       const vaultShared = getConfig(db, 'vault_shared');
       if (!vaultShared) throw new Error('未配置 vault_shared（config set vault_shared <绝对路径>）');
-      const { applyBatch, archiveBatch } = await import('../../ingest/apply.ts');
+      const { applyBatch, archiveBatch } = await import('../../modules/knowledge/ingest/apply.ts');
       const r = applyBatch(target, vaultShared);
       // 文件已经写进 vault 了，归档只是"把批次挪到 done"。
       // 归档失败（服务身份对 inbox 没有删权限，2026-11-02 实测）不该让调用方以为整批失败。

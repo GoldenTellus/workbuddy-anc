@@ -100,6 +100,14 @@ function Set-SecretsAcl([string]$dir) {
     # 于是文件上永远没有管理员权限，部署写不进 secrets（换 webhook 只能先手动 icacls 抢）。
     Invoke-Icacls ('icacls "{0}" /grant:r "{1}:F" "{2}:F" "{3}:(RX)"' -f $f.FullName, $SYS, $ADM, $SVC) ('secrets\' + $f.Name + '：SYSTEM:F + Administrators:F + LOCAL SERVICE:RX')
     }
+
+    # service-token 必须给部署/运行 bot 的当前用户读权限：bot 要调本地 HTTP 面代写 vault。
+    # 2026-11-11 实测：只给 LOCAL SERVICE/Administrators 时 bot 读不到 token，入库 401。
+    $tokenFile = Join-Path $dir 'service-token.txt'
+    if (Test-Path -LiteralPath $tokenFile) {
+        $deployUser = "$env:USERDOMAIN\$env:USERNAME"
+        Invoke-Icacls ('icacls "{0}" /grant:r "{1}:(R)"' -f $tokenFile, $deployUser) ('secrets\service-token.txt：' + $deployUser + ' 可读（bot 调入库服务用）')
+    }
 }
 
 # ── 二、data：只加显式，绝不断继承 ────────────────────────────

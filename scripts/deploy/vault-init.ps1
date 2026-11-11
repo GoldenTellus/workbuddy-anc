@@ -154,13 +154,13 @@ foreach ($pair in @(@{ Name = 'vault-shared'; Path = $shared }, @{ Name = 'vault
 if ($Apply) {
     $r1 = Invoke-Cmd 'icacls' @($shared, '/inheritance:r',
         '/grant:r', 'SYSTEM:(OI)(CI)F', 'BUILTIN\Administrators:(OI)(CI)F',
-        'NT AUTHORITY\Authenticated Users:(OI)(CI)RX', 'BUILTIN\Users:(OI)(CI)RX')
+        'NT AUTHORITY\Authenticated Users:(OI)(CI)RX', 'BUILTIN\Users:(OI)(CI)RX', 'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M')
     if ($r1.code -ne 0) { Fail ('共享区 ACL 设置失败: ' + $shared) $r1.text 1 }
     Add-Step 'acl:shared' 'OK' 'SYSTEM/Administrators 完全控制，Authenticated Users/Users 只读'
 
     # internal：只有公司侧。普通用户与 Authenticated Users 一律不进
     $r2 = Invoke-Cmd 'icacls' @($internal, '/inheritance:r',
-        '/grant:r', 'SYSTEM:(OI)(CI)F', 'BUILTIN\Administrators:(OI)(CI)F', ($env:USERNAME + ':(OI)(CI)F'))
+        '/grant:r', 'SYSTEM:(OI)(CI)F', 'BUILTIN\Administrators:(OI)(CI)F', ($env:USERNAME + ':(OI)(CI)F'), 'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M')
     if ($r2.code -ne 0) { Fail ('内部区 ACL 设置失败: ' + $internal) $r2.text 1 }
     Add-Step 'acl:internal' 'OK' ('SYSTEM/Administrators/' + $env:USERNAME + ' 完全控制')
 } else {

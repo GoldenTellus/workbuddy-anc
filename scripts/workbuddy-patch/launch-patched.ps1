@@ -35,6 +35,8 @@ $manifestPath = Join-Path $here 'manifest.json'
 $preload = Join-Path $here 'preload.cjs'
 $inject = Join-Path $here 'inject.cjs'
 $patchLog = Join-Path $env:USERPROFILE 'anc\workbuddy-patch.log'
+$patchLogDir = Split-Path -Parent $patchLog
+if (-not (Test-Path -LiteralPath $patchLogDir)) { New-Item -ItemType Directory -Force -Path $patchLogDir | Out-Null }
 
 function Fail([string]$msg, [string]$fix, [int]$code) {
     Write-Host "ERROR $msg"
