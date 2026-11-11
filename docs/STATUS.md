@@ -222,13 +222,14 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 > 本机 `DESKTOP-9AUHBU9`（DNT）按 BOOTSTRAP 四步装完公司侧；本次是**正式生产部署批次**的第一台机器，不是干净机（Z 系列另验）。
 
 - [x] **部署与自证**：`install-company -Apply` 跑完；14 个 `anc-*` 任务全部 Ready（`anc-http` Running）；`deploy-state` **14/14**；`deploy-verify` **ok:true, pass 5, fail 0, skip 1**（bot-reply 按 `-SkipBot`）；doctor **FAIL=0 WARN=3~4（35 项）**。证据：`%ProgramData%\anc\stage\deploy-20261111\company\C-01..C-09\`。
-- [x] **执行器与真实任务**：初始 TEST 会话 `c7713003…`（后迁到独立工作区）；新 host `h-b2cb501e…` / 会话 `7fc8f4be…`，cwd `D:\anc-executor-ws`；真实群 Task #7（Ticket `t-015039b3…`，A1 approved）与 Task #10（Ticket `t-28cbd55c…`，`executor-close`）均完成；`executor-deploy.json` 已更新为当前 host/workspace（C-06）。
+- [x] **执行器与真实任务**：初始 TEST 会话 `c7713003…`（后迁到独立工作区）；恢复演练后 active host `h-ccb2dda7…` / 会话 `7fc8f4be…`，cwd `D:\anc-executor-ws`；真实群 Task #7（Ticket `t-015039b3…`，A1 approved）、Task #10（Ticket `t-28cbd55c…`，`executor-close`）与 TR2-7 恢复 Ticket 均完成；`executor-deploy.json` 已更新为当前 host/workspace（C-06）。
 - [x] **C-08 安全**：`check-public` 零输出；secrets 两个文件无 BOM/尾换行；secrets / vault 两区 ACL 有证据（C-08）；`service-token.txt` 对部署用户只读（入库需要），vault 两区对 LOCAL SERVICE 可写（服务身份需要）。
 - [x] **C-09 演练**：备份 → 副本恢复（10 表计数一致 + `integrity_check=ok`）→ `upgrade -Action apply` → `rollback` → 回 main 重部署；生产数据零丢失。证据 C-09。
-- [ ] **C-10 四类群**：目前只有公司群 `DNT-ANC`（`wrkcDlGwAAY299…`，type=company）；员工群 / 部门群 / 老板 1:1 尚未接入，`bind actor` 只能验公司群。四类群是闸门第 2 条，未完成。
-- [ ] **Z-01..Z-12**：未开始；需要干净机 / VM，且不能拿本机冒充。用户已准备另一台机器做员工侧，是否兼做 Z 待确认。
+- [ ] **C-10 生产群**：目前只有公司群 `DNT-ANC`（`wrkcDlGwAAY299…`，type=company）。**2026-11-11 用户范围调整（D53）：保留员工群设计；本批只接公司群 + 员工群 + 老板 1:1，不建/不验部门群；部门级/跨部门项后置**。员工群/老板 1:1 仍未接入，`bind actor` 暂只能验公司群。
+- [ ] **Z-01..Z-12**：第二台机子已确认干净（2026-11-11），按 D53/PLAN §5.1 情形 B 先做 Z，Z-12 卸载回干净后用于员工侧 E-01；尚未开始。
 - [x] **现场修复（全部已提交）**：GAP-109 ~ GAP-114（见 §3.2）；本次实际补丁：`dfe6487`（入库三阻断）、`c15f746`（host 独立工作区）、`b03a09f`（后台任务触发词）、`d3f7c62`（干净机 patch 链路 + data 用户写权限）。
-- [x] **阶段 2 已启动**：`%ProgramData%\anc\stage\deploy-20261111\conformance\MATRIX.md`；TR2-1/2/4/9、TR3-1 已有生产证据（#7/#10/#15 三个 Ticket 同一 host `7fc8f4be…`、三个不同 subagent、A1 approved）；**TR2-5 实测偏离 GAP-115**：5 Ticket 的 `assignment` 执行窗口零重叠，`max_concurrent=1`，4+1 slot 未实现（P0 队首/同级 FIFO 正确）；**TR2-6 故障注入符合**（retry_scheduled → ticket_failed）；**TR2-7 重启恢复符合**（旧 assignment interrupted、Ticket queued、注册新 host 后重派完成；GAP-116 关闭为测试步骤遗漏）；TR1 四类群与 TR2-8、TR3-2..9 待 C-10 / 跨夜 / 真实群补充。
+- [x] **阶段 2 已启动**：`%ProgramData%\anc\stage\deploy-20261111\conformance\MATRIX.md`；TR2-1/2/4/9、TR3-1 已有生产证据（#7/#10/#15 三个 Ticket 同一 host `7fc8f4be…`、三个不同 subagent、A1 approved）；**TR2-5 实测偏离 GAP-115**：5 Ticket 的 `assignment` 执行窗口零重叠，`max_concurrent=1`，4+1 slot 未实现（P0 队首/同级 FIFO 正确）；**TR2-6 故障注入符合**（retry_scheduled → ticket_failed）；**TR2-7 重启恢复符合**（旧 assignment interrupted、Ticket queued、注册新 host 后重派完成；GAP-116 关闭为测试步骤遗漏）；TR1 三类生产群（部门群后置 D53）与 TR2-8、TR3-2..9 待 C-10 / 跨夜 / 真实群补充。
+- [x] **2026-11-11 用户范围调整（D53）**：员工群设计保留（不改员工侧为 1:1）；本批不建/不验部门群，C-10/TR1 部门级与跨部门项后置，闸门第 2 条按公司群/员工群/老板 1:1 三类评审并记录例外；第二台机子确认干净，先做 Z-01..Z-12，Z-12 卸载后用于员工侧 E-01。
 - 当前 Node **v26.13.0**（设计基线 22 LTS，`bootstrap` 显示本机已装 v26；本批按本机现状记录，不改设计基线）。
 
 ## 2. 进行中
@@ -239,8 +240,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 主干 1 | **已收口（2026-11-09）** | 4/4 分支；D35 用户实测、D36 例外；员工 bot 旧员工侧实现 归主干 4 |
 | 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10）；本批 DEV-01 已把 wake 改成定向 host（D46）；**D46 后复验通过**（EXE-01/EXE-04 + ACC-16，见 §1.11） |
 | 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；**253/253**；11-09 时为 142 文件 / 13 任务，本批后 **158 文件 / 14 任务**；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；GAP-079/080 已关闭且 **ACC-18/19 达成**（msg=、引用兜底、短号、8h/24h 投递；员工侧真 @ 待 ACC-17） |
-| **当前批次（主干 0 · 正式生产部署 + 零起点装机 + 设计符合性检验）** | **进行中（2026-11-11）；公司侧 C-01..C-09 已有证据；C-10/Z 待外部输入** | 用户决定正式给公司部署：**先公司侧 → 7 条准出条件全过 → 再员工侧**；部署中收集问题并检验主干 1/2/3 是否符合设计；追加检验「一台主机从 0 开始部署」（GAP-104 遗留）与 §6.5 补充维度。见 [PLAN.md](./PLAN.md) §5.1（Z-01..12）/ §6.5（S-A~E）。**T6.9 补充维度范围待用户挑定**；旧 PLAN 已归档 `BATCH-20261110-FINAL.md`。现场进度见 §1.17 |
-| 公司侧部署（本机） | **已装完并自证（2026-11-11）** | 14 个任务全部 Ready；`deploy-state` **14/14**；`deploy-verify` PASS；doctor FAIL=0 WARN=3~4；host `h-b2cb501e…` / `7fc8f4be…`（`D:\anc-executor-ws`）；真实任务 #7/#10 完成。四类群未接（C-10）、Z 未验；证据 `%ProgramData%\anc\stage\deploy-20261111\company\` |
+| **当前批次（主干 0 · 正式生产部署 + 零起点装机 + 设计符合性检验）** | **进行中（2026-11-11）；C-01..C-09 有证据；D53：部门群后置、第二台干净机先 Z** | 用户决定正式给公司部署：**先公司侧 → 7 条准出条件全过 → 再员工侧**；部署中收集问题并检验主干 1/2/3 是否符合设计；追加检验「一台主机从 0 开始部署」（GAP-104 遗留）与 §6.5 补充维度。见 [PLAN.md](./PLAN.md) §5.1（Z-01..12）/ §6.5（S-A~E）。**D53：保留员工群设计，本批不测试部门群；第二台干净机先做 Z**；旧 PLAN 已归档 `BATCH-20261110-FINAL.md`。现场进度见 §1.17 |
+| 公司侧部署（本机） | **已装完并自证（2026-11-11）** | 14 个任务全部 Ready；`deploy-state` **14/14**；`deploy-verify` PASS；doctor FAIL=0 WARN=3~4；host `h-ccb2dda7…` / `7fc8f4be…`（`D:\anc-executor-ws`）；真实任务 #7/#10/TR2-7 完成。C-10 按 D53 只做公司群/员工群/老板 1:1；Z 待第二台干净机执行；证据 `%ProgramData%\anc\stage\deploy-20261111\company\` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-10 本批 + 全量文档核对审计行见 §4 |
 
 ---
