@@ -187,6 +187,8 @@ foreach ($m in $members) {
     $lines += ('userid: ' + (YamlVal ([string]$m.userid)))
     if ($m.dept) { $lines += ('dept: ' + $m.dept) }
     if ($m.manages) { $lines += ('manages: ' + $m.manages) }
+    if ($m.chatId) { $lines += ('chat_id: ' + (YamlVal ([string]$m.chatId))) }
+    if ($m.webhookFile) { $lines += ('webhook_file: ' + (YamlVal ([string]$m.webhookFile))) }
     $lines += ('seat: ' + $(if ($m.seat) { $m.seat } else { 'Enterprise' }))
     $lines += ('bot: ' + (YamlVal $(if ($m.bot) { $m.bot } else { '待接入' })))
     $lines += '---'
@@ -212,6 +214,8 @@ foreach ($id in $deptMap.Keys) {
         $lines += 'skills:'
         foreach ($s in @($d.skills)) { $lines += ('  - ' + $s) }
     } else { $lines += 'skills: []' }
+    if ($d.chatId) { $lines += ('chat_id: ' + (YamlVal ([string]$d.chatId))) }
+    if ($d.webhookFile) { $lines += ('webhook_file: ' + (YamlVal ([string]$d.webhookFile))) }
     if ($d.note) { $lines += ('note: ' + (YamlVal $d.note)) }
     $lines += '---'
     Write-OrgFile (Join-Path (Join-Path $OrgRoot 'depts') ($id + '.md')) (($lines -join "`n") + "`n")
