@@ -23,7 +23,7 @@
 #   install-company.ps1 -VaultRoot D:\anc -Apply -From vault    # 从某阶段续跑
 #   install-company.ps1 -VaultRoot D:\anc -Apply -Skip patch    # 不重启 WorkBuddy
 #   install-company.ps1 -VaultRoot D:\anc -Apply -Webhooks 'a.txt=https://...'
-#   install-company.ps1 -VaultRoot D:\anc -Apply -ExecutorWorkspace D:\anc\executor-ws   # 主干2 host 工作区
+#   install-company.ps1 -VaultRoot D:\anc -Apply -ExecutorWorkspace D:\anc-executor-ws   # 主干2 host 工作区（独立空目录）
 #   install-company.ps1 -VaultRoot D:\anc -Apply -SkipExecutor                            # 不自动启用主干2 host
 #
 # 退出码：0 全部成功 / 1 某阶段失败（已记账，可从失败处续跑）/ 2 用法或环境错误
@@ -246,7 +246,7 @@ function Run-Stage([string]$id) {
             if (-not (Test-Path $setup)) { $setup = Join-Path $Repo 'scripts\deploy\setup-executor.ps1' }
             if (-not (Test-Path $setup)) { Add-Step 'executor' 'FAIL' '找不到 setup-executor.ps1'; return $false }
             $ws = $ExecutorWorkspace
-            if (-not $ws) { $ws = $Repo }
+            if (-not $ws) { $ws = Join-Path (Split-Path -Parent $Repo) 'anc-executor-ws' }
             $execArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $setup, '-Root', $Root, '-Repo', $Repo, '-Workspace', $ws, '-PrepareOnly', '-Apply', '-Json')
             if (-not $execSmoke) { $execArgs += '-SkipTest' }
             if (-not $execCreateHost) { $execArgs += '-SkipHost' }

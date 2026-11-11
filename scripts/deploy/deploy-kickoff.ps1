@@ -217,7 +217,7 @@ function Get-Questions([string]$s) {
             },
             [pscustomobject]@{
                 id = 'executor.workspace'; ask = 'host 会话的 WorkBuddy 工作区（绝对路径）'
-                who = 'installer'; required = $false; format = '绝对路径；留空=仓库 checkout 路径'; blocks = '§8.5 executor'
+                who = 'installer'; required = $false; format = '绝对路径；留空=<仓库父目录>\\anc-executor-ws'; blocks = '§8.5 executor'
                 hint = '一般留空。要用独立空目录就在这写，例如 D:\anc\executor-ws。'
             },
             [pscustomobject]@{

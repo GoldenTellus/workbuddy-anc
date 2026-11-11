@@ -75,7 +75,7 @@ Get-Content (Join-Path $env:ProgramData 'anc\data\executor-deploy.json') -Raw
 `ok:true` 即部署完成。失败会自动重试，原因在 `data\executor-deploy.log`；人工修好后跑
 `tools\setup-executor.ps1 -Apply`（仓库源文件 `scripts\deploy\setup-executor.ps1`）重试。不想自动启用：`-SkipExecutor`，或 answers 里 `executor.enabled=否`。
 
-> 默认工作区 = **仓库 checkout 的绝对路径**；想换独立空目录传 `-ExecutorWorkspace D:\anc\executor-ws`。
+> 默认工作区 = **仓库父目录下的独立空目录**（如 `D:\anc-executor-ws`），与仓库本身隔离；想换路径传 `-ExecutorWorkspace <绝对路径>`。
 > 不需要在 WorkBuddy UI 里手动“添加工作区”。
 
 ## 只有人能做，别硬扛

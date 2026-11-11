@@ -167,7 +167,7 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark answers -As
 | 10 | **每个员工的员工群 chatId** | 员工群绑定 | 建群后从群设置里拿；**32 字符，不要截断** | 见 §10 |
 | 10b | **部门群 / 公司大群 / 老板 1:1 的 chatId + webhook 文件名** | org 群配置 | 企微群设置；`boss_dm` 真 1:1 不可用时用私有群 | 见 §10 |
 | 11 | **老板自己的 userid** | `boss_dm` / 全局权限 | 企微通讯录 | `________________` |
-| 12 | **主干2 host 工作区（绝对路径，可选）** | `new-host.ps1` 新建对话 | 问人；不启用自动建 host 就留空。**写绝对路径**（如 `D:\workbuddy-anc`），不要写 WorkBuddy 里的显示名——wake bridge 2.0 把它当会话 `cwd` 传给 `conversations.create`；显示名会被解析到自动生成工作区 | `D:\workbuddy-anc` / 空 |
+| 12 | **主干2 host 工作区（绝对路径，可选）** | `new-host.ps1` 新建对话 | 问人；不启用自动建 host 就留空。**写独立绝对路径**（默认 `<仓库父目录>\anc-executor-ws`，如 `D:\anc-executor-ws`），不要写 WorkBuddy 里的显示名，也不要写仓库目录本身——wake bridge 2.0 把它当会话 `cwd` 传给 `conversations.create`；显示名会被解析到自动生成工作区 | `D:\workbuddy-anc` / 空 |
 | 13 | **是否开启 wake bridge**（可选） | 有 queued 时唤醒当前对话 | 问人；默认关闭 | ☐ 开 / ☑ 关 |
 
 **填不全时的行为**：
@@ -606,7 +606,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$Root\tools\register-tasks.
 
 - `install-company` 的 `executor` 阶段（在 `patch` 之前）会调用 `setup-executor.ps1 -PrepareOnly`：
   - 写 `data\wb-wake.flag`（启用 bridge）；
-  - 写 `data\wb-wake-workspace.txt` = **仓库 checkout 的绝对路径**（`-ExecutorWorkspace` 或 answers 的 `executor.workspace` 可覆盖）；
+  - 写 `data\wb-wake-workspace.txt` = **独立工作区绝对路径**（默认 `<仓库父目录>\anc-executor-ws`，如 `D:\anc-executor-ws`；`-ExecutorWorkspace` 或 answers 的 `executor.workspace` 可覆盖）；
   - 写 `data\deploy-executor-pending.json`（交给重启后的 patch-guard）。
 - `patch` 阶段重启 WorkBuddy 后，`anc-patch-guard` 检测到补丁 `applied=true` 且 marker 存在 → 运行 `tools\setup-executor.ps1 -Apply -Marker`：
   - 用 wake bridge `/new` 在**该工作区**建一个会话并发 `TEST`；bot 回「收到，TEST 正常」；

@@ -105,7 +105,7 @@ if ($Marker) {
     if ($null -ne $mk.createHost) { $SkipHost = -not [bool]$mk.createHost }
     if ($mk.repo) { $Repo = [string]$mk.repo }
 }
-if (-not $Workspace) { $Workspace = $Repo }
+if (-not $Workspace) { $Workspace = Join-Path (Split-Path -Parent $Repo) 'anc-executor-ws' }
 if (-not $Workspace) { Fail-Retry '缺 Workspace 且无法从仓库推导' 2 $attempts }
 if ($Workspace -notmatch '^[A-Za-z]:[\\/]') { Fail-Retry ('workspace 必须是绝对路径: ' + $Workspace) 2 $attempts }
 

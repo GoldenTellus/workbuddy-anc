@@ -51,7 +51,7 @@ powershell -File scripts\deploy\deploy.ps1 -Apply
 
 公司侧 `install-company -Apply` 装完 `patch` 重启后，不需要人手动加 WorkBuddy 工作区：
 
-1. install-company 的 `executor` 阶段写 `data\wb-wake.flag`、`data\wb-wake-workspace.txt`（默认=仓库绝对路径），并写 `data\deploy-executor-pending.json`。
+1. install-company 的 `executor` 阶段写 `data\wb-wake.flag`、`data\wb-wake-workspace.txt`（默认=仓库父目录下的 `anc-executor-ws`），并写 `data\deploy-executor-pending.json`。
 2. `patch` 重启 WorkBuddy；`anc-patch-guard` 每分钟检查，补丁 `applied=true` 且 marker 在 → 调 `tools\setup-executor.ps1 -Apply -Marker`。
 3. 该脚本用 wake bridge `/new` 在工作区建会话并发 `TEST`，bot 回「收到，TEST 正常」（这一动作同时让 WorkBuddy **自动注册工作区**），然后没有 active host 时注册当天 host。
 4. 结果：`data\executor-deploy.json`（`ok:true` + workspace/conversation_id/test_reply/host）；成功删 marker，失败留 marker 自动重试（最多 20 次，然后 `data\deploy-executor-failed.json`）。
