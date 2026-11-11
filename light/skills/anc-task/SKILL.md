@@ -5,6 +5,8 @@ description: 公司任务的登记、查询、请求、审批、接受、完成�
 
 # anc-task
 
+> 用户说「后台任务 / background / 交给后台执行 / 让机器做」时，本技能只负责登记；**必须转 `anc-executor` 建 Ticket**，不要在聊天里直接做，也不要自己写产物。
+
 任务状态以本地小服务（SQLite）为准，不靠对话记忆。数据库固定为 `C:\ProgramData\anc\data\anc.db`，命令里一律显式带上 `--db`。
 
 ## 先确认当前群和人

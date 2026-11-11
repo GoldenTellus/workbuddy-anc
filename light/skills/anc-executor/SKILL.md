@@ -1,6 +1,6 @@
 ---
 name: anc-executor
-description: 公司 bot 的 Main 派发执行任务。发现队列里有 Ticket 时，用 executor CLI claim，随后用 Agent tool 起一个任务 subagent，收固定 JSON Report，再 notify/end。触发词：执行队列、派活、claim、executor、ticket、subagent、跑任务。
+description: 公司 bot 的 Main 派发执行任务。发现队列里有 Ticket 时，用 executor CLI claim，随后用 Agent tool 起一个任务 subagent，收固定 JSON Report，再 notify/end。触发词：执行队列、派活、claim、executor、ticket、subagent、跑任务、后台任务、background、后台执行、建 Ticket、交给后台、无人值守。
 ---
 
 # anc-executor
@@ -12,6 +12,13 @@ description: 公司 bot 的 Main 派发执行任务。发现队列里有 Ticket 
 - **公司群 / 老板 1:1（Claw 会话）**：你是 Main，通常**没有 Agent tool**。只做 `brief` / `evaluate` / `ticket create` / 通知，把 Ticket 留在队列并唤醒 host；**不要 claim/start，不要自己写产物**。
 - **每日 host 会话（Agent 模式，有 Agent tool）**：你才是 Executor。才做 `claim/start` + Agent tool 起 subagent。
 - 不确定：先看当前工具列表；没有 Agent tool 就按 Main 处理，回报“已建 Ticket，等 host 执行”。
+
+## 硬规则：公司群里的“后台任务”必须建 Ticket
+
+- 用户说「后台任务 / background / 后台执行 / 让机器做 / 无人值守」时，**即使当前 Claw 会话能看到文件工具，也不许自己写产物**。
+- Main 的动作固定为：评估 →（没有 Task 就）`task add --kind background` → `executor ticket create` → `bin\wake-if-queued.ps1` 或等 tick。
+- **没有 Ticket 的 background Task 等于没进后台**；看到 background Task 但没 Ticket，先补 Ticket，不要自己执行。
+- 只有在“每日 host 会话（Agent 模式，有 Agent tool）”里才允许 claim/start 和起 subagent；在公司群里自己写文件 = 违规。
 
 ## 前置
 
@@ -31,7 +38,7 @@ node C:\ProgramData\anc\service\cli.ts --db C:\ProgramData\anc\data\anc.db --jso
 
 ## background 任务
 
-background 任务不自动接。先由 Main 评估：谁要求的、是否在本部门授权范围内、优先级、预算；评估通过后再 `executor ticket create`。没有评估就不建 Ticket。
+background 任务不自动接。先由 Main 评估：谁要求的、是否在本部门授权范围内、优先级、预算；评估通过后**必须** `executor ticket create`，再唤醒 host。没有评估就不建 Ticket；没有 Ticket 就不算后台任务，Main 也不许代写产物。
 
 ## 一个 tick
 
