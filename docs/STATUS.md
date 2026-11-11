@@ -228,6 +228,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [ ] **C-10 四类群**：目前只有公司群 `DNT-ANC`（`wrkcDlGwAAY299…`，type=company）；员工群 / 部门群 / 老板 1:1 尚未接入，`bind actor` 只能验公司群。四类群是闸门第 2 条，未完成。
 - [ ] **Z-01..Z-12**：未开始；需要干净机 / VM，且不能拿本机冒充。用户已准备另一台机器做员工侧，是否兼做 Z 待确认。
 - [x] **现场修复（全部已提交）**：GAP-109 ~ GAP-114（见 §3.2）；本次实际补丁：`dfe6487`（入库三阻断）、`c15f746`（host 独立工作区）、`b03a09f`（后台任务触发词）、`d3f7c62`（干净机 patch 链路 + data 用户写权限）。
+- [x] **阶段 2 已启动**：`%ProgramData%\anc\stage\deploy-20261111\conformance\MATRIX.md`；TR2-1/2/4/9、TR3-1 已有生产证据（#7/#10/#15 三个 Ticket 同一 host `7fc8f4be…`、三个不同 subagent、A1 approved）；TR1 四类群与 TR2-5/6/7/8、TR3-2..9 待 C-10 / 跨夜 / 故障注入 / 真实群补充。
 - 当前 Node **v26.13.0**（设计基线 22 LTS，`bootstrap` 显示本机已装 v26；本批按本机现状记录，不改设计基线）。
 
 ## 2. 进行中
