@@ -1428,3 +1428,24 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark <id> -AsDon
 | 0 | 成功（含 dry-run、含"决定不做"） |
 | 1 | 校验失败 / 有 FAIL / 决定要做但失败了 |
 | 2 | 用法或环境错误 |
+
+---
+
+## 人类在环取证（HIL，2026-11-12 补充）
+
+安装 agent **不能只靠安装人的口头回答**。群 chatId、userid、管理员身份、bot 是否真在群里回应、机器是否干净，这些都要让安装人做一个**可交叉验证的动作**：
+
+| 信息 | 让安装人做什么 | agent 拿什么 | 判据 |
+|---|---|---|---|
+| 群 chatId / webhook | 打开群设置，发截图；建群机器人后发“只显示文件名”的截图 | 截图 + 群里实际消息 | chatId 32 字符；webhook 明文不进群、只进 secrets |
+| 成员 userid / 姓名 / 部门 | 发企微成员资料页截图 | 截图 + `bind actor` 结果 | 三者一致；不一致停下来问 |
+| 管理员 / 提权 | 发管理员 PowerShell 截图或 `IsAdmin=True` 回显 | 截图/命令回显 + preflight | preflight 无 blocker |
+| 公司 bot 在群里回话 | 让安装人在目标群 @ 公司 bot 发一条“我是谁” | `patch-in.log` 的真实入站与回复 | 有 chatId/from/msg 前缀，bot 有回复 |
+| 干净机 / Z | 发目录清单、安装前截图、Node/Git/WorkBuddy 版本截图 | 截图 + 命令回显 | 与 Z-01 判据一致 |
+
+规则：
+
+- **口头“我发了”不算证据**；截图、群消息、日志、命令回显至少有一种。
+- 截图看不清/模型读不了时，让安装人把**关键字段原文**再打一遍；不要猜。
+- webhook/token/secret 一律不进群消息；只发“文件名/路径”，值走 secrets。
+- 对不上时**停下**，让安装人重做；不要为推进而静默采用。
