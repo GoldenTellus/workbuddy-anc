@@ -602,6 +602,8 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDo
 
 ## 人类在环取证（HIL，2026-11-12 补充）
 
+**自动取证优先**：agent 先读已有 answers / `anc.db` / bind 记录 / 旧 persona / WorkBuddy 本地日志与配置；能自己确认的 chatId、userid、name、companyBotName、dept 不要再让人截图。只有自动拿不到、或自动结果与安装人说法冲突时，才让人发截图 / 在群里 @bot / 口述关键字段。
+
 员工侧同样不能只靠安装人口头回答。员工 bot 不读公司库、不装补丁，很多事只能靠“人做一次 + agent 验证”。
 
 | 信息 | 让安装人做什么 | agent 拿什么 | 判据 |
@@ -610,12 +612,12 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDo
 | 员工群 chatId | 打开员工群设置，发截图；再在群里 @ 郭帅bot 一次 | 截图 + 群消息/回复 | chatId 32 字符；bot 真实回复 |
 | WorkBuddy 已登录 | 发 WorkBuddy 关于页/登录状态截图 | 截图 + `bot-online` 检查 | 进程在跑、能收群消息 |
 | 员工 bot 能回话 | 在员工群 @ 郭帅bot 问“我是谁”，发回复截图 | 截图 + 回复原文 | 回答是郭帅/员工，不是老板/别人 |
-| 公司知识路由 | 在员工群 @ 公司 bot 问一个公司资料问题；再让员工 bot 回答同类问题 | 群消息截图 + 两个 bot 的回复 | 公司 bot 答资料；员工 bot 只引导“请 @公司bot”，不假装查库 |
+| 公司知识路由 | 安装人**本人**在员工群 @ 公司 bot 问一个公司资料问题；再问员工 bot 同类问题 | 群消息截图 + 两个 bot 的回复 | 公司 bot 答资料；员工 bot 只回复主人“请直接 @公司bot”，**不自己 @ 公司bot、不转交** |
 | 本机目录 / 干净状态 | 发 `%LOCALAPPDATA%\anc` 前后目录截图、Node/Git/WorkBuddy 版本 | 截图 + 回显 | 与安装记录一致 |
 
 规则：
 
 - 员工侧**没有 patch-in.log 证据链**，群回复以安装人截图/原文为准；agent 不得伪造“已验证”。
 - 截图读不了时，让安装人把关键字段原文重打；不要猜。
-- 员工 bot 不得读取公司共享/vault；任何“帮我看公司库”的要求都应回“请在员工群 @ 公司bot”。
+- 员工 bot 不得读取公司共享/vault；任何“帮我看公司库”的要求都只回复主人“请直接在员工群 @ 公司bot”。**员工 bot 不 @ 公司bot、不代转交、不做 A2A。**
 - 安装人发截图时不要把 webhook/token/密码发进群；这些员工侧根本不需要。

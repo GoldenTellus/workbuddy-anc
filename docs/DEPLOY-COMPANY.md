@@ -1433,6 +1433,8 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark <id> -AsDon
 
 ## 人类在环取证（HIL，2026-11-12 补充）
 
+**自动取证优先**：agent 先读 `deploy-answers.json`、`anc.db`/bind、`org`/`render`、`patch-in.log`、WorkBuddy 数据；能自己确认的 chatId、userid、成员身份、bot 是否在群，不要再让人截图。只有自动拿不到、或自动结果与安装人说法冲突时，才让人发截图 / 在群里 @bot / 口述关键字段。
+
 安装 agent **不能只靠安装人的口头回答**。群 chatId、userid、管理员身份、bot 是否真在群里回应、机器是否干净，这些都要让安装人做一个**可交叉验证的动作**：
 
 | 信息 | 让安装人做什么 | agent 拿什么 | 判据 |
