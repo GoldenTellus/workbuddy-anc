@@ -7,7 +7,7 @@
 #
 # 两个模式：
 #   -Side company   医生 + 群回应 + 任务落库 + 计划任务
-#   -Side employee  个人 bot 在线 + 能被 @ + 能读 vault
+#   -Side employee  个人 bot 在线 + 能被 @ + 本地 persona（不读公司库）
 #
 # 输出（-Json）：
 #   {ok, side, pass, fail, checks:[{name, state, detail, fix}], next}
@@ -398,60 +398,19 @@ if ($Side -eq 'employee') {
         }
     }
 
-    # ③ 能读 vault：从 groups.json 拿一个共享路径，读里面的一个文件
-    $groupsPath = Join-Path $Root 'render\groups.json'
-    if (Test-Path $groupsPath) {
-        try {
-            $g = Get-Content $groupsPath -Encoding UTF8 -Raw | ConvertFrom-Json
-            $vaultShared = ''
-            $companyMd = Join-Path $Root 'org\company.md'
-            if (Test-Path $companyMd) {
-                $m = Select-String -Path $companyMd -Pattern '^vault_shared:\s*(.+)$' -Encoding UTF8
-                if ($m) { $vaultShared = $m.Matches[0].Groups[1].Value.Trim() }
-            }
-            if (-not $vaultShared) {
-                Add-Check 'vault-read' 'FAIL' 'org/company.md 里没有 vault_shared' '填上公司共享区路径'
-            } elseif (-not (Test-Path $vaultShared)) {
-                # 网络路径在未映射时 Test-Path 可能失败，这是常见的"看着装了其实读不到"
-                Add-Check 'vault-read' 'FAIL' ("读不到 " + $vaultShared) '检查网络共享是否可访问（net use / 凭据）；共享区是只读挂载'
-            } else {
-                # 只认业务资料：company/ 或 collab/ 下的 .md。
-                # 早先版本用 -Recurse -File 抓任意文件，结果根目录的 .gitignore 也被当成「能读共享区」——
-                # 读到 .git 内部文件不算数。见 VERIFY §55.6。
-                $bizFile = $null
-                $bizDirUsed = ""
-                foreach ($d in @('company', 'collab')) {
-                    $dir = Join-Path $vaultShared $d
-                    if (-not (Test-Path $dir)) { continue }
-                    $f = Get-ChildItem $dir -Recurse -File -Filter '*.md' -ErrorAction SilentlyContinue | Select-Object -First 1
-                    if ($f) { $bizFile = $f; $bizDirUsed = $d; break }
-                }
-
-                if ($bizFile) {
-                    try {
-                        $null = Get-Content $bizFile.FullName -TotalCount 1 -ErrorAction Stop
-                        Add-Check 'vault-read' 'PASS' ('读到 ' + $bizDirUsed + '/' + $bizFile.Name) ''
-                    } catch {
-                        Add-Check 'vault-read' 'FAIL' ('业务文件在但读不了: ' + $bizDirUsed + '/' + $bizFile.Name) '权限问题：共享区要可读'
-                    }
-                } else {
-                    # 没有业务 .md：区分「整个共享区空」和「有东西但没有业务资料」
-                    # 后者是真缺口 —— 说明能读目录却读不到该读的东西
-                    $otherFile = Get-ChildItem $vaultShared -Recurse -File -ErrorAction SilentlyContinue |
-                                 Where-Object { $_.FullName -notmatch '\\\.git\\' -and $_.FullName -notmatch '\\_originals\\' } |
-                                 Select-Object -First 1
-                    if ($otherFile) {
-                        Add-Check 'vault-read' 'FAIL' '共享区能读，但 company/ 和 collab/ 下没有 .md' '确认 vault_shared 指的是共享区根（不是某一层子目录）；或先入库一份资料'
-                    } else {
-                        Add-Check 'vault-read' 'SKIP' '共享区是空的（还没入库任何资料）' '这不算错；入库一份资料后再跑'
-                    }
-                }
-            }
-        } catch {
-            Add-Check 'vault-read' 'FAIL' 'groups.json 解析失败' '重跑 render deploy'
-        }
+    # ③ 本地 persona：员工侧不读公司库，不再检查 vault-read
+    $livePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md'
+    if (-not (Test-Path $livePersona)) {
+        Add-Check 'persona' 'FAIL' '没有本地 persona' '运行 scripts\deploy\employee-bootstrap.ps1 -Repo <仓库> -Apply，然后重启 WorkBuddy'
     } else {
-        Add-Check 'vault-read' 'FAIL' "没有 $groupsPath" '按 docs/DEPLOY-EMPLOYEE.md §5.5 从公司侧同步 render\groups.json 和 org\company.md —— deploy.ps1 只放渲染器源码，不生成这两个文件'
+        $personaText = Get-Content $livePersona -Raw -Encoding UTF8
+        if ($personaText -match 'vault_shared|anc-vault-read') {
+            Add-Check 'persona' 'FAIL' 'persona 仍含公司库/旧技能依赖' '重新运行 employee-bootstrap.ps1 -Apply；员工侧不应出现 vault 路径或 anc-vault-read'
+        } elseif ($personaText -notmatch '公司 bot|公司bot') {
+            Add-Check 'persona' 'FAIL' 'persona 没有公司 bot 引导' '模板/生成结果异常；重跑 employee-bootstrap.ps1'
+        } else {
+            Add-Check 'persona' 'PASS' '本地 persona 已生成，公司知识引导到公司 bot' ''
+        }
     }
 }
 

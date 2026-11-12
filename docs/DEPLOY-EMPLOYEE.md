@@ -4,7 +4,7 @@
 
 > **零起点先读 ../BOOTSTRAP.md 四步；访谈走 `deploy-kickoff.ps1`，逐节手工命令仅作对照。**
 
-> **当前文档描述的是 旧员工 bot 实现**：仍装 9 个技能（含 `anc-vault-read`、`anc-executor`；后者公司侧用，员工侧不触发），员工 bot 仍会查公司库。主干 4 已决定“员工 bot 不查公司库、改用 handoff”（见 `FUTURE-DESIGN` 4.3、`GAP-037–039`），但代码/技能还没返工。**在 GAP-037–039 关闭前，按本文装；不要以为新设计已经生效。**
+> **2026-11-12 修正（主干 4）**：员工 bot **不读公司主机上的库**；公司资料/公司任务由主人在员工群 @ 公司 bot。员工侧不再从公司侧同步 `render/groups.json` / `org/company.md` / persona；安装人访谈回答字段后，由 `scripts\deploy\employee-bootstrap.ps1` 本地生成 persona。员工侧技能最小集为 `anc-dayend、anc-feedback、anc-update`，不装 `anc-vault-read` / `anc-executor` / `anc-ingest`。
 
 > **设计修正（2026-11-07）**：目标设计要求员工侧也打补丁，用于 handoff 时识别资料归属；当前部署步骤仍按“员工侧不装补丁”执行，差异见 `STATUS` 的 `GAP-038`。`GAP-038` 关闭前以本文当前步骤为准，不要把目标当成现状。
 
@@ -26,8 +26,8 @@
 | [2](#2-preflight前置检查) | `preflight` | 前置检查 | 10 秒 |
 | [3](#3-workbuddy确认-workbuddy-已登录) | `workbuddy` | 确认 WorkBuddy 在 | 1 分钟 |
 | [4](#4-files部署运行件) | `files` | 部署运行件 | 30 秒 |
-| [5](#5-skills装技能) | `skills` | 装 9 个技能（11 个 md 文件） | 10 秒 |
-| [5.5](#55-从公司侧同步三个渲染产物漏了必卡-6-和-8) | `sync` | **从公司侧同步渲染产物** | 1 分钟 |
+| [5](#5-skills装技能) | `skills` | 装员工侧最小集 3 个技能 | 10 秒 |
+| [5.5](#55-本地生成个人-persona2026-11-12-修正取代公司侧同步) | `sync` | **本地生成个人 persona** | 1 分钟 |
 | [6](#6-persona部署个人-persona) | `persona` | 部署个人 persona | 1 分钟 |
 | [7](#7-bind绑定本人的群) | `bind` | 绑定群 | 1 分钟 |
 | [8](#8-verify自证) | `verify` | 自证 | 30 秒 |
@@ -50,8 +50,8 @@
 装完的状态：
 
 - **个人 bot 在这台电脑上跑，只服务本人**
-- **能读公司共享区的 vault（只读）**
-- **能把自己的问题提交给公司侧（迭代闭环的入口）**
+- **不读公司主机上的库**；公司资料/公司任务由主人在员工群 @ 公司 bot
+- **能整理本机资料、写草稿，需要入库的资料由主人转给公司 bot**
 
 **你不做的事**：
 
@@ -86,7 +86,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase prepare -Side employee
 ```
 
-五项：确认不是共用电脑、确认 WorkBuddy 已登录、抄群 chatId、拿到自己的 userid、问公司侧要共享区路径。每项都带「怎么算做好了」。
+五项：确认不是共用电脑、确认 WorkBuddy 已登录、抄员工群 chatId、拿到本人 userid、问清公司名/公司 bot 名/部门（不再问公司共享区）。每项都带「怎么算做好了」。
 
 ### 1.3 员工侧收信息
 
@@ -94,7 +94,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickoff.ps1 -Phase collect -Side employee -Json
 ```
 
-必填三项：`employee.memberId`、`employee.userid`、`employee.chatId`。其余（共享区、公司 bot 名、部门）可缺。
+必填三项：`employee.memberId`、`employee.userid`、`employee.chatId`；建议同时提供 `name`、`companyName`、`companyBotName`、`deptId`/`deptName`、`localWorkdir`。**不再需要共享区 / vault 路径。**
 
 答案写进 **`%LOCALAPPDATA%\anc\data\deploy-answers.json`**。**必须是嵌套的 `employee` 对象，扁平点号键不认**（2026-11-11 员工机实测：`.` 开头的 key 会被判“employee 整段缺失”）：
 
@@ -103,8 +103,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-kickof
   "side": "employee",
   "employee": {
     "memberId": "guoshuai",
+    "name": "郭帅",
     "userid": "guoshuai",
-    "chatId": "<32 字符员工群 chatId>"
+    "chatId": "<32 字符员工群 chatId>",
+    "companyName": "新未来智能",
+    "companyBotName": "公司bot",
+    "deptId": "dnt",
+    "deptName": "新未来智能",
+    "localWorkdir": "C:\\Users\\<用户>\\WorkBuddy\\Claw"
   }
 }
 ```
@@ -127,38 +133,27 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark answers -A
 
 下面这张表是 §1.3 问题集的人类可读版。**这些值只有人知道**，实际收集以脚本输出的 `questions` 为准。
 
-> **问不到时的规矩（第二轮走查暴露的漏洞）**
+> **问不到时的规矩（2026-11-12 修正）**
 >
-> 早先版本没说清「哪些能从同步过来的产物读、哪些不能」，agent 就自己从
-> `render\groups.json` 里读 userid / chatId / 成员 id，然后推断着装 —— 装错人不会报错，
-> 只会静默地让个人 bot 去服务别人。**现在的分界**：
->
-> | 项 | 能不能从产物读 | 为什么 |
-> |---|---|---|
-> | 2 userid、3 chatId、2′ 成员 id | **不能，必须问人** | 这三个决定「bot 服务谁、消息从哪来、装哪份 persona」。读错了不报错，只装错 |
-> | 4 共享区路径 | 可以 | 由 `org\company.md` 的 `vault_shared:` 决定，§5.5 会同步过来 |
-> | 5 公司 bot 名、6 部门 | 可以 | 渲染 persona 时已写死，读 persona 即可 |
->
-> **拿不到 2 / 3 / 2′ 时唯一的正确动作是停下来问**，不是从产物里猜。
+> 员工侧不再有公司侧 `render\groups.json` / `org\company.md` 可读；所有身份字段都**必须问安装人**，不能从公司产物猜。
+> 拿不到 `memberId / userid / chatId` 时唯一的正确动作是停下来问。
 
 | # | 要什么 | 用在哪 | 怎么来的 | 填这里 |
 |---|---|---|---|---|
 | 1 | **这台电脑是你自己的吗**（不是共用的） | 前提 | 问人 | ☐ 是 / ☐ 不是 |
 | 2 | **你的企微 userid** | persona 认主人 | 企微通讯录；**不是**姓名、**不是**手机号 | `________________` |
-| 3 | **你的群 chatId**（32 字符） | 绑定 | 群里 → 群设置；**不要截断** | `________________` |
-| 4 | **公司共享区的网络路径** | 读 vault | 公司侧装完会给（形如 `\\主机\vault-shared`；也可能是 `D:\anc\vault-shared` 如果是同机） | `________________` |
-| 5 | **公司 bot 叫什么** | persona 里说明"你和它是两个实例" | 公司侧给的 | `________________` |
-| 6 | **你在哪个部门** | 决定你的技能集和 vault 可见范围 | 问公司侧 | `________________` |
-| 7 | **本机工作目录**（默认 `%USERPROFILE%\WorkBuddy\Claw`） | persona 里写 | 一般不用改 | `________________` |
+| 3 | **你的员工群 chatId**（32 字符） | 绑定 | 群里 → 群设置；**不要截断** | `________________` |
+| 4 | **公司名 / 公司 bot 名** | persona 说明你与公司 bot 的关系 | 问公司侧 | `________________` |
+| 5 | **你在哪个部门** | persona 里写；只影响本机技能/范围 | 问公司侧 | `________________` |
+| 6 | **本机工作目录**（默认 `%USERPROFILE%\WorkBuddy\Claw`） | persona 里写 | 一般不用改 | `________________` |
+| 7 | **本机成员 id**（如 guoshuai） | 本地 persona/记录 | 安装人给；不要用姓名猜 | `________________` |
 
 **缺的时候**：
 
-- **2、3 缺** → 停下来问。persona 认不出主人，个人 bot 会「听所有人的话」——这是安全问题
-- **4 缺** → 可以装；`verify` 的 `vault-read` **不一定** FAIL ——
-  它读的路径来自 `org\company.md` 的 `vault_shared:`（§5.5 同步过来的那份），不是从你这里问到的值。
-  早先版本这里写「会 FAIL」，第二轮走查时没填第 4 项却 PASS 了，所以改了。
-- **6 缺** → 按"未分部门"处理（全部技能、全部 vault）。**能用，但范围没收窄**
-- **1 是"不是"** → **停下来**。共用电脑上装个人 bot 会让别人也能用你的身份
+- **2、3、7 缺** → 停下来问。persona 认不出主人，个人 bot 会「听所有人的话」——这是安全问题。
+- **4、5 缺** → 可先按默认「公司 / 公司bot / 未分部门」生成，但要在报告里标出，让安装人补。
+- **1 是「不是」** → **停下来**。共用电脑上装个人 bot 会让别人也能用你的身份。
+- **不再需要公司共享区 / vault 路径**；员工 bot 不读公司库。
 
 ---
 
@@ -307,30 +302,21 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark files -AsD
 
 ```powershell
 # 预检（只比对，不写）
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills.ps1 -Side employee
 
-# 落盘
-#   默认目标 %USERPROFILE%\.workbuddy\skills（员工机上就是这里，一般不用改）
-#   -Target 可以指到别处（演练时用）
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills.ps1 -Apply
+# 落盘（员工侧最小集；-RemoveExtra 会清掉旧的 9 技能残留）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-skills.ps1 -Apply -Side employee -RemoveExtra
 ```
 
-**成功判据**：
+**成功判据**：员工侧技能只有 3 个：
 
 ```powershell
-# 9 个技能目录 + 1 个 .anc-backup（备份目录，不算技能）= 10
-# 源文件是 11 个 md（9 个 SKILL.md + anc-executor 多 subagent.md、anc-interview 多 questions.md）。
-# 原来写「期望 8」是错的：-Directory 会把 .anc-backup 一起数进去，照它做会一直以为少装一个。
-@(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory).Count
-# 想数准就只数带 SKILL.md 的，期望 9：
 @(Get-ChildItem (Join-Path $env:USERPROFILE '.workbuddy\skills') -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') }).Count
+    Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') }).Name
+# 期望：anc-dayend / anc-feedback / anc-update
 ```
 
-**员工侧和公司侧的区别**：**员工侧的技能集应该更小**。具体装哪些由**公司侧** `org/depts/<id>.md` 的 `skills` 决定（见 `DEPLOY-COMPANY.md §10.3`；仓库里没有裸 `depts/`），但 `deploy-skills.ps1` 是**全量复制**的——**这个差别目前由 persona 约束，不是由部署物理隔离**。
-
-> **已知限制**：技能是物理全量装的，部门差异只体现在 persona 里写的"你能用的技能"。
-> 想真正物理隔离，需要在 `deploy-skills.ps1` 加 `-Only <技能列表>` 参数。**现在没有。**
+**员工侧和公司侧的区别**：员工侧不装 `anc-vault-read`、`anc-executor`、`anc-ingest`、`anc-interview`、`anc-task`、`anc-wb-patch`；公司侧仍装全量 9 个。由 `deploy-skills.ps1 -Side employee` 做物理过滤。
 
 **失败了怎么办**：同公司侧 §6。
 
@@ -342,222 +328,59 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark skills -As
 
 ---
 
-## 5.5 从公司侧同步三个渲染产物（漏了必卡 §6 和 §8）
+## 5.5 本地生成个人 persona（2026-11-12 修正，取代公司侧同步）
 
-**为什么有这一节**：`deploy.ps1 -Apply` 只把**渲染器源码**（`cli.ts` / `index.ts` / `org.ts` …）放进 `render\`，
-**不生成任何渲染产物**。而下面两节硬依赖三个文件，它们只能来自公司侧的渲染：
+> **主干 4 修正**：员工 bot **不读公司主机上的库**；公司资料/公司任务由主人在员工群 @ 公司 bot。
+> 员工侧不再需要从公司侧同步 `render/groups.json`、`org/company.md`、`render/members/<id>/CODEBUDDY.md`。
+> 旧 §5.5 的“公司共享 / 公司只读共享”流程作废；员工侧只依赖安装人访谈回答 + GitHub 代码。
 
-| 文件 | 谁要它 | 缺了会怎样 |
-|---|---|---|
-| `render\members\<你的 id>\CODEBUDDY.md` | §6 装 persona | §6 直接抛「没有你的 persona」 |
-| `render\groups.json` | §8 `vault-read` | §8 FAIL「没有 render\groups.json」 |
-| `org\company.md`（至少要有 `vault_shared:`） | §8 靠它找共享区 | 同上 |
+安装人需要回答这些字段（写进 `%LOCALAPPDATA%\anc\data\deploy-answers.json` 的嵌套 `employee`）：
 
-**先确认缺不缺**：
-
-```powershell
-$Root = "$env:LOCALAPPDATA\anc"
-foreach ($p in "render\groups.json", "org\company.md", "render\members") {
-    "{0,-22} {1}" -f $p, $(if (Test-Path (Join-Path $Root $p)) { "有" } else { "缺" })
+```json
+{
+  "side": "employee",
+  "employee": {
+    "memberId": "guoshuai",
+    "name": "郭帅",
+    "userid": "guoshuai",
+    "chatId": "<32 字符员工群 chatId>",
+    "companyName": "新未来智能",
+    "companyBotName": "公司bot",
+    "deptId": "dnt",
+    "deptName": "新未来智能",
+    "localWorkdir": "C:\\Users\\<用户>\\WorkBuddy\\Claw"
+  }
 }
 ```
 
-**三个都「有」时**：不要直接跳过。先看它们是不是**你自己同步来的**。
-
-- 如果是你刚按下面的通道拷的 → 跳过后续，往下走
-- 如果是**别人预先放好的**（你不知道来源）→ **仍然照 A-1 重跑一遍并核对哈希**，
-  因为「有文件」不等于「是对的人的那份」。产物放错人（装成别人的 persona）比缺文件更糟。
-
-核对方法：
+然后在仓库根运行：
 
 ```powershell
-$Root      = "$env:LOCALAPPDATA\anc"
-$company   = "D:\anc"        # 公司侧根，按实际填
-foreach ($rel in "render\groups.json", "org\company.md") {
-    $a = (Get-FileHash (Join-Path $Root $rel)    -Algorithm SHA256).Hash
-    $b = (Get-FileHash (Join-Path $company $rel) -Algorithm SHA256).Hash
-    "{0,-22} {1}" -f $rel, $(if ($a -eq $b) { "MATCH" } else { "MISMATCH —— 员工侧这份不是公司侧当前产物" })
-}
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\employee-bootstrap.ps1 -Repo <仓库根> -Apply
 ```
 
-### 通道 A：直接从公司主机拷（同机装、或公司主机开了 SMB 共享）
+它会：
 
-> **先看这一条，能省你一次失败**：`vault-shared` 对 `BUILTIN\Administrators` **也只有读权限**
-> （`D24` 的设计：vault 对 bot 只读，bot 只能写 `inbox`）。
-> 所以「公司侧把产物丢进共享区、员工侧从共享区取」这个最直觉的做法，
-> 会报 `UnauthorizedAccessException` —— **这是故意的，不是配错了**。别在这上面浪费时间。
+- 用 `light\templates\member-bot.md` 在本地生成个人 persona；
+- 写到 `%LOCALAPPDATA%\anc\render\members\<memberId>\CODEBUDDY.md`；
+- 备份旧文件后覆盖 `%USERPROFILE%\WorkBuddy\Claw\CODEBUDDY.md`；
+- 员工侧最小技能集为 `anc-dayend、anc-feedback、anc-update`，不装 `anc-vault-read`。
 
-**A-1 同机**（本机既有公司侧数据又在装员工侧）：
+**不需要**公司共享、`anc-share`、`render/groups.json`、`org/company.md`。员工 bot 不知道公司库路径，这是预期。
 
-```powershell
-$Root    = "$env:LOCALAPPDATA\anc"
-$company = "D:\anc"        # 公司侧根，按实际填
-
-New-Item -ItemType Directory -Path "$Root\render\members" -Force | Out-Null
-New-Item -ItemType Directory -Path "$Root\org" -Force | Out-Null
-Copy-Item (Join-Path $company "render\groups.json") "$Root\render\groups.json" -Force
-Copy-Item (Join-Path $company "org\company.md")     "$Root\org\company.md"     -Force
-Copy-Item (Join-Path $company "render\members\*")  "$Root\render\members"     -Recurse -Force
-```
-
-**A-2 网络共享**（公司主机把 anc 根开成**只读**共享）：把 `$company` 换成 `\\<公司主机>\anc-share`，其余同上。
-
-### 通道 B：U 盘 / 远程桌面手工拷
-
-照上面的目录结构摆进去即可。
-
-### 通道 C：走 `inbox`（不推荐）
-
-`inbox` 是 bot 唯一可写的目录，但入库进程会把里面的东西当待处理批次。
-除非 A / B 都不通，否则别用。
-
-**拷完复核**：
-
-```powershell
-$Root = "$env:LOCALAPPDATA\anc"
-foreach ($p in "render\groups.json", "org\company.md", "render\members") {
-    "{0,-22} {1}" -f $p, $(if (Test-Path (Join-Path $Root $p)) { "OK" } else { "仍然缺" })
-}
-```
-
-**注意**：`org\company.md` 只有公司名和 vault 路径，没有凭据，可以拷。
-`%ProgramData%\anc\secrets\` 里的东西**绝不能拷到员工机**。
-
-**装完**（2026-11-10 起 `sync` 是独立阶段，不记就会一直显示 next=sync）：
-
-```powershell
-powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark sync -AsDone
-```
-
----
-
-## 6. persona（部署个人 persona）
-
-**做什么**：把公司侧渲染出来的**你自己的** persona 复制到 WorkBuddy 的读取位置。
-
-**关键概念**：persona 由**公司侧**渲染（因为要读 org 数据），员工侧只是**接收 + 安装**。
-
-### 先确定「哪个成员是我」—— 这一步不能推断
-
-`render\members\` 下可能有多个成员（公司里有几个人就有几份）。**装错了就是装了别人的身份**，
-个人 bot 会去服务别人、把任务记到别人名下。
-
-**判定顺序**（前一条不成立才走下一��）：
-
-1. **问用户**：「你在 org 里是哪个成员 id？」—— §1 的第 2′ 项。**这是首选，不允许用推断代替。**
-2. 只有一种情况可以自己定：`render\groups.json` 里 **userid 唯一**，且你从别处确切知道本人 userid。
-   这时按 userid 反查成员 id。
-3. **`groups.json` 里多个成员共用同一个 userid 时（同机测试常见），必须问人** ——
-   这时任何「按 userid 匹配」都会同时匹配到多份，等于没匹配。
-
-```powershell
-$Root = "$env:LOCALAPPDATA\anc"
-$g = Get-Content "$Root\render\groups.json" -Raw | ConvertFrom-Json
-$arr = if ($g -is [array]) { $g } else { $g.members }
-"在 render\members 下的成员："
-Get-ChildItem "$Root\render\members" -Directory | ForEach-Object { "  - " + $_.Name }
-"groups.json 里的 userid 分布："
-$arr | Group-Object userid | ForEach-Object {
-    "  userid=" + $_.Name + "  成员=" + (($_.Group | ForEach-Object { $_.employee }) -join ", ")
-    if ($_.Count -gt 1) { "    ⚠ 多个成员共用同一个 userid —— 不能用它区分，必须问用户哪个 id 是本人" }
-}
-```
-
-```powershell
-$Root = Join-Path $env:LOCALAPPDATA 'anc'
-$LivePersona = Join-Path $env:USERPROFILE 'WorkBuddy\Claw\CODEBUDDY.md'
-
-# ① 先备份现有的（WorkBuddy 自带的默认 persona，别弄丢）
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-if (Test-Path $LivePersona) {
-    Copy-Item $LivePersona "$Root\data\persona-backup-$stamp.md" -Force
-}
-
-# ② 从公司侧拿到你的 persona，放到这里
-#    公司侧产物在：<公司主机>\render\members\<你的 id>\CODEBUDDY.md
-#    员工侧应放在：%LOCALAPPDATA%\anc\render\members\<你的 id>\CODEBUDDY.md
-# ⚠ 把 REPLACE_ME 换成真实成员 id（小写字母/数字/下划线/连字符）。
-#   别留尖括号：< 和 > 是 Windows 路径非法字符，会先抛「路径中具有非法字符」，
-#   而不是下面预设的「没有你的 persona」，方向就看错了。
-$myId = 'REPLACE_ME'   # §1 第 2 项对应的成员 id（不是 userid）
-$src = Join-Path $Root "render\members\$myId\CODEBUDDY.md"
-if (-not (Test-Path $src)) {
-    throw "没有你的 persona: $src —— 要么公司侧还没渲染你，要么 id 不对"
-}
-Copy-Item $src $LivePersona -Force
-```
-
-**成功判据**：
-
-> **第 ① 条只在你的 userid 唯一时才算证明。**
-> 如果 `groups.json` 里多个成员共用同一个 userid（同机测试常见），
-> 「persona 含这个 userid」对所有成员的 persona 同时为 True —— **它证明不了这份是你的**。
-> 那种情况下只能用「你告诉我是哪个成员 id」来确认，别靠这条判据。
-
-```powershell
-# ① persona 里有你的 userid（userid 唯一时才证明是你的）
-$uid = '<你的 userid>'
-$hits = @(Get-ChildItem "$Root\render\members" -Directory | Where-Object {
-    (Get-Content (Join-Path $_.FullName 'CODEBUDDY.md') -Raw) -match [regex]::Escape($uid)
-})
-"含该 userid 的 persona 份数: " + $hits.Count + "（>1 说明这条判据没区分力，必须问人确认成员 id）"
-
-# ② 有部门段
-Select-String -Path $LivePersona -Pattern '你属于哪个部门' -Quiet
-# ③ 字节数在 7500 以内
-(Get-Item $LivePersona).Length
-```
-
-**失败了怎么办**：
-
-- **没有 persona 文件** → 让公司侧先渲染；或者告诉用户"公司侧还没把你的账号配进 org"
-- **persona 里有别人的 userid** → **停**。这说明公司侧渲染错了，装上去个人 bot 会认错主人
-- **超过 7500 字节** → WorkBuddy 可能截断。让公司侧缩减 persona
-
-**重启 WorkBuddy**（必须，否则 persona 不生效）—— 但**先判断你自己在不在里面**：
-
-> **不要直接执行 `Get-Process WorkBuddy | Stop-Process`。**
-> 这份手册的读者是 agent，多半就跑在 WorkBuddy 里。那条命令杀掉的是**你自己**，
-> 当前会话当场终止，后面 §7 绑定 / §8 自证 没人继续 —— 走查时正是卡在这里。
-
-**情况 A：你跑在 WorkBuddy 里**（大多数）→ 只标记，不重启：
-
-```powershell
-$marker = Join-Path $Root "data\pending-persona-reload.json"
-$obj = [ordered]@{
-    persona = $LivePersona
-    at      = (Get-Date).ToString("o")
-    reason  = "persona 改动要重启 WorkBuddy 才生效（VERIFY §18）"
-}
-$obj | ConvertTo-Json | Set-Content $marker -Encoding UTF8
-"persona 已装，待重启后生效。§7 / §8 不依赖 persona，先做完。"
-```
-
-然后继续做 §7 和 §8，最后在汇报里明确写：
-「persona 已落盘，**未生效** —— 需要用户重启 WorkBuddy 后再验一次」。
-
-**情况 B：你不是跑在 WorkBuddy 里**（Claude Code / Codex CLI 等）→ 自己重启：
-
-```powershell
-Get-Process WorkBuddy -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 3
-Start-Process "$env:LOCALAPPDATA\Programs\WorkBuddy\WorkBuddy.exe"
-```
-
-**启动前先看这条**：如果进程 0.5 秒就退出、`ExitCode=0`、日志一行不写 —— 查 `ELECTRON_RUN_AS_NODE`。
-它设成 1 时 Electron 走纯 Node 模式，应用根本不初始化（`VERIFY §54`）。
-起进程时用 `ProcessStartInfo` 并 `$psi.EnvironmentVariables.Remove("ELECTRON_RUN_AS_NODE")`。
-
-> **为什么必须重启**：persona 是**每会话首次注入时读一次**（`VERIFY §18`）。不重启的话，当前会话还是旧 persona。
-
-**装完**：
+装完记账：
 
 ```powershell
 powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark persona -AsDone
 ```
 
----
+## 6. persona 生效与重启
 
+`employee-bootstrap.ps1` 只写文件；WorkBuddy 在**新会话/重启**后才读取 `CODEBUDDY.md`。
+
+- 若安装 agent 不在 WorkBuddy 内：重启 WorkBuddy；
+- 若在 WorkBuddy 内：写 `%LOCALAPPDATA%\anc\data\pending-persona-reload.json`，让用户在桌面重启，不要杀自己。
+- 成功判据：`CODEBUDDY.md` 存在、包含“不读公司”“公司 bot”引导，且不再出现 `vault_shared` / `anc-vault-read`。
 ## 7. bind（绑定本人的群）
 
 **做什么**：把「你的群 chatId」和「你的身份」登记到本地库，这样个人 bot 知道哪条消息来自你的群。
@@ -614,19 +437,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\deploy-verify
 | `database` | `data\anc.db` 存在 | 不存在 → FAIL。**由 §4 那条 `cli.ts --db` 顺带创建**，手册没有单独的建库步骤 |
 | `bot-online` | WorkBuddy 进程在 | 不在就 FAIL |
 | `bot-reply` | 注入一条消息 | **员工侧永远 SKIP** —— `test-emit` 是补丁提供的，而员工侧不装补丁（见下面「为什么员工侧验不了这一项」） |
-| `vault-read` | 读 `render\groups.json` + `org\company.md` 里 `vault_shared:` 指到的目录 | 缺这两个文件 → FAIL，回去做 §5.5 |
+| `persona` | 本地 `CODEBUDDY.md` 存在、含公司 bot 引导、不含 `vault_shared`/`anc-vault-read` | 缺 → 回去跑 §5.5 的 `employee-bootstrap.ps1` |
 
 **SKIP 不是通过。** 有 SKIP 时告诉用户"这几项没验，原因是 X"。
 
 **失败了怎么办**：
 
 - **`bot-online` FAIL** → 启动 WorkBuddy
-- **`vault-read` FAIL** → 先看缺的是哪个：
-  - 「没有 render\groups.json」→ 回去做 §5.5
-  - 「company.md 里没有 vault_shared」→ §5.5 同步的 `org\company.md` 不完整，重新同步
-  - 「路径不可读」→ `org\company.md` 里那个路径在这台机器上访问不了（网络共享要 `net use` 或凭据）
-  **注意**：这个路径来自 `org\company.md`，不是 §1 第 4 项 —— 别去改 §1。
+- **`persona` FAIL** → 重新运行 `employee-bootstrap.ps1 -Repo <仓库> -Apply`；员工侧不再检查 vault-read
 - **`bot-reply` SKIP** → **员工侧这是正常的，不是故障。**
+  **员工侧不读公司库**，所以没有 `vault-read` 这一项；公司知识请员工在员工群 @ 公司 bot。
 
 ### 为什么员工侧验不了这一项
 
@@ -703,7 +523,7 @@ Get-ChildItem "$Root\data\persona-backup-*.md" | Sort-Object LastWriteTime -Desc
 Remove-Item $Root -Recurse -Force
 
 # ③ 删技能（只删这套装的；WorkBuddy 自带的技能别动）
-'anc-dayend','anc-executor','anc-feedback','anc-ingest','anc-interview','anc-task','anc-vault-read','anc-wb-patch','.anc-backup' |
+'anc-dayend','anc-feedback','anc-update','anc-executor','anc-ingest','anc-interview','anc-task','anc-vault-read','anc-wb-patch','.anc-backup' |
   ForEach-Object { Remove-Item (Join-Path $env:USERPROFILE ".workbuddy\skills\$_") -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ④ 重启 WorkBuddy
@@ -727,7 +547,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\anc\tools
 
 **数据不会丢**：部署清单里没有 `data\`，库、绑定、本地资料都不动。
 
-**员工侧不覆盖 persona**：persona 是公司侧渲染后同步过来的（§5.5）。升级脚本会 SKIP 这一步并提示——**如果公司侧换了 persona 模板，升级完要重新同步一次** `render\members\<你的 id>\CODEBUDDY.md`。
+**员工侧不覆盖 persona**：员工 persona 由安装人访谈 + `employee-bootstrap.ps1` 本地生成（§5.5），不依赖公司侧；升级后如果模板变了，重新运行 `employee-bootstrap.ps1 -Apply`。
 
 在群里说「项目有更新」也行（`anc-update` 技能），但**别人说的时候先问主人**——这是你的电脑。
 
@@ -772,7 +592,7 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDo
 | 管理员权限 | 必需 | 不需要 |
 | 计划任务 | 14 个 | **0 个** |
 | 补丁 | 要装（群身份注入） | **不装**（除非认不出主人） |
-| vault | **建**两区 | 只**读**共享区 |
+| vault | **建**两区 | **不读**；公司知识在员工群 @公司bot |
 | persona | 渲染公司 bot 的 | 接收**本人**的 |
 | org 数据 | 写 | 不写 |
 | 阶段数 | 14 | **10** |

@@ -206,7 +206,7 @@ test('renderOrg：groups.json 带上部门的 skills 与 vault_paths', () => {
   });
 });
 
-test('renderOrg：persona 里写出部门、技能、vault 目录', () => {
+test('renderOrg：persona 里写出部门、技能、公司 bot 引导（不写公司库）', () => {
   withTmp((d) => {
     const org = mkOrg(d, { members: [MEMBER_WITH_DEPT], depts: [['engineering.md', DEPT_ENG]] });
     const out = join(d, 'out');
@@ -215,7 +215,9 @@ test('renderOrg：persona 里写出部门、技能、vault 目录', () => {
     assert.match(p, /你属于哪个部门/);
     assert.match(p, /部门：研发部/);
     assert.match(p, /技能：anc-task、anc-vault-read/);
-    assert.match(p, /vault 目录：shared\/工艺、internal\/研发/);
+    assert.match(p, /公司 bot|公司bot/);
+    assert.match(p, /不读公司|公司资料\/公司任务/);
+    assert.doesNotMatch(p, /vault 目录：shared\/工艺/);
     assert.match(p, /超出这个范围的请求，先问主人/);
   });
 });

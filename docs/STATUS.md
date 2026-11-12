@@ -237,7 +237,16 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **已确认的第二台机器事实**：employee 侧；`deploy-state 10/10` 但多为手工 `-Mark`；`deploy-verify` pass 但 `bot-reply=SKIP`；`persona` 有 `pending-persona-reload` 未重启；旧 commit `310087c`；本机 `D:\anc` 有公司侧本地残留，`vault-read` PASS 读的是本地残留而非公司共享。
 - [x] **仓库侧已修（commit `fb38fbd`）**：干净 clone 无 `docs/upstreams` 时 `check-docs` ENOENT；`deploy.ps1` 首次部署打印不存在的 backup 路径；`DEPLOY-EMPLOYEE` 补嵌套 `employee` answers JSON 示例。
 - [ ] **员工侧仍需修复**：更新到当前 main；清掉/隔离本机 `D:\anc` 公司侧残留；从公司共享同步 `render/groups.json`、`org/company.md`、`render/members`；重启 WorkBuddy 让 persona 生效；真实群里 @员工bot 验证回复；补员工群 webhook。
-- [ ] **公司侧缺少 `anc-share`**：`DEPLOY-EMPLOYEE §5.5 A-2` 要求公司主机把 anc 根开成只读共享，但当前只有 `anc-vault-shared`（只含 vault），员工侧没有可用的 render/org 同步共享，导致试装时用了本机 `D:\anc` 残留。登记 GAP-122。
+- [ ] **公司侧缺少 `anc-share`**：`DEPLOY-EMPLOYEE §5.5 A-2` 要求公司主机把 anc 根开成只读共享，但当前只有 `anc-vault-shared`（只含 vault），员工侧没有可用的 render/org 同步共享，导致试装时用了本机 `D:\anc` 残留。**2026-11-12 D54 已关闭：员工侧不再同步公司产物，改为安装人访谈 + employee-bootstrap.ps1 本地生成。**
+
+### 1.19 主干 4 修正：员工侧本地自举、不读公司库（2026-11-12）
+
+- [x] **D54 设计修正落地**：`employee-bootstrap.ps1` 读取安装人访谈 answers，本地生成 `CODEBUDDY.md`；员工侧不再需要 `render/groups.json`、`org/company.md`、公司共享。
+- [x] **模板**：`light/templates/member-bot.md` 去掉 `vault_shared` / `member_vault_paths`，改为“公司资料/任务在员工群 @公司bot”。
+- [x] **技能**：`deploy-skills.ps1 -Side employee` 只装 `anc-dayend` / `anc-feedback` / `anc-update`；`anc-vault-read` 等公司技能不装。
+- [x] **自证**：`deploy-verify.ps1 -Side employee` 删除 `vault-read`，改查本地 `CODEBUDDY.md` 不含 `vault_shared`/`anc-vault-read` 且含公司 bot 引导。
+- [x] **文档**：`DEPLOY-EMPLOYEE` 的 §5.5/§6/§8 改为本地自举；`deploy-kickoff` 员工问题集去掉共享区、增加公司名/公司bot名/部门/本地目录。
+- [ ] **待完成**：员工侧真实安装复测（第二台机）、员工 bot 在员工群的回复实测、ACC-17、员工侧 patch/handoff 仍归主干 4 后续。
 
 
 
@@ -336,7 +345,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-113 | `anc-executor` 触发词不含「后台任务/background」，Main 只走 `anc-task` 登记后自己在 Claw 执行，队列无 Ticket | Bug/技能 | S2 | 主干 2（真实群任务 #7 复盘） | 否 | **closed**：补触发词与硬规则（公司群后台任务必须建 Ticket，Main 不许代写），`anc-task` 注明转交；重启后 Task #10 实测正常建 Ticket；commit `b03a09f` |
 | GAP-114 | 干净机 patch 链路：install-company 提权直启 launcher 导致注入上下文不匹配；data ACL 不给登录用户写、`%USERPROFILE%\anc` 日志目录缺失 | Bug/部署 | S1 | 主干 0（正式部署实测） | 否 | **closed**：patch 阶段优先 `Start-ScheduledTask anc-workbuddy-launch` 并等 `applied=true`；`set-acl.ps1` 给 data 部署用户 Modify；`launch-patched.ps1` 自建用户日志目录；commit `d3f7c62` |
 | GAP-115 | 主干 2 设计「4+1 slot」生产环境未达到：claim 代码上限为 4，但 host 实际串行，5 个 Ticket 的 assignment 执行窗口零重叠、`max_concurrent=1` | 实现/符合性 | S2 | 主干 2（2026-11-11 TR2-5 生产实测） | 否 | **open**：P0 队首、同优先级 FIFO 正确；并发未实现。证据 `%ProgramData%\anc\stage\deploy-20261111\conformance\TR2-5\`。处置选项：① host 每 tick 多次 claim / 并行 Agent；② 用户接受串行并改设计/文档。未裁决前 TR2-5 记偏离 |
-| GAP-122 | 公司侧没有 `anc-share` 只读共享，员工侧 `DEPLOY-EMPLOYEE §5.5 A-2` 无法同步 `render/groups.json`、`org/company.md`、`render/members`，试装退回本机 `D:\anc` 残留 | 部署/契约 | S2 | 主干 0（第二台员工侧报告） | 否 | **open**：需在公司侧新增只读共享（仅 render/org，不含 data/secrets）并在安装链路/文档固化；现场先由管理员建立后再修员工侧。 |
+| GAP-122 | 公司侧没有 `anc-share` 只读共享，员工侧 `DEPLOY-EMPLOYEE §5.5 A-2` 无法同步 `render/groups.json`、`org/company.md`、`render/members`，试装退回本机 `D:\anc` 残留 | 部署/契约 | S2 | 主干 0（第二台员工侧报告） | 否 | **closed（D54 设计修正）**：员工侧改为安装人访谈 + `employee-bootstrap.ps1` 本地生成 persona，不再需要公司共享/anc-share；员工 bot 不读公司库，公司知识由员工在员工群 @公司bot。公司侧 `anc-share` 保留与否不再影响员工安装。 |
 | GAP-119 | 干净 clone 缺 `docs/upstreams` 时 `check-docs` 直接 ENOENT，`npm run check` 在员工机必挂 | Bug/测试 | S2 | 主干 0（员工侧报告） | 否 | **closed**：`check-docs.mjs` 对 `docs/upstreams` 做存在性判断；commit `fb38fbd` |
 | GAP-120 | `deploy.ps1` 首次部署提示“备份: <路径>”但目录不存在 | Bug/体验 | S3 | 主干 0（员工侧报告） | 否 | **closed**：`-Apply` 时先建 backup/deploy-<stamp> 目录；commit `fb38fbd` |
 | GAP-121 | `DEPLOY-EMPLOYEE` 未给 employee answers 的嵌套 JSON 示例，扁平点号键被判“employee 整段缺失” | 文档/契约 | S2 | 主干 0（员工侧报告） | 否 | **closed**：文档补嵌套 `employee` 示例；commit `fb38fbd` |

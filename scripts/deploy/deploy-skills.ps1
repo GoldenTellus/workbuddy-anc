@@ -12,7 +12,8 @@
 # 用法：
 #   powershell -File scripts\deploy\deploy-skills.ps1                    # 预检（只比对，不写）
 #   powershell -File scripts\deploy\deploy-skills.ps1 -Apply             # 真部署
-#   powershell -File scripts\deploy\deploy-skills.ps1 -Apply -RemoveExtra # 顺便删掉线上多出来的技能
+#   powershell -File scripts\deploy\deploy-skills.ps1 -Apply -Side employee -RemoveExtra   # 员工侧最小集
+#   powershell -File scripts\deploy\deploy-skills.ps1 -Apply -RemoveExtra                # 公司侧全量
 #   powershell -File scripts\deploy\deploy-skills.ps1 -Rollback          # 恢复最近一次备份
 #
 # 退出码：0 成功 / 1 校验失败 / 2 用法或环境错误
@@ -21,6 +22,8 @@
 param(
     [string]$Repo = '',
     [string]$Target = '',
+    [ValidateSet('company','employee')]
+    [string]$Side = 'company',
     [switch]$Apply,
     [switch]$Rollback,
     [switch]$RemoveExtra
@@ -77,6 +80,12 @@ foreach ($dir in @(Get-ChildItem $srcRoot -Directory)) {
         Name    = $skillName
         Path    = $dir.FullName
     }
+}
+if ($Side -eq 'employee') {
+    $allow = @('anc-dayend','anc-feedback','anc-update')
+    $before = @($skills).Count
+    $skills = @($skills | Where-Object { $allow -contains $_.Name })
+    Write-Host ('[skills] 员工侧最小集：' + $before + ' -> ' + @($skills).Count + ' 个（不含公司专用 / vault-read）')
 }
 if ($skills.Count -eq 0) { Fail "light\skills 下没有带 SKILL.md 的技能" '确认目录结构' 2 }
 

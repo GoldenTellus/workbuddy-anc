@@ -160,10 +160,10 @@ function Get-PrepareItems([string]$s) {
             blocks = '§6 persona'
         },
         [pscustomobject]@{
-            id = 'shared'; do = '问公司侧要共享区路径'
-            check = '形如 \\\\主机\\anc-vault-shared 或 D:\\anc\\vault-shared'
-            why = '只读公司资料用；读不到不影响装完，但 vault-read 这项验不过'
-            blocks = '§8 verify（vault-read）'
+            id = 'identity'; do = '问清公司名、公司 bot 名、你的部门'
+            check = '公司名/公司bot名/部门名称或 id'
+            why = '员工侧本地生成 persona 用；员工 bot 不读公司库，不需要共享区路径'
+            blocks = '§5.5 employee-bootstrap（persona）'
         }
     )
     if ($s -eq 'company') { return $companyItems } else { return $employeeItems }
@@ -249,19 +249,34 @@ function Get-Questions([string]$s) {
             hint = '截断值会被静默接受，绑完 bot 认不出群'
         },
         [pscustomobject]@{
-            id = 'employee.vaultShared'; ask = '公司共享区路径'; who = 'optional'; required = $false
-            format = 'UNC 或绝对路径'; blocks = '§8 verify（vault-read）'
-            hint = '已经同步过 org\company.md 就能自己读 vault_shared，读不到再问'
+            id = 'employee.name'; ask = '你的姓名'; who = 'installer'; required = $false
+            format = '字符串'; blocks = '§6 persona 抬头'
+            hint = '不给就用 userid 顶替'
         },
         [pscustomobject]@{
-            id = 'employee.companyBotName'; ask = '公司 bot 叫什么'; who = 'optional'; required = $false
+            id = 'employee.companyName'; ask = '公司叫什么'; who = 'installer'; required = $false
             format = '字符串'; blocks = '§6 persona'
-            hint = '渲染产物里有；拿不到就让公司侧给'
+            hint = '员工 bot 不读公司库，只用于身份说明'
         },
         [pscustomobject]@{
-            id = 'employee.dept'; ask = '你在哪个部门'; who = 'optional'; required = $false
-            format = '字符串'; blocks = '§6 persona 的技能集与可见范围'
-            hint = '不给就按「未分部门」处理：能用，但范围没收窄'
+            id = 'employee.companyBotName'; ask = '公司 bot 叫什么'; who = 'installer'; required = $false
+            format = '字符串'; blocks = '§6 persona'
+            hint = '默认「公司bot」'
+        },
+        [pscustomobject]@{
+            id = 'employee.deptId'; ask = '你的部门 id（可选）'; who = 'optional'; required = $false
+            format = '小写 id'; blocks = '§6 persona'
+            hint = '不知道就留空；按未分部门处理'
+        },
+        [pscustomobject]@{
+            id = 'employee.deptName'; ask = '你的部门名称（可选）'; who = 'optional'; required = $false
+            format = '字符串'; blocks = '§6 persona'
+            hint = '不知道就留空；按未分部门处理'
+        },
+        [pscustomobject]@{
+            id = 'employee.localWorkdir'; ask = '本机工作目录（可选）'; who = 'optional'; required = $false
+            format = '绝对路径'; blocks = '§6 persona'
+            hint = '默认 %USERPROFILE%\WorkBuddy\Claw'
         }
     )
 }

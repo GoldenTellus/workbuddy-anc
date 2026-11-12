@@ -34,7 +34,7 @@
 - ACC-17 用员工侧真实机器证据收口，`STATUS` §3.5 的 ACC 行按真实现状更新；
 - `npm test` 全绿（当前 253/253）、`npm run check` 通过、`check-public` 零输出；
 - `STATUS` / `FUTURE-DESIGN` / `PLAN` / `PRODUCT` / `ARCHITECTURE` / 模块契约 / 接口 / 运维 / `RELEASE-CHECKLIST` / `DECISIONS` 同步，`STATUS` §4 填审计行；
-- 员工 bot 仍是旧员工侧实现 的部分，明确记为**主干 4 缺口**，不伪装成通过。
+- 员工 bot 仍是旧员工侧实现、handoff / 本地执行未实现 的部分，明确记为**主干 4 缺口**，不伪装成通过；**2026-11-12 D54 修正**：员工侧安装改为安装人访谈 + `employee-bootstrap.ps1` 本地生成 persona，员工 bot 不读公司库，公司知识走公司 bot。
 
 ## 2. 起始基线（2026-11-10 18:00）
 
@@ -258,7 +258,7 @@ ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
 
 | ID | 步骤 | 预期 / 证据 |
 |---|---|---|
-| **E-01** | 按 [BOOTSTRAP.md](../BOOTSTRAP.md) 四步 + [DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md) 装员工侧 | 第二台机先完成 Z 系列/`Z-12` 卸载；员工电脑 WorkBuddy 普通权限；员工侧 `deploy-state` 10 阶段；首次绑定成功 |
+| **E-01** | 按 [BOOTSTRAP.md](../BOOTSTRAP.md) 四步 + [DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md) 装员工侧；**D54：安装人访谈字段 + `employee-bootstrap.ps1` 本地生成 persona，不依赖公司共享/anc-share** | 第二台机先完成 Z 系列/`Z-12` 卸载；员工电脑 WorkBuddy 普通权限；员工侧 `deploy-state` 10 阶段；首次绑定成功 |
 | **E-02** | EMP-01 员工群边界 | 只服务本人；不查公司库（旧员工侧实现 按现状验）；不越权 |
 | **E-03** | EMP-02 handoff | 旧员工侧实现 没有 handoff → 明确登记为**主干 4 缺口**，不算通过 |
 | **E-04** | 两机真实群/任务（ACC-17） | 真实员工群 / 部门群 / 公司群；任务产物只在对应目录；**机器证据**替代 D48 书面例外 |
