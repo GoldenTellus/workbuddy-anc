@@ -18,21 +18,21 @@ export interface InboundLine {
   quote: string | null;
 }
 
-/** patch-in.log 的一行：`<iso> chat=… from=… msg=… len=N text=… [ quote=… quote-type=…]` */
+/** patch-in.log 的一行：`<iso> chat=… from=… msg=… [quote=… quote-type=…] len=N text=…` */
 export function parseInboundLine(line: string): InboundLine | null {
-  const m = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) chat=(\S+) from=(\S+) msg=(\S+) len=\d+ text=(.*)$/.exec(line);
+  // 2026-11-12 修：真实入站带引用时，quote= / quote-type= 插在 len= 之前；
+  // 旧正则只接受 `msg=… len=… text=…`，导致带引用消息整行解析失败，
+  // attention answer --source-msg 永远找不到入站源。这里按真实顺序解析。
+  const m = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) chat=(\S+) from=(\S+) msg=(\S+)(?: quote=(.*?) quote-type=(\S+))? len=\d+ text=(.*)$/.exec(line);
   if (!m) return null;
-  let body = m[5];
-  let text = body;
-  let quote: string | null = null;
-  const qi = body.indexOf(' quote=');
-  if (qi >= 0) {
-    text = body.slice(0, qi);
-    const tail = body.slice(qi + 1); // starts with "quote=..."
-    const qm = /^quote=(.*?)(?: quote-type=\S+)?$/.exec(tail);
-    if (qm) quote = qm[1];
-  }
-  return { at: m[1], chat: m[2], from: m[3], msg: m[4], text, quote };
+  return {
+    at: m[1],
+    chat: m[2],
+    from: m[3],
+    msg: m[4],
+    text: m[7],
+    quote: m[5] ?? null,
+  };
 }
 
 export function readInboundLog(dataDir: string): InboundLine[] {

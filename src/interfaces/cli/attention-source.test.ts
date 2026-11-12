@@ -26,8 +26,10 @@ function seed(db: Db): void {
 }
 
 function line(at: string, chat: string, from: string, msg: string, text: string, quote?: string): string {
-  return at + ' chat=' + chat + ' from=' + from + ' msg=' + msg + ' len=' + Buffer.byteLength(text, 'utf8') + ' text=' + text +
-    (quote ? ' quote=' + quote + ' quote-type=text' : '');
+  // 真实 patch-in.log 顺序：msg -> [quote -> quote-type] -> len -> text。
+  return at + ' chat=' + chat + ' from=' + from + ' msg=' + msg +
+    (quote ? ' quote=' + quote + ' quote-type=text' : '') +
+    ' len=' + Buffer.byteLength(text, 'utf8') + ' text=' + text;
 }
 
 function withLog(lines: string[]): string {
