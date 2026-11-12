@@ -1437,6 +1437,9 @@ powershell -File scripts\deploy\deploy-state.ps1 -Side company -Mark <id> -AsDon
 
 安装 agent **不能只靠安装人的口头回答**。群 chatId、userid、管理员身份、bot 是否真在群里回应、机器是否干净，这些都要让安装人做一个**可交叉验证的动作**：
 
+> **群里 @bot 只是部署取证动作，不是产品运行链路。**  
+> 让安装人在目标群 @ 公司bot，是为了用 `patch-in.log` 证明“chatId/from/群类型/bot 回复”真实存在；不是让 bot 之间互相派活，也不是 A2A。实际业务仍按正常群消息路由。
+
 | 信息 | 让安装人做什么 | agent 拿什么 | 判据 |
 |---|---|---|---|
 | 群 chatId / webhook | 打开群设置，发截图；建群机器人后发“只显示文件名”的截图 | 截图 + 群里实际消息 | chatId 32 字符；webhook 明文不进群、只进 secrets |
