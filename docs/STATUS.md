@@ -225,7 +225,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **执行器与真实任务**：初始 TEST 会话 `c7713003…`（后迁到独立工作区）；恢复演练后 active host `h-ccb2dda7…` / 会话 `7fc8f4be…`，cwd `D:\anc-executor-ws`；真实群 Task #7（Ticket `t-015039b3…`，A1 approved）、Task #10（Ticket `t-28cbd55c…`，`executor-close`）与 TR2-7 恢复 Ticket 均完成；`executor-deploy.json` 已更新为当前 host/workspace（C-06）。
 - [x] **C-08 安全**：`check-public` 零输出；secrets 两个文件无 BOM/尾换行；secrets / vault 两区 ACL 有证据（C-08）；`service-token.txt` 对部署用户只读（入库需要），vault 两区对 LOCAL SERVICE 可写（服务身份需要）。
 - [x] **C-09 演练**：备份 → 副本恢复（10 表计数一致 + `integrity_check=ok`）→ `upgrade -Action apply` → `rollback` → 回 main 重部署；生产数据零丢失。证据 C-09。
-- [~] **C-10 生产群**：已接入 **company / employee / boss_dm** 三类：公司群 `DNT-ANC`、郭帅员工群 `wrkcDlGwAAa1RDW_PoSpXy3ZA8Qz6IIA`、老板 1:1 `PangChao`；`bind actor` 三类均正确（郭帅 employee、庞超 boss）。部门群按 D53 后置；员工群群机器人 webhook 尚未配置，提醒通道待补。证据 C-10。
+- [x] **C-10 生产群**：已接入 **company / employee / boss_dm** 三类：公司群 `DNT-ANC`、郭帅员工群 `wrkcDlGwAAa1RDW_PoSpXy3ZA8Qz6IIA`、老板 1:1 `PangChao`；`bind actor` 三类均正确（郭帅 employee、庞超 boss）。部门群按 D53 后置；**员工群群机器人 webhook 已配置为 `guoshuai-bot.txt`**，`deploy-verify -Side company -SkipBot` 为 **pass=5 / fail=0 / skip=1**，doctor `bindings` 已 PASS。证据 `C-07\deploy-verify-webhook.json`。
 - [ ] **Z-01..Z-12**：第二台机子已确认干净（2026-11-11），按 D53/PLAN §5.1 情形 B 先做 Z，Z-12 卸载回干净后用于员工侧 E-01；尚未开始。
 - [x] **现场修复（全部已提交）**：GAP-109 ~ GAP-114（见 §3.2）；本次实际补丁：`dfe6487`（入库三阻断）、`c15f746`（host 独立工作区）、`b03a09f`（后台任务触发词）、`d3f7c62`（干净机 patch 链路 + data 用户写权限）。
 - [x] **阶段 2 已启动**：`%ProgramData%\anc\stage\deploy-20261111\conformance\MATRIX.md`；TR2-1/2/4/9、TR3-1 已有生产证据（#7/#10/#15 三个 Ticket 同一 host `7fc8f4be…`、三个不同 subagent、A1 approved）；**TR2-5 实测偏离 GAP-115**：5 Ticket 的 `assignment` 执行窗口零重叠，`max_concurrent=1`，4+1 slot 未实现（P0 队首/同级 FIFO 正确）；**TR2-6 故障注入符合**（retry_scheduled → ticket_failed）；**TR2-7 重启恢复符合**（旧 assignment interrupted、Ticket queued、注册新 host 后重派完成；GAP-116 关闭为测试步骤遗漏）；TR1 三类生产群（部门群后置 D53）与 TR2-8、TR3-2..9 待 C-10 / 跨夜 / 真实群补充。
@@ -247,7 +247,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **自证**：`deploy-verify.ps1 -Side employee` 删除 `vault-read`，改查本地 `CODEBUDDY.md` 不含 `vault_shared`/`anc-vault-read` 且含公司 bot 引导。
 - [x] **文档**：`DEPLOY-EMPLOYEE` 的 §5.5/§6/§8 改为本地自举；`deploy-kickoff` 员工问题集去掉共享区、增加公司名/公司bot名/部门/本地目录。
 - [x] **员工侧真实安装/群回复通过（2026-11-12）**：用户确认第二台员工机测试通过；按 D54 从 GitHub 全新部署，员工侧本地自举、不读公司库；员工群 @ 个人 bot 回复正常。
-- [ ] **待完成**：员工侧 patch/handoff 仍归主干 4 后续；Z-01..Z-12 与 C-10 公司侧收口仍按 PLAN 推进。
+- [ ] **待完成**：员工侧 patch/handoff 仍归主干 4 后续；Z-01..Z-12 仍待干净机证据；C-10 已收口，GAP-115 由用户决定后再处理。
 
 
 
