@@ -215,7 +215,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **逐份核对范围**：根目录 README / AGENTS / BOOTSTRAP / SPEC / CLAUDE；`docs/` 下现行文档 + 13 份模块契约；`light/` 下 persona、模板、9 个技能、2 张技能卡片、vault 协作模板；`org.example/`、`UPSTREAM`、归档索引。修掉过时数字、过期状态、内部自相矛盾、断链与缺失的新能力（例：`light/templates/company-bot.md` 与 persona 的「三处/四处变量」、「汇总访谈未启用」；`anc-ingest-company` 技能里两个 inbox 根与两套回执；技能卡片未标注主干 4 未实现；`vault/collab/README` 把 markdown 看板写成任务状态唯一真相）。
 - [x] **机器检查覆盖根目录文档**：`BOOTSTRAP.md` 补 `> 类型：部署入口` 并登记 `doc-map.json`、从 `INDEX.md` 链到；`check-docs.mjs` 扩展为同时校验根目录文档的登记与 `../` 链接（此前只扫 `docs/`，检不出这类缺口）。
 - [x] **文档改动的联动回归**：`anc-wb-patch` 技能回归章节由「四条」扩为「五条」（补 wake bridge 2.0）后，`src/modules/improvement/issues.ts` 的分诊规则仍写旧章节名，`src/service/closure.test.ts` 因此挂 1 项；已同步章节名，`closure.test` 25/25 通过，并把「改技能章节要同步分诊规则」写进 `INDEX` 维护规则。
-- [ ] **遗留**：ACC-17（员工侧双机全量）仍需员工机；全新机器的完整部署链路也待下次真实部署验证。文档侧无新增开放 GAP。
+- [x] **遗留**：ACC-17（员工侧双机全量）已于 2026-11-12 用户确认达成；全新机器的完整部署链路按 D54 员工侧本地自举已验证；Z 与公司侧 C-10 仍未收口。文档侧无新增开放 GAP。
 
 ### 1.17 正式生产部署（公司侧，2026-11-11）
 
@@ -246,7 +246,8 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **技能**：`deploy-skills.ps1 -Side employee` 只装 `anc-dayend` / `anc-feedback` / `anc-update`；`anc-vault-read` 等公司技能不装。
 - [x] **自证**：`deploy-verify.ps1 -Side employee` 删除 `vault-read`，改查本地 `CODEBUDDY.md` 不含 `vault_shared`/`anc-vault-read` 且含公司 bot 引导。
 - [x] **文档**：`DEPLOY-EMPLOYEE` 的 §5.5/§6/§8 改为本地自举；`deploy-kickoff` 员工问题集去掉共享区、增加公司名/公司bot名/部门/本地目录。
-- [ ] **待完成**：员工侧真实安装复测（第二台机）、员工 bot 在员工群的回复实测、ACC-17、员工侧 patch/handoff 仍归主干 4 后续。
+- [x] **员工侧真实安装/群回复通过（2026-11-12）**：用户确认第二台员工机测试通过；按 D54 从 GitHub 全新部署，员工侧本地自举、不读公司库；员工群 @ 个人 bot 回复正常。
+- [ ] **待完成**：员工侧 patch/handoff 仍归主干 4 后续；Z-01..Z-12 与 C-10 公司侧收口仍按 PLAN 推进。
 
 
 
@@ -257,7 +258,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 主干 0 | **🟡 本批进行中（2026-11-10 18:2x 起）** | 上批 BATCH-20261110 收口、开放 GAP=0；本批开启**正式生产部署 + 零起点装机 + 主干 1/2/3 设计符合性检验**，验收状态由 ✅ 回到 🟡（FUTURE-DESIGN §0.0、PLAN §1）；0.4/0.7/0.8 随本批保持 🟡；7 条准出条件未验完前不标 ✅。历史：ACC-01..12 按 D35/D36，本批 GAP-088/089 已关闭，090/092 接受、091 留后续 |
 | 主干 1 | **已收口（2026-11-09）** | 4/4 分支；D35 用户实测、D36 例外；员工 bot 旧员工侧实现 归主干 4 |
 | 主干 2 | **已收口（2026-11-10）** | 5/5 分支；ACC-09/10/11 本机达成；ACC-16 真实 Main 群全链路通过（Task #18 + `/new` host + `agent-15b76a26…` + A10）；本批 DEV-01 已把 wake 改成定向 host（D46）；**D46 后复验通过**（EXE-01/EXE-04 + ACC-16，见 §1.11） |
-| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；**253/253**；11-09 时为 142 文件 / 13 任务，本批后 **158 文件 / 14 任务**；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；GAP-079/080 已关闭且 **ACC-18/19 达成**（msg=、引用兜底、短号、8h/24h 投递；员工侧真 @ 待 ACC-17） |
+| 主干 3 | **已收口（2026-11-09）** | T3.1–T3.6；**253/253**；11-09 时为 142 文件 / 13 任务，本批后 **158 文件 / 14 任务**；ACC-13/14/15 真实群通过（A6/A7/A8/A9）；GAP-079/080 已关闭且 **ACC-18/19 达成**（msg=、引用兜底、短号、8h/24h 投递；员工侧真 @ 随 ACC-17 于 2026-11-12 达成） |
 | **当前批次（主干 0 · 正式生产部署 + 零起点装机 + 设计符合性检验）** | **进行中（2026-11-11）；C-01..C-09 有证据；D53：部门群后置、第二台干净机先 Z** | 用户决定正式给公司部署：**先公司侧 → 7 条准出条件全过 → 再员工侧**；部署中收集问题并检验主干 1/2/3 是否符合设计；追加检验「一台主机从 0 开始部署」（GAP-104 遗留）与 §6.5 补充维度。见 [PLAN.md](./PLAN.md) §5.1（Z-01..12）/ §6.5（S-A~E）。**D53：保留员工群设计，本批不测试部门群；第二台干净机先做 Z**；旧 PLAN 已归档 `BATCH-20261110-FINAL.md`。现场进度见 §1.17 |
 | 公司侧部署（本机） | **已装完并自证（2026-11-11）** | 14 个任务全部 Ready；`deploy-state` **14/14**；`deploy-verify` PASS；doctor FAIL=0 WARN=3~4；host `h-ccb2dda7…` / `7fc8f4be…`（`D:\anc-executor-ws`）；真实任务 #7/#10/TR2-7 完成。C-10 按 D53 只做公司群/员工群/老板 1:1；Z 待第二台干净机执行；证据 `%ProgramData%\anc\stage\deploy-20261111\company\` |
 | 文档联动检查 | 已建并审计 | [DOC-SYNC.md](./DOC-SYNC.md)；2026-11-10 本批 + 全量文档核对审计行见 §4 |
@@ -376,9 +377,9 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | GAP-034 | `tasks` 状态 | open / done / cancelled / needs_review | Task + Ticket / Assignment 状态 | 主干 2 | 否 | closed：D38 单向终止，Ticket done/dropped → Task done；失败不改 Task |
 | GAP-035 | `runtime` tick | 只做提醒 / 超时 / 投影 | Main / Executor 分层；tick 只做通知与调度 | 主干 2 | 是 | 在 D2 拆边界，保留旧行为兼容 |
 | GAP-036 | outbox / 通知 | 单向消息 | Attention / 确认 / 回执 | 主干 3 | 是 | closed（D41）：outbox + `attention_id`；T3.3 已落初始通知/提醒/升级；结果回执归 T3.4 |
-| GAP-037 | 员工 bot 技能集 | 现有员工侧 `anc-vault-read` 卡片 | 移除；员工查库直接 @ 公司 bot | 主干 4 | 是 | 改 member persona / skill cards / DEPLOY-EMPLOYEE |
+| GAP-037 | 员工 bot 技能集 | 现有员工侧 `anc-vault-read` 卡片 | 移除；员工查库直接 @ 公司 bot | 主干 4 | 是 | **closed（D54，2026-11-12）**：`deploy-skills -Side employee` 只装 `anc-dayend/anc-feedback/anc-update`，不装 `anc-vault-read` 等公司技能 |
 | GAP-038 | 员工侧补丁 | 现有员工侧不装补丁 | 员工侧打补丁，保证 handoff 归属 | 主干 4 | 是 | 补丁方案、版本绑定、回归测试 |
-| GAP-039 | 员工 bot 文档/职责 | 现有 `member-bot` 职责含“查公司知识库” | 本机资料 + handoff；不查公司库 | 主干 4 | 是 | 改模板与部署文档，加回归；0.7 的文档警告已补 |
+| GAP-039 | 员工 bot 文档/职责 | 现有 `member-bot` 职责含“查公司知识库” | 本机资料 + handoff；不查公司库 | 主干 4 | 是 | **closed（D54，2026-11-12）**：`member-bot.md` 已删 vault 段，改为“公司资料在员工群 @公司bot”；`DEPLOY-EMPLOYEE` 改为本地自举 |
 | GAP-076 | Ticket 状态机 / Report 类型 | 6 类 Report 没有 `question`；`waiting_answer` / `waiting_ack` 无入口 | 加 `question → waiting_answer`；`waiting_ack` 由 `attention create` 推进；同步 2.3 / MAIN-EXECUTOR / subagent | 主干 3 | 否 | closed：`question` 已落，`waiting_ack` 由 attention create 进；T3.4 |
 | GAP-077 | human slot / claim | `claim --slot human` 不能定向；human Assignment 计入 `max_attempts` | 加 `--ticket-id`；human 不计入 `max_attempts`；answer 进下一次 prompt | 主干 3 | 否 | closed：`claim --ticket-id` + normal-only 计数；`attention context` 已提供；T3.4 |
 | GAP-078 | `canConfirmAttention` | 本部门管理者可代确认 | 仅 `required_confirmer` + 老板；管理者可见/催办不代确认 | 主干 3 | 否 | closed：policy 收紧 + `policy.test` 覆盖；T3.2 |
@@ -583,7 +584,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 >
 > **2026-11-09 收口口径**：ACC-07/09/10/11 本机实测达成；ACC-01/02/03/04/05/06/12 用户实测通过（D35，口述无机器日志）；ACC-08 人工对账书面例外（D36）。最终判定见 §3.3a，原始缺口描述仅作历史记录。
 >
-> **2026-11-10 本批补充**：ACC-18/19/20/21/22 已达成；**仅 ACC-17（员工侧双机全量）按 D48 书面例外**。ACC-01..12 的 2026-11-09 结论（D35/D36）保持不变；ACC-09 的「13 个任务」是当时的验收读数，当前为 14 个。
+> **2026-11-10 本批补充**：ACC-18/19/20/21/22 已达成；**ACC-17（员工侧双机全量）于 2026-11-12 用户确认达成**（D54 本地自举）。ACC-01..12 的 2026-11-09 结论（D35/D36）保持不变；ACC-09 的「13 个任务」是当时的验收读数，当前为 14 个。
 
 | 编号 | 验收项 | 前置 | 通过标准 | 对应 GAP | 结果（截至 2026-11-10） |
 |---|---|---|---|---|---|
@@ -603,7 +604,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | ACC-14 | 群回复 answer 追问 | 任务缺信息、Attention 已发 | 能回答的人回 `A13 <内容>` → 同一 Ticket 经 human slot 恢复，不重开 | GAP-029/077 | **真实群通过（2026-11-09）**：郭帅回 `@公司bot A7 120000` → A7 answered；human slot 续谈 → Task #11 done |
 | ACC-15 | 责任回执/升级 | `require_ack` 已标 | 未回执按 2h/8h/24h 提醒；回执后责任转移；老板代确认 | GAP-012/014 | **真实群通过（2026-11-09）**：A8 `A8收到` → Task #12 done；A9 回拨 2h → outbox #5 sent（群催办）；郭帅代张佳艺 ack（`on_behalf_of=zhangjiayi`）→ Task #13 done |
 | ACC-16 | 真实 Main 群全链路 | 公司群 Main 无 Agent；wake 可用 | Main 只建 Ticket；wake 自动建 Agent host；host 起真实 subagent；review 后 Task done | GAP-086 | **通过（2026-11-10）**：Task #18 → `t-b6b53f83…` queued；wake `/new` host `c208fb40…`；`agent-15b76a26…` 写 `hello5.md`；A10 approved → Task #18 done。**D46 后复验（2026-11-10 12:13–12:24）**：老板群消息 → Main 只建 Task #20/Ticket `t-b7f44e66…`（未执行）→ wake 三次定向同一 host `conv=47695768…` → subagent `agent-5e0d5a8a…` 写 `trunk2-accept.md` → review A11 → `A11可以` → Task #20 done。证据 `trunk2-accept/EVIDENCE.md` E1 |
-| ACC-17 | 员工侧双机全量（ENV-02/EMP-01/EMP-02 等） | 员工电脑 + WorkBuddy + 员工侧部署/补丁 | 员工侧 ENV/ID/TASK/EMP 项按 §6 矩阵通过或有书面例外 | GAP-005/016/017/018/020/037/038/039 | **NOT-RUN（本批）**：员工电脑不在本机可达范围；本批只出公司主机侧矩阵。员工 bot 仍是旧员工侧实现，主干 4 缺口保持 |
+| ACC-17 | 员工侧双机全量（ENV-02/EMP-01/EMP-02 等） | 员工电脑 + WorkBuddy + 员工侧部署/补丁 | 员工侧 ENV/ID/TASK/EMP 项按 §6 矩阵通过或有书面例外 | GAP-005/016/017/018/020/037/038/039 | **达成（2026-11-12）**：用户确认第二台员工机测试通过；按 D54 从 GitHub 全新部署，员工侧本地自举、不读公司库；`deploy-state` 9 阶段、`deploy-verify` 通过、员工群 @ 个人 bot 回复正常；员工侧 patch/handoff 仍归主干 4 后续 |
 | ACC-18 | 真实群补丁/引用/@ 复验（ENV-03 + DEV-02/03） | 测试群 + 真人操作 | ① 真人 @ 公司bot 后 `patch-in.log` 带 ` msg=`；② 引用 A1x 通知回「可以」→ `quote=` 进前缀且 `attention match --quote-text` 命中；③ 短号主路径不回归；④ 真实员工群/部门群 `bind actor`；⑤ 填真实 `mention_userid` 后收到 @ | GAP-079/080/072/003 | **达成（2026-11-10 真实群，机器证据）**：① `patch-in.log` 5 条真实入站全部带 `msg=`；② 引用 A11/A12 通知只回「可以」→ 入站带 `quote=`/`quote-type=text`，A11/A12 均 **approved**；③ `A13可以` 短号 → approved（不回归）；⑤ 老板 `mention_userid` 已配，A13 通知 outbox `mentions:[…]` 且 sent（**群内已确认显示 @老板**，2026-11-10 12:06 用户确认）。④ 员工群/部门群 chatId 仍未登记 → 归 ACC-17。证据 `dev01/acc18/`；测试 Attention/outbox 已清理 |
 | ACC-19 | 8h/24h 实际投递 | Attention 已建、测试群可用 | 8h→管理者、24h→老板；文案/收件人正确；不重复 | GAP-012/014/015 | **达成（2026-11-10 机器证据）**：A12/A13 回拨后 sweep 产出正确、二次 sweep 不重复、outbox flush sent=2 failed=0、webhook HTTP200 errcode 0。见 §1.10 |
 | ACC-20 | 03:00 日切观察 | 隔夜 03:00 | `/new` 建新 host、旧任务继续、新任务进新 host；wake 定向新 host | GAP-061/065/D46 | **达成（2026-11-10 14:20–14:31，模拟 03:00 触发，未改系统时钟）**：`new-host.ps1 -Now 2026-11-11T03:00:05+08:00` → 新会话 `827caa80…`（cwd 绝对路径）/ 新 host `h-435a1107…`（business_date 2026-11-11）、旧 host `h-f9ba827d…` closing（event `host_cut` 14:25:11）；旧 Ticket `t-55a8…` 切后仍 started（14:26:57）/ report ready（14:27:09）→ **旧任务继续**；新 Ticket `t-e922…` wake 定向新 host `conv=827caa80…`（14:29:31）→ subagent `agent-eb71d6ad…` → ready（14:31:17）→ **新任务进新 host**。测试数据已清理，保留 host `h-435a1107…` active（11-11）。证据 `acc20/` |
@@ -663,7 +664,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 | 离机备份与本地同物理盘（本机 D:\anc-backup） | 盘坏时本地与离机一起丢 | 换独立盘或 UNC；本机实测已在 `backup.log` 告警，D30 暂接受 |
 | 备份落后 schema（GAP-089，本批已修） | 回滚到旧备份会丢新表 | doctor `backup-freshness` 现在比对 live 表清单；部署/迁移后强制 `backup-anc.ps1 -MinIntervalHours 0` 并复跑 doctor |
 | WorkBuddy 内部 `window.wb` API 无公开契约（D46） | WorkBuddy 升级可能改 API，wake bridge 2.0 失效 | bridge 保留 DOM fallback（`wb-api-missing` 时走旧 `/new`/`/wake`）；`/health` 带 bridge 版本；升级后按 `WORKBUDDY-PATCH` 回归并更新 manifest |
-| 员工侧双机全量（ACC-17） | 员工 bot 仍是旧员工侧实现、主干 4 未实现；员工机不在本机可达范围 | ACC-18/19/20/21/22 已用真实群 / 模拟触发 / 安全回归达成（见 §3.5）；仅 ACC-17 按 D48 书面例外，正式部署前补机器留痕 |
+| 员工侧 patch/handoff 未实现（ACC-17 已达成） | 员工 bot 的 handoff 归属/补丁仍归主干 4；当前 D54 已解决安装与不读库，未覆盖员工侧 A2A/handoff | ACC-17 于 2026-11-12 用户确认通过；GAP-038/016/017 仍按主干 4 后续处理，不能拿 ACC-17 关闭它们 |
 | WorkBuddy 非标准安装路径依赖 Junction（本机 D:\App\WorkBuddy） | 换机/重装/升级后路径假设失效 | DEPLOY-COMPANY §2 已写建法；回滚=删 Junction；doctor 每次体检覆盖 |
 | Node 版本口径被写成「本机实测 v26」 | 历史文档把另一台本机的 v26.13.0 当成本机现状，易误导 | 设计基线 Node 22 LTS；当前环境 v22.22.2 实跑 253/253；v26.13.0 仅作 2026-11-09 另一台本机历史读数 |
 | 员工侧验收无机器日志 | D35 已书面接受，审计证据强度较低 | 正式部署前补一次群消息/任务/产物目录留痕 |

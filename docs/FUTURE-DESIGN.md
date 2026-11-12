@@ -902,7 +902,7 @@ Task↔Ticket 映射、failed 自动重试 → D38
 | 调度 | host/tick/claim、4+1 slot、队列/EDF、30m/3/default、超预算中断 | 真实 Main 群回归已过（ACC-16）；模型/金额预算未细化 |
 | 执行 | executor + 真实 WorkBuddy subagent + 任务目录/恢复 | 员工 bot handoff 归主干 4 |
 | 群 | 四类群 + render/sync + D35 用户实测 | 本机 org 只登记公司群/boss_dm；ACC-08 例外 |
-| 通知 | outbox + 提醒 + dedupe | 主干 3 已收口：短号 + 引用兜底、outbox + attention_id、2h/8h/24h、D52 确认绑定真实入站消息；员工侧真 @ 待 ACC-17 |
+| 通知 | outbox + 提醒 + dedupe | 主干 3 已收口：短号 + 引用兜底、outbox + attention_id、2h/8h/24h、D52 确认绑定真实入站消息；员工侧真 @ 已随 ACC-17（2026-11-12）达成 |
 | 权限 | people/policy/privacy router + D28 逻辑隔离 | 代确认、强 ACL 留选项 |
 | 工作区 | `%ProgramData%` 公司 / `%LOCALAPPDATA%` 员工 + task_dir | 员工本地执行/离线 |
 | 员工 bot | 旧员工侧实现 已部署；D35 用户实测 | 主干 4 设计/实现 |
@@ -921,7 +921,7 @@ Task↔Ticket 映射、failed 自动重试 → D38
 | D4 排期与权限 | ✅ 本机 | 4+1 slot、队列、默认预算、D38/D39 |
 | D5 员工 bot 与知识边界 | ⬜ | 归主干 4 |
 
-已完成：主干 1（2026-11-09）、主干 2 / 主干 3 / BATCH-20261110（公司侧收口，仅 ACC-17 按 D48 书面例外）、2026-11-10 全量文档核对。
+已完成：主干 1（2026-11-09）、主干 2 / 主干 3 / BATCH-20261110（公司侧收口，ACC-17 于 2026-11-12 达成）、2026-11-10 全量文档核对。
 
 下一步顺序：
 

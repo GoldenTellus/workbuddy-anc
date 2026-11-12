@@ -13,7 +13,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 1. 现在到哪了
 
 - 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
-- 主干 1/2/3 已收口（2026-11-10）；主干 0 是常驻活文档，当前正式生产部署批次进行中，见 [TRUNK-0.md](./docs/TRUNK-0.md)。BATCH-20261110 公司侧完成：ACC-16/18/19/20/21/22 达成，仅 ACC-17（员工侧双机全量）按 D48 书面例外；员工 bot 仍是旧员工侧实现、主干 4 未实现；决策 D46–D52 已登记
+- 主干 1/2/3 已收口（2026-11-10）；主干 0 是常驻活文档，当前正式生产部署批次进行中，见 [TRUNK-0.md](./docs/TRUNK-0.md)。BATCH-20261110 公司侧完成：ACC-16/18/19/20/21/22 达成；ACC-17（员工侧双机全量）于 2026-11-12 用户确认达成，员工侧按 D54 本地自举、不读公司库；员工侧 patch/handoff 仍归主干 4；决策 D46–D54 已登记
 - `npm test` **253/253**；覆盖率 **88.97 / 79.03 / 93.95**（行/分支/函数，2026-11-10 实测）；`npm run check`（`check:modules:deep` + `check:docs`）通过；`check-public` 零输出。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 历史计划、路线图、验收、实测已归档；不要再把 `PLAN-LEGACY` 当现行计划。
@@ -54,7 +54,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 ## 3. 关键裁决（不要偏离）
 
 1. **可以改 WorkBuddy**：patch、封装、读凭据与内部数据都允许（D16）；每处改动按 `DECISIONS` 登记、随升级重放、可一键关闭。
-2. **当前实现已落“四类群 + 三角色”地基**：员工群/部门群/公司大群/老板 1:1；boss/manager/employee；`people/groups/manager_scopes` 是真相，`chat_bindings` 只保留员工群兼容层。**员工 bot 仍按旧实现**，主干 4 返工；真实群验收见 `STATUS §3.5`。
+2. **当前实现已落“四类群 + 三角色”地基**：员工群/部门群/公司大群/老板 1:1；boss/manager/employee；`people/groups/manager_scopes` 是真相，`chat_bindings` 只保留员工群兼容层。**员工侧已按 D54 本地自举（不读公司库）**，员工侧 patch/handoff 仍归主干 4；真实群验收见 `STATUS §3.5`。
 3. **确定性的事不交给模型**：任务/工单状态、计时提醒、“完成”判定、出站消息归本地服务；SQLite 是真相，markdown 是投影。
 4. **vault 分两区**：共享区全员只读、内部区只有公司侧能读写；两个独立 git 目录，原件不进 git。
 5. **公司 bot 只做结构化，入库进程只校验和提交**，不调模型；覆盖写必须带读取时的 base hash。
