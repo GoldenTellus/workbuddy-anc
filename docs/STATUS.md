@@ -249,6 +249,7 @@ npm test 212/212 ×3（38.9/36.9/38.2s）、npm run check、coverage 90.83/80.43
 - [x] **员工侧真实安装/群回复通过（2026-11-12）**：用户确认第二台员工机测试通过；按 D54 从 GitHub 全新部署，员工侧本地自举、不读公司库；员工群 @ 个人 bot 回复正常。
 - [ ] **待完成**：员工侧 patch/handoff 仍归主干 4 后续；Z-01..Z-12 已按 B 方案通过；C-10 已收口；GAP-115 由用户决定后再处理。
 - [x] **退休 `anc-share` 清理（2026-11-12）**：D54 后员工侧不再同步公司产物；已删除 `anc-share` SMB 共享、`C:\ProgramData\anc\share`（含临时 repair 包）和临时 HTTP 服务/防火墙规则；只保留公司内部使用的 `anc-vault-shared`。
+- [x] **TR 测试数据清理（2026-11-12）**：删除测试 Task #10/#16–23/#25/#26、对应 Ticket/Assignment/Report/task_events，以及测试 Attention A8–A11 与 outbox #3–#7；清理前备份 `C:\ProgramData\anc\backup\anc-pre-trcleanup-20261112031410.db`；A8–A11 的取证 JSON/截图已归档在 `conformance\TR3-2`/`TR3-8`。
 
 
 
