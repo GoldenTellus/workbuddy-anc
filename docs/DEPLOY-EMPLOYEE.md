@@ -27,8 +27,8 @@
 | [3](#3-workbuddy确认-workbuddy-已登录) | `workbuddy` | 确认 WorkBuddy 在 | 1 分钟 |
 | [4](#4-files部署运行件) | `files` | 部署运行件 | 30 秒 |
 | [5](#5-skills装技能) | `skills` | 装员工侧最小集 3 个技能 | 10 秒 |
-| [5.5](#55-本地生成个人-persona2026-11-12-修正取代公司侧同步) | `sync` | **本地生成个人 persona** | 1 分钟 |
-| [6](#6-persona部署个人-persona) | `persona` | 部署个人 persona | 1 分钟 |
+| [5.5](#55-本地生成个人-persona2026-11-12-修正取代公司侧同步) | `persona` | **本地生成个人 persona** | 1 分钟 |
+| [6](#6-persona生效与重启) | `persona` | persona 生效与重启 | 1 分钟 |
 | [7](#7-bind绑定本人的群) | `bind` | 绑定群 | 1 分钟 |
 | [8](#8-verify自证) | `verify` | 自证 | 30 秒 |
 | [9](#9-装到一半失败怎么办) | — | 断点续装 | — |
@@ -580,7 +580,7 @@ powershell -File scripts\deploy\deploy-verify.ps1 -Side employee                
 powershell -File scripts\deploy\deploy-state.ps1 -Side employee -Mark <id> -AsDone
 ```
 
-**员工侧 10 个阶段**：`brief` → `answers` → `preflight` → `workbuddy` → `files` → `skills` → `sync` → `persona` → `bind` → `verify`
+**员工侧 9 个阶段**：`brief` → `answers` → `preflight` → `workbuddy` → `files` → `skills` → `persona` → `bind` → `verify`
 
 ---
 

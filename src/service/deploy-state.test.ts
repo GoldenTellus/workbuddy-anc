@@ -139,15 +139,14 @@ test('deploy-state: 未知阶段要报错（拼错阶段名不能被静默接受
 test('deploy-state: employee 侧的阶段表和 company 不同', () => {
   withRoot((root) => {
     const { json } = run(root, ['-Side', 'employee']);
-    assert.equal(json.progress, '0/10', 'employee 侧是 10 个阶段（含 brief/answers 与 §5.5 sync）');
+    assert.equal(json.progress, '0/9', 'employee 侧是 9 个阶段（D54 去掉 §5.5 公司同步）');
     const ids = json.stages.map((s) => s.id);
-    assert.ok(ids.includes('sync'), 'employee 侧要先从公司侧同步渲染产物（§5.5）');
-    assert.ok(ids.includes('persona'), 'employee 侧要部署 persona');
+    assert.ok(!ids.includes('sync'), 'D54：员工侧不再需要从公司侧同步渲染产物');
+    assert.ok(ids.includes('persona'), 'employee 侧要本地生成/部署 persona');
     assert.ok(ids.includes('bind'), 'employee 侧要绑定群');
     assert.ok(!ids.includes('tasks'), 'employee 侧不注册计划任务');
     assert.ok(!ids.includes('vault'), 'employee 侧不建 vault');
-    // sync 必须排在 persona 之前：persona 的来源就是 sync 拷过来的 render\members\<id>
-    assert.ok(ids.indexOf('sync') < ids.indexOf('persona'), 'sync 在 persona 之前');
+    assert.ok(ids.indexOf('skills') < ids.indexOf('persona'), 'persona 在 skills 之后');
   });
 });
 

@@ -95,11 +95,9 @@ $Stages = if ($Side -eq 'company') {
         @{ id = 'workbuddy'; title = 'WorkBuddy 已装并登录（§3）' },
         @{ id = 'files'; title = '部署运行件（§4，deploy.ps1）' },
         @{ id = 'skills'; title = '部署技能（§5）' },
-        # §5.5 同步渲染产物：persona / groups.json / company.md 只能从公司侧拷，
-        # deploy.ps1 只放渲染器源码、不生成产物。原先没有这个阶段，
-        # agent 做完 skills 直接跳 persona，卡在「没有你的 persona」时也没有地方记录。
-        @{ id = 'sync'; title = '从公司侧同步渲染产物（§5.5）' },
-        @{ id = 'persona'; title = '部署个人 persona（§6）' },
+        # 2026-11-12 D54：员工侧不再从公司侧同步渲染产物；
+        # persona 由 employee-bootstrap.ps1 本地生成，直接记到 persona 阶段。
+        @{ id = 'persona'; title = '本地生成个人 persona（§5.5/§6）' },
         @{ id = 'bind'; title = '绑定本人的群（§7）' },
         @{ id = 'verify'; title = '自证（§8）' }
     )
