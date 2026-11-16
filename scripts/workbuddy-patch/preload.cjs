@@ -110,11 +110,37 @@ if (!mf) {
 }
 
 function expand(p) {
-  return String(p || '').replace(/%([^%]+)%/g, function (_, k) { return process.env[k] || ''; });
+  return String(p || '').replace(/%([^%]+)%/g, function (_, k) {
+    // %ProgramData% 在 macOS 上不存在；统一按平台根换算，避免出现字面量目录 "C:\\ProgramData"。
+    if (k === 'ProgramData' && !process.env.ProgramData) return __ancRoot();
+    if (k === 'USERPROFILE' && !process.env.USERPROFILE) return __ancHome();
+    return process.env[k] || '';
+  });
 }
 
-const LOG = expand(mf.log || '%USERPROFILE%\\anc\\workbuddy-patch.log');
-const STATE = expand(mf.state || '%ProgramData%\anc\data\patch-state.json');
+// 平台根（与 scripts/platform/anc-platform.mjs / src/core/paths.ts 同一套口径）：
+//   Windows  %ProgramData%\anc；macOS /Library/Application Support/anc；可用 ANC_ROOT 覆盖
+// 不能 require 平台层（它是 ESM，而 preload 是 Electron 的 CJS 预加载），所以这里只留最小实现。
+function __ancRoot() {
+  const env = process.env;
+  if (env.ANC_ROOT && String(env.ANC_ROOT).trim()) return String(env.ANC_ROOT).trim();
+  if (process.platform === 'win32') return require('path').join(env.ProgramData || 'C:\\ProgramData', 'anc');
+  if (process.platform === 'darwin') {
+    if (env.ANC_SIDE === 'employee') return require('path').join(__ancHome(), 'Library', 'Application Support', 'anc');
+    return '/Library/Application Support/anc';
+  }
+  return require('path').join(__ancHome(), '.local', 'share', 'anc');
+}
+function __ancHome() { return process.env.HOME || process.env.USERPROFILE || require('os').homedir(); }
+function __ancDataFile(name) { return require('path').join(__ancRoot(), 'data', name); }
+
+// 显式覆盖优先（启动器会传 ANC_PATCH_LOG / ANC_STATE_FILE），其次 manifest，最后按平台根拼。
+const LOG = process.env.ANC_PATCH_LOG || (process.platform === 'win32'
+  ? expand(mf.log || '%USERPROFILE%\\anc\\workbuddy-patch.log')
+  : require('path').join(__ancHome(), 'anc', 'workbuddy-patch.log'));
+const STATE = process.env.ANC_STATE_FILE || (process.platform === 'win32'
+  ? expand(mf.state || '%ProgramData%\anc\data\patch-state.json')
+  : __ancDataFile('patch-state.json'));
 // 出站文本记录（默认关）：存在 log-out.flag 时，把真正要发出去的最终文本追加到 patch-out.log。
 // 用途：验收"另一个工作区读不到 Claw 的 CODEBUDDY.md"这类只能在 UI 里跑的事，事后可机读。
 const __ancPath = require('path');
@@ -393,7 +419,9 @@ const PREFIX = mf.prefix || '[anc:chat=';
 const BOOT_TARGET = String(mf.bootstrapTarget || '').replace(/\\/g, '/');
 const BOOT_REPL = Array.isArray(mf.bootstrapReplacements) ? mf.bootstrapReplacements : [];
 const OPS_WEBHOOK = expand(mf.opsWebhookFile || '');
-const CANARY = expand(mf.canary || '%ProgramData%\\anc\\data\\patch-canary.json');
+const CANARY = process.env.ANC_CANARY_FILE || (process.platform === 'win32'
+  ? expand(mf.canary || '%ProgramData%\\anc\\data\\patch-canary.json')
+  : __ancDataFile('patch-canary.json'));
 // 在目标模块里 require('fs') 不可靠；由 preload 提供写入函数，补丁体只调用
 global.__ancCanaryWrite = function (obj) {
   try {

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { getConfig } from '../../core/index.ts';
+import { ancPaths, getConfig, sideRoot } from '../../core/index.ts';
 import { startServer } from '../http.ts';
 import { summarizeMarkdown } from '../../modules/knowledge/index.ts';
 import type { CliContext } from './context.ts';
@@ -8,7 +8,7 @@ import type { CliContext } from './context.ts';
 // 长驻 HTTP 面：只监听 127.0.0.1。token 从 secrets 读，未配置时业务路由全 503（fail-closed）
 export default async function serve(ctx: CliContext): Promise<void> {
   const { db, args, numArg, dbPath } = ctx;
-  const secretsDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'secrets');
+  const secretsDir = ancPaths(sideRoot()).secrets;
   const tokenFile = typeof args['token-file'] === 'string' ? args['token-file'] : join(secretsDir, 'service-token.txt');
   let token: string | null = null;
   if (existsSync(tokenFile)) {
@@ -24,7 +24,7 @@ export default async function serve(ctx: CliContext): Promise<void> {
     // D24 方案 B：入库由服务身份执行，bot 只把批次写进 inbox。
     // vault 对 bot 收紧成只读之后，这条路径是**唯一**能写 vault 的入口。
     ingest: async (batchDir: string) => {
-      const inboxRoot = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'inbox');
+      const inboxRoot = ancPaths(sideRoot()).inbox;
       const pending = resolve(inboxRoot, 'pending');
       const target = resolve(batchDir);
       // 只认 inbox/pending 下的目录：否则这个端点等于"以服务身份写任意路径"

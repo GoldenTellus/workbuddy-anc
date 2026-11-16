@@ -3,7 +3,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { nowIso, toIso, assertSafeOutbound } from '../../core/index.ts';
+import { nowIso, toIso, assertSafeOutbound, ancPaths, sideRoot } from '../../core/index.ts';
 import { resolve, resolveGroup, assertWebhookFileName } from '../identity/index.ts';
 import { listPendingDue, claim, markSent, markFailed, isPermanentFailure } from './outbox.ts';
 
@@ -16,7 +16,7 @@ export interface SendOptions {
   webhookFile?: string;
   /** 只处理这个群的待发消息（配合 webhookFile 联调） */
   chatId?: string;
-  /** 密钥目录，默认 %ProgramData%\anc\secrets */
+  /** 密钥目录，默认 <部署根>/secrets（Windows 公司侧 %ProgramData%\anc\secrets，macOS /Library/Application Support/anc/secrets） */
   secretsDir?: string;
   /** 注入发送器，测试用；默认走 fetch */
   send?: Sender;
@@ -85,7 +85,8 @@ export async function sendPending(db: DatabaseSync, opts: SendOptions = {}): Pro
   // 同一个 tick 内所有时间判断用同一个 now：分别调 nowIso() 会跨毫秒，边界上可能自相矛盾
   const now = opts.now ?? nowIso();
   const fixedUrl = opts.webhookFile ? readFileSync(opts.webhookFile, 'utf8').trim() : '';
-  const secretsDir = opts.secretsDir ?? join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'secrets');
+  // 平台差异只认 core/paths.ts：以前这里写死 C:\ProgramData，换到 macOS 就把密钥目录建在仓库里
+  const secretsDir = opts.secretsDir ?? ancPaths(sideRoot()).secrets;
   const pending = listPendingDue(db, now, opts.limit ?? 20, opts.chatId);
 
   const nowStr = toIso(now);

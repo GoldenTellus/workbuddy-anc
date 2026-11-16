@@ -1,12 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { SCHEMA } from './schema.ts';
 import { migrate } from './migrate.ts';
+import { defaultDbPath } from './paths.ts';
 
-export const DEFAULT_DB = process.env.ANC_DB && process.env.ANC_DB.trim()
-  ? process.env.ANC_DB.trim()
-  : join(process.env.ProgramData || 'C:\\ProgramData', 'anc', 'data', 'anc.db');
+// 兼容旧导入：别的模块（src/interfaces/cli/index.ts）仍按常量拿默认库。
+// 路径规则统一在 paths.ts（因为平台差异 + ANC_DB 覆盖都在那里），这里只求值一次。
+// 需要「改环境后立刻生效」的调用方请用 core/index.ts 的 defaultDbPath()——它是函数，每次重读环境。
+export const DEFAULT_DB = defaultDbPath();
 
 // 兼容旧 import：tx 现在在 tx.ts，但 core/index.ts 仍从 db.ts 拿到它。
 export { tx } from './tx.ts';

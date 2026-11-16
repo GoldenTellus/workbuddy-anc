@@ -26,7 +26,7 @@
 | 静态检查 | `npm run check`（`check:modules:deep` + `check:docs`） | ✅ 通过（13 模块边界干净 + 40 份 Markdown 检查） |
 | 密钥扫描 | `node scripts/checks/check-public.mjs` | ✅ 零输出、exit 0 |
 | 计划任务 | **14 个**全部 Ready/Running，principal 正确 | ✅ 14/14（9 LOCAL SERVICE / 2 SYSTEM / 3 交互，`anc-http` Running） |
-| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **158 文件**；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP）；`deploy-verify` 含 `executor` 项 |
+| 部署 | `deploy.ps1` dry-run 无未归属文件；`deploy-verify.ps1 -Side company` | ✅ **166 文件**（Windows；mac 171）；`ok:true pass=4 fail=0 skip=1`（`bot-reply` 因无群 SKIP）；`deploy-verify` 含 `executor` 项 |
 | 体检 | `doctor` **FAIL=0** | ✅ **35 项**，FAIL=0 WARN=3（`work-hours` / `patch` / `bindings`；`canary` 15:38 收到首条真实消息后 PASS） |
 | 补丁 | `patch-state.json` `applied=true` 且 pid 活着 | ✅ `applied=true mode=hash pid=24140`（WorkBuddy 5.9.3） |
 | ACC 判定 | `STATUS §3.5` 的 **ACC-01..22 如实判定**：未跑就是未达成，`SKIP` 不是通过（判定以 `STATUS §3.5` 为准） | ✅ ACC-07/09/10/11 本机达成；ACC-02/03/04/05/06/12 用户实测通过（口述，无机器日志，D35）；ACC-08 人工对账书面例外（D36）；备份恢复通过 |

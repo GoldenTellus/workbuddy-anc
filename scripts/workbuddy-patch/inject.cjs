@@ -23,9 +23,12 @@ if (!PRELOAD || !fs.existsSync(PRELOAD)) {
   log('ERROR preload not found: ' + PRELOAD);
   process.exit(2);
 }
-// NODE_OPTIONS 不做引号解析：路径里只要有空白就会把模块名切坏，直接拒绝。
-if (/\s/.test(PRELOAD)) {
-  log('ERROR preload path contains whitespace: ' + PRELOAD);
+// 路径里可以有空格，但**必须加引号**：Node 的 NODE_OPTIONS 解析器支持 shell 风格引号
+// （2026-11-16 实测 Node 22：`NODE_OPTIONS='--require "/a b/p.cjs"'` 可加载）。
+// 系统级部署根是 /Library/Application Support/anc，天然带空格 —— 原来一律拒绝，
+// 结果 macOS 上补丁永远注入不了。
+if (/[\r\n"]/.test(PRELOAD)) {
+  log('ERROR preload path contains quote/newline: ' + PRELOAD);
   process.exit(2);
 }
 
@@ -36,8 +39,10 @@ const preloadLit = JSON.stringify(PRELOAD);
 // 而 --inspect-brk 注入只能在运行时给**子进程**设 NODE_OPTIONS，主进程本身永远不加载 preload。
 // 这里在暂停点直接调用主进程的 require，把 preload 装进主进程 → 有 wb-wake.flag 时 bridge 能监听 18187。
 // preload 的主进程分支只做 require('./wake-bridge.cjs') 然后 return，不会碰身份补丁逻辑。
+// NODE_OPTIONS 的路径要用双引号包起来（见上），否则空格会把它切坏
+const nodeOptions = '--require "' + esc + '"';
 const expr =
-  "(function(){try{process.env.NODE_OPTIONS='--require " + esc + "';" +
+  "(function(){try{process.env.NODE_OPTIONS=" + JSON.stringify(nodeOptions) + ";" +
   "try{var pm=process.mainModule||module;pm.require(" + preloadLit + ");globalThis.__ancMainPreload='loaded';}catch(e){globalThis.__ancMainPreload='ERR '+e.message;}" +
   "globalThis.__ancCloseInspector=function(){try{var i=null;try{i=process.mainModule.require('inspector');}catch(e1){i=require('inspector');}" +
   "setTimeout(function(){try{i.close();}catch(e){}},0);return 'scheduled';}catch(e){return 'close-err '+e.message;}};" +

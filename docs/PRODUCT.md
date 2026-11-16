@@ -348,7 +348,7 @@ issue
 | 进度台账 | `deploy-state.ps1 -Mark <step> -AsDone/-AsFailed` | **不要手改 JSON**；当前 deploy-state **12/14**；`brief`/`answers` 仅全新安装访谈阶段，存量机 N/A |
 | 程序化测试 | `POST 127.0.0.1:17999/emit` | 模拟"有人 @ 了 bot"，需 `test-emit.flag` |
 
-**本机实测（2026-11-09，公司侧部署；历史读数）**：`deploy.ps1` dry-run **138 个文件**；**13** 个计划任务全部 `Ready`；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。**现状（2026-11-10）**：部署清单 **158 文件**、计划任务 **14 个**（含 `anc-elevate` SYSTEM）、doctor **35 项**、`deploy-state` **12/14**。
+**本机实测（2026-11-09，公司侧部署；历史读数）**：`deploy.ps1` dry-run **138 个文件**；**13** 个计划任务全部 `Ready`；`doctor` **34 项** `FAIL=0` `WARN=3`；`deploy-verify` `ok:true pass=4 fail=0 skip=1`。**现状（2026-11-16）**：部署清单 **166 文件**（Windows；mac 侧 171）、计划任务 **14 个**（含 `anc-elevate` SYSTEM；mac 侧 10 个，见 [PLATFORMS.md](./PLATFORMS.md)）、doctor **35 项**、`deploy-state` 公司侧 **14 阶段** / 员工侧 **9 阶段**。
 
 **本机实测（2026-11-10，临时根演练）**：`deploy.ps1` **158 个文件**（比 138 多：`light/templates/vault/` 下 5 份协作模板、访谈入口 `deploy-kickoff.ps1`；同时 `patch/` 不再部署 `*.test.mjs`），hash 逐一对照通过；`-Rollback` 首次部署删净、升级回滚恢复旧版本均通过。**只部署运行件、不部署仓库**——`docs/`、`_research/`、`reference/`、`AGENTS.md` 一个都不进；脚本按用途分两处：`bin\` 21 个（任务动作 + 启动器 + 技能直接调的），`tools\` 25 个（装机、自检、重装、账号、演练、回归），`scripts\` 用显式清单，清单外不上生产。
 

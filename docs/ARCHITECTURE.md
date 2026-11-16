@@ -56,7 +56,7 @@ P0 前能跑，但"改一处要读半个仓库"：
 | `runtime` | 运行编排 | 一次 tick：回收、顺延、提醒、升级、发送、超时、投影 | 无表；读各能力模块 | core · identity · tasks · delivery · knowledge |
 | `interfaces` | 服务接口 | 17 组 CLI + 3 条 HTTP 路由 + 审计包装 + ERROR/FIX 格式 | 无 | 能力模块（含 executor） + runtime + org（仅 `bind sync-org`） |
 | `workbuddy` | WorkBuddy 适配 | 群身份注入、旁白过滤、升级拦截、补丁状态、canary、test-emit | `scripts/workbuddy-patch/*`、`patch-*.json/log` | 无（只写状态文件） |
-| `ops` | 主机运维 | 部署、体检、备份、自愈、重建、账号、计划任务 | `%ProgramData%\anc\` 布局、任务、ACL、备份 | 无（只走 CLI/文件） |
+| `ops` | 主机运维（跨平台） | 部署、体检、备份、自愈、重建、账号、计划任务；平台差异（路径/调度/提权/启动器）收在平台层 | 部署根布局（`%ProgramData%\anc\` ↔ `/Library/Application Support/anc`）、任务与 launchd plist、ACL、备份 | 无（只走 CLI/文件） |
 | `content` | 业务内容 | 9 个技能、2 个 persona、模板、eval 用例、vault 模板 | `light/`、`org.example/` | 无代码依赖；依赖 CLI 契约 |
 
 **不是模块**：`docs/`（地图本身）、`reference/upstream/`（历史参考）、`_research/`（本地敏感，不入库）。
@@ -118,7 +118,25 @@ content     独立：只依赖 CLI 命令契约
 | `scripts/deploy/*.ps1`（装机维护） | `%ProgramData%\anc\tools\<name>.ps1`（**显式清单**） | 清单外不上生产 |
 | `light/*` | 由 `deploy-skills.ps1` / 渲染器部署 | 内容 |
 
-`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射）；**部署清单 158 文件（2026-11-10）；`bin\` 21 个运行时、`tools\` 26 个装机维护；用显式清单，清单外不上生产**。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
+`deploy.ps1` 的复制表已包含 `core` / `modules` / `interfaces`（2026-11-09 补上 `modules\executor` 映射）；**部署清单 166 文件（2026-11-16，Windows 侧；mac 侧 171）；`bin\` 24 个运行时、`tools\` 28 个装机维护、`platform\` 1 个平台层、`patch\` 9 个补丁件；用显式清单，清单外不上生产**。**先改部署脚本并跑通临时根，再搬源码**——顺序不能反。
+
+### 5.1 双平台部署位置（2026-11-16）
+
+同一份源码，两套部署根；**目录名与相对结构不变**，只换根。平台差异的唯一实现是 `scripts/platform/anc-platform.mjs`（部署前就要算路径）+ `src/core/paths.ts`（运行时），两者由跨层对拍测试钉住，详见 [PLATFORMS.md](./PLATFORMS.md)。
+
+| 源码 / 资产 | Windows | macOS（公司侧） | macOS（员工侧） |
+|---|---|---|---|
+| `src/service/cli.ts` 等入口薄壳 | `%ProgramData%\anc\service\cli.ts` | `/Library/Application Support/anc/service/cli.ts` | `~/Library/Application Support/anc/service/cli.ts` |
+| `src/interfaces/*`、`src/modules/*`、`src/core/*` | `<部署根>\` 下的 `interfaces\` / `modules\` / `core\` | `<部署根>/` 下的 `interfaces/` / `modules/` / `core/` | 同左（用户级根） |
+| `scripts/<domain>/*.ps1`（运行时） | `<部署根>\bin\<name>.ps1`（扁平） | 不适用 | 不适用 |
+| `scripts/deploy/*.mjs`（Node 入口） | 仓库内直接跑（`deploy-state.ps1` 转调） | 仓库内直接跑 | 同左 |
+| `scripts/executor/executor-tasks.mjs`、`scripts/backup/cleanup-media.mjs`、`scripts/selfheal/watchdog.mjs` | 由 bin 的 `.ps1` 承载同等职责 | `<部署根>/bin/*.mjs` | — |
+| `scripts/platform/darwin/*.sh`（`anc-launch.sh` / `cleanup-media.sh` / `watchdog.sh` / `boot-alert.sh`） | 不适用（`.cmd` + `.vbs`） | `<部署根>/bin/*.sh` | — |
+| `scripts/platform/anc-platform.mjs` | 仓库内（部署前与体检用） | 仓库内 | 仓库内 |
+| `light/*` | 由 `deploy-skills.ps1` / 渲染器部署 | 由 `anc.mjs install` 调渲染器部署 | 本地自举（D54） |
+| 调度落点 | `schtasks`（`register-tasks.ps1`） | `/Library/LaunchDaemons/local.anc.*.plist` | `~/Library/LaunchAgents/local.anc.*.plist` |
+
+**不变的那条仍然有效**：`<部署根>/service/cli.ts`、`render/cli.ts`、`ingest/cli.ts` 是技能与 persona 引用的稳定入口；换平台只换根，不换相对路径、不改命令形状。
 
 ---
 
@@ -274,4 +292,5 @@ powershell -File scripts\doctor\doctor.ps1 -Repo <仓库> -Json            # FAI
 | 2026-11-06 | 建档：12 个模块、依赖规则、源码/部署布局、P0–P7 迁移路线 | fork 阶段收口，后续按块迭代 |
 | 2026-11-09 | executor 的 owns 补 `executor_events`/`executor_evaluations`；§11 补 executor 行；§5 补部署实测 158 文件（2026-11-10 部署清单） | 主干 0 文档收口（GAP-066，13 模块现状对齐） |
 | 2026-11-09 | executor 增加 `attentions` 表与 Attention API | 主干 3 T3.1 数据层 |
+| 2026-11-16 | §2 `ops` 补「跨平台」；新增 §5.1 双平台部署位置（Windows / macOS 公司侧 / 员工侧）；平台层 `scripts/platform/anc-platform.mjs` + 运行时 `src/core/paths.ts` 两份实现由对拍测试钉住 | 新增 macOS 部署路径（PLATFORMS 契约），Windows 布局与清单不变 |
 | 2026-11-10 | `attention answer` 强制 `--source-msg`、服务端从 `patch-in.log` 重推导入站消息；补丁入站前缀补 `msg=` / `quote=`；部署清单拆 `bin\`（运行时）/ `tools\`（装机维护）；D46–D52 已登记 | BATCH-20261110 公司侧收口（主干 0/1/2/3 已收口），ACC-17 按 D48 书面例外 |

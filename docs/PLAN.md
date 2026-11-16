@@ -43,7 +43,7 @@
 测试：252 / 252；覆盖率 88.97 / 79.03 / 93.95；测试文件 29
 模块：13 / 13 current；CLI 17 组；技能 9（含 anc-update）；运行时依赖 0
 计划任务：14（9 LOCAL SERVICE / 2 SYSTEM / 3 交互，含 anc-elevate）
-部署清单：158 文件（bin 21 运行时 / tools 26 装机维护）；deploy-state 12/14
+部署清单：166 文件（bin 24 运行时 / tools 28 装机维护 / platform 1 / patch 9；mac 侧 171）；deploy-state 12/14
 doctor：35 项（21 字面量 + 14 个 task-* 覆盖项）
 Node：v22.22.2（设计基线 22 LTS）
 ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
@@ -129,7 +129,7 @@ ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
 | Z-07 | 中途失败 → `-From <阶段>` 续跑 | 已完成阶段不重做、数据不丢（断点续装的核心承诺） |
 | Z-08 | `patch` 重启 → `anc-patch-guard` 自动 `setup-executor -Marker` | 工作区自动加入、TEST 收到回复、当天 host 注册、`ok:true`、marker 删除——**全新机器首次完整链路，此前未验** |
 | Z-09 | 全新机的 `deploy-state` | `brief` / `answers` / `executor` 应有值（存量机为 N/A），目标 14/14 或明确说明例外 |
-| Z-10 | 产物自证与边界 | 158 文件 hash 全过、bin 21 / tools 26、清单外脚本不上生产、secrets 不进 git、check-public 零输出 |
+| Z-10 | 产物自证与边界 | 166 文件 hash 全过、bin 24 / tools 28 / platform 1 / patch 9、清单外脚本不上生产、secrets 不进 git、check-public 零输出 |
 | Z-11 | 重装 / 回滚幂等 | 再跑一次 `-Apply` 或 `-Rollback` 后仍能自证，数据不丢 |
 | Z-12 | 卸载 | 卸载清单能回到干净状态，vault 数据按规则保留 |
 
@@ -258,7 +258,7 @@ ACC：ACC-01..22；仅 ACC-17（员工侧双机全量）按 D48 书面例外
 
 | ID | 步骤 | 预期 / 证据 |
 |---|---|---|
-| **E-01** | 按 [BOOTSTRAP.md](../BOOTSTRAP.md) 四步 + [DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md) 装员工侧；**D54：安装人访谈字段 + `employee-bootstrap.ps1` 本地生成 persona，不依赖公司共享/anc-share** | 第二台机先完成 Z 系列/`Z-12` 卸载；员工电脑 WorkBuddy 普通权限；员工侧 `deploy-state` 10 阶段；首次绑定成功 |
+| **E-01** | 按 [BOOTSTRAP.md](../BOOTSTRAP.md) 四步 + [DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md) 装员工侧；**D54：安装人访谈字段 + `employee-bootstrap.ps1` 本地生成 persona，不依赖公司共享/anc-share** | 第二台机先完成 Z 系列/`Z-12` 卸载；员工电脑 WorkBuddy 普通权限；员工侧 `deploy-state` 9 阶段；首次绑定成功 |
 | **E-02** | EMP-01 员工群边界 | 只服务本人；不查公司库（旧员工侧实现 按现状验）；不越权 |
 | **E-03** | EMP-02 handoff | 旧员工侧实现 没有 handoff → 明确登记为**主干 4 缺口**，不算通过 |
 | **E-04** | 两机真实群/任务（ACC-17） | 真实员工群 / 部门群 / 公司群；任务产物只在对应目录；**机器证据**替代 D48 书面例外 |

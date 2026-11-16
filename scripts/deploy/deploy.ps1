@@ -79,6 +79,9 @@ $BinScripts = @(
     'executor/host-tick.ps1', 'executor/new-host.ps1', 'executor/wake-if-queued.ps1',
     'backup/backup-anc.ps1', 'backup/cleanup-media.ps1',
     'selfheal/anc-selfheal.ps1', 'selfheal/boot-alert.ps1', 'selfheal/watchdog.ps1',
+    # 平台中立件（2026-11-16 双平台）：.ps1 现在是薄壳，真正的实现在同目录 .mjs。
+    # 两边都要铺，否则 Windows 上转调 node 会 ENOENT。
+    'executor/executor-tasks.mjs', 'backup/cleanup-media.mjs', 'selfheal/watchdog.mjs',
     'workbuddy/check-workbuddy-update.ps1', 'workbuddy/patch-guard.ps1',
     'devbot/devbot.ps1', 'devbot/devbot-scheduler.ps1',
     'doctor/doctor.ps1',
@@ -91,7 +94,7 @@ $ToolScripts = @(
     # 部署与自证
     'deploy/deploy.ps1', 'deploy/deploy-kickoff.ps1',
     'deploy/setup-executor.ps1', 'deploy/deploy-persona.ps1',
-    'deploy/deploy-skills.ps1', 'deploy/deploy-state.ps1', 'deploy/deploy-verify.ps1',
+    'deploy/deploy-skills.ps1', 'deploy/deploy-state.ps1', 'deploy/deploy-state.mjs', 'deploy/deploy-verify.ps1',
     'deploy/employee-bootstrap.ps1',
     'deploy/preflight.ps1', 'deploy/register-tasks.ps1', 'deploy/set-acl.ps1',
     # 一句话升级（anc-update 技能调它）
@@ -147,6 +150,10 @@ $Map = @(
     # 一份都没铺 —— 仓库里有、线上没有，建 vault 时也就没模板可铺。
     @{ Target = 'light\templates'; Source = 'light\templates'; Filter = @('*.md'); Exclude = @(); Recurse = $true },
     @{ Target = 'shared';  Source = 'src\shared';  Filter = @('*.ts', '*.json'); Exclude = @('*.test.ts') },
+    # 平台层模块：所有运行时/部署 .mjs 都 `import '../platform/anc-platform.mjs'`。
+    # 部署后从 <Root>\bin\、<Root>\tools\ 出发，这个相对路径必须落到 <Root>\platform\，
+    # 所以不能拍平进 bin（拍平后相对路径指向 <Root>\platform\ 之外，import 直接失败）。
+    @{ Target = 'platform'; Source = 'scripts\platform'; Filter = @('*.mjs'); Exclude = @('*.test.mjs') },
     # bin / tools 必须扁平：14 个计划任务和 .cmd 都写死 <Root>\bin\<文件名>。
     # Only = 显式清单；清单外的脚本不会部署（workbuddy-patch 走下面的 patch 映射，
     # verify/t3-webhook.ps1 是仓库自测脚本，本就不该上生产）。

@@ -14,7 +14,7 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 
 - 13 个模块全部 `current`；`src/service` / `src/render` / `src/ingest` 只剩入口薄壳。
 - 主干 1/2/3 已收口（2026-11-10）；主干 0 是常驻活文档，当前正式生产部署批次进行中，见 [TRUNK-0.md](./docs/TRUNK-0.md)。BATCH-20261110 公司侧完成：ACC-16/18/19/20/21/22 达成；ACC-17（员工侧双机全量）于 2026-11-12 用户确认达成，员工侧按 D54 本地自举、不读公司库；员工侧 patch/handoff 仍归主干 4；决策 D46–D54 已登记
-- `npm test` **253/253**；覆盖率 **88.97 / 79.03 / 93.95**（行/分支/函数，2026-11-10 实测）；`npm run check`（`check:modules:deep` + `check:docs`）通过；`check-public` 零输出。
+- `npm test` **335/335**（2026-11-16 macOS 实测，含平台层 73 条 + 补丁启动器 8 条）；覆盖率 **88.97 / 79.03 / 93.95**（行/分支/函数，2026-11-10 实测，新增代码尚未重取）；`npm run check`（`check:modules:deep` + `check:docs` + `check-platform-parity`）通过；`check-public` 零输出。
 - 文档已分层：方向 / 执行 / 账本 / 现状 / 运维 / 来源 / 历史。
 - 历史计划、路线图、验收、实测已归档；不要再把 `PLAN-LEGACY` 当现行计划。
 
@@ -37,12 +37,13 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 | 文件 | 内容 |
 |---|---|
 | **`docs/ARCHITECTURE.md`** | 13 个模块、依赖规则、源码/部署布局；`module-map.json` + `check:modules` 可执行 |
+| **`docs/PLATFORMS.md`** | 平台契约：Windows / macOS 的部署根、调度器、提权、ACL、启动器、14 个任务的落地状态 |
 | **`docs/FUTURE-DESIGN.md`** | 未来设计树：从主干 1 开始；主干 0 见 TRUNK-0 |
 | `docs/PLAN.md` | 当前主干的执行计划；一次只写一个主干 |
 | `docs/STATUS.md` | 已完成 / 进行中 / 缺口 / 风险；`GAP-###` 总账 |
 | `docs/DOC-SYNC.md` | 主干完成时的文档联动清单与审计表 |
 | `docs/PRODUCT.md` | 部署完能干什么：技能、命令组、计划任务、能力边界 |
-| `docs/DECISIONS.md` | 设计裁决台账（D1–D52，其中 D46–D52 为 BATCH-20261110 登记）；与代码冲突时先改代码或改决策，不要两边漂 |
+| `docs/DECISIONS.md` | 设计裁决台账（D1–D55；D46–D52 由 BATCH-20261110 登记，D53–D55 为 2026-11-11/16）；与代码冲突时先改代码或改决策，不要两边漂 |
 | `docs/modules/` | 13 份模块契约：职责/拥有/公开接口/不变量/失败模式/测试 |
 | `docs/LOCAL-SERVICE.md` | CLI / HTTP 契约 |
 | `docs/CONTENT-PIPELINE.md` / `docs/WORKBUDDY-PATCH.md` | 渲染 / 入库 / 补丁契约 |
@@ -80,9 +81,10 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 - **真实环境验收不阻塞**：需要真实群、凭据、公司主机或现场动作的，登记到 `STATUS` §3.5 的 ACC 批次，继续做能做的；统一收尾时一次跑，通过前主干保持 🟡 待验收。
 - **完成即更新**：任何完成都按 `STATUS` §3.6 更新 `GAP`、`FUTURE-DESIGN` 分支/主干、`PLAN`、模块契约/审计行和测试数；只改代码或文档，不算完成。
 - **文档**：中文为主；每份现行文档顶部有 `> 类型：...`；新增/移动文档要登记 `docs/doc-map.json`、更新 `docs/INDEX.md`、跑 `npm run check:docs`。
-- **代码**：TypeScript + 设计基线 Node 22 LTS；当前环境 v22.22.2 跑 253/253（v26.13.0 为 2026-11-09 另一台本机历史实测）；零或极少运行时依赖；主机脚本 PowerShell 5.1。
+- **代码**：TypeScript + 设计基线 Node 22 LTS；测试基线 **335/335**（2026-11-16 macOS 实测；`deploy-state.test.ts` 改跑 `.mjs` 后不再依赖 PowerShell，Windows 同一套可跑；Node < 22.18 需 `NODE_OPTIONS=--experimental-strip-types`）；零或极少运行时依赖；主机脚本 PowerShell 5.1（macOS 侧 Node ESM）。
 - **流程**：分支 → PR → 验证 → squash merge；维护者明确要求时可直接提交 main。
 - **上游**：借代码/设计前先查 `docs/UPSTREAM.md`；许可证不明只学概念，不拷代码。
+- **平台差异看 [docs/PLATFORMS.md](./docs/PLATFORMS.md)**：路径/调度/提权/启动器只许收在 `scripts/platform/anc-platform.mjs` 与 `src/core/paths.ts`（两份实现由跨层对拍钉住，改一边不改另一边即红）；Windows 侧的 14 任务 / **166 文件**（`bin` 24 / `tools` 28 / `platform` 1 / `patch` 9；mac 侧另有 5 个 darwin-only 运行件，共 171）/ 14 阶段计数是现行口径（2026-11-16 双平台批次）。
 - **计划可变，但改要留痕**：`PLAN` 是当前最佳判断，不是合同；调整理由写进 `PLAN` 顶部或 `STATUS`，不要静默改。
 - **AGENTS.md 是唯一正文**；`CLAUDE.md` 只是指针。
 
@@ -100,6 +102,8 @@ GoldenTellus 的二次开发仓库，基于 [HA7CH/ai-native-company](https://gi
 npm test                 # pretest 自动跑 npm run check
 npm run check            # check:modules:deep + check:docs
 npm run check:docs       # 只查文档链接/类型/入口
+npm run check:platform   # 跨层路径对拍 + 部署清单一致性（零输出=通过）
+npm run test:platform    # 平台层 5 个测试文件（71 条）
 npm run coverage
 npm run test:service     # 分组测试：test:bind / test:ingest / test:render
 node scripts/checks/check-public.mjs

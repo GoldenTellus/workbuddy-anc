@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendAudit, auditPath, commandName } from '../core/index.ts';
@@ -28,8 +28,14 @@ test('审计：目录不存在时自动建；不可写时不抛错（观测手�
     const nested = join(dir, 'a', 'b');
     appendAudit(nested, { at: 'x', cmd: 'c', ok: true, code: null, targets: [] });
     assert.ok(readFileSync(auditPath(nested), 'utf8').includes('"cmd":"c"'));
-    // 传一个不可能写的路径：Windows 上非法字符会让 mkdir 失败，函数必须静默
-    appendAudit('Z:\\definitely\\not\\writable', { at: 'x', cmd: 'c', ok: true, code: null, targets: [] });
+    // 传一个不可能写的路径，函数必须静默（观测手段不挡主流程）。
+    // 2026-11-16 修：原来用 'Z:\\definitely\\not\\writable'，那是 Windows 语义；
+    // 在 macOS 上它只是「当前目录下叫 Z:\definitely\not\writable 的相对路径」，
+    // 会被顺利创建 —— 测试变绿、仓库里多一坨垃圾。改成两边都成立的空目录夹具：
+    // 父级是一个**文件**，mkdir 必然 ENOTDIR。
+    const blocker = join(dir, 'not-a-dir');
+    writeFileSync(blocker, '');
+    appendAudit(join(blocker, 'audit.log'), { at: 'x', cmd: 'c', ok: true, code: null, targets: [] });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

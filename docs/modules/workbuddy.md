@@ -28,7 +28,8 @@
 
 - **消息前缀**：每条群消息正文最前面是 `[anc:chat=<chatid> from=<userid>]`（可再带 ` msg=<msgId> quote=<引用文本>`）；旧字段 `chat=` / `from=` 的文本与顺序不变，`msg=` / `quote=` 拿不到就不加、不写空值，清洗规则见 `WORKBUDDY-PATCH.md` §1b；正文里的 `[anc:` 一律改写成 `[anc-quoted:`（防伪）。
 - **状态文件**：`patch-state.json` 的 `applied` 只有在补丁体真正包装成功后才是 `true`；`pid` 必须与当前主进程一致，`at` 不能早于进程创建时间。
-- **启动/回滚**：`launch-patched.ps1` / `restore.ps1`；`ANC_WB_PATCH=0` 一键关闭。
+- **启动/回滚**：`launch-patched.ps1`（Windows）/ **`launch-patched.mjs`**（跨平台，判定同一套：runId + 时间窗 + pid）/ `restore.ps1`；`ANC_WB_PATCH=0` 一键关闭。
+- **macOS 启动约束（2026-11-16 真机）**：包内主程序名不一定是产品名（实测 `Electron`），按 `Info.plist` 的 `CFBundleExecutable` 解析；必须 `--inspect-brk` 注入（`open --args` 传不进调试参数）；exec 前清掉 `ELECTRON_RUN_AS_NODE` / `ELECTRON_NO_ATTACH_CONSOLE` / `NODE_OPTIONS`（否则应用被当纯 Node 拉起、秒退）。
 - **测试入口**：`POST 127.0.0.1:17999/emit`，需 `test-emit.flag`；可选 `X-Anc-Token`；`409` 表示还没有真实群消息打底。
 - **升级回归**：`verify-upgrade.ps1` 8 项机械检查 + 4 项人工清单。
 - **wake bridge 2.0**（opt-in，`wb-wake.flag` 存在才启用，只监听 loopback + token 鉴权）：`GET /health` 返回 `{ok,pid,port,bridge:"2.0"}`；`POST /wake {prompt, conversationId?}` 定向 `conversations.get(id).sendPrompt()` 命中已有 daily host、不新建会话、不切可见窗口；`POST /new {prompt, workspace?, conversationId?, title?}` 用 `conversations.create()` 建会话（仅 03:00 日切用）。`window.wb` 不可用时自动退回 DOM 点击流程并标记 `wb-api-missing`。

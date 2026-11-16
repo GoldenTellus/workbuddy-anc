@@ -56,6 +56,12 @@
       "role": "现在代码怎么组织"
     },
     {
+      "id": "platforms",
+      "path": "docs/PLATFORMS.md",
+      "type": "平台契约",
+      "role": "Windows / macOS 双平台部署差异（路径 / 任务 / 命令面）"
+    },
+    {
       "id": "decisions",
       "path": "docs/DECISIONS.md",
       "type": "决策台账",

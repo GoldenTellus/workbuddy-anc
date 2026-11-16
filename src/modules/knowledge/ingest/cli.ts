@@ -3,11 +3,10 @@
 // 用法：node src/ingest/cli.ts apply --batch <批次目录> --shared <共享区目录> [--inbox D:\anc\inbox] [--commit] [--json]
 
 import { existsSync } from 'node:fs';
-import { appendAudit, commandName } from '../../../core/index.ts';
+import { ancPaths, appendAudit, commandName, sideRoot } from '../../../core/index.ts';
 import { applyBatch, archiveBatch, failBatch, inferInbox } from './apply.ts';
 import { commitVault } from './git.ts';
 import { IngestError } from './validate.ts';
-import { join } from 'node:path';
 
 const argv = process.argv.slice(2);
 function arg(name: string, def = ''): string {
@@ -31,7 +30,7 @@ if (cmd === 'apply' && process.env.ANC_ALLOW_LOCAL_INGEST !== '1') {
     process.stderr.write(
       'ERROR 入库必须通过本地服务的 HTTP 端点（POST /__anc_ingest），不要直接调本 CLI。\n' +
       '      原因：vault 对 ' + (who || '当前身份') + ' 是只读的，写操作只能由服务身份完成（D24）。\n' +
-      '      做法：把批次写到 <ProgramData>\\anc\\inbox\\pending\\<id>，再 POST 给 /__anc_ingest。\n' +
+      '      做法：把批次写到 <部署根>/inbox/pending/<id>（部署根见 core/index.ts 的 sideRoot()），再 POST 给 /__anc_ingest。\n' +
       '      确实要手工入库时：设 ANC_ALLOW_LOCAL_INGEST=1。\n'
     );
     process.exit(2);
@@ -44,7 +43,8 @@ const inbox = arg('--inbox') || inferInbox(batch) || '';
 
 // 审计：入库每次调用留一行，targets 记录动到的路径。
 // bot 绕过 CLI 直接往 vault 复制文件时这里不会有记录——doctor 用这个差异发现绕过。
-const dataDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'anc', 'data');
+// 审计目录跟着部署根走（core/paths.ts 是唯一来源）；不再写死 C:\ProgramData
+const dataDir = ancPaths(sideRoot()).data;
 const audit = {
   at: new Date().toISOString(),
   cmd: 'ingest apply',

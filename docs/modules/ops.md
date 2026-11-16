@@ -2,9 +2,9 @@
 
 > 类型：模块契约
 
-> 状态：现行（P5 后按域分组到 `scripts/<domain>/`，部署仍扁平到 `bin/`）
-> 代码：`scripts/`（66 个文件）
-> 入口：`scripts/deploy/deploy.ps1`
+> 状态：现行（P5 后按域分组到 `scripts/<domain>/`，部署仍扁平到 `bin/`；2026-11-16 起承载 Windows + macOS 双平台）
+> 代码：`scripts/`（47 个 `.ps1` + 17 个 `.mjs`；Windows 仍走 `.ps1`，跨平台走 `platform/` 与 `deploy/*.mjs`）
+> 入口：Windows `scripts/deploy/deploy.ps1`；macOS `scripts/deploy/anc.mjs`（平台差异见 [PLATFORMS.md](../PLATFORMS.md)）
 
 ## 职责
 
@@ -19,6 +19,7 @@
 | ACL | `secrets` 断继承；`data` 保留继承；vault 对 bot 只读 |
 | 备份 | `VACUUM INTO` 快照、保留策略、离机复制、同盘告警 |
 | 日志轮转 | `loop.log` / `http.log` >5 MB 转 `.1`，只留一份 |
+| 平台资产（2026-11-16） | `scripts/platform/anc-platform.mjs`（路径 / 能力矩阵 / 14 个任务表 / launchd 渲染的**唯一真相**）、`scripts/platform/darwin/*.sh`（mac 启动器与运行时件）、`src/core/paths.ts` 的 ops 侧同规则实现、`scripts/deploy/*.mjs`（Node 入口：anc / deploy / scheduler / deploy-state） |
 
 ## 公开契约
 
@@ -30,6 +31,13 @@
 - `doctor.ps1 -SelfTest`：用 `%TEMP%` 夹具证明每类检查能 FAIL
 - `backup-anc.ps1 -Destination <盘>`；`register-tasks.ps1 -Apply`；`prepare-wipe.ps1 -Apply`；`rebuild-*.ps1`
 - 退出码：0 成功 / 1 校验或诊断失败 / 2 用法错误 / 3 已应用但探针失败且已回滚
+- `node scripts/platform/anc-platform.mjs facts|paths|tasks|plist`（`--side company|employee`、`--json`）→ 平台事实 / 部署根与子目录 / 本平台会注册的任务 / 单个 launchd plist。**零依赖、部署前就能跑**，`src/` 没铺也能算路径；`plist` 输出应能过 `plutil -lint`
+- `node scripts/deploy/anc.mjs doctor|plan|install|verify`（macOS 入口；默认 dry-run，`install` 要 `--apply`；公司侧 `install` 需一次 `sudo`，员工侧不需要）
+- `node scripts/deploy/deploy.mjs [--side] [--root] [--apply|--rollback]`（铺运行时件；清单真相源仍是 `deploy.ps1`，Node 侧读 `deploy-manifest.json`；默认 dry-run，落盘后 sha256 对拍、失败整体回滚）
+- `node scripts/deploy/scheduler.mjs status|apply [--apply] [--uninstall]`（launchd 注册/对账/卸载，按标签 `local.anc.<task>`；plist 里只允许 `ANC_ROOT`/`ANC_SIDE`/`NODE_OPTIONS`/`PATH`，凭据走 `<root>/secrets`）
+- `node scripts/deploy/deploy-state.mjs --side company|employee [--json] [--mark <阶段>]`（装机账本；`deploy-state.ps1` 是转调它的薄壳，阶段名与退出码不变）
+- `node scripts/checks/check-platform-parity.mjs`（**零输出 = 通过**）：`paths.ts ↔ anc-platform.mjs` 的 win/mac × company/employee 四组，以及 `deploy.ps1 ↔ deploy-manifest.json ↔ 真实文件` 的清单漂移
+- 平台差异、macOS 10/14 任务与 4 项待移植项：见 [PLATFORMS.md](../PLATFORMS.md)
 
 ## 不变量
 
@@ -42,6 +50,9 @@
 - 仓库里不放密钥、不放真实主机名/用户名/webhook；`check-public.mjs` 零输出才算过。
 - 部署只从 `%ProgramData%\anc\patch\` 跑补丁，不从 git 工作副本跑。
 - 运行身份按 D25：管理员账号；`doctor` 的期望身份跟着配置走。
+- **路径规则两份实现必须对拍**：`scripts/platform/anc-platform.mjs` 与 `src/core/paths.ts` 逐条一致，由 `scripts/checks/check-platform-parity.mjs`（零输出 = 通过）与 `scripts/platform/platform.test.mjs` 钉住；改一边不改另一边即红。平台差异只许出现在这两处（外加 `scripts/platform/darwin/*`），不许散进各部署脚本。
+- **macOS 只注册 `TASKS` 里 `darwin.ok` 的任务**；不注册的必须出现在 `facts.scheduler.unsupported` 并在 `doctor` 输出里可见，不许「安静少几个任务」。
+- **Windows 侧行为不变是硬约束**：14 任务 / 158 文件 / 14 阶段、`bin\` 扁平布局、`doctor` 项数任一变化都算回归，不属「平台化」。
 
 ## 失败模式
 
@@ -75,3 +86,4 @@
 | 2026-11-06 | P5 完成：49 个脚本分 10 域，部署扁平到 `bin\` | 模块化 |
 | 2026-11-09 | 计数同步：54 个脚本、doctor 34 项；故障矩阵基数 34 待重跑 | 主干 0 文档收口（GAP-066） |
 | 2026-11-10 | 计数同步：66 个脚本、14 个计划任务、部署清单 158 文件（`bin` 21 运行时 / `tools` 26 装机维护）；doctor 35 项；修复 GAP-089 / GAP-093 | 2026-11-10 实测口径 |
+| 2026-11-16 | 新增平台资产与 Node 入口（`scripts/platform/anc-platform.mjs`、`scripts/deploy/*.mjs`、`scripts/platform/darwin/*.sh`）；不变量补「两份路径实现对拍」「mac 只注册 darwin.ok 任务」「Windows 计数不变」；代码构成改为 47 `.ps1` + 17 `.mjs` | 双平台部署（D55 / GAP-124 / GAP-125） |

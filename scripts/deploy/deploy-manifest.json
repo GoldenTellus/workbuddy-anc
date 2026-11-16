@@ -1,0 +1,473 @@
+{
+  "$comment": [
+    "部署清单（结构化）：Windows 侧真相源是 scripts/deploy/deploy.ps1 的 $Map / $BinScripts / $ToolScripts / $NotDeployed。",
+    "本文件是它的镜像 + darwin-only 追加项；路径一律正斜杠。",
+    "Windows 侧 deploy.ps1 读自己文件里的数组；macOS/Node 侧 scripts/deploy/deploy.mjs 读本文件。",
+    "漂移由 scripts/checks/check-platform-parity.mjs 拦：它把本文件投影到 win32 后再与 ps1 逐项比，",
+    "所以 Platforms 含 darwin 的项不会造成误报。",
+    "binScripts/toolScripts 是两边共用的白名单：字符串 = 两个平台都部署；{\"Path\": ..., \"Platforms\": [...]} = 只在列出的平台部署。",
+    "map[].Only 与同名顶层白名单逐项相同（含 Platforms），改清单要同时改两处；map[].Platforms 可整条映射按平台跳过。",
+    "platform 映射：所有 .mjs 都 import \"../platform/anc-platform.mjs\"，从 <root>/bin、<root>/tools 出发必须落到 <root>/platform，",
+    "所以不能拍平进 bin。"
+  ],
+  "version": 2,
+  "map": [
+    {
+      "Target": "core",
+      "Source": "src/core",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "interfaces",
+      "Source": "src/interfaces",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "interfaces/cli",
+      "Source": "src/interfaces/cli",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/runtime",
+      "Source": "src/modules/runtime",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/identity",
+      "Source": "src/modules/identity",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/tasks",
+      "Source": "src/modules/tasks",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/executor",
+      "Source": "src/modules/executor",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/delivery",
+      "Source": "src/modules/delivery",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/improvement",
+      "Source": "src/modules/improvement",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/knowledge",
+      "Source": "src/modules/knowledge",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/knowledge/ingest",
+      "Source": "src/modules/knowledge/ingest",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "modules/org",
+      "Source": "src/modules/org",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "service",
+      "Source": "src/service",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "ingest",
+      "Source": "src/ingest",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "render",
+      "Source": "src/render",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "light/templates",
+      "Source": "light/templates",
+      "Filter": [
+        "*.md"
+      ],
+      "Exclude": [],
+      "Recurse": true,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "shared",
+      "Source": "src/shared",
+      "Filter": [
+        "*.ts",
+        "*.json"
+      ],
+      "Exclude": [
+        "*.test.ts"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "platform",
+      "Source": "scripts/platform",
+      "Filter": [
+        "*.mjs"
+      ],
+      "Exclude": [
+        "*.test.mjs"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    },
+    {
+      "Target": "bin",
+      "Source": "scripts",
+      "Filter": [
+        "*"
+      ],
+      "Exclude": [],
+      "Recurse": true,
+      "Flatten": true,
+      "Only": [
+        "launch/anc-guard.cmd",
+        "launch/anc-http.cmd",
+        "launch/anc-launch.cmd",
+        "launch/anc-loop.cmd",
+        "launch/run-hidden.vbs",
+        "executor/host-tick.ps1",
+        "executor/new-host.ps1",
+        "executor/wake-if-queued.ps1",
+        "backup/backup-anc.ps1",
+        "backup/cleanup-media.ps1",
+        "selfheal/anc-selfheal.ps1",
+        "selfheal/boot-alert.ps1",
+        "selfheal/watchdog.ps1",
+        "executor/executor-tasks.mjs",
+        {
+          "Path": "backup/backup-anc.mjs",
+          "Platforms": [
+            "darwin"
+          ]
+        },
+        "backup/cleanup-media.mjs",
+        "selfheal/watchdog.mjs",
+        "workbuddy/check-workbuddy-update.ps1",
+        "workbuddy/patch-guard.ps1",
+        "devbot/devbot.ps1",
+        "devbot/devbot-scheduler.ps1",
+        "doctor/doctor.ps1",
+        "accounts/bind-member-identity.ps1",
+        "elevate/elevate-runner.ps1",
+        "elevate/request-elevate.ps1",
+        {
+          "Path": "platform/darwin/anc-launch.sh",
+          "Platforms": [
+            "darwin"
+          ]
+        },
+        {
+          "Path": "platform/darwin/cleanup-media.sh",
+          "Platforms": [
+            "darwin"
+          ]
+        },
+        {
+          "Path": "platform/darwin/watchdog.sh",
+          "Platforms": [
+            "darwin"
+          ]
+        },
+        {
+          "Path": "platform/darwin/boot-alert.sh",
+          "Platforms": [
+            "darwin"
+          ]
+        }
+      ]
+    },
+    {
+      "Target": "tools",
+      "Source": "scripts",
+      "Filter": [
+        "*"
+      ],
+      "Exclude": [],
+      "Recurse": true,
+      "Flatten": true,
+      "Only": [
+        "deploy/deploy.ps1",
+        "deploy/deploy-kickoff.ps1",
+        "deploy/setup-executor.ps1",
+        "deploy/deploy-persona.ps1",
+        "deploy/deploy-skills.ps1",
+        "deploy/deploy-state.ps1",
+        "deploy/deploy-state.mjs",
+        "deploy/deploy-verify.ps1",
+        "deploy/employee-bootstrap.ps1",
+        "deploy/preflight.ps1",
+        "deploy/register-tasks.ps1",
+        "deploy/set-acl.ps1",
+        "deploy/upgrade.ps1",
+        "deploy/org-write.ps1",
+        "deploy/setup-dirs.ps1",
+        "deploy/vault-init.ps1",
+        "deploy/wecom-setup.ps1",
+        "deploy/install-company.ps1",
+        "deploy/bootstrap.ps1",
+        "accounts/provision-vault-accounts.ps1",
+        "accounts/verify-vault-accounts.ps1",
+        "accounts/offboard-member.ps1",
+        "accounts/setup-anc-bot.ps1",
+        "rebuild/prepare-wipe.ps1",
+        "rebuild/rebuild-drill.ps1",
+        "rebuild/rebuild-z.ps1",
+        "workbuddy/verify-upgrade.ps1",
+        "devbot/e2e-loop.ps1"
+      ]
+    },
+    {
+      "Target": "patch",
+      "Source": "scripts/workbuddy-patch",
+      "Filter": [
+        "*"
+      ],
+      "Exclude": [
+        "*.test.mjs",
+        "*.test.cjs"
+      ],
+      "Recurse": false,
+      "Flatten": false,
+      "Only": null
+    }
+  ],
+  "binScripts": [
+    "launch/anc-guard.cmd",
+    "launch/anc-http.cmd",
+    "launch/anc-launch.cmd",
+    "launch/anc-loop.cmd",
+    "launch/run-hidden.vbs",
+    "executor/host-tick.ps1",
+    "executor/new-host.ps1",
+    "executor/wake-if-queued.ps1",
+    "backup/backup-anc.ps1",
+    "backup/cleanup-media.ps1",
+    "selfheal/anc-selfheal.ps1",
+    "selfheal/boot-alert.ps1",
+    "selfheal/watchdog.ps1",
+    "executor/executor-tasks.mjs",
+    {
+      "Path": "backup/backup-anc.mjs",
+      "Platforms": [
+        "darwin"
+      ]
+    },
+    "backup/cleanup-media.mjs",
+    "selfheal/watchdog.mjs",
+    "workbuddy/check-workbuddy-update.ps1",
+    "workbuddy/patch-guard.ps1",
+    "devbot/devbot.ps1",
+    "devbot/devbot-scheduler.ps1",
+    "doctor/doctor.ps1",
+    "accounts/bind-member-identity.ps1",
+    "elevate/elevate-runner.ps1",
+    "elevate/request-elevate.ps1",
+    {
+      "Path": "platform/darwin/anc-launch.sh",
+      "Platforms": [
+        "darwin"
+      ]
+    },
+    {
+      "Path": "platform/darwin/cleanup-media.sh",
+      "Platforms": [
+        "darwin"
+      ]
+    },
+    {
+      "Path": "platform/darwin/watchdog.sh",
+      "Platforms": [
+        "darwin"
+      ]
+    },
+    {
+      "Path": "platform/darwin/boot-alert.sh",
+      "Platforms": [
+        "darwin"
+      ]
+    }
+  ],
+  "toolScripts": [
+    "deploy/deploy.ps1",
+    "deploy/deploy-kickoff.ps1",
+    "deploy/setup-executor.ps1",
+    "deploy/deploy-persona.ps1",
+    "deploy/deploy-skills.ps1",
+    "deploy/deploy-state.ps1",
+    "deploy/deploy-state.mjs",
+    "deploy/deploy-verify.ps1",
+    "deploy/employee-bootstrap.ps1",
+    "deploy/preflight.ps1",
+    "deploy/register-tasks.ps1",
+    "deploy/set-acl.ps1",
+    "deploy/upgrade.ps1",
+    "deploy/org-write.ps1",
+    "deploy/setup-dirs.ps1",
+    "deploy/vault-init.ps1",
+    "deploy/wecom-setup.ps1",
+    "deploy/install-company.ps1",
+    "deploy/bootstrap.ps1",
+    "accounts/provision-vault-accounts.ps1",
+    "accounts/verify-vault-accounts.ps1",
+    "accounts/offboard-member.ps1",
+    "accounts/setup-anc-bot.ps1",
+    "rebuild/prepare-wipe.ps1",
+    "rebuild/rebuild-drill.ps1",
+    "rebuild/rebuild-z.ps1",
+    "workbuddy/verify-upgrade.ps1",
+    "devbot/e2e-loop.ps1"
+  ],
+  "notDeployed": [
+    "verify/t3-webhook.ps1"
+  ]
+}

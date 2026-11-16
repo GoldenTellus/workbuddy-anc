@@ -30,7 +30,7 @@
 | **联动规则** | 主干完成时哪些文档要跟着更新 | [DOC-SYNC.md](./DOC-SYNC.md) |
 | **现状能力** | 现在能做什么、不做什么 | [PRODUCT.md](./PRODUCT.md) |
 | **现状架构** | 现在代码怎么组织 | [ARCHITECTURE.md](./ARCHITECTURE.md) + [modules/](./modules/) |
-| **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁 / Main↔Executor 怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)、[CONTENT-PIPELINE.md](./CONTENT-PIPELINE.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md) |
+| **接口契约** | CLI / HTTP / 渲染 / 入库 / 补丁 / Main↔Executor 怎么调 | [LOCAL-SERVICE.md](./LOCAL-SERVICE.md)、[MAIN-EXECUTOR.md](./MAIN-EXECUTOR.md)、[CONTENT-PIPELINE.md](./CONTENT-PIPELINE.md)、[WORKBUDDY-PATCH.md](./WORKBUDDY-PATCH.md)、[PLATFORMS.md](./PLATFORMS.md)（平台契约：Windows / macOS 差异） |
 | **运维手册** | 怎么部署、怎么修、怎么重建 | [../BOOTSTRAP.md](../BOOTSTRAP.md)（零起点部署入口）、[DEPLOY-COMPANY.md](./DEPLOY-COMPANY.md)、[DEPLOY-EMPLOYEE.md](./DEPLOY-EMPLOYEE.md)、[OPS.md](./OPS.md)、[REBUILD.md](./REBUILD.md)、[RELEASE-CHECKLIST.md](./RELEASE-CHECKLIST.md)、[OPS.md](./OPS.md#入职新员工) |
 | **来源** | 哪些上游/参考项目、许可证、用了什么 | [UPSTREAM.md](./UPSTREAM.md) |
 | **决策** | 为什么这么定 | [DECISIONS.md](./DECISIONS.md) |
@@ -42,9 +42,11 @@
 
 | 指标 | 当前值 | 取数命令 / 来源 |
 |---|---|---|
-| 测试 | **252 / 252 pass** | `npm test`（`pretest` 自动跑 `npm run check`；deploy-state 断言已同步） |
+| 测试 | **335 / 335 pass** | `npm test`（`pretest` 自动跑 `npm run check`；2026-11-16 macOS 实测，含平台层 71 条 + 补丁启动器 7 条） |
 | 覆盖率（行 / 分支 / 函数） | **88.97% / 79.03% / 93.95%** | `npm run coverage`（2026-11-10 实测） |
-| 测试文件 | **29** 个 | `package.json` 的 `scripts.test` 列表 |
+| 测试文件 | **35** 个 | `package.json` 的 `scripts.test` 列表（`scripts/platform/*.test.mjs` 5 个 + `src/core/paths.test.ts`） |
+| 测试平台口径 | Windows：全量 `npm test`（含部署/脚本侧断言）；macOS：同一套 `npm test` + 平台对拍用例（两份路径实现逐条比对，改一边不改另一边就红） | `npm test`；`node --test scripts/platform/platform.test.mjs` |
+| 平台支持面 | Windows 全功能；macOS **10/14** 计划任务可跑（4 项待移植，见 [PLATFORMS.md](./PLATFORMS.md) §5） | `node scripts/platform/anc-platform.mjs facts`（macOS 会打印「本平台不注册的任务」） |
 | doctor 检查项 | **35** 项 | 21 个 `Add-Result` 字面量 + 14 个 `task-*` 循环覆盖项（第 14 个任务 `anc-elevate` 加入后由 34 增至 35） |
 | 计划任务 | **14** 个 | 9 LOCAL SERVICE / 2 SYSTEM / 3 交互（含 `anc-elevate` SYSTEM）；`grep -c "Name = '" scripts/deploy/register-tasks.ps1` |
 | 技能目录 | **9** 个（含 `anc-update`） | `ls -d light/skills/*/ \| wc -l`；`light/skills` 下 11 个 md |
@@ -52,9 +54,9 @@
 | 模块 | **13 / 13 `current`** | `npm run check:modules` |
 | 运行时依赖 | **0** | `npm ls --depth=0` → `(empty)` |
 | Node | **v22.22.2**（当前环境；设计基线 Node 22 LTS） | `node -v`（v26.13.0 为 2026-11-09 另一台本机历史实测） |
-| 脚本 | **66** 个（46 ps1 / 11 mjs / 4 cmd / 3 cjs / 1 vbs / 1 json；15 个域） | `(git ls-files scripts \| Measure-Object -Line).Lines` |
-| 部署清单 | **158** 文件 | `bin\` 运行时 21 / `tools\` 装机维护 26（显式清单） |
-| deploy-state 阶段 | 公司 **14** 阶段 / 员工 **10** 阶段 | 当前 **12/14**（`brief`/`answers` 为全新安装访谈阶段，存量机 N/A） |
+| 脚本 | **88** 个（47 ps1 / 27 mjs / 4 cmd / 3 cjs / 1 vbs / 2 json / 4 sh；16 个域） | `(git ls-files scripts \| Measure-Object -Line).Lines` |
+| 部署清单 | **166** 文件（Windows；macOS 171） | `bin\` 24 / `tools\` 28 / `platform\` 1 / `patch\` 9（显式清单；mac 侧再 +5 个 darwin-only 运行件：4 个 `bin/*.sh` + `backup-anc.mjs`） |
+| deploy-state 阶段 | 公司 **14** 阶段 / 员工 **9** 阶段 | 当前 **12/14**（`brief`/`answers` 为全新安装访谈阶段，存量机 N/A；员工侧无 `dirs`/`tasks`，见 `deploy-state.mjs` 的 `STAGES`） |
 
 > 历史验收（38 ✅ / 2 🟡）在 [archive/history/ACCEPTANCE.md](./archive/history/ACCEPTANCE.md)；历史实测在 [archive/history/VERIFY.md](./archive/history/VERIFY.md)。
 
@@ -108,6 +110,8 @@
 | 本地服务 CLI | `node src/service/cli.ts <组> <命令> [参数]`；用法见 [LOCAL-SERVICE.md](./LOCAL-SERVICE.md) |
 | 渲染器 / 入库 | `node src/render/cli.ts ...` / `node src/ingest/cli.ts apply` |
 | 主机体检 | `powershell -File scripts/doctor/doctor.ps1 -Root <部署根> -VaultRoot <vault 根> -Json` |
+| 平台事实 / 路径 / 任务 / plist | `node scripts/platform/anc-platform.mjs facts\|paths\|tasks\|plist`（两平台通用，macOS 用 `--side company\|employee`） |
+| macOS 装 / 验 | `node scripts/deploy/anc.mjs doctor\|plan\|install\|verify`（公司侧 `install` 要一次 `sudo`）；差异见 [PLATFORMS.md](./PLATFORMS.md) |
 | 体检自测 | `powershell -File scripts/doctor/doctor.ps1 -SelfTest` |
 | 升级（检查 / 应用 / 回滚） | `tools\upgrade.ps1 -Action check\|apply\|rollback` |
 | 公司侧一键安装（11 步） | `tools\install-company.ps1 -Apply` |
